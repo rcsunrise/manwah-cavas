@@ -861,32 +861,56 @@ interface CanvasDraftPayload {
           </div>
 
           {/* 右栏：产品信息读数仪表盘与规格编辑 (7 cols) */}
-          <div className="md:col-span-7 p-5 flex flex-col gap-4 overflow-y-auto">
-            {/* AI 产品档案状态看板 */}
-            <div className={`p-3.5 rounded-2xl border transition-all ${
-              dossierSummary || confidenceScore !== null
-                ? 'bg-gradient-to-br from-amber-50/80 via-white to-stone-50 border-amber-300/80 shadow-xs'
-                : 'bg-stone-50/70 border-stone-200'
+          <div className="md:col-span-7 p-5 flex flex-col gap-3.5 overflow-y-auto">
+            {/* 1. 顶部标题栏 */}
+            <div className="flex items-center justify-between pb-2 border-b border-stone-200 shrink-0">
+              <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>产品真值读数仪表盘 (Physical Truth Readout)</span>
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
+                规格与几何不变量
+              </span>
+            </div>
+
+            {/* 2. AI 产品档案状态看板 */}
+            <div className={`p-3 rounded-xl border transition-all relative overflow-hidden shrink-0 ${
+              isAnalyzing
+                ? 'bg-gradient-to-br from-amber-500/15 via-cyan-500/10 to-amber-500/5 border-amber-400 shadow-sm ring-1 ring-amber-400/40'
+                : dossierSummary || confidenceScore !== null
+                ? 'bg-gradient-to-br from-amber-50/80 via-white to-stone-50 border-amber-300/80 shadow-2xs'
+                : 'bg-stone-50/80 border-stone-200'
             }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="p-1.5 rounded-xl bg-amber-600/10 text-amber-700">
-                    <FileCheck className="w-4 h-4" />
+              {isAnalyzing && (
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-cyan-400 to-amber-500 animate-pulse" />
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition ${
+                    isAnalyzing
+                      ? 'bg-amber-500 text-stone-950 animate-bounce'
+                      : 'bg-amber-600/10 text-amber-700'
+                  }`}>
+                    {isAnalyzing ? <RotateCw className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
                   </span>
-                  <div>
-                    <h4 className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-stone-900 text-xs flex items-center gap-1.5 flex-wrap">
                       <span>空间产品档案 (Product Dossier)</span>
-                      {confidenceScore !== null && (
+                      {isAnalyzing ? (
+                        <span className="text-[10px] px-2 py-0.2 rounded-full bg-amber-500 text-stone-950 font-bold font-mono animate-pulse">
+                          AI 识别中 · {(elapsedMs / 1000).toFixed(1)}s
+                        </span>
+                      ) : confidenceScore !== null ? (
                         <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 font-mono">
                           已就绪 · 置信度 {confidenceScore}%
                         </span>
-                      )}
-                    </h4>
-                    <p className="text-[10px] text-stone-500">
+                      ) : null}
+                    </div>
+                    <p className="text-[10px] text-stone-500 truncate mt-0.5">
                       {isAnalyzing
-                        ? `正在进行多模态扫描推算，已耗时 ${(elapsedMs / 1000).toFixed(1)}s...`
+                        ? `${analysisStage}`
                         : dossierGeneratedAt
-                        ? `档案生成于 ${new Date(dossierGeneratedAt).toLocaleTimeString()}${analysisDuration ? ` · 识别耗时 ${analysisDuration}s` : ''}`
+                        ? `生成于 ${new Date(dossierGeneratedAt).toLocaleTimeString()}${analysisDuration ? ` · 耗时 ${analysisDuration}s` : ''}`
                         : '等待多模态识别生成或手动编辑录入'}
                     </p>
                   </div>
@@ -897,18 +921,18 @@ interface CanvasDraftPayload {
                     type="button"
                     onClick={() => handleExtractProductDna()}
                     disabled={isAnalyzing}
-                    className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition shadow-xs ${
+                    className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition shadow-2xs shrink-0 cursor-pointer ${
                       isAnalyzing
-                        ? 'bg-amber-100 text-amber-900 border border-amber-300 font-mono cursor-wait'
+                        ? 'bg-amber-500 text-stone-950 font-mono ring-2 ring-amber-400 font-bold animate-pulse'
                         : confidenceScore
-                        ? 'text-stone-600 bg-stone-100 hover:bg-stone-200'
-                        : 'text-white bg-amber-600 hover:bg-amber-700 shadow-amber-900/10'
+                        ? 'text-stone-700 bg-stone-100 hover:bg-stone-200 border border-stone-300'
+                        : 'text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 shadow-sm ring-1 ring-amber-400/30'
                     }`}
                   >
                     {isAnalyzing ? (
                       <>
-                        <RotateCw className="w-3.5 h-3.5 animate-spin text-amber-700 shrink-0" />
-                        <span>识别中 {(elapsedMs / 1000).toFixed(1)}s...</span>
+                        <RotateCw className="w-3.5 h-3.5 animate-spin text-stone-950 shrink-0" />
+                        <span>AI 计算中...</span>
                       </>
                     ) : (
                       <>
@@ -920,8 +944,27 @@ interface CanvasDraftPayload {
                 )}
               </div>
 
-              {dossierSummary && (
-                <div className="mt-2.5 p-2.5 rounded-xl bg-white/90 border border-amber-200/80 text-[11px] text-stone-700 leading-relaxed font-sans">
+              {/* Active Progress Bar in Dossier Card */}
+              {isAnalyzing && (
+                <div className="mt-2.5 pt-2 border-t border-amber-300/40 space-y-1">
+                  <div className="flex items-center justify-between text-[10px] text-amber-900 font-medium">
+                    <span className="flex items-center gap-1 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                      <span className="truncate">正在提取长宽高、皮质肌理与几何不变量...</span>
+                    </span>
+                    <span className="font-mono font-bold shrink-0 ml-2">{(elapsedMs / 1000).toFixed(1)}s</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-amber-200/60 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 transition-all duration-150 animate-pulse"
+                      style={{ width: `${Math.min(96, Math.max(15, (elapsedMs / 8000) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {dossierSummary && !isAnalyzing && (
+                <div className="mt-2 p-2 rounded-lg bg-white/90 border border-amber-200/80 text-[11px] text-stone-700 leading-relaxed font-sans">
                   <div className="font-semibold text-stone-800 text-[10px] uppercase font-mono tracking-wider text-amber-800 mb-0.5">
                     档案特征摘要 (Dossier Summary)
                   </div>
@@ -930,15 +973,18 @@ interface CanvasDraftPayload {
               )}
             </div>
 
-            <div className="flex items-center justify-between pb-2 border-b border-stone-200">
-              <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                产品真值读数仪表盘 (Physical Truth Readout)
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
-                规格与几何不变量
-              </span>
-            </div>
+            {/* AI Active Scanning Form Notice */}
+            {isAnalyzing && (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-cyan-500/10 to-amber-500/10 border border-amber-400/60 text-[11px] text-amber-900 flex items-center gap-2.5 animate-pulse shadow-xs">
+                <RotateCw className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+                <div className="flex-1 flex items-center justify-between">
+                  <span className="font-medium">AI 视觉空间大模型正在实时测算长宽高、皮质纹理与工业真值...</span>
+                  <span className="font-mono font-bold bg-amber-500 text-stone-950 px-1.5 py-0.5 rounded text-[10px]">
+                    计算中
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 1. 基础商业属性 */}
             <div className="grid grid-cols-2 gap-3">

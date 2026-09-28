@@ -1,3 +1,4 @@
+import './server/loadEnv';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
@@ -244,7 +245,7 @@ const upload = multer({
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
 
   app.use(cors());
 
@@ -1592,6 +1593,9 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   app.use('/api/product-dnas', productDnaRoutes);
   app.use('/api/product-dna-versions', productDnaRoutes);
   app.use('/api', copyRoutes);
+  app.use('/api/space/storage', spaceStorageRoutes);
+  app.use('/api/space/build', spaceBuildRoutes);
+  app.use('/api/space/shoot', spaceShootRoutes);
 
   app.get('/api/ai/test-connection', async (req, res) => {
     const userUuid = req.headers['x-user-uuid'] as string;
@@ -1988,7 +1992,10 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined
+        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        watch: {
+          ignored: ['**/.data/**', '**/debug.log', '**/*.log', '**/dist/**']
+        }
       },
       appType: 'spa',
     });

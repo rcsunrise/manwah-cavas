@@ -114,7 +114,7 @@ export const ShootPhaseWorkspace: React.FC<ShootPhaseWorkspaceProps> = ({
   const [selectedTemplate, setSelectedTemplate] = useState<string>('commercial-hero');
   const [selectedModelId, setSelectedModelId] = useState<string>('gemini-3.1-flash-image-preview');
   const [resolution, setResolution] = useState<'1K' | '2K' | '4K'>('2K');
-  const [aspectRatio, setAspectRatio] = useState<string>('3:4');
+  const [aspectRatio, setAspectRatio] = useState<string>('4:3');
   const [useRandomSeed, setUseRandomSeed] = useState<boolean>(true);
   const [customSeed, setCustomSeed] = useState<number>(428912);
 

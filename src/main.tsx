@@ -27,13 +27,10 @@ if (typeof window !== 'undefined') {
   };
 
   window.addEventListener('error', (e) => {
-    const msg = e.message || String(e.error?.message || '');
+    const msg = e.message || '';
     if (
       msg.includes('ResizeObserver') ||
       msg.includes('ResizeObserver 循环') ||
-      msg.includes('Load failed') ||
-      msg.includes('Failed to fetch') ||
-      msg.includes('NetworkError') ||
       msg.includes('Invalid Refresh Token') ||
       msg.includes('Refresh Token Not Found') ||
       msg.includes('refresh_token_not_found')
@@ -82,9 +79,6 @@ if (typeof window !== 'undefined') {
     if (
       str.includes('ResizeObserver') ||
       str.includes('ResizeObserver 循环') ||
-      str.includes('Load failed') ||
-      str.includes('Failed to fetch') ||
-      str.includes('NetworkError') ||
       str.includes('Invalid Refresh Token') ||
       str.includes('Refresh Token Not Found') ||
       str.includes('refresh_token_not_found') ||

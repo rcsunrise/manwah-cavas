@@ -37,7 +37,7 @@ export class SceneMasterPromptCompiler {
    * 遵循：真实建筑空间 + 敏华产品绝对真值 + 风格材质系 + 黄金分割摄影构图 (防下沉)
    */
   public static compile(input: CompileSceneMasterInput): CompiledSceneMasterPrompt {
-    const { products, spacePreset, stylePreset, placementBlueprint, aspectRatio = '3:4' } = input;
+    const { products, spacePreset, stylePreset, placementBlueprint, aspectRatio = '4:3' } = input;
 
     const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
     const secondaryProducts = products.filter((p) => p.id !== primaryProduct?.id);

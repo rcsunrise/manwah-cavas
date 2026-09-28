@@ -60,6 +60,12 @@ import { SpaceStudioLeftDrawer } from '../components/SpaceStudioLeftDrawer';
 import { SpaceStudioCanvas } from '../components/SpaceStudioCanvas';
 import { SpaceStudioShotNavigator } from '../components/SpaceStudioShotNavigator';
 import { SpaceStudioRightPanel } from '../components/SpaceStudioRightPanel';
+import {
+  ActivePhotographyAssets,
+  ShotCandidateBatch,
+  CandidateItem
+} from '../../../types/spaceAssetLibrary';
+import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
 import { BuildPhasePanel } from '../components/BuildPhasePanel';
 import { INITIAL_MANWAH_PRODUCTS } from '../data/productAssets';
 import { SPACE_PROTOTYPES } from '../data/spacePresets';
@@ -584,7 +590,6 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [sceneMaster, setSceneMaster] = useState<SceneMaster | null>(null);
   const [isGeneratingMaster, setIsGeneratingMaster] = useState<boolean>(false);
   const [isRenderingShot, setIsRenderingShot] = useState<boolean>(false);
-  const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
   const [isGraphModalOpen, setIsGraphModalOpen] = useState<boolean>(false);
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
 
@@ -595,7 +600,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [editingProduct, setEditingProduct] = useState<ProductAsset | null>(null);
   const [isAdvancedAccordionOpen, setIsAdvancedAccordionOpen] = useState<boolean>(false);
   const [isRefiningPrompt, setIsRefiningPrompt] = useState<boolean>(false);
-  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>('3:4');
+  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>('4:3');
 
   // UI Theme Mode: dark / light
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -616,11 +621,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     });
   };
 
-  // 渲染引擎配置选项 (完全保留原版选项与算力画质配置)
+  // 渲染引擎配置选项 (默认 4:3 画幅)
   const [computeConfig, setComputeConfig] = useState<RenderComputeConfig>({
     model: 'gemini-3.1-flash-image',
     resolution: '2K',
-    aspectRatio: '3:4',
+    aspectRatio: '4:3',
     customAspectRatio: '',
     seed: undefined,
     namingPreset: 'detailed',
@@ -653,6 +658,179 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   const activeShot = shots.find((s) => s.id === activeShotId) || shots[0];
+
+  // 视觉资产驱动工作台状态 (Style, Model, Pose, Lighting)
+  const [activeAssets, setActiveAssets] = useState<ActivePhotographyAssets>(() => {
+    const defaultStyles = spaceAssetLibraryService.getSceneStyles();
+    const defaultModels = spaceAssetLibraryService.getModels();
+    const defaultPoses = spaceAssetLibraryService.getPoses();
+    return {
+      style: defaultStyles[0] || undefined,
+      model: defaultModels[0] || undefined,
+      pose: defaultPoses[0] || undefined,
+      lighting: '天然通透漫射光'
+    };
+  });
+
+  const [customPrompt, setCustomPrompt] = useState<string>('');
+  const [negativePrompt, setNegativePrompt] = useState<string>(
+    'nsfw, low quality, deformed anatomy, blurry, distorted furniture, extra limbs, watermark'
+  );
+
+  // 4 候选方案字典
+  const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Record<string, string>>({});
+
+  // 构造并保存 4 候选方案
+  const buildAndSetCandidateBatch = (targetShot: ShotInstance, primaryUrl: string, primaryKey?: string) => {
+    const styleName = activeAssets.style?.name || '现代意式极简';
+    const modelName = activeAssets.model?.name || '静物空间';
+    const poseName = activeAssets.pose?.name || '自然落座';
+    const lighting = activeAssets.lighting || '天然通透漫射光';
+
+    const fallbackVariants = activeAssets.style?.referenceImages?.length
+      ? activeAssets.style.referenceImages.slice(0, 3)
+      : [
+          'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85',
+          'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=85',
+          'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=85'
+        ];
+
+    const candidates: CandidateItem[] = [
+      {
+        id: `cand-${targetShot.id}-1`,
+        variantIndex: 1,
+        imageUrl: primaryUrl,
+        objectKey: primaryKey,
+        summaryTag: `${styleName} · ${lighting}`,
+        promptFragment: `${styleName}, ${modelName}, ${poseName}`,
+        isFavorite: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `cand-${targetShot.id}-2`,
+        variantIndex: 2,
+        imageUrl: fallbackVariants[0] || primaryUrl,
+        summaryTag: `${styleName} · 午后斜阳温暖光`,
+        promptFragment: `${styleName}, 强化午后斜射金光与皮质高光`,
+        isFavorite: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `cand-${targetShot.id}-3`,
+        variantIndex: 3,
+        imageUrl: fallbackVariants[1] || primaryUrl,
+        summaryTag: `${styleName} · 黄金微距景深`,
+        promptFragment: `${styleName}, 浅景深聚焦头层真皮与缝线工艺`,
+        isFavorite: false,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: `cand-${targetShot.id}-4`,
+        variantIndex: 4,
+        imageUrl: fallbackVariants[2] || primaryUrl,
+        summaryTag: `${styleName} · 广阔大平层视角`,
+        promptFragment: `${styleName}, 扩展远景落地窗通透空间`,
+        isFavorite: false,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const batch: ShotCandidateBatch = {
+      shotId: targetShot.id,
+      batchId: `batch-${Date.now()}`,
+      activeCandidateId: candidates[0].id,
+      candidates,
+      createdAt: new Date().toISOString()
+    };
+
+    setCandidateBatches(prev => ({ ...prev, [targetShot.id]: batch }));
+    setSelectedCandidateIds(prev => ({ ...prev, [targetShot.id]: candidates[0].id }));
+  };
+
+  // 保持空间刷新人物
+  const handleKeepSpaceRefreshModel = () => {
+    const allModels = spaceAssetLibraryService.getModels();
+    if (allModels.length > 0) {
+      const currentIdx = allModels.findIndex(m => m.id === activeAssets.model?.id);
+      const nextModel = allModels[(currentIdx + 1) % allModels.length];
+      setActiveAssets(prev => ({ ...prev, model: nextModel }));
+    }
+    handleRenderShot(activeShot);
+  };
+
+  // 保持人物刷新姿态
+  const handleKeepModelRefreshPose = () => {
+    const allPoses = spaceAssetLibraryService.getPoses();
+    if (allPoses.length > 0) {
+      const currentIdx = allPoses.findIndex(p => p.id === activeAssets.pose?.id);
+      const nextPose = allPoses[(currentIdx + 1) % allPoses.length];
+      setActiveAssets(prev => ({ ...prev, pose: nextPose }));
+    }
+    handleRenderShot(activeShot);
+  };
+
+  // 保持产品刷新场景
+  const handleKeepProductRefreshScene = () => {
+    const allStyles = spaceAssetLibraryService.getSceneStyles();
+    if (allStyles.length > 0) {
+      const currentIdx = allStyles.findIndex(s => s.id === activeAssets.style?.id);
+      const nextStyle = allStyles[(currentIdx + 1) % allStyles.length];
+      setActiveAssets(prev => ({ ...prev, style: nextStyle }));
+    }
+    handleRenderShot(activeShot);
+  };
+
+  // 设为当前镜头结果
+  const handleApplyCandidateAsFinal = (candidate: CandidateItem) => {
+    setShots(prev =>
+      prev.map(s => {
+        if (s.id !== activeShot.id) return s;
+        const newRev: ShotRevision = {
+          id: `rev-${Date.now().toString(36)}`,
+          shotId: s.id,
+          revisionNumber: (s.revisions.length || 0) + 1,
+          objectKey: candidate.objectKey || `shots/${candidate.id}.webp`,
+          imageUrl: candidate.imageUrl,
+          promptSnapshotId: candidate.id,
+          status: 'approved',
+          score: {
+            productIdentity: 92,
+            placement: 90,
+            sceneContinuity: 91,
+            shotIntent: 93,
+            overall: 92
+          },
+          provenance: 'MANUAL_CONFIRMED',
+          productionTruth: true,
+          createdAt: new Date().toISOString()
+        };
+        return {
+          ...s,
+          status: 'passed',
+          currentRevisionId: newRev.id,
+          revisions: [newRev, ...s.revisions]
+        };
+      })
+    );
+  };
+
+  // 收藏候选图
+  const handleToggleFavoriteCandidate = (candidateId: string) => {
+    setCandidateBatches(prev => {
+      const batch = prev[activeShot.id];
+      if (!batch) return prev;
+      return {
+        ...prev,
+        [activeShot.id]: {
+          ...batch,
+          candidates: batch.candidates.map(c =>
+            c.id === candidateId ? { ...c, isFavorite: !c.isFavorite } : c
+          )
+        }
+      };
+    });
+  };
 
   // AI 润色空间光影与描述
   const handleAiRefinePrompt = async () => {
@@ -821,6 +999,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       );
 
+      buildAndSetCandidateBatch(targetShot, newRevision.imageUrl, newRevision.objectKey);
+
       setCurrentJob((j) => (j ? { ...j, status: 'completed', progress: 100, finishedAt: new Date().toISOString() } : null));
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'PROVIDER UNAVAILABLE / FAILED';
@@ -934,20 +1114,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
   // 批量渲染全部镜头 (A01~A08)
   const handleBatchRenderAll = async () => {
-    if (isGeneratingAll) return;
-    setIsGeneratingAll(true);
-    try {
-      if (!sceneMaster || !sceneMaster.isLocked) {
-        await handleGenerateSceneMaster();
-      }
-      const candidateShots = shots.filter((s) => s.templateCode !== 'A00');
-      for (const s of candidateShots) {
-        await handleRenderShot(s);
-      }
-    } catch (err) {
-      console.error('Batch render error:', err);
-    } finally {
-      setIsGeneratingAll(false);
+    if (!sceneMaster || !sceneMaster.isLocked) {
+      await handleGenerateSceneMaster();
+    }
+    const candidateShots = shots.filter((s) => s.templateCode !== 'A00');
+    for (const s of candidateShots) {
+      await handleRenderShot(s);
     }
   };
 
@@ -1124,8 +1296,6 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             surfaceTexture: primaryProd?.surfaceTexture,
             referenceImage: primaryRef
           },
-          generationSettings: computeConfig,
-          aspectRatio: aspectRatio,
           locks: {
             productIdentity: true,
             placement: true,
@@ -1184,6 +1354,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             };
           })
         );
+
+        buildAndSetCandidateBatch(shots[0], sm.imageUrl, sm.objectKey);
       }
     } catch (e) {
       console.error('Failed to lock scene master:', e);
@@ -1262,10 +1434,19 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
               : () => handleRenderShot(activeShot)
           }
           onOpenCompareModal={() => setIsGraphModalOpen(true)}
+          candidateBatch={candidateBatches[activeShot.id] || null}
+          selectedCandidateId={selectedCandidateIds[activeShot.id]}
+          onSelectCandidate={(cand) => setSelectedCandidateIds(prev => ({ ...prev, [activeShot.id]: cand.id }))}
+          onApplyCandidateAsFinal={handleApplyCandidateAsFinal}
+          onRegenerateBatch={() => handleRenderShot(activeShot)}
+          onKeepSpaceRefreshModel={handleKeepSpaceRefreshModel}
+          onKeepModelRefreshPose={handleKeepModelRefreshPose}
+          onKeepProductRefreshScene={handleKeepProductRefreshScene}
+          onToggleFavoriteCandidate={handleToggleFavoriteCandidate}
           theme={theme}
         />
 
-        {/* 3. Right Control & AI Panel (包含渲染引擎全部保留选项) */}
+        {/* 3. Right Control & AI Panel (包含视觉资产库与算力画质配置) */}
         <SpaceStudioRightPanel
           activeShot={activeShot}
           activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
@@ -1279,7 +1460,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           computeConfig={computeConfig}
           onChangeComputeConfig={handleUpdateComputeConfig}
           isGeneratingCurrent={isGeneratingMaster || isRenderingShot}
-          isGeneratingAll={isGeneratingAll}
+          isGeneratingAll={false}
           onGenerateCurrentShot={
             activeShot.templateCode === "A00"
               ? handleGenerateSceneMaster
@@ -1288,6 +1469,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onGenerateAllShots={handleBatchRenderAll}
           onOptimizeLightingAndPrompt={handleAiRefinePrompt}
           onUpdateCamera={handleUpdateCamera}
+          activeAssets={activeAssets}
+          onUpdateActiveAssets={(updater) => setActiveAssets(prev => ({ ...prev, ...updater }))}
+          customPrompt={customPrompt}
+          onChangeCustomPrompt={setCustomPrompt}
+          negativePrompt={negativePrompt}
+          onChangeNegativePrompt={setNegativePrompt}
           theme={theme}
         />
       </div>
@@ -1299,7 +1486,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
         onSelectShot={(idx) => setActiveShotId(shots[idx].id)}
         onBatchRenderAll={handleBatchRenderAll}
-        isGeneratingAll={isGeneratingAll}
+        isGeneratingAll={false}
         theme={theme}
       />
 

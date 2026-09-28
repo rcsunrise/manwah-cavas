@@ -39,7 +39,6 @@ export default function CreativeCanvasPage() {
     nodes,
     setNodes,
     edges,
-    setEdges,
     onNodesChange,
     onEdgesChange,
     uploadState,
@@ -339,35 +338,26 @@ export default function CreativeCanvasPage() {
     const posY = (sourceNode?.position?.y ?? 200) + 120;
 
     const genNodeId = `node-video-gen-${job.id}`;
-    const edgeId = `edge-${sourceNodeId}-${genNodeId}`;
+    const newGenNode: any = {
+      id: genNodeId,
+      type: 'videoGenerationNode',
+      position: { x: posX, y: posY },
+      data: {
+        job
+      }
+    };
 
-    setNodes((prevNodes: any[]) => {
-      if (prevNodes.some(n => n.id === genNodeId)) return prevNodes;
-      const newGenNode: any = {
-        id: genNodeId,
-        type: 'videoGenerationNode',
-        position: { x: posX, y: posY },
-        data: {
-          job
-        }
-      };
-      return [...prevNodes, newGenNode];
-    });
+    const newEdge: any = {
+      id: `edge-${sourceNodeId}-${genNodeId}`,
+      source: sourceNodeId,
+      target: genNodeId,
+      animated: true,
+      style: { stroke: '#6366F1', strokeWidth: 2 }
+    };
 
-    setEdges((prevEdges: any[]) => {
-      if (prevEdges.some(e => e.id === edgeId)) return prevEdges;
-      return [
-        ...prevEdges,
-        {
-          id: edgeId,
-          source: sourceNodeId,
-          target: genNodeId,
-          animated: true,
-          style: { stroke: '#6366F1', strokeWidth: 2 }
-        }
-      ];
-    });
-  }, [nodes, setNodes, setEdges]);
+    onNodesChange([{ type: 'add', item: newGenNode }]);
+    onEdgesChange([{ type: 'add', item: newEdge }]);
+  }, [nodes, onNodesChange, onEdgesChange]);
 
   const effectiveCanvasId = canvasId || workspaceId || 'canvas-default';
 
@@ -413,40 +403,25 @@ export default function CreativeCanvasPage() {
                 modelKey: updatedJob.modelKey
               }
             };
+            const resultEdge: any = {
+              id: `edge-${existingNode.id}-${resultNodeId}`,
+              source: existingNode.id,
+              target: resultNodeId,
+              style: { stroke: '#10B981', strokeWidth: 2 }
+            };
+            onEdgesChange([{ type: 'add', item: resultEdge }]);
             next.push(resultNode);
           }
         }
 
         return next;
       });
-
-      // Synchronize edge outside setNodes with strict ID check
-      if (updatedJob.status === 'ready') {
-        const genNodeId = `node-video-gen-${updatedJob.id}`;
-        const resultNodeId = `node-video-res-${updatedJob.id}`;
-        const resultEdgeId = `edge-${genNodeId}-${resultNodeId}`;
-
-        setEdges((currentEdges: any[]) => {
-          if (currentEdges.some(e => e.id === resultEdgeId)) {
-            return currentEdges;
-          }
-          return [
-            ...currentEdges,
-            {
-              id: resultEdgeId,
-              source: genNodeId,
-              target: resultNodeId,
-              style: { stroke: '#10B981', strokeWidth: 2 }
-            }
-          ];
-        });
-      }
     });
 
     return () => {
       unsubscribe();
     };
-  }, [effectiveCanvasId, setNodes, setEdges]);
+  }, [effectiveCanvasId, setNodes, onEdgesChange]);
 
   const augmentedNodes = React.useMemo(() => {
     return nodes.map(node => {

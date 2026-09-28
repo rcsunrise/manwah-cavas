@@ -412,17 +412,42 @@ function createFailClosedSupabaseClient() {
 }
 
 // 拥有最高权限的 Admin 客户端（仅在 Node.js 即服务端使用）
-export const supabaseAdmin = typeof window === 'undefined' ? (
-  isPlaceholder(serverUrl) || isPlaceholder(serverServiceKey)
-    ? createMockSupabaseClient()
-    : createClient(serverUrl, serverServiceKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false
-        }
-      })
-) : (null as any);
+let activeAdminClient: any = null;
+
+export function getSupabaseAdmin() {
+  if (typeof window !== 'undefined') return null;
+  const currentUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const currentKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+  if (activeAdminClient && !activeAdminClient.isMock) {
+    return activeAdminClient;
+  }
+
+  if (!isPlaceholder(currentUrl) && !isPlaceholder(currentKey)) {
+    activeAdminClient = createClient(currentUrl, currentKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+    return activeAdminClient;
+  }
+
+  if (!activeAdminClient) {
+    activeAdminClient = createMockSupabaseClient();
+  }
+  return activeAdminClient;
+}
+
+export const supabaseAdmin = typeof window === 'undefined' ? new Proxy({} as any, {
+  get(_target, prop) {
+    const client = getSupabaseAdmin();
+    if (!client) return undefined;
+    const val = client[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  }
+}) : (null as any);
 
 // State variables for runtime config
 let activeClient: any = null;
@@ -508,6 +533,27 @@ export async function initRuntimeSupabase(): Promise<any> {
       }
     } catch (e) {
       console.warn('[SupabaseRuntime] Failed to fetch /api/runtime-config:', e);
+    }
+
+    // Fallback: check Vite compile-time environment variables
+    const viteUrl = (import.meta as any).env?.VITE_SUPABASE_URL;
+    const viteAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY;
+    if (!isPlaceholder(viteUrl) && !isPlaceholder(viteAnonKey)) {
+      activeClient = createClient(viteUrl, viteAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false
+        }
+      });
+      isConfigured = true;
+      try {
+        const match = viteUrl.match(/https?:\/\/([^.]+)\.supabase/);
+        if (match && match[1]) currentProjectRef = match[1];
+      } catch (e) {}
+      currentStorageMedium = 'supabase_db';
+      console.log(`[SupabaseRuntime] Connected to Supabase via Vite env: ${viteUrl}`);
+      return activeClient;
     }
 
     // Fail closed rules:

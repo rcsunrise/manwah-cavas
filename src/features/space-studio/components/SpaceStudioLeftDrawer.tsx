@@ -836,16 +836,20 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                         {isSelected && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
                       </div>
 
-                      <div className="flex items-center gap-1.5 my-1.5">
+                      <div className="flex items-center gap-1.5 my-2 flex-wrap">
                         {st.colorPalette.slice(0, 4).map((c, i) => (
-                          <span
+                          <div
                             key={i}
-                            className={`text-[9px] px-1.5 py-0.5 rounded border font-mono ${
-                              isLight ? 'bg-stone-100 text-stone-600 border-stone-300' : 'bg-stone-800 text-stone-400 border-stone-700'
+                            className={`flex items-center gap-1.5 text-[9px] px-2 py-0.5 rounded-md border font-mono shadow-2xs transition-all ${
+                              isLight ? 'bg-white text-stone-700 border-stone-200' : 'bg-stone-900 text-stone-300 border-stone-800'
                             }`}
                           >
-                            {c}
-                          </span>
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border border-black/20 shadow-2xs shrink-0"
+                              style={{ backgroundColor: c }}
+                            />
+                            <span>{c}</span>
+                          </div>
                         ))}
                       </div>
 

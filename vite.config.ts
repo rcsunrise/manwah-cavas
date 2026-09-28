@@ -9,6 +9,9 @@ export default defineConfig(() => {
         port: 3000,
         host: '0.0.0.0',
         hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        watch: {
+          ignored: ['**/.data/**', '**/debug.log', '**/*.log', '**/dist/**']
+        }
       },
       plugins: [react(), tailwindcss()],
       resolve: {

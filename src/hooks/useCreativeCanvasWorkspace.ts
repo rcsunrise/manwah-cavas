@@ -109,30 +109,14 @@ export function useCreativeCanvasWorkspace(
     if (hydrationState === 'ready' && !isRestoringRef.current) {
       hasUserMutationRef.current = true;
     }
-    const sanitizedChanges = Array.isArray(changes)
-      ? changes.filter((change: any) => {
-          if (change?.type === 'add' && change?.item?.id) {
-            return !nodesRef.current.some(n => n.id === change.item.id);
-          }
-          return true;
-        })
-      : changes;
-    onNodesChange(sanitizedChanges);
+    onNodesChange(changes);
   }, [hydrationState, onNodesChange]);
 
   const handleEdgesChange = useCallback((changes: any) => {
     if (hydrationState === 'ready' && !isRestoringRef.current) {
       hasUserMutationRef.current = true;
     }
-    const sanitizedChanges = Array.isArray(changes)
-      ? changes.filter((change: any) => {
-          if (change?.type === 'add' && change?.item?.id) {
-            return !edgesRef.current.some(e => e.id === change.item.id);
-          }
-          return true;
-        })
-      : changes;
-    onEdgesChange(sanitizedChanges);
+    onEdgesChange(changes);
   }, [hydrationState, onEdgesChange]);
 
   const activeProjectRef = useRef<CreativeProject | null>(null);
@@ -3843,7 +3827,6 @@ export function useCreativeCanvasWorkspace(
     rawNodes: nodes,
     setNodes,
     edges,
-    setEdges,
     onNodesChange,
     onEdgesChange,
     uploadState,
