@@ -1,0 +1,222 @@
+{
+  "jobs": [
+    [
+      "vjob-1789096330280-d937c172",
+      {
+        "id": "vjob-1789096330280-d937c172",
+        "workspaceId": "ws-default",
+        "canvasId": "test-canvas",
+        "planVersionId": "default-plan",
+        "shotId": "shot-1",
+        "attempt": 1,
+        "modelKey": "doubao-seedance-1-0-pro-fast",
+        "status": "transfer_failed",
+        "idempotencyKey": "test-idem-key-001",
+        "requestHash": "44be974518b944ee1e9af74bb779b7d935d4ff6e2fb6daed771bff555d5559cf",
+        "videoSettings": {
+          "mode": "image_to_video",
+          "durationSeconds": 5,
+          "resolution": "720p",
+          "aspectRatio": "16:9",
+          "audioMode": "none"
+        },
+        "prompt": "Cinematic product showcase video of luxury modern armchair",
+        "progressPercent": 100,
+        "createdAt": "2026-09-11T03:12:10.280Z",
+        "updatedAt": "2026-09-11T03:12:46.215Z",
+        "providerTaskId": "mock-task-1789096330899-e37b988e",
+        "providerStatus": "succeeded",
+        "errorMessage": "Failed to download provider video (403): Forbidden"
+      }
+    ],
+    [
+      "vjob-1789096369189-78ad8f3d",
+      {
+        "id": "vjob-1789096369189-78ad8f3d",
+        "workspaceId": "ws-default",
+        "canvasId": "test-canvas-002",
+        "planVersionId": "default-plan",
+        "shotId": "shot-1",
+        "attempt": 1,
+        "modelKey": "doubao-seedance-1-0-pro-fast",
+        "status": "transfer_failed",
+        "idempotencyKey": "test-idem-key-002",
+        "requestHash": "fb62213062cf288c8d219e8984a4aee3bb65f1d9e202d68bc57ffa49d1e47b12",
+        "videoSettings": {
+          "mode": "image_to_video",
+          "durationSeconds": 5,
+          "resolution": "720p",
+          "aspectRatio": "16:9",
+          "audioMode": "none"
+        },
+        "prompt": "Cinematic slow camera pan of modern luxury sofa with soft ambient lighting",
+        "progressPercent": 100,
+        "createdAt": "2026-09-11T03:12:49.189Z",
+        "updatedAt": "2026-09-11T03:12:58.015Z",
+        "providerTaskId": "mock-task-1789096369919-8e40c26f",
+        "providerStatus": "succeeded",
+        "errorMessage": "Failed to download provider video (403): Forbidden"
+      }
+    ],
+    [
+      "vjob-1789096395593-bb7914a6",
+      {
+        "id": "vjob-1789096395593-bb7914a6",
+        "workspaceId": "ws-default",
+        "canvasId": "test-canvas-003",
+        "planVersionId": "default-plan",
+        "shotId": "shot-1",
+        "attempt": 1,
+        "modelKey": "doubao-seedance-1-0-pro-fast",
+        "status": "ready",
+        "idempotencyKey": "test-idem-key-003",
+        "requestHash": "387721d29db5d59174322d2e67399d49bbc2f25fd9453ba67d7beb5d7fb74a49",
+        "videoSettings": {
+          "mode": "image_to_video",
+          "durationSeconds": 5,
+          "resolution": "720p",
+          "aspectRatio": "16:9",
+          "audioMode": "none"
+        },
+        "prompt": "Cinematic product video of luxury modern sofa",
+        "progressPercent": 100,
+        "createdAt": "2026-09-11T03:13:15.593Z",
+        "updatedAt": "2026-09-11T03:13:25.817Z",
+        "providerTaskId": "mock-task-1789096396529-38f2be7c",
+        "providerStatus": "succeeded",
+        "assetVersionId": "av-vid-1789096405682-ee9181",
+        "readyAt": "2026-09-11T03:13:25.817Z"
+      }
+    ],
+    [
+      "vjob-1789984458625-2f0b7839",
+      {
+        "id": "vjob-1789984458625-2f0b7839",
+        "workspaceId": "ws-default",
+        "canvasId": "canvas-default",
+        "planVersionId": "plan-default",
+        "shotId": "shot-1",
+        "attempt": 1,
+        "modelKey": "doubao-seedance-2-0-fast",
+        "status": "ready",
+        "videoSettings": {
+          "mode": "text_to_video",
+          "durationSeconds": 5,
+          "resolution": "720p",
+          "aspectRatio": "16:9",
+          "audioMode": "none"
+        },
+        "prompt": "Cinematic commercial of modern cream luxury sofa in minimalist architectural living room",
+        "progressPercent": 100,
+        "createdAt": "2026-09-21T09:54:18.625Z",
+        "updatedAt": "2026-09-22T00:59:22.033Z",
+        "readyAt": "2026-09-22T00:59:22.033Z",
+        "providerTaskId": "task_TO02y8p3fWX5dzEsy3iZFAtYUPmdRqnX",
+        "providerStatus": "succeeded",
+        "assetVersionId": "av-vid-1789984458625",
+        "videoUrl": "https://jbiktybatgdorflzwbob.supabase.co/storage/v1/object/public/creative-canvas-assets/videos/ws-default/canvas-default/vjob-1789984458625-2f0b7839.mp4",
+        "supabaseVideoUrl": "https://jbiktybatgdorflzwbob.supabase.co/storage/v1/object/public/creative-canvas-assets/videos/ws-default/canvas-default/vjob-1789984458625-2f0b7839.mp4",
+        "gcsObjectKey": "creative-canvas/videos/ws-default/canvas-default/vjob-1789984458625-2f0b7839/av-vid-1789984458625/original.mp4"
+      }
+    ]
+  ],
+  "idempotencyStore": [
+    [
+      "ws-default:test-idem-key-001",
+      {
+        "job": {
+          "id": "vjob-1789096330280-d937c172",
+          "workspaceId": "ws-default",
+          "canvasId": "test-canvas",
+          "planVersionId": "default-plan",
+          "shotId": "shot-1",
+          "attempt": 1,
+          "modelKey": "doubao-seedance-1-0-pro-fast",
+          "status": "transfer_failed",
+          "idempotencyKey": "test-idem-key-001",
+          "requestHash": "44be974518b944ee1e9af74bb779b7d935d4ff6e2fb6daed771bff555d5559cf",
+          "videoSettings": {
+            "mode": "image_to_video",
+            "durationSeconds": 5,
+            "resolution": "720p",
+            "aspectRatio": "16:9",
+            "audioMode": "none"
+          },
+          "prompt": "Cinematic product showcase video of luxury modern armchair",
+          "progressPercent": 100,
+          "createdAt": "2026-09-11T03:12:10.280Z",
+          "updatedAt": "2026-09-11T03:12:46.215Z",
+          "providerTaskId": "mock-task-1789096330899-e37b988e",
+          "providerStatus": "succeeded",
+          "errorMessage": "Failed to download provider video (403): Forbidden"
+        },
+        "requestHash": "44be974518b944ee1e9af74bb779b7d935d4ff6e2fb6daed771bff555d5559cf"
+      }
+    ],
+    [
+      "ws-default:test-idem-key-002",
+      {
+        "job": {
+          "id": "vjob-1789096369189-78ad8f3d",
+          "workspaceId": "ws-default",
+          "canvasId": "test-canvas-002",
+          "planVersionId": "default-plan",
+          "shotId": "shot-1",
+          "attempt": 1,
+          "modelKey": "doubao-seedance-1-0-pro-fast",
+          "status": "transfer_failed",
+          "idempotencyKey": "test-idem-key-002",
+          "requestHash": "fb62213062cf288c8d219e8984a4aee3bb65f1d9e202d68bc57ffa49d1e47b12",
+          "videoSettings": {
+            "mode": "image_to_video",
+            "durationSeconds": 5,
+            "resolution": "720p",
+            "aspectRatio": "16:9",
+            "audioMode": "none"
+          },
+          "prompt": "Cinematic slow camera pan of modern luxury sofa with soft ambient lighting",
+          "progressPercent": 100,
+          "createdAt": "2026-09-11T03:12:49.189Z",
+          "updatedAt": "2026-09-11T03:12:58.015Z",
+          "providerTaskId": "mock-task-1789096369919-8e40c26f",
+          "providerStatus": "succeeded",
+          "errorMessage": "Failed to download provider video (403): Forbidden"
+        },
+        "requestHash": "fb62213062cf288c8d219e8984a4aee3bb65f1d9e202d68bc57ffa49d1e47b12"
+      }
+    ],
+    [
+      "ws-default:test-idem-key-003",
+      {
+        "job": {
+          "id": "vjob-1789096395593-bb7914a6",
+          "workspaceId": "ws-default",
+          "canvasId": "test-canvas-003",
+          "planVersionId": "default-plan",
+          "shotId": "shot-1",
+          "attempt": 1,
+          "modelKey": "doubao-seedance-1-0-pro-fast",
+          "status": "ready",
+          "idempotencyKey": "test-idem-key-003",
+          "requestHash": "387721d29db5d59174322d2e67399d49bbc2f25fd9453ba67d7beb5d7fb74a49",
+          "videoSettings": {
+            "mode": "image_to_video",
+            "durationSeconds": 5,
+            "resolution": "720p",
+            "aspectRatio": "16:9",
+            "audioMode": "none"
+          },
+          "prompt": "Cinematic product video of luxury modern sofa",
+          "progressPercent": 100,
+          "createdAt": "2026-09-11T03:13:15.593Z",
+          "updatedAt": "2026-09-11T03:13:25.817Z",
+          "providerTaskId": "mock-task-1789096396529-38f2be7c",
+          "providerStatus": "succeeded",
+          "assetVersionId": "av-vid-1789096405682-ee9181",
+          "readyAt": "2026-09-11T03:13:25.817Z"
+        },
+        "requestHash": "387721d29db5d59174322d2e67399d49bbc2f25fd9453ba67d7beb5d7fb74a49"
+      }
+    ]
+  ]
+}

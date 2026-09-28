@@ -1,0 +1,6 @@
+{
+  "name": "manwah",
+  "description": "MANWAH AI 国内商品企划中心与九屏电商详情海报工作台，固定 2100×2800 3:4 独立高保真排版与合成引擎。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
