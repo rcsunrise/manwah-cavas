@@ -22,7 +22,8 @@ import {
   SunMedium,
   Image as ImageIcon,
   ChevronRight,
-  Plus
+  Plus,
+  LayoutTemplate
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -32,10 +33,11 @@ import {
   CameraDNA,
   RenderComputeConfig,
 } from '../../../types/spaceStudio';
-import { ActivePhotographyAssets, SceneStyleAsset, ModelAsset, PoseAsset } from '../../../types/spaceAssetLibrary';
+import { ActivePhotographyAssets, SceneStyleAsset, ModelAsset, PoseAsset, FamilySceneTemplate } from '../../../types/spaceAssetLibrary';
 import { SceneStyleGalleryModal } from './assets/SceneStyleGalleryModal';
 import { ModelAssetModal } from './assets/ModelAssetModal';
 import { PoseAssetGalleryModal } from './assets/PoseAssetGalleryModal';
+import { FamilyTemplateGalleryModal } from './assets/FamilyTemplateGalleryModal';
 
 interface SpaceStudioRightPanelProps {
   activeShot: ShotInstance;
@@ -114,6 +116,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [isPoseModalOpen, setIsPoseModalOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
 
   const isLight = theme === 'light';
   const cfg = computeConfig || DEFAULT_COMPUTE_CONFIG;
@@ -199,6 +202,63 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             </button>
           </div>
 
+          {/* Section 0: 人物场景模板库 (Human Scene Template Library) */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-[#1b1928] to-[#151722] border border-amber-500/30 space-y-2 hover:border-amber-500/60 transition-all shadow-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                <LayoutTemplate className="w-3.5 h-3.5 text-amber-400" />
+                <span>人物场景模板 (Template Library)</span>
+              </span>
+              <button
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center gap-0.5"
+              >
+                <span>{activeAssets?.selectedTemplate ? '更换模板' : '选择模板'}</span>
+                <ChevronRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {activeAssets?.selectedTemplate ? (
+              <div
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="group flex flex-col gap-2 p-2.5 rounded-xl bg-black/50 border border-amber-500/30 hover:border-amber-500/60 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors truncate">
+                    {activeAssets.selectedTemplate.templateName}
+                  </div>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
+                    {activeAssets.selectedTemplate.characterCount} 人阵容
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5 h-16 rounded-lg overflow-hidden bg-black/60 border border-white/5">
+                  <div className="relative">
+                    <img src={activeAssets.selectedTemplate.window1SceneRef.imageUrl} alt="win1" className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0.5 left-1 text-[8px] text-amber-300 bg-black/70 px-1 rounded font-bold">窗口1 场景</span>
+                  </div>
+                  <div className="relative">
+                    <img src={activeAssets.selectedTemplate.window2WireframeRef.imageUrl} alt="win2" className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0.5 left-1 text-[8px] text-cyan-300 bg-black/70 px-1 rounded font-bold">窗口2 线稿</span>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-neutral-400 flex items-center justify-between mt-0.5">
+                  <span className="truncate">{activeAssets.selectedTemplate.spaceType}</span>
+                  <span className="text-amber-400/80 font-mono text-[9px]">双窗口位置锁定</span>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsTemplateModalOpen(true)}
+                className="w-full py-2.5 border border-dashed border-amber-500/30 hover:border-amber-500/60 rounded-xl text-amber-300/90 hover:text-amber-200 flex items-center justify-center gap-1.5 bg-amber-500/5 hover:bg-amber-500/10 transition-all font-medium text-xs"
+              >
+                <LayoutTemplate className="w-3.5 h-3.5 text-amber-400" />
+                <span>选择 4人/6人/三代同堂场景模板</span>
+              </button>
+            )}
+          </div>
+
           {/* Section 1: 空间风格 (Scene Style Asset) */}
           <div className="p-3 rounded-xl bg-[#161822] border border-white/10 space-y-2 hover:border-amber-500/40 transition-all">
             <div className="flex items-center justify-between">
@@ -250,18 +310,18 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             )}
           </div>
 
-          {/* Section 2: 模特资产 (Model Asset) */}
+          {/* Section 2: 模特资产 (Model Asset - 固定家庭角色) */}
           <div className="p-3 rounded-xl bg-[#161822] border border-white/10 space-y-2 hover:border-purple-500/40 transition-all">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-neutral-300 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-purple-400" />
-                <span>真实模特 (Model DNA)</span>
+                <span>固定家庭角色 (Model DNA)</span>
               </span>
               <button
                 onClick={() => setIsModelModalOpen(true)}
                 className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-0.5"
               >
-                <span>{activeAssets?.model ? '更换模特' : '选择模特'}</span>
+                <span>{activeAssets?.model ? '更换角色' : '选择角色'}</span>
                 <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -274,19 +334,24 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 <div className="w-12 h-14 rounded-lg overflow-hidden shrink-0 relative bg-black/60">
                   <img
                     src={activeAssets.model.thumbnail}
-                    alt={activeAssets.model.name}
+                    alt={activeAssets.model.nameZh || activeAssets.model.name}
                     className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform"
                   />
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <div className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">
-                    {activeAssets.model.name}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">
+                      {activeAssets.model.nameZh || activeAssets.model.name}
+                    </span>
+                    <span className="text-[9px] font-mono text-purple-400 font-medium">
+                      {activeAssets.model.code}
+                    </span>
                   </div>
                   <div className="text-[10px] text-neutral-400 truncate mt-0.5">
-                    {activeAssets.model.ageGroup} · {activeAssets.model.modelDna.skinTone}
+                    {activeAssets.model.ageGroup} · {activeAssets.model.height}
                   </div>
                   <div className="text-[9px] text-purple-300 truncate">
-                    私服: {activeAssets.model.modelDna.outfitStyle}
+                    定位: {activeAssets.model.positioning || activeAssets.model.modelDna.outfitStyle}
                   </div>
                 </div>
               </div>
@@ -602,6 +667,17 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
       </div>
 
       {/* Asset Modals */}
+      <FamilyTemplateGalleryModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        selectedTemplateId={activeAssets?.selectedTemplate?.templateId}
+        onApplyTemplate={(template, compiled) => {
+          onUpdateActiveAssets?.({ selectedTemplate: template });
+          onChangeCustomPrompt?.(compiled.positivePrompt);
+          onChangeNegativePrompt?.(compiled.negativePrompt);
+        }}
+      />
+
       <SceneStyleGalleryModal
         isOpen={isStyleModalOpen}
         onClose={() => setIsStyleModalOpen(false)}

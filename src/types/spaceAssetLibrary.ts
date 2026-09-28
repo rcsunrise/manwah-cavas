@@ -48,46 +48,148 @@ export interface MaterialAsset extends BaseSpaceAsset {
   specularGloss?: 'matte' | 'satin' | 'glossy';
 }
 
-// 3. 模特资产 (ModelAsset) - 与姿态彻底解耦
+// 3. 模特资产 (ModelAsset) - 固定家庭角色资产与 Model DNA
+export type FamilyRoleType = 
+  | 'father'        // 家庭男主人
+  | 'mother'        // 家庭女主人
+  | 'grandfather'   // 爷爷
+  | 'grandmother'   // 奶奶
+  | 'daughter'      // 混血女儿
+  | 'son'           // 混血男孩
+  | 'couple'        // 夫妻组合
+  | 'family';       // 全家福
+
 export interface ModelMultiViews {
-  front?: string;        // 正面
-  angle45?: string;      // 45度
-  threeQuarter?: string; // 45度别名
-  side?: string;         // 侧面
-  fullBody?: string;     // 全身
-  wardrobeRef?: string;  // 服装参考
-  outfitRef?: string;    // 服装参考别名
+  front?: string;           // 正面 full body
+  frontFullBody?: string;
+  side?: string;            // 侧面 full body
+  sideFullBody?: string;
+  back?: string;            // 背面 full body
+  backFullBody?: string;
+  portrait?: string;        // 头像特写
+  portraitCloseUp?: string;
+  angle45?: string;         // 45度
+  threeQuarter?: string;    // 45度别名
+  fullBody?: string;        // 全身
+  wardrobeRef?: string;     // 服装参考
+  outfitRef?: string;       // 服装参考别名
+  accessoryRef?: string;    // 配饰参考
 }
 
 export interface ModelDnaData {
   identitySeed?: number;
+  roleType?: FamilyRoleType;
   gender: 'female' | 'male' | 'couple' | 'family' | 'elder' | 'child';
   ageRange?: string;
   ageGroup?: string;
-  ethnicity?: '东亚' | '欧美' | '泛亚' | string;
+  ethnicity?: '东亚' | '欧美' | '欧亚混血' | '泛亚' | string;
+  height?: string;
   heightCm?: number;
   bodyBuild?: string;
-  appearanceSummary?: string;
-  facialFeatures?: string;
-  wardrobeStyle?: string;
-  outfitStyle?: string;
+  positioning?: string;           // 人物定位
+  temperamentKeywords?: string[]; // 气质关键词
+  bio?: string;                   // 人物简介
+  appearanceDesc?: string;        // 外貌描述
+  appearanceSummary?: string;     // 别名
+  facialFeatures?: string;        // 五官特征
+  hairDesc?: string;              // 发型描述
   hairStyle?: string;
   hairStyleAndColor?: string;
+  clothingDesc?: string;          // 服装描述
+  wardrobeStyle?: string;
+  outfitStyle?: string;
+  materialsColorsDesc?: string;   // 材质与色系描述
+  identityDesc?: string;          // 家庭身份描述
+  behaviorTags?: string[];        // 行为偏好标签
+  sceneTags?: string[];           // 适配场景标签
+  poseTags?: string[];            // 可用姿态标签
+  negativeConstraints?: string[]; // 负面约束 (不能乱变脸、不能年龄漂移、不能换错误服装风格)
   skinTone?: string;
   features?: string[];
 }
 
 export interface ModelAsset extends BaseSpaceAsset {
   type: 'model';
-  gender?: 'female' | 'male' | 'couple' | 'family';
-  ageGroup?: string;
-  views?: ModelMultiViews;
-  multiViews?: ModelMultiViews;
+  code: string;
+  nameZh: string;                 // 中文名称
+  nameEn: string;                 // 英文名称
+  roleType: FamilyRoleType;       // 角色类型 (father / mother / grandfather / grandmother / daughter / son)
+  gender: 'female' | 'male' | 'couple' | 'family';
+  ageGroup: string;               // 年龄段
+  height: string;                 // 身高
+  positioning: string;            // 人物定位
+  temperamentKeywords: string[];  // 气质关键词
+  bio: string;                    // 人物简介
+  
+  // 形象参考
+  views: ModelMultiViews;
+  multiViews: ModelMultiViews;
+  expressionRefs: string[];       // 表情参考 (至少2~3张)
+  wardrobeRefs: string[];         // 服装参考
+  accessoryRefs: string[];        // 配饰参考
+  detailRefs: string[];           // 细节图 (面料/发饰/鞋子/饰品等)
+  lifestyleRefs: string[];        // 生活场景图 (阅读/陪伴/喝茶/平板/家庭互动 等)
+  
+  // Prompt / DNA
   modelDna: ModelDnaData;
   promptFragment?: string;
+  negativeConstraints?: string[];
 }
 
-// 4. 姿态资产 (PoseAsset)
+// 4. 人物场景模板库 (FamilySceneTemplate)
+export interface RolePositionRule {
+  role: FamilyRoleType;
+  roleName: string;
+  position: string;               // 空间就座/站立位置
+  action: string;                 // 动作与姿态
+  interaction?: string;          // 与其他角色的互动关系
+  referencePoseTag?: string;
+}
+
+export interface FamilySceneTemplate {
+  templateId: string;
+  templateType: '贵族尊享' | '商企精英' | '现代大宅' | string;
+  templateName: string;
+  sceneCategory: '大平层客厅' | '轻奢餐厅' | '高端会客厅' | '露台庭院' | string;
+  cameraLens: string;             // 使用镜头 (e.g. 35mm 广角全景 / 50mm 标准 / 85mm 浅景深)
+  spaceType: string;              // 适用空间
+  characterCount: number;         // 人物数量 (4人 / 6人)
+  roleBindings: FamilyRoleType[]; // 角色绑定
+  characterPositionRules: RolePositionRule[]; // 人物位置规则
+  characterActionRules: string;   // 人物动作规则
+  sceneDesc: string;              // 场景描述
+  furnitureDesc: string;          // 家具描述
+  lightingDesc: string;           // 光线描述
+  propsDesc: string;              // 道具描述
+  atmosphereDesc: string;         // 高级氛围描述
+  styleDesc: string;              // 输出风格描述
+  negativeConstraints: string[];  // 负面约束
+  disallowExtraCharacters: boolean; // 是否禁止新增人物
+  forceLockPositionMap: boolean;  // 是否强制按位置图锁定
+  
+  // 双窗口参考
+  window1SceneRef: {
+    title: string;
+    imageUrl: string;
+    description: string;
+  };
+  window2WireframeRef: {
+    title: string;
+    imageUrl: string;
+    description: string;
+    positionMapUrl?: string;
+  };
+  
+  coverImage: string;
+  thumbnail: string;
+  tags: string[];
+  isSystem?: boolean;
+  isFavorite?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// 5. 姿态资产 (PoseAsset)
 export type PoseCategory =
   | 'sitting' | 'sit'         // 坐姿
   | 'lying' | 'lie'           // 躺姿
@@ -121,7 +223,7 @@ export interface PoseAsset extends BaseSpaceAsset {
   referenceImages?: string[];
 }
 
-// 5. 道具资产 (PropAsset)
+// 6. 道具资产 (PropAsset)
 export interface PropAsset extends BaseSpaceAsset {
   type: 'prop';
   category: '灯具' | '地毯' | '茶几饰品' | '挂画' | '绿植' | '书籍器皿' | string;
@@ -146,6 +248,8 @@ export interface ActivePhotographyAssets {
   selectedMaterial?: MaterialAsset | null;
   model?: ModelAsset | null;
   selectedModel?: ModelAsset | null;
+  selectedModels?: ModelAsset[]; // 多家庭角色支持
+  selectedTemplate?: FamilySceneTemplate | null; // 人物场景模板支持
   pose?: PoseAsset | null;
   selectedPose?: PoseAsset | null;
   props?: PropAsset[];
