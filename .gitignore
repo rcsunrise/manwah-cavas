@@ -36,3 +36,4 @@ P0_*.md
 *.njsproj
 *.sln
 *.sw?
+node_modules
