@@ -153,6 +153,7 @@ export class VideoJobService {
     const newJob: VideoJob = {
       id: jobId,
       workspaceId,
+      userId: payload.userId || null,
       canvasId: payload.canvasId,
       planVersionId: payload.planVersionId || 'default-plan',
       shotId: payload.shotId || 'shot-1',
@@ -198,7 +199,8 @@ export class VideoJobService {
           sourceImageUrl: job.sourceImageUrl || undefined,
           settings: job.videoSettings
         },
-        idempKey
+        idempKey,
+        job.userId || 'system'
       );
 
       job.providerTaskId = submitResult.providerTaskId;
@@ -244,7 +246,7 @@ export class VideoJobService {
         if (!job.providerTaskId) continue;
 
         try {
-          const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId);
+          const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
           job.providerStatus = providerStatus.status;
           job.progressPercent = providerStatus.progressPercent;
           job.updatedAt = new Date().toISOString();

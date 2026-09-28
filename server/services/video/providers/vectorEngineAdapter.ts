@@ -54,7 +54,8 @@ export class VectorEngineVideoAdapter {
    */
   public static async submit(
     input: NormalizedVideoInput,
-    idempotencyKey: string
+    idempotencyKey: string,
+    userUuid: string = 'system'
   ): Promise<SubmitResult> {
     const capability = resolveVideoCapability(input.modelKey);
     const validation = this.validate(input);
@@ -62,7 +63,7 @@ export class VectorEngineVideoAdapter {
       throw new Error(`VALIDATION_FAILED: ${validation.error}`);
     }
 
-    const config = await resolveApiConfig();
+    let config = await resolveApiConfig(userUuid);
     if (!config.apiKey) {
       if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOCK_VIDEO === 'true') {
         return {
@@ -72,7 +73,7 @@ export class VectorEngineVideoAdapter {
           isSimulated: true
         };
       }
-      throw new Error('MISSING_API_KEY: 未检测到有效的向量引擎/AI接口凭证，请在设置中配置API密钥');
+      throw new Error('MISSING_API_KEY: 未检测到有效的向量引擎/AI接口凭证，请在部门设置中配置API密钥');
     }
 
     const cleanBaseUrl = config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
@@ -85,7 +86,89 @@ export class VectorEngineVideoAdapter {
     // 关键架构保证: 无论来自画布相对路径、本地asset还是Base64，均统一通过GCS生成公网可下载HTTPS签名直链
     const imageUrl = await VideoSourceImageResolver.resolveToPublicUrl(rawImageUrl);
 
-    // 1. 特别处理 wan3.0-video: 依照平台文档，优先尝试 openai /v1/chat/completions 接口
+    const resolutionValue = (input.settings.resolution || '720p').toLowerCase();
+
+    // 1. 向量引擎专属火山端点适配 (覆盖 Apifox 文档: 358028487, 358028488, 358028489)
+    // 适用于 seedance-1-5-pro, doubao-seedance-1-5-pro-251215 以及 首尾帧任务
+    const isVolcSeedanceModel = 
+      capability.exactModelId.includes('1-5') || 
+      capability.exactModelId.includes('seedance-1') ||
+      capability.exactModelId === 'seedance-1-5-pro';
+
+    if (isVolcSeedanceModel) {
+      try {
+        console.log(`[VectorEngineVideoAdapter] Submitting to VectorEngine Volcengine endpoint: model=${capability.exactModelId}`);
+        const volcUrl = `${cleanBaseUrl}/volc/v1/contents/generations/tasks`;
+        
+        const contentList: any[] = [
+          {
+            type: 'text',
+            text: input.prompt
+          }
+        ];
+
+        // 处理首尾帧（若提供多张图）或单图参考
+        if (input.referenceImageUrls && input.referenceImageUrls.length >= 2) {
+          const firstUrl = await VideoSourceImageResolver.resolveToPublicUrl(input.referenceImageUrls[0]);
+          const lastUrl = await VideoSourceImageResolver.resolveToPublicUrl(input.referenceImageUrls[1]);
+          contentList.push({
+            type: 'image_url',
+            image_url: { url: firstUrl },
+            role: 'first_frame'
+          });
+          contentList.push({
+            type: 'image_url',
+            image_url: { url: lastUrl },
+            role: 'last_frame'
+          });
+        } else if (imageUrl) {
+          contentList.push({
+            type: 'image_url',
+            image_url: { url: imageUrl },
+            role: 'reference_image'
+          });
+        }
+
+        const volcPayload: Record<string, any> = {
+          model: capability.exactModelId,
+          content: contentList,
+          generate_audio: true
+        };
+
+        const volcResponse = await fetch(volcUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Idempotency-Key': idempotencyKey
+          },
+          body: JSON.stringify(volcPayload)
+        });
+
+        if (volcResponse.ok) {
+          const volcData = await volcResponse.json();
+          const taskId = volcData.id || volcData.task_id || volcData.data?.id;
+          if (taskId) {
+            console.log(`[VectorEngineVideoAdapter] Volcengine task created successfully: ${taskId}`);
+            return {
+              providerTaskId: taskId,
+              provider: 'vectorengine_volc_v1',
+              exactModelId: capability.exactModelId,
+              isSimulated: false,
+              rawResponse: volcData
+            };
+          }
+        } else {
+          const errText = await volcResponse.text();
+          console.warn(`[VectorEngineVideoAdapter] Volcengine endpoint returned ${volcResponse.status}: ${errText}`);
+        }
+      } catch (err: any) {
+        console.warn('[VectorEngineVideoAdapter] Volcengine task submission error:', err?.message);
+      }
+    }
+
+    // 2. 特别处理 wan3.0-video: 依照平台文档，优先尝试 openai /v1/chat/completions 接口
     if (capability.exactModelId === 'wan3.0-video') {
       try {
         console.log(`[VectorEngineVideoAdapter] Submitting wan3.0-video via /v1/chat/completions`);
@@ -157,10 +240,7 @@ export class VectorEngineVideoAdapter {
       }
     }
 
-    const resolutionValue = (input.settings.resolution || '720p').toLowerCase();
-
-    // 2. 核心适配：依照词元流墟 (TokenMarket / TianToken) 官方豆包文档规范，优先采用原生多模态任务接口
-    // 彻底解决将豆包图生视频请求扁平化发往 /v1/video/generations 导致 image_url 丢失、退化为纯文生视频的问题
+    // 3. 豆包 2.0 原生多模态任务接口 (覆盖 Apifox 文档: 446220699 创建视频生成任务 API doubao-2.0)
     const isDoubaoModel = 
       capability.exactModelId.startsWith('sd-') || 
       capability.exactModelId.includes('doubao') || 
@@ -194,7 +274,7 @@ export class VectorEngineVideoAdapter {
           duration: input.settings.durationSeconds || 5,
           ratio: input.settings.ratio || '16:9',
           generate_audio: true,
-          return_last_frame: true
+          watermark: false
         };
 
         const doubaoResponse = await fetch(doubaoUrl, {
@@ -223,7 +303,40 @@ export class VectorEngineVideoAdapter {
           }
         } else {
           const errText = await doubaoResponse.text();
-          console.warn(`[VectorEngineVideoAdapter] Doubao v3 endpoint returned ${doubaoResponse.status}: ${errText}, falling back to /v1/video/generations`);
+          console.warn(`[VectorEngineVideoAdapter] Doubao v3 endpoint returned ${doubaoResponse.status}: ${errText}`);
+          
+          // 若部门专属向量 Key 提示渠道不存在 (503) 或限流 (429)，触发智能故障转移
+          if (doubaoResponse.status === 503 || doubaoResponse.status === 429) {
+            console.log('[VectorEngineVideoAdapter] 部门专属渠道不可用，正在自动故障转移至备用全站渠道...');
+            const fallbackConfig = await resolveApiConfig('system');
+            if (fallbackConfig.apiKey && fallbackConfig.apiKey !== config.apiKey) {
+              const fbUrl = `${fallbackConfig.baseUrl.replace(/\/+$/, '')}/api/v3/contents/generations/tasks`;
+              const fbRes = await fetch(fbUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${fallbackConfig.apiKey}`,
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Idempotency-Key': `${idempotencyKey}-fb`
+                },
+                body: JSON.stringify(doubaoPayload)
+              });
+              if (fbRes.ok) {
+                const fbData = await fbRes.json();
+                const fbTaskId = fbData.id || fbData.task_id || fbData.data?.id;
+                if (fbTaskId) {
+                  console.log(`[VectorEngineVideoAdapter] Failover to fallback route succeeded: ${fbTaskId}`);
+                  return {
+                    providerTaskId: fbTaskId,
+                    provider: 'doubao_failover_route',
+                    exactModelId: capability.exactModelId,
+                    isSimulated: false,
+                    rawResponse: fbData
+                  };
+                }
+              }
+            }
+          }
         }
       } catch (err: any) {
         console.warn('[VectorEngineVideoAdapter] Doubao v3 native call failed, falling back:', err?.message);
@@ -329,8 +442,14 @@ export class VectorEngineVideoAdapter {
 
   /**
    * Queries provider task status
+   * 严格对接 Apifox 文档规范:
+   * - 358028492: GET /volc/v1/contents/generations/tasks/{task_id}
+   * - 446220700: GET /api/v3/contents/generations/tasks/{id}
    */
-  public static async query(providerTaskId: string): Promise<NormalizedProviderStatus> {
+  public static async query(
+    providerTaskId: string,
+    userUuid: string = 'system'
+  ): Promise<NormalizedProviderStatus> {
     if (providerTaskId.startsWith('sim-task-')) {
       const parts = providerTaskId.split('-');
       const createdTs = Number(parts[2]) || Date.now();
@@ -369,26 +488,29 @@ export class VectorEngineVideoAdapter {
     }
 
     // Upstream query for real tasks
-    const config = await resolveApiConfig();
+    let config = await resolveApiConfig(userUuid);
+    if (!config.apiKey) {
+      config = await resolveApiConfig('system');
+    }
     if (!config.apiKey) {
       return {
         providerTaskId,
         status: 'failed',
         progressPercent: 0,
-        errorMessage: '未配置向量引擎 API Key，无法查询真实任务进度'
+        errorMessage: '未配置向量引擎/全站 API Key，无法查询真实任务进度'
       };
     }
 
     const cleanBaseUrl = config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
 
-    // 轮询端点尝试列表 (覆盖豆包原生 v3 端点、主流聚合平台及 TianToken 接口规则)
+    // 轮询端点尝试列表 (覆盖向量引擎火山端点 358028492、豆包原生 v3 端点 446220700 以及主流聚合平台规则)
     const isDoubaoTaskId = providerTaskId.startsWith('cgt-');
     const endpointsToTry = [
+      `${cleanBaseUrl}/volc/v1/contents/generations/tasks/${providerTaskId}`,
+      `${cleanBaseUrl}/api/v3/contents/generations/tasks/${providerTaskId}`,
       ...(isDoubaoTaskId ? [
-        `${cleanBaseUrl}/api/v3/contents/generations/tasks/${providerTaskId}`,
         `${cleanBaseUrl}/v3/contents/generations/tasks/${providerTaskId}`
       ] : []),
-      `${cleanBaseUrl}/api/v3/contents/generations/tasks/${providerTaskId}`,
       `${cleanBaseUrl}/v1/video/generations/${providerTaskId}`,
       `${cleanBaseUrl}/v1/videos/tasks/${providerTaskId}`,
       `${cleanBaseUrl}/v1/tasks/${providerTaskId}`,

@@ -298,6 +298,37 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
     supportsLookupByClientKey: false,
     evidenceUrl: 'https://api.tiantoken.com/pricing',
     verifiedAt: '2026-09-21'
+  },
+  'seedance-1-5-pro': {
+    key: 'seedance-1-5-pro',
+    displayName: '字节跳动 Seedance 1.5 Pro (向量引擎 · 支持首尾帧)',
+    exactModelId: 'seedance-1-5-pro',
+    enabled: true,
+    tested: true,
+    modes: ['image_to_video'],
+    variants: [
+      {
+        mode: 'image_to_video',
+        durationSeconds: 5,
+        resolution: '720p',
+        ratios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+        maxImages: 2,
+        audioModes: ['none']
+      },
+      {
+        mode: 'image_to_video',
+        durationSeconds: 10,
+        resolution: '720p',
+        ratios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+        maxImages: 2,
+        audioModes: ['none']
+      }
+    ],
+    supportsCancel: true,
+    supportsIdempotency: true,
+    supportsLookupByClientKey: true,
+    evidenceUrl: 'https://vectorengine.apifox.cn/api-358028488',
+    verifiedAt: '2026-09-28'
   }
 };
 

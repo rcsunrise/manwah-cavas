@@ -247,7 +247,8 @@ router.post('/api/gateway/video/generations', async (req: Request, res: Response
     }
 
     const workspaceId = (req.headers['x-workspace-id'] as string) || 'ws-default';
-    const result = await VideoJobService.getInstance().submitJob(req.body, idempotencyKey, workspaceId);
+    const userId = (req as any).user?.id || (req.headers['x-user-id'] as string) || req.body.userId || 'system';
+    const result = await VideoJobService.getInstance().submitJob({ ...req.body, userId }, idempotencyKey, workspaceId);
 
     res.status(result.isReused ? 200 : 202).json({
       job: result.job,

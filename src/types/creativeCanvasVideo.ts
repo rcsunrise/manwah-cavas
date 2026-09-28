@@ -82,6 +82,7 @@ export interface VideoCapability {
 export interface VideoJob {
   id: string;
   workspaceId: string;
+  userId?: string | null;
   canvasId: string;
   planVersionId: string;
   shotId: string;
@@ -122,6 +123,7 @@ export interface VideoPlaybackInfo {
 export interface VideoSubmitPayload {
   canvasId: string;
   workspaceId?: string;
+  userId?: string;
   sourceNodeId: string;
   sourceAssetVersionId?: string | null;
   sourceImageUrl?: string;
