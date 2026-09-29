@@ -189,6 +189,78 @@ export interface FamilySceneTemplate {
   updatedAt?: string;
 }
 
+// 4. 人物编排器 (Human Layout) 核心规范
+export interface HumanSlotAssignment {
+  id: string;
+  modelId?: string;          // 绑定的 ModelAsset id
+  modelName?: string;        // 模特显示名称
+  positionDesc: string;      // 空间位置描述，例如：主沙发一号电动功能位
+  actionDesc: string;        // 姿态动作描述，例如：舒展半躺，手持杂志
+}
+
+export interface HumanLayoutConfig {
+  characterCount: number;           // 人数 (4 / 6 / 自定义)
+  mode: '4' | '6' | 'custom';
+  disallowExtraCharacters: boolean; // 禁止新增额外人物
+  slots: HumanSlotAssignment[];
+}
+
+export const DEFAULT_4_HUMAN_SLOTS: HumanSlotAssignment[] = [
+  {
+    id: 'slot-1',
+    positionDesc: '主沙发一号电动功能位（展开脚托）',
+    actionDesc: '从容就座，左手搭扶手，右手握持画册与家人交谈'
+  },
+  {
+    id: 'slot-2',
+    positionDesc: '沙发贵妃榻休闲位',
+    actionDesc: '优雅侧倚，手捧暖白瓷杯，身体微倾倾听'
+  },
+  {
+    id: 'slot-3',
+    positionDesc: '紧贴贵妃位内侧软垫',
+    actionDesc: '依偎在身旁，双手翻阅立体画册，神情纯真专注'
+  },
+  {
+    id: 'slot-4',
+    positionDesc: '沙发前羊毛地毯，倚靠茶几边缘',
+    actionDesc: '席地而坐，操作平板电脑，姿态轻松机敏'
+  }
+];
+
+export const DEFAULT_6_HUMAN_SLOTS: HumanSlotAssignment[] = [
+  {
+    id: 'slot-1',
+    positionDesc: '主沙发一号电动功能主座',
+    actionDesc: '45°半躺于头等舱展开脚托，目光沉稳温和'
+  },
+  {
+    id: 'slot-2',
+    positionDesc: '单人真皮功能单椅',
+    actionDesc: '端坐品茗，神态安详从容，展现长者风范'
+  },
+  {
+    id: 'slot-3',
+    positionDesc: '沙发贵妃榻休闲位',
+    actionDesc: '优雅侧倚浅笑，身姿端庄知性'
+  },
+  {
+    id: 'slot-4',
+    positionDesc: '单椅身侧沙发位',
+    actionDesc: '慈爱注视家人，双手温和交叠，雍容祥和'
+  },
+  {
+    id: 'slot-5',
+    positionDesc: '贵妃位身侧依偎处',
+    actionDesc: '依偎在母亲怀侧，天真翻书，甜美灵动'
+  },
+  {
+    id: 'slot-6',
+    positionDesc: '茶几旁厚绒地毯上',
+    actionDesc: '盘腿席地玩耍探索，神情专注好奇'
+  }
+];
+
 // 5. 姿态资产 (PoseAsset)
 export type PoseCategory =
   | 'sitting' | 'sit'         // 坐姿
@@ -248,8 +320,9 @@ export interface ActivePhotographyAssets {
   selectedMaterial?: MaterialAsset | null;
   model?: ModelAsset | null;
   selectedModel?: ModelAsset | null;
-  selectedModels?: ModelAsset[]; // 多家庭角色支持
-  selectedTemplate?: FamilySceneTemplate | null; // 人物场景模板支持
+  selectedModels?: ModelAsset[]; // 多角色资产支持
+  humanLayout?: HumanLayoutConfig; // 人物编排器
+  selectedTemplate?: FamilySceneTemplate | null; // 兼容旧模板字段
   pose?: PoseAsset | null;
   selectedPose?: PoseAsset | null;
   props?: PropAsset[];

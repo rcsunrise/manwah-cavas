@@ -68,10 +68,16 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                 <RefreshCw className="w-2 h-2 animate-spin" /> 生成中
               </span>
             );
+          } else if (shot.hasHumanPass) {
+            statusBadge = (
+              <span className="flex items-center gap-1 text-[9px] text-purple-400 bg-purple-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
+                <CheckCircle2 className="w-2 h-2" /> 已添模特
+              </span>
+            );
           } else if (previewImage) {
             statusBadge = (
               <span className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
-                <CheckCircle2 className="w-2 h-2" /> 已就绪
+                <CheckCircle2 className="w-2 h-2" /> 待添模特
               </span>
             );
           }
@@ -122,14 +128,19 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                   </div>
                 )}
 
-                {/* Index Pill */}
+                {/* Index & Template Code Pill */}
                 <div
                   className={`absolute top-1 left-1 px-1 py-0.2 rounded text-[8px] font-mono font-bold ${
                     isLight ? 'bg-white/90 text-stone-700 border border-stone-200' : 'bg-stone-950/80 text-stone-300'
                   }`}
                 >
-                  0{idx + 1}
+                  {shot.templateCode || `0${idx + 1}`}
                 </div>
+                {previewImage && !shot.hasHumanPass && (
+                  <div className="absolute top-1 right-1 px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-purple-600/90 text-white shadow-xs">
+                    +模特
+                  </div>
+                )}
               </div>
 
               {/* Title & Status */}

@@ -88,4 +88,79 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     expect(compiled.positivePrompt).toContain('microscopic genuine semi-aniline leather pores');
     expect(compiled.negativePrompt).toContain('shifted sofa coordinates');
   });
+
+  it('verifies A00 to A01 master inheritance: space & furniture invariant, only Camera DNA changes', () => {
+    const shotA01: ShotInstance = {
+      id: 'shot-a01',
+      templateCode: 'A01',
+      name: '空间主大全景',
+      camera: STANDARD_SHOT_TEMPLATES[0].defaultCamera, // 28mm, 140cm, yaw: 0, pitch: -3, framing: 'wide'
+      intent: STANDARD_SHOT_TEMPLATES[0].intent,
+      status: 'draft',
+      revisions: [],
+      hasHumanPass: false
+    };
+
+    const compiled = ShootCompiler.compileShotPrompt({
+      shot: shotA01,
+      sceneMaster,
+      products,
+      spacePreset,
+      stylePreset,
+      blueprint
+    });
+
+    // 1. 验证镜源码
+    expect(compiled.shotCode).toBe('A01');
+
+    // 2. 验证 Camera DNA 单变量改变
+    expect(compiled.cameraSpec.lensMm).toBe(28);
+    expect(compiled.cameraSpec.heightCm).toBe(140);
+    expect(compiled.cameraSpec.yawDeg).toBe(0);
+    expect(compiled.cameraSpec.pitchDeg).toBe(-3);
+    expect(compiled.cameraSpec.framing).toBe('wide');
+    expect(compiled.positivePrompt).toContain('28mm architectural prime lens');
+    expect(compiled.positivePrompt).toContain('140cm above finished floor');
+
+    // 3. 验证空间世界与家具物理不变量严格继承
+    expect(compiled.positivePrompt).toContain(`space prototype anchor: ${spacePreset.name}`);
+    expect(compiled.positivePrompt).toContain(`design style harmony: ${stylePreset.name}`);
+    expect(compiled.invarianceChecks.furnitureFixed).toBe(true);
+    expect(compiled.invarianceChecks.productLocked).toBe(true);
+    expect(compiled.invarianceChecks.lightingConsistent).toBe(true);
+
+    // 4. 验证负向约束严格杜绝家具漂移
+    expect(compiled.negativePrompt).toContain('physically moved furniture positions');
+    expect(compiled.negativePrompt).toContain('shifted sofa coordinates');
+  });
+
+  it('validates entire A01-A08 shot suite inheritance with distinct Camera DNAs', () => {
+    STANDARD_SHOT_TEMPLATES.forEach((tpl) => {
+      const shot: ShotInstance = {
+        id: `shot-${tpl.code.toLowerCase()}`,
+        templateCode: tpl.code,
+        name: tpl.name,
+        camera: tpl.defaultCamera,
+        intent: tpl.intent,
+        status: 'draft',
+        revisions: [],
+        hasHumanPass: false
+      };
+
+      const result = ShootCompiler.compileShotPrompt({
+        shot,
+        sceneMaster,
+        products,
+        spacePreset,
+        stylePreset,
+        blueprint
+      });
+
+      expect(result.shotCode).toBe(tpl.code);
+      expect(result.cameraSpec.lensMm).toBe(tpl.defaultCamera.lensMm);
+      expect(result.cameraSpec.heightCm).toBe(tpl.defaultCamera.heightCm);
+      expect(result.invarianceChecks.furnitureFixed).toBe(true);
+      expect(result.invarianceChecks.productLocked).toBe(true);
+    });
+  });
 });

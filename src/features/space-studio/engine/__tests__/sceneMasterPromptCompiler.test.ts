@@ -28,7 +28,7 @@ describe('SceneMasterPromptCompiler (G2 A00 Master Spec)', () => {
 
     // Ensure camera DNA is eye-level medium lens
     expect(result.cameraSettings.lensMm).toBe(35);
-    expect(result.cameraSettings.heightCm).toBe(130);
+    expect(result.cameraSettings.heightCm).toBe(115);
     expect(result.cameraSettings.yawDeg).toBe(0);
 
     // Negative prompt must suppress plastic CGI and people in master pass

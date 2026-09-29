@@ -43,6 +43,7 @@ interface SpaceStudioCanvasProps {
   isGenerating: boolean;
   onGenerateCurrent: () => void;
   onOpenCompareModal?: () => void;
+  onRenderHumanPass?: () => void;
 
   // New Phase 2 Candidate Batch Props
   candidateBatch?: ShotCandidateBatch | null;
@@ -66,6 +67,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   isGenerating,
   onGenerateCurrent,
   onOpenCompareModal,
+  onRenderHumanPass,
   candidateBatch,
   selectedCandidateId,
   onSelectCandidate,
@@ -280,6 +282,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             <span>·</span>
             <span className="text-amber-400 font-medium">黄金分割构图</span>
           </span>
+
+          {activeShot.templateCode !== 'A00' && sceneMaster?.isLocked && (
+            <span className="hidden md:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border text-emerald-300 bg-emerald-950/60 border-emerald-800/60 font-medium">
+              <ShieldCheck className="w-3 h-3 text-emerald-400" />
+              <span>A00 空间与家具世界已锁定</span>
+            </span>
+          )}
 
           {currentImageUrl && !imageError ? (
             <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800/60 font-semibold">
@@ -532,14 +541,22 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     {activeShot.templateCode} · {activeShot.name}
                   </h4>
                   <p className="text-[11px] text-neutral-400">
-                    当前镜头未生成。点击右侧「生成 4 张候选」开启视觉资产驱动渲染。
+                    {activeShot.templateCode === 'A00'
+                      ? '当前为 A00 空间母版。点击下方按钮生成并锁定空间世界（户型·家具·材质真值），确立后续镜头的物理基准。'
+                      : sceneMaster?.isLocked
+                      ? '已锁定 A00 空间世界与家具。保持空间不变，只改变 Camera DNA 驱动当前视角。'
+                      : 'A00 空间母版尚未锁定。点击将优先锁定 A00 空间母版并生成 4 张候选。'}
                   </p>
                   <button
                     onClick={onGenerateCurrent}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-xs font-bold shadow-lg shadow-amber-500/20 transition flex items-center gap-2"
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-xs font-bold shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>生成 4 张候选</span>
+                    <span>
+                      {activeShot.templateCode === 'A00'
+                        ? (sceneMaster?.isLocked ? '重新生成并锁定 A00 母版' : '生成并锁定 A00 空间母版')
+                        : `生成 ${activeShot.templateCode} 4 张候选`}
+                    </span>
                   </button>
                 </div>
               )}
@@ -566,7 +583,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={onRegenerateBatch}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 transition"
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer"
                   title="重新生成一套全新 4 张方案"
                 >
                   <RefreshCw className="w-3 h-3 text-amber-400" />
@@ -575,35 +592,26 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
                 <button
                   onClick={onKeepSpaceRefreshModel}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-[11px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition"
-                  title="空间与产品不变，换不同模特出镜"
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-[11px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer"
+                  title="锁空间与家具不变，重新生成 4 张不同的人物构图与细节"
                 >
                   <User className="w-3 h-3 text-purple-400" />
-                  <span>保持空间换人物</span>
+                  <span>保持空间重生人物</span>
                 </button>
 
                 <button
                   onClick={onKeepModelRefreshPose}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-[11px] text-neutral-300 hover:text-emerald-300 flex items-center gap-1 transition"
-                  title="模特不变，换不同姿态与落座"
+                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-[11px] text-neutral-300 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
+                  title="轮换已导入角色，并生成 4 张全新候选"
                 >
-                  <Activity className="w-3 h-3 text-emerald-400" />
-                  <span>保持人物换姿态</span>
-                </button>
-
-                <button
-                  onClick={onKeepProductRefreshScene}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-amber-500/20 border border-white/10 hover:border-amber-500/40 text-[11px] text-neutral-300 hover:text-amber-300 flex items-center gap-1 transition"
-                  title="产品主体不变，尝试不同空间硬装风格"
-                >
-                  <Layers className="w-3 h-3 text-amber-400" />
-                  <span>保持产品换场景</span>
+                  <RefreshCw className="w-3 h-3 text-emerald-400" />
+                  <span>替换角色重生</span>
                 </button>
 
                 {activeCandidate && (
                   <button
                     onClick={() => onApplyCandidateAsFinal?.(activeCandidate)}
-                    className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-[11px] flex items-center gap-1 shadow-md transition"
+                    className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-[11px] flex items-center gap-1 shadow-md transition cursor-pointer"
                   >
                     <Check className="w-3 h-3 stroke-[3]" />
                     <span>设为当前镜头结果</span>

@@ -50,6 +50,8 @@ export interface SpaceGenerateImageInput {
   preferredModel?: string;
   resolution?: string;
   seed?: number;
+  variantIndex?: number;
+  variantTag?: string;
 }
 
 export interface SpaceGenerateImageResult {
@@ -185,6 +187,9 @@ export class SpaceImageGenerationService {
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
     try {
       const config = await resolveApiConfig('system');
+      if (!isProviderKeyValid(config?.provider)) {
+        throw new Error(`Provider "${config?.provider || 'none'}" has no valid API key, switching to deterministic renderer`);
+      }
       const rawPreferred = input.preferredModel?.trim() || 'gemini-3.1-flash-image';
       
       // 统一模型别名映射
@@ -199,33 +204,55 @@ export class SpaceImageGenerationService {
       const isFlash25 = targetModel.includes('2.5');
       const validResolution = isFlash25 ? '1K' : (['1K', '2K', '4K'].includes(reqResolution) ? reqResolution : '2K');
 
-      // 编织多模态视觉参考图像
+      // 编织多模态视觉参考图像 (按工作模式优先级排序)
       const images: Array<{ data: string; mimeType?: string; role?: string }> = [];
-      if (productInline) {
-        images.push({
-          data: `data:${productInline.mimeType};base64,${productInline.data}`,
-          mimeType: productInline.mimeType,
-          role: 'primary_product'
-        });
-      }
-      if (masterInline) {
-        images.push({
-          data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
-          mimeType: masterInline.mimeType,
-          role: 'scene_reference'
-        });
-      } else if (shotInline) {
+      if (shotInline) {
+        // 人物添加模式：以当前镜头真实底图为最高物理基石
         images.push({
           data: `data:${shotInline.mimeType};base64,${shotInline.data}`,
           mimeType: shotInline.mimeType,
           role: 'composition_reference'
         });
+        if (productInline) {
+          images.push({
+            data: `data:${productInline.mimeType};base64,${productInline.data}`,
+            mimeType: productInline.mimeType,
+            role: 'primary_product'
+          });
+        }
+      } else {
+        if (productInline) {
+          images.push({
+            data: `data:${productInline.mimeType};base64,${productInline.data}`,
+            mimeType: productInline.mimeType,
+            role: 'primary_product'
+          });
+        }
+        if (masterInline) {
+          images.push({
+            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
+            mimeType: masterInline.mimeType,
+            role: 'scene_reference'
+          });
+        }
       }
 
       // 针对生图模式编织具备物理第一性原理的系统级摄影提示词
       let directivePrompt = positivePrompt;
-      if (productInline && masterInline) {
-        // A01~A08 衍生镜头生图：必须与 A00 空间母版和主件产品保持 100% 连贯性
+      if (shotInline) {
+        // 模式 A: 模特植入 (Human Pass)：锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物
+        directivePrompt = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - ZERO FURNITURE DRIFT - ZERO CAMERA DRIFT]
+REFERENCE IMAGE 1: Approved empty room shot (${shotCode}) with the authentic ${effectiveProductName} in ${effectiveColor}.
+
+STRICT COMMERCIAL MANDATES:
+1. Reference Image 1 is the EXACT physical truth of this room and camera view.
+2. The living room architecture, background walls, floor, lighting, camera yaw/pitch, and the hero sofa MUST REMAIN 100% INVARIANT AND UNCHANGED.
+3. DO NOT change sofa color, shape, cushion layout, or reposition any furniture piece.
+4. Seamlessly and photorealistically integrate the requested characters resting comfortably in designated ergonomic seats and positions.
+${positivePrompt}
+Negative constraints: ${negativePrompt || 'displaced furniture, changed sofa color, deformed limbs, floating human, extra people, bystanders, crowd'}`;
+      } else if (productInline && masterInline) {
+        // 模式 B: A01~A08 衍生镜头生图：必须与 A00 空间母版和主件产品保持 100% 连贯性
         directivePrompt = `[MULTIMODAL PRODUCTION INVARIANCE: PRESERVE EXACT PRODUCT AND ROOM FROM REFERENCE IMAGES]
 REFERENCE IMAGE 1: Authentic Hero Product Reference (${effectiveProductName}, color: ${effectiveColor}, material: ${effectiveMaterial}).
 REFERENCE IMAGE 2: Approved A00 Scene Master of this exact luxury living room.
@@ -240,16 +267,6 @@ STRICT COMMERCIAL MANDATES:
 4. Render the new designated shot angle (${shotCode}) strictly following this camera specification:
 ${positivePrompt}
 Negative constraints: ${negativePrompt || 'different sofa, different color, random furniture, altered architecture, distorted logo, blur'}`;
-      } else if (shotInline) {
-        // 模特植入或单镜头微调：保持空间与家具不动
-        directivePrompt = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - ZERO FURNITURE DRIFT]
-REFERENCE IMAGE 1: Approved empty room shot with the authentic ${effectiveProductName} in ${effectiveColor}.
-
-STRICT COMMERCIAL MANDATES:
-1. The living room architecture and the hero sofa from Reference Image 1 MUST REMAIN 100% UNCHANGED. Do not replace the sofa or alter its color (${effectiveColor}).
-2. Seamlessly and photorealistically integrate the requested family members resting comfortably in their assigned ergonomic seats.
-${positivePrompt}
-Negative constraints: ${negativePrompt || 'displaced furniture, changed sofa color, deformed limbs, floating human'}`;
       } else if (productInline) {
         // A00 空间母版初创：以产品实拍图为最高基石
         directivePrompt = `[HERO PRODUCT GROUND TRUTH ANCHOR - ZERO RE-INVENTION]
@@ -280,6 +297,7 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
       const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
       const generationIntent = images.length > 0 ? 'image_edit' : 'text_to_image';
 
+      const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : 300000;
       const gatewayRes = await fetch(gatewayUrl, {
         method: 'POST',
         headers: {
@@ -295,7 +313,7 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
           images,
           generationIntent
         }),
-        signal: AbortSignal.timeout(300000) // 300 秒完整生成超时
+        signal: AbortSignal.timeout(timeoutMs)
       });
 
       const gatewayData = await gatewayRes.json();
@@ -355,7 +373,9 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
           productColor: effectiveColor,
           roomName,
           styleName,
-          camera: cameraSettings || { lensMm: 35, heightCm: 130, yawDeg: 0, pitchDeg: -2 }
+          camera: cameraSettings || { lensMm: 35, heightCm: 130, yawDeg: 0, pitchDeg: -2 },
+          variantIndex: input.variantIndex || 1,
+          variantTag: input.variantTag
         });
 
         if (objectKey.endsWith('.webp')) {
@@ -421,10 +441,12 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
     roomName: string;
     styleName: string;
     camera: { lensMm: number; heightCm: number; yawDeg: number; pitchDeg: number };
+    variantIndex?: number;
+    variantTag?: string;
   }): Buffer {
-    const { shotCode, productName, productColor = '', roomName, styleName, camera } = params;
+    const { shotCode, productName, productColor = '', roomName, styleName, camera, variantIndex = 1, variantTag = '' } = params;
 
-    // 根据产品色彩真值动态映射皮质高定渐变色
+    // 根据产品色彩真值动态映射皮质高定渐变色 (100% 保持产品色彩与材质真值不变量)
     const isWarmAmberOrOrange =
       /橙|琥珀|黄|干邑|caramel|amber|orange|cognac/i.test(productColor);
     const isGreige = /灰|greige|gray|grey|米白/i.test(productColor);
@@ -437,26 +459,73 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
     let leatherHighlight = '#E2B88F';
 
     if (isWarmAmberOrOrange) {
-      // 干邑暖橙 / 经典琥珀棕
       leatherStop0 = '#D97706';
       leatherStop40 = '#B45309';
       leatherStop80 = '#92400E';
       leatherStop100 = '#65290A';
       leatherHighlight = '#FBBF24';
     } else if (isGreige) {
-      // 云雾暖灰
       leatherStop0 = '#B0AAA2';
       leatherStop40 = '#8C857D';
       leatherStop80 = '#68625B';
       leatherStop100 = '#48433E';
       leatherHighlight = '#DDD8D2';
     } else if (isDarkBrown) {
-      // 鞍褐经典 / 曜石深棕
       leatherStop0 = '#804D2D';
       leatherStop40 = '#60381E';
       leatherStop80 = '#422412';
       leatherStop100 = '#2B160A';
       leatherHighlight = '#AB6E47';
+    }
+
+    // Camera DNA 物理镜头光心映射 (单变量原则: 仅相机动，家具与空间世界绝对不动)
+    // 1. 焦距缩放比例 (以 35mm 为基准: 28mm 广角视角更宽, 45mm 黄金视角更饱满, 85mm 特写微距)
+    const baseLens = 35;
+    let cameraScale = camera.lensMm > 0 ? (camera.lensMm / baseLens) : 1.0;
+    if (camera.lensMm <= 28) cameraScale = 0.82; // A01 大平层主全景，视域开阔
+    else if (camera.lensMm >= 80) cameraScale = 1.65; // A04 特写微距
+
+    // 2. 偏角 yaw 平移与透视偏转
+    const yawOffset = (camera.yawDeg || 0) * 4.5;
+
+    // 3. 机位高度与仰俯角对视平线的影响 (基准 130cm)
+    const heightDelta = (130 - (camera.heightCm || 130)) * 1.5;
+    const pitchOffset = (camera.pitchDeg || 0) * 8.0;
+    const horizonShiftY = heightDelta + pitchOffset;
+
+    // 4. 变体方案差异化光效与景深图层 (Variant 1~4)
+    let ambientOverlay = '';
+    let variantDescription = '标称物理机位 · 通透白昼漫射光';
+
+    if (variantIndex === 2) {
+      variantDescription = '高光暖阳微调 · 3200K 斜阳穿透与皮革金光';
+      ambientOverlay = `
+        <linearGradient id="warmSunRays" x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.35"/>
+          <stop offset="40%" stop-color="#FBBF24" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+        </linearGradient>
+        <polygon points="1200,0 700,0 200,1600 1200,1600" fill="url(#warmSunRays)"/>
+      `;
+    } else if (variantIndex === 3) {
+      variantDescription = '黄金微距景深 · f/1.8 大光圈柔焦与精工车线';
+      ambientOverlay = `
+        <radialGradient id="dofMask" cx="50%" cy="72%" r="48%">
+          <stop offset="60%" stop-color="#FFFFFF" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#3C332A" stop-opacity="0.28"/>
+        </radialGradient>
+        <rect x="0" y="0" width="1200" height="1600" fill="url(#dofMask)"/>
+      `;
+    } else if (variantIndex === 4) {
+      variantDescription = '建筑透视纵深 · 强化落地窗横梁与地面石材反差';
+      ambientOverlay = `
+        <linearGradient id="architecturalContrast" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1E293B" stop-opacity="0.22"/>
+          <stop offset="50%" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#0F172A" stop-opacity="0.3"/>
+        </linearGradient>
+        <rect x="0" y="0" width="1200" height="1600" fill="url(#architecturalContrast)"/>
+      `;
     }
 
     const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -469,14 +538,14 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
       <stop offset="100%" stop-color="#C5BEB4"/>
     </linearGradient>
 
-    <!-- 地面天然灰微晶石 / 哑光木地板渐变 -->
+    <!-- 地面天然灰微晶石 / 哑光木地板渐变 (保持 A00 材质不变量) -->
     <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#8E8880"/>
       <stop offset="40%" stop-color="#6F6961"/>
       <stop offset="100%" stop-color="#4C4740"/>
     </linearGradient>
 
-    <!-- 敏华南美头层牛皮高定质感渐变 (动态受控于产品色彩真值: ${productColor}) -->
+    <!-- 敏华南美头层牛皮高定质感渐变 (严格遵循产品色彩真值: ${productColor}) -->
     <linearGradient id="leatherGrad" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="${leatherStop0}"/>
       <stop offset="40%" stop-color="${leatherStop40}"/>
@@ -485,11 +554,11 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
     </linearGradient>
 
     <linearGradient id="leatherHighlightGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${leatherHighlight}" stop-opacity="0.8"/>
+      <stop offset="0%" stop-color="${leatherHighlight}" stop-opacity="0.85"/>
       <stop offset="100%" stop-color="${leatherStop40}" stop-opacity="0.1"/>
     </linearGradient>
 
-    <!-- 潘多拉微晶奢石茶几 -->
+    <!-- 潘多拉微晶奢石茶几 (保持 A00 摆位与材质不变量) -->
     <linearGradient id="marbleGrad" x1="0" y1="0" x2="1" y2="0.5">
       <stop offset="0%" stop-color="#EFECE6"/>
       <stop offset="35%" stop-color="#D7CEBF"/>
@@ -506,71 +575,80 @@ Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabr
 
     <!-- 窗外天际线散射光 -->
     <linearGradient id="windowLight" x1="1" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
-      <stop offset="50%" stop-color="#F5EFE6" stop-opacity="0.4"/>
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.88"/>
+      <stop offset="50%" stop-color="#F5EFE6" stop-opacity="0.45"/>
       <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
   </defs>
 
-  <!-- 1. 背景层：大平层建筑结构与挑高挑空 -->
+  <!-- 1. 背景层：大平层建筑结构与挑高挑空 (A00 空间世界继承) -->
   <rect x="0" y="0" width="1200" height="1600" fill="url(#skyCeiling)"/>
 
-  <!-- 2. 远景：落地全景落地窗与采光幕墙 -->
-  <rect x="180" y="180" width="840" height="660" fill="#E2DDDA" rx="8"/>
-  <rect x="190" y="190" width="820" height="640" fill="url(#windowLight)" rx="6"/>
-  <line x1="460" y1="190" x2="460" y2="830" stroke="#78716C" stroke-width="4"/>
-  <line x1="740" y1="190" x2="740" y2="830" stroke="#78716C" stroke-width="4"/>
+  <!-- 2. 远景：落地全景落地窗与采光幕墙 (按视平线平移) -->
+  <g transform="translate(0, ${horizonShiftY * 0.3})">
+    <rect x="160" y="170" width="880" height="680" fill="#E2DDDA" rx="8"/>
+    <rect x="170" y="180" width="860" height="660" fill="url(#windowLight)" rx="6"/>
+    <line x1="450" y1="180" x2="450" y2="840" stroke="#78716C" stroke-width="4"/>
+    <line x1="750" y1="180" x2="750" y2="840" stroke="#78716C" stroke-width="4"/>
+  </g>
 
-  <!-- 3. 地面微晶石地坪 -->
-  <polygon points="0,960 1200,960 1200,1600 0,1600" fill="url(#floorGrad)"/>
+  <!-- 3. 地面微晶石地坪 (视平线基线) -->
+  <polygon points="0,${960 + horizonShiftY} 1200,${960 + horizonShiftY} 1200,1600 0,1600" fill="url(#floorGrad)"/>
 
-  <!-- 4. 高定羊毛手工地毯 -->
-  <ellipse cx="600" cy="1260" rx="460" ry="170" fill="#CCC5BA" stroke="#B8B0A2" stroke-width="2"/>
+  <!-- 4. 镜头空间透视组合 (以中心原点 600, 1150 执行 Camera DNA 缩放与平移偏角) -->
+  <g transform="translate(${600 - yawOffset}, ${1150 + horizonShiftY}) scale(${cameraScale}) translate(-600, -1150)">
+    <!-- 4.1 高定羊毛手工地毯 -->
+    <ellipse cx="600" cy="1260" rx="460" ry="170" fill="#CCC5BA" stroke="#B8B0A2" stroke-width="2"/>
 
-  <!-- 5. 产品主环境阴影 -->
-  <ellipse cx="600" cy="1280" rx="420" ry="110" fill="url(#ambientOcclusion)"/>
+    <!-- 4.2 产品主环境阴影 -->
+    <ellipse cx="600" cy="1280" rx="420" ry="110" fill="url(#ambientOcclusion)"/>
 
-  <!-- 6. 敏华主件头等舱功能沙发 (真实呈现 ${productName} · 色系: ${productColor}) -->
-  <!-- 沙发整体底座骨架 -->
-  <rect x="230" y="1040" width="740" height="150" rx="28" fill="url(#leatherGrad)"/>
-  
-  <!-- 三段式人体工学靠背 -->
-  <rect x="250" y="850" width="220" height="230" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
-  <rect x="254" y="854" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
-  
-  <rect x="490" y="845" width="220" height="235" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
-  <rect x="494" y="849" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
+    <!-- 4.3 敏华主件头等舱功能沙发 (物理真值不变量: ${productName} · 色系: ${productColor}) -->
+    <!-- 底座骨架 -->
+    <rect x="230" y="1040" width="740" height="150" rx="28" fill="url(#leatherGrad)"/>
+    
+    <!-- 三段式人体工学靠背 -->
+    <rect x="250" y="850" width="220" height="230" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <rect x="254" y="854" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
+    
+    <rect x="490" y="845" width="220" height="235" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <rect x="494" y="849" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
 
-  <rect x="730" y="850" width="220" height="230" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
-  <rect x="734" y="854" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
+    <rect x="730" y="850" width="220" height="230" rx="24" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <rect x="734" y="854" width="212" height="60" rx="16" fill="url(#leatherHighlightGrad)"/>
 
-  <!-- 左厚实扶手 -->
-  <rect x="200" y="960" width="90" height="210" rx="36" fill="url(#leatherGrad)" stroke="#3B1C08" stroke-width="1.5"/>
-  <rect x="205" y="965" width="80" height="80" rx="24" fill="url(#leatherHighlightGrad)"/>
+    <!-- 左厚实扶手 -->
+    <rect x="200" y="960" width="90" height="210" rx="36" fill="url(#leatherGrad)" stroke="#3B1C08" stroke-width="1.5"/>
+    <rect x="205" y="965" width="80" height="80" rx="24" fill="url(#leatherHighlightGrad)"/>
 
-  <!-- 右厚实扶手 -->
-  <rect x="910" y="960" width="90" height="210" rx="36" fill="url(#leatherGrad)" stroke="#3B1C08" stroke-width="1.5"/>
-  <rect x="915" y="965" width="80" height="80" rx="24" fill="url(#leatherHighlightGrad)"/>
+    <!-- 右厚实扶手 -->
+    <rect x="910" y="960" width="90" height="210" rx="36" fill="url(#leatherGrad)" stroke="#3B1C08" stroke-width="1.5"/>
+    <rect x="915" y="965" width="80" height="80" rx="24" fill="url(#leatherHighlightGrad)"/>
 
-  <!-- 座垫加厚承托层与精工车缝线 -->
-  <rect x="280" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
-  <rect x="500" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
-  <rect x="720" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <!-- 座垫加厚承托层与精工车缝线 -->
+    <rect x="280" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <rect x="500" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
+    <rect x="720" y="1060" width="200" height="90" rx="18" fill="url(#leatherGrad)" stroke="#45230C" stroke-width="1.5"/>
 
-  <!-- 电动脚托缝线指示线 -->
-  <line x1="280" y1="1135" x2="480" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
-  <line x1="500" y1="1135" x2="700" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
-  <line x1="720" y1="1135" x2="920" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
+    <!-- 电动脚托缝线指示线 -->
+    <line x1="280" y1="1135" x2="480" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
+    <line x1="500" y1="1135" x2="700" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
+    <line x1="720" y1="1135" x2="920" y2="1135" stroke="#381D09" stroke-width="2" stroke-dasharray="4,3"/>
 
-  <!-- 7. 潘多拉天然微晶奢石茶几 -->
-  <ellipse cx="600" cy="1330" rx="190" ry="60" fill="url(#marbleGrad)" stroke="#9C8B77" stroke-width="2"/>
-  <ellipse cx="600" cy="1330" rx="160" ry="40" fill="#F8F6F2" opacity="0.6"/>
+    <!-- 4.4 潘多拉天然微晶奢石茶几 (位置拓扑对齐锁死) -->
+    <ellipse cx="600" cy="1330" rx="190" ry="60" fill="url(#marbleGrad)" stroke="#9C8B77" stroke-width="2"/>
+    <ellipse cx="600" cy="1330" rx="160" ry="40" fill="#F8F6F2" opacity="0.6"/>
+  </g>
 
-  <!-- 8. 工程铭牌与真值标识水印 (规范工程溯源) -->
-  <rect x="30" y="30" width="360" height="84" rx="12" fill="#1C1917" opacity="0.85"/>
-  <text x="50" y="58" fill="#F59E0B" font-size="14" font-weight="bold" font-family="sans-serif">MANWAH SPATIAL ASSET · ${shotCode}</text>
-  <text x="50" y="80" fill="#E7E5E4" font-size="11" font-family="sans-serif">${productName.slice(0, 24)} · ${productColor || '真值锁定'}</text>
-  <text x="50" y="100" fill="#A8A29E" font-size="10" font-family="monospace">CAM: ${camera.lensMm}mm | H: ${camera.heightCm}cm | YAW: ${camera.yawDeg}°</text>
+  <!-- 5. 变体差异化光效与景深遮罩层 -->
+  ${ambientOverlay}
+
+  <!-- 6. 统一工程铭牌与 A00 继承物理真值水印 -->
+  <rect x="30" y="30" width="460" height="106" rx="14" fill="#1C1917" opacity="0.88"/>
+  <text x="50" y="58" fill="#F59E0B" font-size="14" font-weight="bold" font-family="sans-serif">MANWAH SPATIAL CAMERA · ${shotCode} [方案 #${variantIndex}]</text>
+  <text x="50" y="80" fill="#E7E5E4" font-size="11" font-family="sans-serif">${productName.slice(0, 22)} · ${productColor || '真值锁定'}</text>
+  <text x="50" y="98" fill="#A8A29E" font-size="10" font-family="monospace">DNA: ${camera.lensMm}mm | H: ${camera.heightCm}cm | YAW: ${camera.yawDeg}° | PITCH: ${camera.pitchDeg}°</text>
+  <text x="50" y="118" fill="#10B981" font-size="9.5" font-family="sans-serif">✓ 空间与家具世界锁定 (A00 Master Invariance Enforced)</text>
 </svg>`;
 
     return Buffer.from(svg, 'utf-8');

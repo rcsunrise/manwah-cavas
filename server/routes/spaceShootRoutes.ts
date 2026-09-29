@@ -41,6 +41,11 @@ const RenderShotSchema = z.object({
   }).passthrough().optional(),
   productReferenceImage: z.string().optional(),
   promptSnapshot: z.record(z.string(), z.any()),
+  isHumanPass: z.boolean().optional(),
+  baseShotReferenceImage: z.string().optional(),
+  currentShotReferenceImage: z.string().optional(),
+  humanLayout: z.any().optional(),
+  selectedModels: z.array(z.any()).optional(),
   generationSettings: z.object({
     templateId: z.string().optional(),
     model: z.string().optional(),
@@ -258,13 +263,190 @@ router.post('/confirm-production-truth', async (req: Request, res: Response) => 
         revisionId,
         provenance: 'MANUAL_CONFIRMED',
         productionTruth: true,
-        confirmedAt: new Date().toISOString()
       }
     });
   } catch (err: any) {
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to confirm production truth'
+    });
+  }
+});
+
+/**
+ * POST /api/space/shoot/render-candidates
+ * 为指定镜头生成 4 候选方案（严格继承 A00 空间与家具世界，仅 Camera DNA 驱动，并提供 4 组细分变体）
+ */
+router.post('/render-candidates', async (req: Request, res: Response) => {
+  try {
+    const parsed = RenderShotSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid render-candidates payload',
+        details: parsed.error.issues
+      });
+    }
+
+    const {
+      projectId,
+      shotCode,
+      camera,
+      intent,
+      productDNA,
+      sceneMasterReference,
+      productReferenceImage,
+      promptSnapshot,
+      generationSettings
+    } = parsed.data;
+
+    const shotId = (req.body as any).shotId || `shot-${shotCode.toLowerCase()}`;
+    const isHumanPass = Boolean((req.body as any).isHumanPass);
+    const baseShotRef = (req.body as any).currentShotReferenceImage || (req.body as any).baseShotReferenceImage;
+    const humanLayout = (req.body as any).humanLayout;
+    const effectiveProductName = productDNA?.name || '敏华芝华仕头等舱功能真皮沙发';
+    const effectiveProductColor = productDNA?.colorCode || '干邑暖橙 (Cognac Amber)';
+    const effectiveProductMaterial = productDNA?.leatherType || '南美进口头层牛皮 (半苯胺)';
+    const effectiveProductRef = productReferenceImage || (productDNA as any)?.referenceImage;
+    const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+
+    const effectiveStyleName = promptSnapshot?.styleName || '意式轻奢';
+    const effectiveRoomName = promptSnapshot?.roomName || '雅致大平层';
+    const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || '4:3';
+
+    const variantSpecs = isHumanPass
+      ? [
+          {
+            idx: 1,
+            tag: `${effectiveStyleName} · 人物入座 · 天然通透光`,
+            promptAddon: 'natural soft daylight, relaxed authentic seating interaction, models naturally blending with living room atmosphere',
+            cameraDelta: {}
+          },
+          {
+            idx: 2,
+            tag: `${effectiveStyleName} · 人物入座 · 温暖侧光氛围`,
+            promptAddon: 'warm side lighting, golden rim light on hair and shoulders, warm family living moment',
+            cameraDelta: {}
+          },
+          {
+            idx: 3,
+            tag: `${effectiveStyleName} · 人物入座 · 柔焦生活意境`,
+            promptAddon: 'subtle shallow depth, delicate portrait lighting, relaxed and elegant posture on sofa',
+            cameraDelta: {}
+          },
+          {
+            idx: 4,
+            tag: `${effectiveStyleName} · 人物入座 · 黄金视觉金字塔`,
+            promptAddon: 'balanced family seating geometry, confident and harmonious lifestyle portrait, magazine editorial tier',
+            cameraDelta: {}
+          }
+        ]
+      : [
+          {
+            idx: 1,
+            tag: `${effectiveStyleName} · ${effectiveRoomName} · 天然通透漫射光`,
+            promptAddon: 'standard natural diffuse daytime light, clear architectural reflections, razor sharp optics',
+            cameraDelta: {}
+          },
+          {
+            idx: 2,
+            tag: `${effectiveStyleName} · ${effectiveRoomName} · 午后余晖温暖光`,
+            promptAddon: 'golden hour afternoon sun rays penetrating floor to ceiling window, amber leather highlights, warm atmospheric glow',
+            cameraDelta: {}
+          },
+          {
+            idx: 3,
+            tag: `${effectiveStyleName} · ${effectiveRoomName} · 黄金微距景深`,
+            promptAddon: 'shallow depth of field, gentle background bokeh, macro sharpness on genuine leather stitching, refined tactile textures',
+            cameraDelta: { lensMm: Math.min(85, (camera?.lensMm || 35) + 15) }
+          },
+          {
+            idx: 4,
+            tag: `${effectiveStyleName} · ${effectiveRoomName} · 广阔大平层视角`,
+            promptAddon: 'architectural deep perspective, vertical lines correction, expansive floor to ceiling windows, majestic headroom and depth',
+            cameraDelta: { pitchDeg: (camera?.pitchDeg || -2) - 2 }
+          }
+        ];
+
+    const batchTimestamp = Date.now();
+    const candidates = await Promise.all(
+      variantSpecs.map(async (v) => {
+        const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+          projectId,
+          shotId: shotCode,
+          revisionId: `cand-v${v.idx}-${batchTimestamp}`,
+          extension: 'webp'
+        });
+
+        const effectiveCamera = {
+          lensMm: v.cameraDelta.lensMm ?? camera.lensMm,
+          heightCm: camera.heightCm,
+          yawDeg: camera.yawDeg,
+          pitchDeg: v.cameraDelta.pitchDeg ?? camera.pitchDeg
+        };
+
+        const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
+
+        const imageResult = await SpaceImageGenerationService.generateAndStore({
+          projectId,
+          shotCode,
+          positivePrompt,
+          negativePrompt: promptSnapshot?.negativePrompt || '',
+          aspectRatio: effectiveAspect,
+          preferredModel: generationSettings?.model,
+          resolution: generationSettings?.resolution,
+          seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
+          productName: effectiveProductName,
+          productColor: effectiveProductColor,
+          productMaterial: effectiveProductMaterial,
+          primaryProduct: {
+            name: effectiveProductName,
+            colors: [effectiveProductColor],
+            materials: [effectiveProductMaterial],
+            referenceImage: effectiveProductRef
+          },
+          productReferenceImage: effectiveProductRef,
+          sceneMasterReferenceImage: effectiveSceneMasterRef,
+          currentShotReferenceImage: baseShotRef,
+          roomName: effectiveRoomName,
+          styleName: effectiveStyleName,
+          cameraSettings: effectiveCamera,
+          variantIndex: v.idx,
+          variantTag: v.tag,
+          objectKey
+        });
+
+        return {
+          id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
+          index: v.idx,
+          variantIndex: v.idx,
+          imageUrl: imageResult.imageUrl,
+          objectKey: imageResult.objectKey,
+          thumbnailUrl: imageResult.imageUrl,
+          summaryTag: v.tag,
+          promptFragment: v.promptAddon,
+          seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx : 1000 + v.idx,
+          score: 92 + v.idx,
+          isFavorite: false,
+          createdAt: new Date().toISOString()
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: {
+        shotId,
+        shotCode,
+        batchId: `batch-${shotCode.toLowerCase()}-${batchTimestamp}`,
+        activeCandidateId: candidates[0].id,
+        candidates
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to render candidates'
     });
   }
 });
