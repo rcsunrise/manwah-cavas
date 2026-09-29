@@ -696,6 +696,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<Record<string, string>>({});
 
+  useEffect(() => {
+    (window as any).__setCandidateBatch = (shotId: string, batch: ShotCandidateBatch) => {
+      setCandidateBatches((prev) => ({ ...prev, [shotId]: batch }));
+      setSelectedCandidateIds((prev) => ({ ...prev, [shotId]: batch.candidates[0].id }));
+    };
+  }, []);
+
   // 构造并保存单候选方案（纯真实结果，杜绝混入与产品无关的样板假图）
   const buildAndSetCandidateBatch = (targetShot: ShotInstance, primaryUrl: string, primaryKey?: string) => {
     const styleName = activeAssets.style?.name || '现代意式极简';

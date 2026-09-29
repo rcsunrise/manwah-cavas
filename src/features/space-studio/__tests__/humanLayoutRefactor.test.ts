@@ -59,7 +59,7 @@ describe('Human Layout Refactor & Model Addition Flow', () => {
       thumbnail: 'https://example.com/thumb.jpg',
       tags: ['高管', '精英'],
       createdAt: new Date().toISOString()
-    };
+    } as unknown as ModelAsset;
 
     const slotsWithModel = DEFAULT_6_HUMAN_SLOTS.map((s, idx) =>
       idx === 0 ? { ...s, modelId: mockModel.id, modelName: mockModel.nameZh } : s
