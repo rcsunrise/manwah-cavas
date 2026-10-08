@@ -7,6 +7,7 @@ import {
   Palette,
   Camera,
   ChevronLeft,
+  ChevronDown,
   Check,
   Sparkles,
   Layers,
@@ -54,6 +55,10 @@ interface SpaceStudioLeftDrawerProps {
 
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+
+  drawerWidth?: number;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 type TabKey = 'space' | 'product' | 'style' | 'camera';
@@ -76,7 +81,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   activeShotIndex,
   onSelectShot,
   theme = 'dark',
-  onToggleTheme
+  onToggleTheme,
+  drawerWidth = 336,
+  isCollapsed = false,
+  onToggleCollapse
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<TabKey>('product');
@@ -84,6 +92,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   const [showTagInput, setShowTagInput] = useState<boolean>(false);
   const [newRuleInput, setNewRuleInput] = useState<string>('');
   const [showRuleInput, setShowRuleInput] = useState<boolean>(false);
+  // 产品细节折叠状态 (支持各模块收起展开，核心主品参数类内容默认折叠，保持版面整洁)
+  const [isReadoutsCollapsed, setIsReadoutsCollapsed] = useState<boolean>(true);
+  const [isFeaturesCollapsed, setIsFeaturesCollapsed] = useState<boolean>(true);
+  const [isRulesCollapsed, setIsRulesCollapsed] = useState<boolean>(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isLight = theme === 'light';
@@ -210,13 +222,21 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
       >
         {navButtons.map((btn) => {
           const Icon = btn.icon;
-          const isActive = activeTab === btn.key && isOpen;
+          const isActive = activeTab === btn.key && isOpen && !isCollapsed;
           return (
             <button
               key={btn.key}
               onClick={() => {
-                if (activeTab === btn.key && isOpen) {
-                  setIsOpen(false);
+                if (isCollapsed) {
+                  if (onToggleCollapse) onToggleCollapse();
+                  setActiveTab(btn.key);
+                  setIsOpen(true);
+                } else if (activeTab === btn.key && isOpen) {
+                  if (onToggleCollapse) {
+                    onToggleCollapse();
+                  } else {
+                    setIsOpen(false);
+                  }
                 } else {
                   setActiveTab(btn.key);
                   setIsOpen(true);
@@ -271,9 +291,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
       </div>
 
       {/* 2. Expandable Content Drawer */}
-      {isOpen && (
+      {isOpen && !isCollapsed && (
         <div
-          className={`w-84 border-r flex flex-col h-full overflow-hidden animate-in slide-in-from-left duration-200 transition-colors ${
+          style={{ width: `${drawerWidth}px` }}
+          className={`border-r flex flex-col h-full overflow-hidden animate-in slide-in-from-left duration-200 transition-[width,background-color] ${
             isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-stone-900 border-stone-800 text-stone-200'
           }`}
         >
@@ -302,7 +323,13 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
               )}
             </div>
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                if (onToggleCollapse) {
+                  onToggleCollapse();
+                } else {
+                  setIsOpen(false);
+                }
+              }}
               className={`p-1 rounded transition cursor-pointer ${
                 isLight ? 'text-stone-400 hover:text-stone-800 hover:bg-stone-100' : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
               }`}
@@ -312,8 +339,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
             </button>
           </div>
 
-          {/* Drawer Body */}
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+          {/* Drawer Body (增加 pb-28 安全留白，避免被底部画册镜头导航遮挡) */}
+          <div className="flex-1 overflow-y-auto p-3.5 pb-28 space-y-3.5 text-xs">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -515,203 +542,282 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                     )}
 
                     {/* ===================== 产品方便读数区块 (READOUTS) ===================== */}
-                    <div className="space-y-2 pt-1">
-                      <div className="flex items-center justify-between text-[11px] font-bold">
+                    <div className="space-y-1.5 pt-1">
+                      <div
+                        onClick={() => setIsReadoutsCollapsed(!isReadoutsCollapsed)}
+                        className={`flex items-center justify-between text-[11px] font-bold cursor-pointer select-none p-1 rounded-lg transition-colors ${
+                          isLight ? 'hover:bg-amber-100/50' : 'hover:bg-stone-900/60'
+                        }`}
+                      >
                         <span className={`flex items-center gap-1 ${isLight ? 'text-stone-700' : 'text-stone-300'}`}>
                           <Ruler className="w-3.5 h-3.5 text-amber-500" />
                           <span>产品工程规格读数</span>
                         </span>
-                        <span className={`text-[10px] font-mono ${isLight ? 'text-amber-800 font-semibold' : 'text-amber-400'}`}>
-                          置信度 {primaryProduct.readoutConfidence ? `${Math.round(primaryProduct.readoutConfidence * 100)}%` : '98% 黄金精测'}
-                        </span>
-                      </div>
-
-                      {/* 物理尺寸读数条 */}
-                      <div
-                        className={`p-2 rounded-lg border grid grid-cols-3 gap-1 text-center font-mono ${
-                          isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-stone-900/80 border-stone-800 text-stone-300'
-                        }`}
-                      >
-                        <div>
-                          <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总宽 (W)</div>
-                          <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                            {primaryProduct.dimensions?.width || 3100} <span className="text-[8px]">mm</span>
-                          </div>
-                        </div>
-                        <div>
-                          <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总深 (D)</div>
-                          <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                            {primaryProduct.dimensions?.depth || 1080} <span className="text-[8px]">mm</span>
-                          </div>
-                        </div>
-                        <div>
-                          <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总高 (H)</div>
-                          <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                            {primaryProduct.dimensions?.height || 950} <span className="text-[8px]">mm</span>
-                          </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-mono ${isLight ? 'text-amber-800 font-semibold' : 'text-amber-400'}`}>
+                            {primaryProduct.readoutConfidence ? `${Math.round(primaryProduct.readoutConfidence * 100)}%` : '98% 黄金精测'}
+                          </span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
+                              isReadoutsCollapsed ? '-rotate-90' : ''
+                            }`}
+                          />
                         </div>
                       </div>
 
-                      {/* 材质与色彩读数 */}
-                      <div
-                        className={`p-2 rounded-lg border space-y-1.5 text-[11px] ${
-                          isLight ? 'bg-white border-stone-200' : 'bg-stone-900/80 border-stone-800'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-1">
-                          <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>材质系:</span>
-                          <span className={`text-right font-medium truncate ${isLight ? 'text-stone-800' : 'text-stone-200'}`}>
-                            {primaryProduct.materials?.join(' · ') || '半苯胺头层牛皮 / 科技布'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between gap-1">
-                          <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>原厂色彩:</span>
-                          <span className={`text-right font-medium truncate ${isLight ? 'text-stone-800' : 'text-stone-200'}`}>
-                            {primaryProduct.colors?.join(' / ') || '极地米白 / 云雾暖灰'}
-                          </span>
-                        </div>
-                        {primaryProduct.surfaceTexture && (
-                          <div className="flex items-start justify-between gap-1">
-                            <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>肌理工艺:</span>
-                            <span className={`text-right text-[10px] line-clamp-1 ${isLight ? 'text-stone-600' : 'text-stone-400'}`}>
-                              {primaryProduct.surfaceTexture}
-                            </span>
+                      {!isReadoutsCollapsed ? (
+                        <div className="space-y-2 animate-in fade-in duration-150">
+                          {/* 物理尺寸读数条 */}
+                          <div
+                            className={`p-2 rounded-lg border grid grid-cols-3 gap-1 text-center font-mono ${
+                              isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-stone-900/80 border-stone-800 text-stone-300'
+                            }`}
+                          >
+                            <div>
+                              <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总宽 (W)</div>
+                              <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                                {primaryProduct.dimensions?.width || 3100} <span className="text-[8px]">mm</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总深 (D)</div>
+                              <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                                {primaryProduct.dimensions?.depth || 1080} <span className="text-[8px]">mm</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className={`text-[9px] ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>总高 (H)</div>
+                              <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                                {primaryProduct.dimensions?.height || 950} <span className="text-[8px]">mm</span>
+                              </div>
+                            </div>
                           </div>
-                        )}
-                      </div>
+
+                          {/* 材质与色彩读数 */}
+                          <div
+                            className={`p-2 rounded-lg border space-y-1.5 text-[11px] ${
+                              isLight ? 'bg-white border-stone-200' : 'bg-stone-900/80 border-stone-800'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>材质系:</span>
+                              <span className={`text-right font-medium truncate ${isLight ? 'text-stone-800' : 'text-stone-200'}`}>
+                                {primaryProduct.materials?.join(' · ') || '半苯胺头层牛皮 / 科技布'}
+                              </span>
+                            </div>
+                            <div className="flex items-start justify-between gap-1">
+                              <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>原厂色彩:</span>
+                              <span className={`text-right font-medium truncate ${isLight ? 'text-stone-800' : 'text-stone-200'}`}>
+                                {primaryProduct.colors?.join(' / ') || '极地米白 / 云雾暖灰'}
+                              </span>
+                            </div>
+                            {primaryProduct.surfaceTexture && (
+                              <div className="flex items-start justify-between gap-1">
+                                <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>肌理工艺:</span>
+                                <span className={`text-right text-[10px] line-clamp-1 ${isLight ? 'text-stone-600' : 'text-stone-400'}`}>
+                                  {primaryProduct.surfaceTexture}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => setIsReadoutsCollapsed(false)}
+                          className={`p-1.5 rounded-lg border text-[10px] font-mono text-center cursor-pointer transition ${
+                            isLight ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-stone-900/50 text-stone-400 border-stone-800'
+                          }`}
+                        >
+                          尺寸: {primaryProduct.dimensions?.width || 3100}×{primaryProduct.dimensions?.depth || 1080}×{primaryProduct.dimensions?.height || 950}mm · {primaryProduct.materials?.[0] || '半苯胺牛皮'} (已折叠，点击展开)
+                        </div>
+                      )}
                     </div>
 
                     {/* ===================== 产品结构标记区块 (MARKINGS & TAGS) ===================== */}
-                    <div className="space-y-2 pt-1 border-t border-stone-700/20">
-                      <div className="flex items-center justify-between text-[11px] font-bold">
+                    <div className="space-y-1.5 pt-1 border-t border-stone-700/20">
+                      <div
+                        onClick={() => setIsFeaturesCollapsed(!isFeaturesCollapsed)}
+                        className={`flex items-center justify-between text-[11px] font-bold cursor-pointer select-none p-1 rounded-lg transition-colors ${
+                          isLight ? 'hover:bg-amber-100/50' : 'hover:bg-stone-900/60'
+                        }`}
+                      >
                         <span className={`flex items-center gap-1 ${isLight ? 'text-stone-700' : 'text-stone-300'}`}>
                           <Tag className="w-3.5 h-3.5 text-amber-500" />
                           <span>结构与关键特征标记</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setShowTagInput(!showTagInput)}
-                          className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>添加标记</span>
-                        </button>
-                      </div>
-
-                      {/* 结构标记芯片流 */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {(primaryProduct.structuralFeatures && primaryProduct.structuralFeatures.length > 0
-                          ? primaryProduct.structuralFeatures
-                          : [
-                              { name: '立体双包线扶手', description: '' },
-                              { name: '电动展开功能位', description: '' },
-                              { name: '分段式护腰靠包', description: '' },
-                              { name: '高碳钢隐藏底脚', description: '' }
-                            ]
-                        ).map((feat, idx) => (
-                          <span
-                            key={idx}
-                            className={`group inline-flex items-center gap-1 px-2 py-0.8 rounded-lg text-[10px] border transition ${
-                              isLight
-                                ? 'bg-amber-100/70 border-amber-300 text-amber-900'
-                                : 'bg-stone-900 border-stone-700 text-amber-300'
-                            }`}
-                          >
-                            <span>{feat.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFeatureTag(feat.name)}
-                              className="text-stone-400 hover:text-rose-500 opacity-60 group-hover:opacity-100 transition cursor-pointer"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* 自定义标记输入框 */}
-                      {showTagInput && (
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <input
-                            type="text"
-                            placeholder="如：双电机无极伸缩、法式手工滚边..."
-                            value={newTagInput}
-                            onChange={(e) => setNewTagInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddFeatureTag()}
-                            className={`flex-1 py-1 px-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-                              isLight ? 'bg-white border-stone-300 text-stone-900' : 'bg-stone-900 border-stone-700 text-stone-100'
-                            }`}
-                          />
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={handleAddFeatureTag}
-                            className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsFeaturesCollapsed(false);
+                              setShowTagInput(!showTagInput);
+                            }}
+                            className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
                           >
-                            添加
+                            <Plus className="w-3 h-3" />
+                            <span>添加标记</span>
                           </button>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
+                              isFeaturesCollapsed ? '-rotate-90' : ''
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {!isFeaturesCollapsed ? (
+                        <div className="space-y-2 animate-in fade-in duration-150">
+                          {/* 结构标记芯片流 */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {(primaryProduct.structuralFeatures && primaryProduct.structuralFeatures.length > 0
+                              ? primaryProduct.structuralFeatures
+                              : [
+                                  { name: '立体双包线扶手', description: '' },
+                                  { name: '电动展开功能位', description: '' },
+                                  { name: '分段式护腰靠包', description: '' },
+                                  { name: '高碳钢隐藏底脚', description: '' }
+                                ]
+                            ).map((feat, idx) => (
+                              <span
+                                key={idx}
+                                className={`group inline-flex items-center gap-1 px-2 py-0.8 rounded-lg text-[10px] border transition ${
+                                  isLight
+                                    ? 'bg-amber-100/70 border-amber-300 text-amber-900'
+                                    : 'bg-stone-900 border-stone-700 text-amber-300'
+                                }`}
+                              >
+                                <span>{feat.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFeatureTag(feat.name)}
+                                  className="text-stone-400 hover:text-rose-500 opacity-60 group-hover:opacity-100 transition cursor-pointer"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* 自定义标记输入框 */}
+                          {showTagInput && (
+                            <div className="flex items-center gap-1.5 pt-1">
+                              <input
+                                type="text"
+                                placeholder="如：双电机无极伸缩、法式手工滚边..."
+                                value={newTagInput}
+                                onChange={(e) => setNewTagInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleAddFeatureTag()}
+                                className={`flex-1 py-1 px-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                  isLight ? 'bg-white border-stone-300 text-stone-900' : 'bg-stone-900 border-stone-700 text-stone-100'
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddFeatureTag}
+                                className="px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs"
+                              >
+                                添加
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => setIsFeaturesCollapsed(false)}
+                          className={`p-1.5 rounded-lg border text-[10px] text-center cursor-pointer transition ${
+                            isLight ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-stone-900/50 text-stone-400 border-stone-800'
+                          }`}
+                        >
+                          已标记 {(primaryProduct.structuralFeatures || []).length || 4} 个关键特征 (已折叠，点击展开)
                         </div>
                       )}
                     </div>
 
                     {/* ===================== 真值物理保护规则标记 ===================== */}
                     <div
-                      className={`p-2.5 rounded-lg border space-y-1.5 text-[10px] leading-relaxed ${
+                      className={`p-2.5 rounded-lg border space-y-1.5 text-[10px] leading-relaxed transition-all ${
                         isLight ? 'bg-amber-50/70 border-amber-200/80 text-stone-700' : 'bg-stone-900 border-stone-800 text-stone-400'
                       }`}
                     >
-                      <div className="flex items-center justify-between font-bold text-amber-600 dark:text-amber-400">
+                      <div
+                        onClick={() => setIsRulesCollapsed(!isRulesCollapsed)}
+                        className="flex items-center justify-between font-bold text-amber-600 dark:text-amber-400 cursor-pointer select-none"
+                      >
                         <span className="flex items-center gap-1">
                           <ShieldCheck className="w-3.5 h-3.5" />
                           <span>真值物理保护规则 (不可漂移)：</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setShowRuleInput(!showRuleInput)}
-                          className="text-[9px] hover:underline cursor-pointer"
-                        >
-                          + 增加规则
-                        </button>
-                      </div>
-
-                      {(primaryProduct.lockedRules && primaryProduct.lockedRules.length > 0
-                        ? primaryProduct.lockedRules
-                        : [
-                            '绝对锁定原产品皮革色温与缝线工艺',
-                            '绝对维持五金脚部与功能架物理比例',
-                            '锁定 1:1 工业真值宽高比（杜绝拉伸形变）'
-                          ]
-                      ).map((rule, rIdx) => (
-                        <div key={rIdx} className="flex items-start justify-between gap-1 group">
-                          <span className="flex-1">✓ {rule}</span>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => handleRemoveRule(rIdx)}
-                            className="text-stone-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsRulesCollapsed(false);
+                              setShowRuleInput(!showRuleInput);
+                            }}
+                            className="text-[9px] hover:underline cursor-pointer"
                           >
-                            ×
+                            + 增加规则
                           </button>
-                        </div>
-                      ))}
-
-                      {showRuleInput && (
-                        <div className="flex items-center gap-1.5 pt-1">
-                          <input
-                            type="text"
-                            placeholder="输入保护规则..."
-                            value={newRuleInput}
-                            onChange={(e) => setNewRuleInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddRule()}
-                            className={`flex-1 py-1 px-2 text-[10px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-                              isLight ? 'bg-white border-stone-300 text-stone-900' : 'bg-stone-950 border-stone-700 text-stone-100'
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                              isRulesCollapsed ? '-rotate-90' : ''
                             }`}
                           />
-                          <button
-                            type="button"
-                            onClick={handleAddRule}
-                            className="px-2 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px]"
-                          >
-                            保存
-                          </button>
+                        </div>
+                      </div>
+
+                      {!isRulesCollapsed ? (
+                        <div className="space-y-1.5 animate-in fade-in duration-150">
+                          {(primaryProduct.lockedRules && primaryProduct.lockedRules.length > 0
+                            ? primaryProduct.lockedRules
+                            : [
+                                '绝对锁定原产品皮革色温与缝线工艺',
+                                '绝对维持五金脚部与功能架物理比例',
+                                '锁定 1:1 工业真值宽高比（杜绝拉伸形变）'
+                              ]
+                          ).map((rule, rIdx) => (
+                            <div key={rIdx} className="flex items-start justify-between gap-1 group">
+                              <span className="flex-1">✓ {rule}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRule(rIdx)}
+                                className="text-stone-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+
+                          {showRuleInput && (
+                            <div className="flex items-center gap-1.5 pt-1">
+                              <input
+                                type="text"
+                                placeholder="输入保护规则..."
+                                value={newRuleInput}
+                                onChange={(e) => setNewRuleInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleAddRule()}
+                                className={`flex-1 py-1 px-2 text-[10px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+                                  isLight ? 'bg-white border-stone-300 text-stone-900' : 'bg-stone-950 border-stone-700 text-stone-100'
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddRule}
+                                className="px-2 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px]"
+                              >
+                                保存
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => setIsRulesCollapsed(false)}
+                          className="text-[9px] text-stone-500 cursor-pointer pt-0.5"
+                        >
+                          已启用 {(primaryProduct.lockedRules || []).length || 3} 条不可漂移保护规则 (已折叠，点击展开)
                         </div>
                       )}
                     </div>

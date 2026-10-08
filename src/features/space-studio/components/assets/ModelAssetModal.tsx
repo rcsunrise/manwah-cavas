@@ -3,7 +3,8 @@ import {
   X, Search, User, Sparkles, Star, Plus, Check, 
   Trash2, Upload, Eye, Sliders, RefreshCw, AlertCircle, Shirt,
   Smile, Camera, Layers, Copy, CheckCheck, Scan, ShieldCheck, Heart,
-  FileText, Image as ImageIcon, ArrowRight, UserCheck, Compass
+  FileText, Image as ImageIcon, ArrowRight, UserCheck, Compass,
+  Edit2, Pencil
 } from 'lucide-react';
 import { ModelAsset, ModelMultiViews, FamilyRoleType } from '../../../../types/spaceAssetLibrary';
 import { spaceAssetLibraryService } from '../../../../services/spaceAssetLibraryService';
@@ -43,6 +44,30 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
   const [activeViewKey, setActiveViewKey] = useState<string>('front');
   const [copiedDna, setCopiedDna] = useState(false);
 
+  // Edit Model State
+  const [editingModel, setEditingModel] = useState<ModelAsset | null>(null);
+  const [editForm, setEditForm] = useState<{
+    nameZh: string;
+    nameEn: string;
+    roleType: FamilyRoleType;
+    ageGroup: string;
+    height: string;
+    positioning: string;
+    temperament: string;
+    bio: string;
+    coverImage: string;
+  }>({
+    nameZh: '',
+    nameEn: '',
+    roleType: 'father',
+    ageGroup: '',
+    height: '',
+    positioning: '',
+    temperament: '',
+    bio: '',
+    coverImage: '',
+  });
+
   // Import Drawer State
   const [showUploadDrawer, setShowUploadDrawer] = useState(false);
   const [importMode, setImportMode] = useState<'single' | 'sheet_ai'>('sheet_ai');
@@ -60,11 +85,21 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
   const [manualBio, setManualBio] = useState('');
   const [manualViews, setManualViews] = useState<Record<string, string>>({});
   const cardSheetInputRef = useRef<HTMLInputElement>(null);
+  const editImageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       loadModels();
     }
+    const handleAssetsChanged = () => {
+      if (isOpen) {
+        loadModels();
+      }
+    };
+    window.addEventListener('manwah_space_assets_changed', handleAssetsChanged);
+    return () => {
+      window.removeEventListener('manwah_space_assets_changed', handleAssetsChanged);
+    };
   }, [isOpen]);
 
   const loadModels = () => {
@@ -117,13 +152,83 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
 
   const handleDeleteModel = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm('确定删除此模特资产吗？')) {
+    const target = models.find(m => m.id === id);
+    const targetName = target?.nameZh || target?.name || '此模特';
+    if (window.confirm(`确定要从资产库中删除模特 "${targetName}" 吗？此操作将立即从人物资产库中移除。`)) {
       spaceAssetLibraryService.deleteModel(id);
       loadModels();
       if (activeModel?.id === id) {
-        setActiveModel(models.find(m => m.id !== id) || null);
+        const remaining = models.filter(m => m.id !== id);
+        setActiveModel(remaining[0] || null);
       }
     }
+  };
+
+  // 打开编辑模特模态窗
+  const handleOpenEditModal = (e: React.MouseEvent, model: ModelAsset) => {
+    e.stopPropagation();
+    setEditingModel(model);
+    setEditForm({
+      nameZh: model.nameZh || model.name,
+      nameEn: model.nameEn || '',
+      roleType: (model.roleType as FamilyRoleType) || 'father',
+      ageGroup: model.ageGroup || '',
+      height: model.height || '',
+      positioning: model.positioning || '',
+      temperament: (model.temperamentKeywords || []).join('，'),
+      bio: model.bio || '',
+      coverImage: model.coverImage || model.thumbnail || '',
+    });
+  };
+
+  // 保存模特编辑修改
+  const handleSaveEditModel = () => {
+    if (!editingModel) return;
+    if (!editForm.nameZh.trim()) {
+      alert('请填写人物姓名/称谓');
+      return;
+    }
+
+    const kwList = editForm.temperament
+      .split(/[,，、\s]+/)
+      .map(k => k.trim().replace(/^#/, ''))
+      .filter(Boolean);
+
+    const updated = spaceAssetLibraryService.updateModel(editingModel.id, {
+      name: editForm.nameZh.trim(),
+      nameZh: editForm.nameZh.trim(),
+      nameEn: editForm.nameEn.trim(),
+      roleType: editForm.roleType,
+      ageGroup: editForm.ageGroup.trim(),
+      height: editForm.height.trim(),
+      positioning: editForm.positioning.trim(),
+      temperamentKeywords: kwList.length > 0 ? kwList : editingModel.temperamentKeywords,
+      bio: editForm.bio.trim(),
+      coverImage: editForm.coverImage || editingModel.coverImage,
+      thumbnail: editForm.coverImage || editingModel.thumbnail,
+      views: {
+        ...editingModel.views,
+        portrait: editForm.coverImage || editingModel.views?.portrait,
+        front: editForm.coverImage || editingModel.views?.front,
+      }
+    });
+
+    loadModels();
+    setActiveModel(updated);
+    setEditingModel(null);
+  };
+
+  // 编辑模特时上传替换新头像/立绘
+  const handleUploadEditImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      if (typeof loadEvt.target?.result === 'string') {
+        setEditForm(prev => ({ ...prev, coverImage: loadEvt.target!.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCopyDna = () => {
@@ -189,43 +294,55 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
   const handleSaveImportedModel = () => {
     const primaryImg = manualViews.front || manualViews.portrait || scannedResult?.views?.front || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80';
     
-    const created = spaceAssetLibraryService.createModel({
-      name: manualNameZh || '新录入家庭角色',
-      nameZh: manualNameZh || '新录入家庭角色',
-      nameEn: manualNameEn || 'Custom Role',
-      roleType: manualRoleType,
-      ageGroup: manualAgeGroup,
-      height: manualHeight,
-      positioning: manualPositioning,
-      bio: manualBio,
-      temperamentKeywords: scannedResult?.temperamentKeywords || ['沉稳', '知性', '自然'],
-      coverImage: primaryImg,
-      thumbnail: primaryImg,
-      views: manualViews,
-      multiViews: manualViews,
-      expressionRefs: scannedResult?.expressionRefs || [primaryImg],
-      detailRefs: scannedResult?.detailRefs || [primaryImg],
-      lifestyleRefs: scannedResult?.lifestyleRefs || [primaryImg],
-      modelDna: scannedResult?.modelDna || {
+    try {
+      const mergedModelDna = {
+        ...(scannedResult?.modelDna || {}),
         gender: ['mother', 'grandmother', 'daughter'].includes(manualRoleType) ? 'female' : 'male',
         roleType: manualRoleType,
         ageGroup: manualAgeGroup,
+        ageRange: manualAgeGroup,
         height: manualHeight,
-        appearanceDesc: manualPositioning,
-        clothingDesc: '极简私服',
-        materialsColorsDesc: '天然面料',
-        identityDesc: '家庭核心成员',
-        behaviorTags: ['居家生活'],
-        sceneTags: ['大平层客厅'],
-        poseTags: ['舒适坐姿'],
-        negativeConstraints: ['严禁面部变形', '严禁年龄漂移']
-      }
-    });
+        positioning: manualPositioning,
+        appearanceDesc: scannedResult?.modelDna?.appearanceDesc || manualPositioning,
+        clothingDesc: scannedResult?.modelDna?.clothingDesc || '极简质感私服',
+        materialsColorsDesc: scannedResult?.modelDna?.materialsColorsDesc || '天然面料与低饱和中性色',
+        identityDesc: manualPositioning || '家庭核心成员',
+        behaviorTags: scannedResult?.modelDna?.behaviorTags || ['居家生活', '舒适休憩', '陪伴家人'],
+        sceneTags: scannedResult?.modelDna?.sceneTags || ['大平层客厅', '独立书房'],
+        poseTags: scannedResult?.modelDna?.poseTags || ['舒适坐姿', '沙发端坐'],
+        negativeConstraints: scannedResult?.modelDna?.negativeConstraints || ['严禁面部变形', '严禁年龄漂移', '严禁肢体畸变']
+      };
 
-    loadModels();
-    setActiveModel(created);
-    setShowUploadDrawer(false);
-    setScannedResult(null);
+      const created = spaceAssetLibraryService.createModel({
+        name: manualNameZh || '新录入家庭角色',
+        nameZh: manualNameZh || '新录入家庭角色',
+        nameEn: manualNameEn || (manualRoleType === 'father' ? 'Refined Father' : manualRoleType === 'mother' ? 'Elegant Mother' : 'Custom Role'),
+        roleType: manualRoleType,
+        gender: ['mother', 'grandmother', 'daughter'].includes(manualRoleType) ? 'female' : 'male',
+        ageGroup: manualAgeGroup,
+        height: manualHeight,
+        positioning: manualPositioning,
+        bio: manualBio || `通过 AI 资产卡扫描识别的人物真值资产（${manualNameZh}），五官骨骼比例严谨，包含多视角与私服穿搭。`,
+        temperamentKeywords: scannedResult?.temperamentKeywords || (
+          ['mother', 'grandmother', 'daughter'].includes(manualRoleType) ? ['知性优雅', '温柔明媚', '品味高级'] : ['沉稳儒雅', '亲和威严', '高智感']
+        ),
+        coverImage: primaryImg,
+        thumbnail: primaryImg,
+        views: manualViews,
+        multiViews: manualViews,
+        expressionRefs: scannedResult?.expressionRefs || [primaryImg],
+        detailRefs: scannedResult?.detailRefs || [primaryImg],
+        lifestyleRefs: scannedResult?.lifestyleRefs || [primaryImg],
+        modelDna: mergedModelDna
+      });
+
+      loadModels();
+      setActiveModel(created);
+      setShowUploadDrawer(false);
+      setScannedResult(null);
+    } catch (error: any) {
+      alert(error?.message || '保存人物资产失败');
+    }
   };
 
   const viewSlots: { key: string; label: string; desc: string }[] = [
@@ -239,7 +356,7 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="relative w-full max-w-6xl h-[88vh] bg-[#12141c] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-neutral-200">
         
         {/* Top Header */}
@@ -256,6 +373,25 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono border border-purple-500/30">
                   6 大核心家庭角色 · 多视角真值
                 </span>
+                {(() => {
+                  const quota = spaceAssetLibraryService.getUserQuota('model');
+                  if (quota.isAdmin) {
+                    return (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-medium">
+                        👑 首席设计师权限 · 系统默认留存
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border flex items-center gap-1 font-medium ${
+                      quota.used >= quota.max 
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30 font-bold' 
+                        : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                    }`}>
+                      个人人物配额: {quota.used} / {quota.max} 份
+                    </span>
+                  );
+                })()}
               </div>
               <p className="text-xs text-neutral-400 mt-0.5">
                 严禁随机示意模特。独立角色 DNA、多视角线稿真图与生活场景资产，确保跨镜头绝对一致性。
@@ -403,10 +539,11 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="flex flex-col justify-between items-end">
+                    {/* Action buttons: 收藏 + 编辑 + 删减 */}
+                    <div className="flex flex-col justify-between items-end gap-1.5 shrink-0">
                       <button
                         onClick={(e) => handleToggleFavorite(e, model.id)}
+                        title="收藏模特"
                         className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
                           model.isFavorite || model.favorite
                             ? 'text-amber-400 bg-amber-400/10'
@@ -416,14 +553,23 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                         <Star className={`w-3 h-3 ${model.isFavorite || model.favorite ? 'fill-current' : ''}`} />
                       </button>
 
-                      {!model.isSystem && (
-                        <button
-                          onClick={(e) => handleDeleteModel(e, model.id)}
-                          className="w-6 h-6 rounded-full text-neutral-500 hover:text-rose-400 bg-black/30 flex items-center justify-center transition-all"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
+                      {/* 编辑模特资产入口 */}
+                      <button
+                        onClick={(e) => handleOpenEditModal(e, model)}
+                        title="编辑此模特资产信息"
+                        className="w-6 h-6 rounded-full text-neutral-400 hover:text-purple-300 hover:bg-purple-500/20 bg-black/40 flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+
+                      {/* 删减模特资产入口（支持所有模特素材删减） */}
+                      <button
+                        onClick={(e) => handleDeleteModel(e, model.id)}
+                        title="从资产库删除此模特"
+                        className="w-6 h-6 rounded-full text-neutral-500 hover:text-rose-400 hover:bg-rose-500/20 bg-black/40 flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -467,13 +613,29 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={(e) => handleOpenEditModal(e, activeModel)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-400/40 text-xs text-neutral-300 hover:text-purple-200 transition-all cursor-pointer"
+                    title="编辑当前模特名称、定位与身材属性"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-purple-400" />
+                    <span>编辑模特</span>
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteModel(e, activeModel.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-400/40 text-xs text-neutral-400 hover:text-rose-300 transition-all cursor-pointer"
+                    title="从资产库删除此模特素材"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                    <span>删除</span>
+                  </button>
                   <button
                     onClick={handleCopyDna}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-neutral-300 hover:text-white transition-all"
                   >
                     {copiedDna ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-purple-400" />}
-                    <span>{copiedDna ? '已复制 DNA' : '复制 Model DNA'}</span>
+                    <span>{copiedDna ? '已复制 DNA' : '复制 DNA'}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -483,7 +645,7 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all"
                   >
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    <span>选用此家庭角色</span>
+                    <span>选用此角色</span>
                   </button>
                 </div>
               </div>
@@ -965,32 +1127,106 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                   </div>
 
                   {/* Form fields for review */}
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <label className="text-[11px] text-neutral-400 block mb-1">中文角色名称</label>
-                      <input
-                        type="text"
-                        value={manualNameZh}
-                        onChange={e => setManualNameZh(e.target.value)}
-                        placeholder="例如：家庭男主人 · 沉稳儒雅"
-                        className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
-                      />
+                  <div className="space-y-3 text-xs">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">中文角色名称</label>
+                        <input
+                          type="text"
+                          value={manualNameZh}
+                          onChange={e => setManualNameZh(e.target.value)}
+                          placeholder="例如：定制角色 · 知性优雅女主人"
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">英文名称</label>
+                        <input
+                          type="text"
+                          value={manualNameEn}
+                          onChange={e => setManualNameEn(e.target.value)}
+                          placeholder="例如：Custom / Elegant Mother"
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">角色类型</label>
+                        <select
+                          value={manualRoleType}
+                          onChange={e => setManualRoleType(e.target.value as FamilyRoleType)}
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        >
+                          <option value="father">家庭男主人 (Father)</option>
+                          <option value="mother">家庭女主人 (Mother)</option>
+                          <option value="grandfather">爷爷 (Grandfather)</option>
+                          <option value="grandmother">奶奶 (Grandmother)</option>
+                          <option value="daughter">混血女儿 (Young Daughter)</option>
+                          <option value="son">混血男孩 (Young Son)</option>
+                          <option value="couple">夫妻组合 (Couple)</option>
+                          <option value="family">全家福 (Family)</option>
+                        </select>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[11px] text-neutral-400 block mb-1">角色类型</label>
-                      <select
-                        value={manualRoleType}
-                        onChange={e => setManualRoleType(e.target.value as FamilyRoleType)}
-                        className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
-                      >
-                        <option value="father">家庭男主人 (Father)</option>
-                        <option value="mother">家庭女主人 (Mother)</option>
-                        <option value="grandfather">爷爷 (Grandfather)</option>
-                        <option value="grandmother">奶奶 (Grandmother)</option>
-                        <option value="daughter">混血女儿 (Young Daughter)</option>
-                        <option value="son">混血男孩 (Young Son)</option>
-                      </select>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">真实年龄段</label>
+                        <input
+                          type="text"
+                          value={manualAgeGroup}
+                          onChange={e => setManualAgeGroup(e.target.value)}
+                          placeholder="例如：30-35岁 知性青年期"
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">预估身高</label>
+                        <input
+                          type="text"
+                          value={manualHeight}
+                          onChange={e => setManualHeight(e.target.value)}
+                          placeholder="例如：168cm 优雅高挑"
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-neutral-400 block mb-1">核心身份定位</label>
+                        <input
+                          type="text"
+                          value={manualPositioning}
+                          onChange={e => setManualPositioning(e.target.value)}
+                          placeholder="例如：生活美学主理人 / 知性女主人"
+                          className="w-full px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white text-xs focus:border-purple-500/60 focus:outline-none"
+                        />
+                      </div>
                     </div>
+
+                    {scannedResult?.modelDna && (
+                      <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-purple-300 font-bold flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            Model DNA 智能真值提炼
+                          </span>
+                          <span className="text-neutral-400 font-mono text-[10px]">
+                            {scannedResult.modelDna.ethnicity || '东亚'} · {scannedResult.modelDna.bodyBuild || '匀称体态'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-neutral-300">
+                          <span className="text-neutral-400">容貌发型：</span>{scannedResult.modelDna.appearanceDesc || scannedResult.modelDna.facialFeatures}
+                        </p>
+                        <p className="text-[11px] text-neutral-300">
+                          <span className="text-neutral-400">穿搭色系：</span>{scannedResult.modelDna.clothingDesc || scannedResult.modelDna.materialsColorsDesc}
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {(scannedResult.temperamentKeywords || []).map((kw: string, i: number) => (
+                            <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              #{kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1063,6 +1299,204 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
                   className="px-5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all"
                 >
                   保存并入库为 Model DNA
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 核心新功能：编辑人物资产卡模态窗 */}
+        {editingModel && (
+          <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-150">
+            <div className="w-full max-w-xl bg-[#181a26] border border-purple-500/30 rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                    <Edit2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>编辑人物资产卡</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono">
+                        {editingModel.code}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-neutral-400">修改模特真实身份属性、定位、年龄与身材特征，实时生效</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingModel(null)}
+                  className="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form Body */}
+              <div className="space-y-3.5 text-xs">
+                {/* 形象立绘主图与替换 */}
+                <div>
+                  <label className="text-[11px] font-semibold text-neutral-300 block mb-1.5">形象立绘与头像</label>
+                  <div className="flex items-center gap-4 bg-black/30 p-3 rounded-xl border border-white/5">
+                    <div className="w-16 h-20 rounded-lg overflow-hidden bg-black/60 border border-purple-500/30 shrink-0">
+                      <img
+                        src={editForm.coverImage || editingModel.coverImage || editingModel.thumbnail}
+                        alt=""
+                        className="w-full h-full object-cover object-top"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <p className="text-[11px] text-neutral-400">
+                        当前主视角立绘，用于空间场景渲染时的人脸特征与着装真值参考。
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => editImageInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>替换立绘图片</span>
+                        </button>
+                        <input
+                          ref={editImageInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleUploadEditImage}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 姓名与英文名 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">
+                      <span>人物姓名 / 称谓</span>
+                      <span className="text-purple-400 font-bold ml-1">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.nameZh}
+                      onChange={e => setEditForm(prev => ({ ...prev, nameZh: e.target.value }))}
+                      placeholder="如：老人、奶奶、知性女主人"
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">英文名称 / 别名 (选填)</label>
+                    <input
+                      type="text"
+                      value={editForm.nameEn}
+                      onChange={e => setEditForm(prev => ({ ...prev, nameEn: e.target.value }))}
+                      placeholder="如：Grandmother, Hostess"
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 角色类型与年龄段 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">家庭角色分类</label>
+                    <select
+                      value={editForm.roleType}
+                      onChange={e => setEditForm(prev => ({ ...prev, roleType: e.target.value as FamilyRoleType }))}
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all cursor-pointer font-medium"
+                    >
+                      <option value="father">家庭男主人 (Father)</option>
+                      <option value="mother">家庭女主人 (Mother)</option>
+                      <option value="grandfather">爷爷 / 长辈 (Grandfather)</option>
+                      <option value="grandmother">奶奶 / 长辈 (Grandmother)</option>
+                      <option value="daughter">混血女儿 (Daughter)</option>
+                      <option value="son">混血男孩 (Son)</option>
+                      <option value="couple">夫妻组合 (Couple)</option>
+                      <option value="family">全家福 (Family)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">真实年龄段</label>
+                    <input
+                      type="text"
+                      value={editForm.ageGroup}
+                      onChange={e => setEditForm(prev => ({ ...prev, ageGroup: e.target.value }))}
+                      placeholder="如：60岁 银发安详期、40-45岁 精英成熟期"
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 身高与核心定位 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">身高 / 体型特征</label>
+                    <input
+                      type="text"
+                      value={editForm.height}
+                      onChange={e => setEditForm(prev => ({ ...prev, height: e.target.value }))}
+                      placeholder="如：180cm 挺拔匀称、165cm 优雅高挑"
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-neutral-300 block mb-1">核心身份定位</label>
+                    <input
+                      type="text"
+                      value={editForm.positioning}
+                      onChange={e => setEditForm(prev => ({ ...prev, positioning: e.target.value }))}
+                      placeholder="如：慈祥长辈 / 家庭支柱 / 事业高管"
+                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 气质标签 */}
+                <div>
+                  <label className="text-[11px] font-semibold text-neutral-300 block mb-1">气质特征关键词 (用逗号或空格分隔)</label>
+                  <input
+                    type="text"
+                    value={editForm.temperament}
+                    onChange={e => setEditForm(prev => ({ ...prev, temperament: e.target.value }))}
+                    placeholder="例如：沉稳儒雅，亲和威严，高智感，知性优雅"
+                    className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all"
+                  />
+                </div>
+
+                {/* 简介描述 */}
+                <div>
+                  <label className="text-[11px] font-semibold text-neutral-300 block mb-1">人物背景与生活特征</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.bio}
+                    onChange={e => setEditForm(prev => ({ ...prev, bio: e.target.value }))}
+                    placeholder="选填，关于该人物的着装风格、动作习惯或居家生活细节描述..."
+                    className="w-full px-3.5 py-2 bg-[#12141d] border border-white/15 focus:border-purple-400 rounded-xl text-white outline-none transition-all resize-none text-[11px]"
+                  />
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setEditingModel(null)}
+                  className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs text-neutral-300 transition-all cursor-pointer font-medium"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditModel}
+                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>保存修改并同步</span>
                 </button>
               </div>
             </div>

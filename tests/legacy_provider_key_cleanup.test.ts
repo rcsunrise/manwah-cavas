@@ -8,8 +8,7 @@ const legacyKeyNames = ['GEMINI', 'ROUTERHUB', 'BAILIAN'].map((name) => `${name}
 const guardedFiles = [
   '.env.example',
   'README.md',
-  'MIGRATION_GUIDE.md',
-  'TECHNICAL_DOC.md',
+  'docs/TECHNICAL_DOC.md',
   'server.ts',
   'server/utils/aiClient.ts',
   'server/routes/copyRoutes.ts',

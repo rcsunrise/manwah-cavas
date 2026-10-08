@@ -78,3 +78,13 @@ We use Vitest for automated testing.
 ```bash
 npm run test
 ```
+
+## 📚 Documentation
+
+更多详细技术与产品文档请查阅 `docs/` 目录：
+- [核心技术文档](docs/TECHNICAL_DOC.md) - 系统架构、数据流与权限体系
+- [产品说明文档](docs/PRODUCT_DOC.md) - ManwahStudio 核心功能与交互说明
+- [API 部署指南](docs/API_DEPLOYMENT_DOC.md) - 服务端接口与网络部署架构
+- [模型接入指南](docs/API_EXTENSION_GUIDE.md) - 大模型二次开发与多渠道适配
+- [模型计费清单](docs/MODEL_PRICING_GUIDE.md) - 算力档位与点数计费标准
+- [运维校准文档](docs/MAINTENANCE_TECH.md) - 计费精度与数据校准规范

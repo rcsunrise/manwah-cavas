@@ -76,6 +76,27 @@ export const PosterStudioPage: React.FC = () => {
     message: string;
   } | null>(null);
 
+  // Theme mode support (synchronized with SpaceStudio)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('space_studio_theme') as 'dark' | 'light';
+      if (saved === 'light' || saved === 'dark') return saved;
+    }
+    return 'light';
+  });
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('space_studio_theme', next);
+      }
+      return next;
+    });
+  };
+
+  const isLight = theme === 'light';
+
   const activeScreen = screens.find((s) => s.screenIndex === activeScreenIndex) || screens[0];
   const activeComposition =
     compositions[activeScreenIndex] || buildPosterComposition(activeScreen);
@@ -469,13 +490,27 @@ export const PosterStudioPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col w-screen h-screen bg-stone-950 text-stone-100 overflow-hidden select-none font-sans">
+    <div
+      className={`flex flex-col w-screen h-screen overflow-hidden select-none font-sans transition-colors ${
+        isLight ? 'bg-[#F2EFE9] text-stone-900' : 'bg-stone-950 text-stone-100'
+      }`}
+    >
       {/* 1. TOP APP BAR */}
-      <header className="h-14 bg-stone-900 border-b border-stone-800 px-5 flex items-center justify-between z-40 shrink-0">
+      <header
+        className={`h-14 border-b px-5 flex items-center justify-between z-40 shrink-0 transition-colors ${
+          isLight
+            ? 'bg-white/95 border-stone-200/90 shadow-2xs text-stone-800'
+            : 'bg-stone-900 border-stone-800 text-stone-100'
+        }`}
+      >
         <div className="flex items-center gap-4">
           <button
             onClick={handleBackToCanvas}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-amber-300 rounded-lg text-xs font-semibold border border-stone-700 transition cursor-pointer"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+              isLight
+                ? 'bg-stone-100 hover:bg-stone-200 text-stone-800 border-stone-200 shadow-2xs'
+                : 'bg-stone-800 hover:bg-stone-700 text-amber-300 border-stone-700'
+            }`}
             title="返回基础工作流"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -483,20 +518,28 @@ export const PosterStudioPage: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center gap-1.5 bg-stone-900/90 p-1 rounded-full border border-stone-800">
+            <div
+              className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
+                isLight ? 'bg-stone-100 border-stone-200' : 'bg-stone-900/90 border-stone-800'
+              }`}
+            >
               {/* 摄影画册工作台（放在左边，核心展示） */}
               <button
                 onClick={() => setStudioMode('space')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition cursor-pointer ${
                   studioMode === 'space'
-                    ? 'bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-sm border border-amber-500/50'
+                    ? isLight
+                      ? 'bg-amber-600 text-white shadow-xs border border-amber-600'
+                      : 'bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-sm border border-amber-500/50'
+                    : isLight
+                    ? 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
                     : 'text-stone-300 hover:text-white hover:bg-stone-800'
                 }`}
                 title="摄影画册工作台"
               >
-                <Camera className="w-3.5 h-3.5 text-amber-300" />
+                <Camera className={`w-3.5 h-3.5 ${isLight ? 'text-amber-100' : 'text-amber-300'}`} />
                 <span className="whitespace-nowrap">摄影画册工作台</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-amber-200' : 'bg-amber-400 animate-pulse'}`} />
               </button>
 
               {/* 全案（缩小成一个小按钮） */}
@@ -504,7 +547,11 @@ export const PosterStudioPage: React.FC = () => {
                 onClick={() => setStudioMode('poster')}
                 className={`px-2 py-1 rounded-full text-[11px] font-medium transition cursor-pointer border whitespace-nowrap ${
                   studioMode === 'poster'
-                    ? 'bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-xs'
+                    ? isLight
+                      ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs font-semibold'
+                      : 'bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-xs'
+                    : isLight
+                    ? 'text-stone-500 hover:text-stone-900 hover:bg-stone-200/60 border-transparent'
                     : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800 border-transparent'
                 }`}
                 title="切换至全案海报工作台"
@@ -513,7 +560,11 @@ export const PosterStudioPage: React.FC = () => {
               </button>
             </div>
 
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-stone-800 text-stone-300 border border-stone-700">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                isLight ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-stone-800 text-stone-300 border-stone-700'
+              }`}
+            >
               {(studioMode as string) === 'space' ? '2100 × 2800 px · 3:4 · 摄影母版' : '2100 × 2800 px · 3:4 · JPEG'}
             </span>
           </div>
@@ -535,15 +586,23 @@ export const PosterStudioPage: React.FC = () => {
 
               <button
                 onClick={() => setIsPreviewModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg text-xs font-semibold border border-stone-700 transition whitespace-nowrap shrink-0"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition whitespace-nowrap shrink-0 ${
+                  isLight
+                    ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                    : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-700'
+                }`}
               >
-                <Eye className="w-3.5 h-3.5 text-amber-400" />
+                <Eye className="w-3.5 h-3.5 text-amber-500" />
                 <span className="whitespace-nowrap">全览全案</span>
               </button>
 
               <button
                 onClick={() => downloadSinglePosterJpeg(activeComposition)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg text-xs font-semibold border border-stone-700 transition whitespace-nowrap shrink-0"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition whitespace-nowrap shrink-0 ${
+                  isLight
+                    ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                    : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-700'
+                }`}
               >
                 <Download className="w-3.5 h-3.5" />
                 <span className="whitespace-nowrap">导出当前屏 (JPEG)</span>
@@ -560,12 +619,12 @@ export const PosterStudioPage: React.FC = () => {
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-stone-400">摄影画册模式 · A00~A08 连续视角</span>
+              <span className={`text-xs ${isLight ? 'text-stone-500 font-medium' : 'text-stone-400'}`}>摄影画册模式 · A00~A08 连续视角</span>
             </div>
           )}
 
-          <div className="h-5 w-px bg-stone-800 my-auto shrink-0" />
-          <UserBadge theme="dark" variant="detailed" className="shrink-0" />
+          <div className={`h-5 w-px my-auto shrink-0 ${isLight ? 'bg-stone-200' : 'bg-stone-800'}`} />
+          <UserBadge theme={theme} variant="detailed" className="shrink-0" />
         </div>
       </header>
 
@@ -574,6 +633,8 @@ export const PosterStudioPage: React.FC = () => {
           onSwitchMode={setStudioMode}
           onBackToCanvas={handleBackToCanvas}
           onHandoffToPoster={handleSpaceHandoff}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
         />
       ) : (
         <>

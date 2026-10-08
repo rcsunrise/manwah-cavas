@@ -12,10 +12,45 @@ import { GcsAssetStorage } from '../services/storage/gcsAssetStorage';
 import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys';
 import { HumanErgonomicsEngine } from '../../src/features/space-studio/engine/humanErgonomicsEngine';
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
+import {
+  SpaceHumanAnalysisService,
+  AnalyzeModelCardRequestSchema
+} from '../services/spaceHumanAnalysisService';
 import { SeatAssignment } from '../../src/types/spaceStudio';
 
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
+
+/**
+ * POST /api/space/human/analyze-model-card
+ * AI 多模态人物资产卡扫描与真实身份属性提炼
+ */
+router.post('/analyze-model-card', async (req: Request, res: Response) => {
+  try {
+    const parsed = AnalyzeModelCardRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid model card payload',
+        details: parsed.error.format()
+      });
+    }
+
+    const userId = (req as any).user?.id || (req as any).headers?.['x-user-id'] || 'system';
+    const result = await SpaceHumanAnalysisService.analyzeAndExtract(parsed.data, String(userId));
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (err: any) {
+    console.error('[spaceHumanRoutes] analyze-model-card error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to analyze model card'
+    });
+  }
+});
 
 const GenerateHumanPassSchema = z.object({
   projectId: z.string(),
@@ -174,6 +209,11 @@ router.post('/generate-human-revision', async (req: Request, res: Response) => {
     const imageResult = await SpaceImageGenerationService.generateAndStore({
       projectId,
       shotCode,
+      isHumanPass: true,
+      characterReferenceImages: customHumanAssets?.map((a) => ({
+        imageUrl: a.imageUrl,
+        name: a.name
+      })),
       positivePrompt,
       negativePrompt: 'blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark',
       aspectRatio: '3:4',

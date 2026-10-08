@@ -68,3 +68,21 @@ export function useCurrentUser() {
 
   return { ...profile, updateUserName };
 }
+
+export function isUserAdmin(profile?: UserProfile): boolean {
+  const p = profile || resolveCurrentUser();
+  const r = (p.role || '').toLowerCase();
+  return (
+    r.includes('首席') ||
+    r.includes('工程') ||
+    r.includes('admin') ||
+    r.includes('管理') ||
+    r.includes('审签') ||
+    r.includes('设计')
+  );
+}
+
+export function getCurrentUserId(profile?: UserProfile): string {
+  const p = profile || resolveCurrentUser();
+  return p.email || p.name || 'default_user';
+}

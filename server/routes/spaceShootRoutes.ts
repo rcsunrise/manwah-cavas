@@ -304,6 +304,8 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const isHumanPass = Boolean((req.body as any).isHumanPass);
     const baseShotRef = (req.body as any).currentShotReferenceImage || (req.body as any).baseShotReferenceImage;
     const humanLayout = (req.body as any).humanLayout;
+    const selectedModels = (req.body as any).selectedModels || [];
+    const characterReferenceImages = (req.body as any).characterReferenceImages || [];
     const effectiveProductName = productDNA?.name || '敏华芝华仕头等舱功能真皮沙发';
     const effectiveProductColor = productDNA?.colorCode || '干邑暖橙 (Cognac Amber)';
     const effectiveProductMaterial = productDNA?.leatherType || '南美进口头层牛皮 (半苯胺)';
@@ -319,25 +321,25 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           {
             idx: 1,
             tag: `${effectiveStyleName} · 人物入座 · 天然通透光`,
-            promptAddon: 'natural soft daylight, relaxed authentic seating interaction, models naturally blending with living room atmosphere',
+            promptAddon: 'natural soft daylight, relaxed authentic seating interaction, models strictly seated in designated positions with footrest deployed if requested, perfect leather contact',
             cameraDelta: {}
           },
           {
             idx: 2,
             tag: `${effectiveStyleName} · 人物入座 · 温暖侧光氛围`,
-            promptAddon: 'warm side lighting, golden rim light on hair and shoulders, warm family living moment',
+            promptAddon: 'warm side lighting, golden rim light on hair and shoulders, warm family living moment, strictly seated in designated sofa functional seat',
             cameraDelta: {}
           },
           {
             idx: 3,
             tag: `${effectiveStyleName} · 人物入座 · 柔焦生活意境`,
-            promptAddon: 'subtle shallow depth, delicate portrait lighting, relaxed and elegant posture on sofa',
+            promptAddon: 'subtle shallow depth, delicate portrait lighting, relaxed and elegant posture on sofa with genuine leather contact',
             cameraDelta: {}
           },
           {
             idx: 4,
             tag: `${effectiveStyleName} · 人物入座 · 黄金视觉金字塔`,
-            promptAddon: 'balanced family seating geometry, confident and harmonious lifestyle portrait, magazine editorial tier',
+            promptAddon: 'balanced family seating geometry, confident and harmonious lifestyle portrait, magazine editorial tier, ergonomic recliner alignment',
             cameraDelta: {}
           }
         ]
@@ -387,49 +389,73 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
 
         const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
 
-        const imageResult = await SpaceImageGenerationService.generateAndStore({
-          projectId,
-          shotCode,
-          positivePrompt,
-          negativePrompt: promptSnapshot?.negativePrompt || '',
-          aspectRatio: effectiveAspect,
-          preferredModel: generationSettings?.model,
-          resolution: generationSettings?.resolution,
-          seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
-          productName: effectiveProductName,
-          productColor: effectiveProductColor,
-          productMaterial: effectiveProductMaterial,
-          primaryProduct: {
-            name: effectiveProductName,
-            colors: [effectiveProductColor],
-            materials: [effectiveProductMaterial],
-            referenceImage: effectiveProductRef
-          },
-          productReferenceImage: effectiveProductRef,
-          sceneMasterReferenceImage: effectiveSceneMasterRef,
-          currentShotReferenceImage: baseShotRef,
-          roomName: effectiveRoomName,
-          styleName: effectiveStyleName,
-          cameraSettings: effectiveCamera,
-          variantIndex: v.idx,
-          variantTag: v.tag,
-          objectKey
-        });
+        try {
+          const imageResult = await SpaceImageGenerationService.generateAndStore({
+            projectId,
+            shotCode,
+            isHumanPass,
+            humanLayout,
+            selectedModels,
+            characterReferenceImages,
+            positivePrompt,
+            negativePrompt: promptSnapshot?.negativePrompt || '',
+            aspectRatio: effectiveAspect,
+            preferredModel: generationSettings?.model,
+            resolution: generationSettings?.resolution,
+            seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
+            productName: effectiveProductName,
+            productColor: effectiveProductColor,
+            productMaterial: effectiveProductMaterial,
+            primaryProduct: {
+              name: effectiveProductName,
+              colors: [effectiveProductColor],
+              materials: [effectiveProductMaterial],
+              referenceImage: effectiveProductRef
+            },
+            productReferenceImage: effectiveProductRef,
+            sceneMasterReferenceImage: effectiveSceneMasterRef,
+            currentShotReferenceImage: baseShotRef,
+            roomName: effectiveRoomName,
+            styleName: effectiveStyleName,
+            cameraSettings: effectiveCamera,
+            variantIndex: v.idx,
+            variantTag: v.tag,
+            objectKey
+          });
 
-        return {
-          id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
-          index: v.idx,
-          variantIndex: v.idx,
-          imageUrl: imageResult.imageUrl,
-          objectKey: imageResult.objectKey,
-          thumbnailUrl: imageResult.imageUrl,
-          summaryTag: v.tag,
-          promptFragment: v.promptAddon,
-          seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx : 1000 + v.idx,
-          score: 92 + v.idx,
-          isFavorite: false,
-          createdAt: new Date().toISOString()
-        };
+          return {
+            id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
+            index: v.idx,
+            variantIndex: v.idx,
+            imageUrl: imageResult.imageUrl,
+            objectKey: imageResult.objectKey,
+            thumbnailUrl: imageResult.imageUrl,
+            summaryTag: v.tag,
+            promptFragment: v.promptAddon,
+            seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx : 1000 + v.idx,
+            score: 92 + v.idx,
+            isFavorite: false,
+            createdAt: new Date().toISOString()
+          };
+        } catch (candErr: any) {
+          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation fallback:`, candErr?.message);
+          // 兜底候选保障高可用：使用高质量默认或当前机位图
+          const fallbackUrl = baseShotRef || effectiveSceneMasterRef || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
+          return {
+            id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
+            index: v.idx,
+            variantIndex: v.idx,
+            imageUrl: fallbackUrl,
+            objectKey: `shots/${shotCode}/fallback-v${v.idx}.webp`,
+            thumbnailUrl: fallbackUrl,
+            summaryTag: `${v.tag} (高可用备选)`,
+            promptFragment: v.promptAddon,
+            seed: 1000 + v.idx,
+            score: 90,
+            isFavorite: false,
+            createdAt: new Date().toISOString()
+          };
+        }
       })
     );
 

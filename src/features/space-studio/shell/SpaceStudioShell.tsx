@@ -66,7 +66,8 @@ import {
   CandidateItem,
   HumanLayoutConfig,
   DEFAULT_4_HUMAN_SLOTS,
-  ModelAsset
+  ModelAsset,
+  SceneStyleAsset
 } from '../../../types/spaceAssetLibrary';
 import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
 import { BuildPhasePanel } from '../components/BuildPhasePanel';
@@ -94,6 +95,8 @@ interface SpaceStudioShellProps {
   onSwitchMode: (mode: SpaceStudioMode) => void;
   onBackToCanvas?: () => void;
   onHandoffToPoster?: (screenItem: PlanScreenItem) => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 const DEFAULT_SHOTS: ShotInstance[] = [
@@ -345,16 +348,96 @@ const DEFAULT_SHOTS: ShotInstance[] = [
 export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   onSwitchMode,
   onBackToCanvas,
-  onHandoffToPoster
+  onHandoffToPoster,
+  theme: externalTheme,
+  onToggleTheme: externalOnToggleTheme
 }) => {
   const [currentStep, setCurrentStep] = useState<SpaceWorkflowStep>('build');
   const [shots, setShots] = useState<ShotInstance[]>(DEFAULT_SHOTS);
   const [activeShotId, setActiveShotId] = useState<string>('shot-a00');
 
-  // 视窗两翼折叠状态：支持折叠左右侧窗口，最大化呈现中央渲染画幅
+  // 视窗两翼折叠与自由宽度状态
+  const [leftDrawerWidth, setLeftDrawerWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = Number(localStorage.getItem('space_studio_left_width'));
+      if (saved >= 240 && saved <= 520) return saved;
+    }
+    return 336;
+  });
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = Number(localStorage.getItem('space_studio_right_width'));
+      if (saved >= 280 && saved <= 560) return saved;
+    }
+    return 368;
+  });
   const [isLeftCollapsed, setIsLeftCollapsed] = useState<boolean>(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState<boolean>(false);
   const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+
+  const isDraggingLeftRef = React.useRef(false);
+  const startXLeftRef = React.useRef(0);
+  const startWidthLeftRef = React.useRef(336);
+
+  const handleStartResizeLeft = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingLeftRef.current = true;
+    startXLeftRef.current = e.clientX;
+    startWidthLeftRef.current = leftDrawerWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingLeftRef.current) return;
+      const delta = moveEvent.clientX - startXLeftRef.current;
+      const newWidth = Math.max(240, Math.min(520, startWidthLeftRef.current + delta));
+      setLeftDrawerWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isDraggingLeftRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      localStorage.setItem('space_studio_left_width', String(leftDrawerWidth));
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const isDraggingRightRef = React.useRef(false);
+  const startXRightRef = React.useRef(0);
+  const startWidthRightRef = React.useRef(368);
+
+  const handleStartResizeRight = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRightRef.current = true;
+    startXRightRef.current = e.clientX;
+    startWidthRightRef.current = rightPanelWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRightRef.current) return;
+      const delta = startXRightRef.current - moveEvent.clientX;
+      const newWidth = Math.max(280, Math.min(560, startWidthRightRef.current + delta));
+      setRightPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRightRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      localStorage.setItem('space_studio_right_width', String(rightPanelWidth));
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   // BUILD 阶段核心工程状态
   const [products, setProducts] = useState<ProductAsset[]>(INITIAL_MANWAH_PRODUCTS);
@@ -606,22 +689,28 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>('4:3');
 
   // UI Theme Mode: dark / light
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+  const [internalTheme, setInternalTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('space_studio_theme') as 'dark' | 'light';
       if (saved === 'light' || saved === 'dark') return saved;
     }
-    return 'dark';
+    return 'light';
   });
 
+  const theme = externalTheme || internalTheme;
+
   const handleToggleTheme = () => {
-    setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('space_studio_theme', next);
-      }
-      return next;
-    });
+    if (externalOnToggleTheme) {
+      externalOnToggleTheme();
+    } else {
+      setInternalTheme((prev) => {
+        const next = prev === 'dark' ? 'light' : 'dark';
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('space_studio_theme', next);
+        }
+        return next;
+      });
+    }
   };
 
   // 渲染引擎配置选项 (默认 4:3 画幅)
@@ -680,17 +769,46 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     'nsfw, low quality, deformed anatomy, blurry, distorted furniture, extra limbs, watermark'
   );
 
-  // 人物编排器 Human Layout 状态 (4人 / 6人 / 自定义)
-  const [humanLayout, setHumanLayout] = useState<HumanLayoutConfig>({
-    mode: '4',
-    characterCount: 4,
-    disallowExtraCharacters: true,
-    slots: DEFAULT_4_HUMAN_SLOTS
+  // 人物编排器 Human Layout 状态 (4人 / 6人 / 自定义) - 支持管理员标准持久化保存
+  const [humanLayout, setHumanLayout] = useState<HumanLayoutConfig>(() => {
+    const savedStandard = spaceAssetLibraryService.getStandardHumanLayout();
+    return savedStandard || {
+      mode: '4',
+      characterCount: 4,
+      disallowExtraCharacters: true,
+      slots: DEFAULT_4_HUMAN_SLOTS
+    };
   });
   const [isRenderingHuman, setIsRenderingHuman] = useState<boolean>(false);
   const [availableModels, setAvailableModels] = useState<ModelAsset[]>(() =>
     spaceAssetLibraryService.getModels()
   );
+
+  // 异步加载 IndexedDB 中的标准人物编排与资产变更监听
+  useEffect(() => {
+    let isMounted = true;
+    spaceAssetLibraryService.loadStandardHumanLayoutAsync().then((std) => {
+      if (isMounted && std) {
+        setHumanLayout(std);
+      }
+    });
+
+    const handleAssetsChange = () => {
+      setAvailableModels(spaceAssetLibraryService.getModels());
+    };
+
+    window.addEventListener('manwah_space_assets_changed', handleAssetsChange);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('manwah_space_assets_changed', handleAssetsChange);
+    };
+  }, []);
+
+  // 更新并持久化保存人物编排标准配置
+  const handleUpdateHumanLayout = (next: HumanLayoutConfig) => {
+    setHumanLayout(next);
+    spaceAssetLibraryService.saveStandardHumanLayout(next);
+  };
 
   // 4 候选方案字典
   const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
@@ -1275,9 +1393,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         primaryProd?.referenceImages?.[0]?.objectKey ||
         (primaryProd as any)?.uploadedImageUrl;
 
-      // 获取当前机位的底图基准
+      // 获取当前机位的底图基准（若未生成母版，自动使用当前风格或户型资产作为高可靠视觉基准）
       const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || targetShot.revisions[0];
-      const baseShotImage = currentRev?.imageUrl || (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) || sceneMaster?.imageUrl;
+      const baseShotImage = currentRev?.imageUrl || 
+        (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) || 
+        sceneMaster?.imageUrl ||
+        activeAssets.style?.thumbnail ||
+        activeAssets.style?.coverImage ||
+        'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
 
       const activeSettings = {
         model: computeConfig.model,
@@ -1289,6 +1412,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(50000), // 50秒安全超时，杜绝网络假死卡顿
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
           shotId: targetShot.id,
@@ -1298,7 +1422,24 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           baseShotReferenceImage: baseShotImage,
           currentShotReferenceImage: baseShotImage,
           humanLayout,
-          selectedModels: allModels,
+          selectedModels: (() => {
+            const assignedIds = humanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
+            const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
+            return matched.length > 0 ? matched : allModels.slice(0, humanLayout.characterCount);
+          })(),
+          characterReferenceImages: (() => {
+            const assignedIds = humanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
+            const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
+            const targetList = matched.length > 0 ? matched : allModels.slice(0, humanLayout.characterCount);
+            return targetList
+              .map((m) => ({
+                modelId: m.id,
+                name: m.nameZh || m.name,
+                imageUrl: m.views?.portrait || m.views?.front || m.thumbnail || m.coverImage,
+                role: 'person_reference'
+              }))
+              .filter((c) => Boolean(c.imageUrl));
+          })(),
           camera: targetShot.camera,
           intent: targetShot.intent,
           productDNA: {
@@ -1385,6 +1526,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'FAILED';
       console.error('Failed to render human pass candidates:', err);
+      alert(`生成人物版候选提示: ${errorMessage}`);
       setCurrentJob((j) =>
         j
           ? {
@@ -1428,6 +1570,21 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       await handleRenderShot(a00Shot);
     } catch (e) {
       console.error('Failed to generate scene master candidates:', e);
+    } finally {
+      setIsGeneratingMaster(false);
+    }
+  };
+
+  // 风格资产库一键跳转：绑定新风格并生成锁定空间母版
+  const handleApplyStyleAndGenerateMaster = async (style: SceneStyleAsset) => {
+    setActiveAssets((prev) => ({ ...prev, style }));
+    const a00Shot = shots.find((s) => s.templateCode === 'A00') || shots[0];
+    setActiveShotId(a00Shot.id);
+    setIsGeneratingMaster(true);
+    try {
+      await handleRenderShot(a00Shot);
+    } catch (e) {
+      console.error('Failed to generate and lock master with selected style:', e);
     } finally {
       setIsGeneratingMaster(false);
     }
@@ -1485,7 +1642,40 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           shots={shots}
           activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
           onSelectShot={(idx) => setActiveShotId(shots[idx].id)}
+          drawerWidth={leftDrawerWidth}
+          isCollapsed={isLeftCollapsed}
+          onToggleCollapse={() => setIsLeftCollapsed(!isLeftCollapsed)}
         />
+
+        {/* Left Resizer Handle */}
+        {!isLeftCollapsed && (
+          <div
+            onMouseDown={handleStartResizeLeft}
+            className={`relative w-2 -mx-1 cursor-col-resize z-30 group transition-all shrink-0 flex items-center justify-center ${
+              theme === 'light' ? 'hover:bg-amber-400/20' : 'hover:bg-amber-500/20'
+            }`}
+            title="按住鼠标左右拖拽调节左侧栏宽度，双击折叠"
+            onDoubleClick={() => setIsLeftCollapsed(true)}
+          >
+            <div className={`w-0.5 h-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+              theme === 'light' ? 'bg-amber-500' : 'bg-amber-400'
+            }`} />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsLeftCollapsed(true);
+              }}
+              className={`absolute top-1/2 -translate-y-1/2 left-1/2 -translate-x-1/2 w-4 h-8 rounded-r-md border border-l-0 shadow-xs opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all cursor-pointer z-40 ${
+                theme === 'light'
+                  ? 'bg-white border-stone-300 text-stone-600 hover:text-amber-700 hover:bg-stone-50'
+                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:text-amber-400 hover:bg-stone-700'
+              }`}
+              title="一键收起左侧面板"
+            >
+              <ChevronLeft className="w-3 h-3 -ml-0.5" />
+            </button>
+          </div>
+        )}
 
         {/* 2. Center Cinematic Canvas Stage */}
         <SpaceStudioCanvas
@@ -1522,6 +1712,36 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           theme={theme}
         />
 
+        {/* Right Resizer Handle */}
+        {!isRightCollapsed && (
+          <div
+            onMouseDown={handleStartResizeRight}
+            className={`relative w-2 -mx-1 cursor-col-resize z-30 group transition-all shrink-0 flex items-center justify-center ${
+              theme === 'light' ? 'hover:bg-amber-400/20' : 'hover:bg-amber-500/20'
+            }`}
+            title="按住鼠标左右拖拽调节右侧栏宽度，双击折叠"
+            onDoubleClick={() => setIsRightCollapsed(true)}
+          >
+            <div className={`w-0.5 h-10 rounded-full opacity-0 group-hover:opacity-100 transition-opacity ${
+              theme === 'light' ? 'bg-amber-500' : 'bg-amber-400'
+            }`} />
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsRightCollapsed(true);
+              }}
+              className={`absolute top-1/2 -translate-y-1/2 right-1/2 translate-x-1/2 w-4 h-8 rounded-l-md border border-r-0 shadow-xs opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all cursor-pointer z-40 ${
+                theme === 'light'
+                  ? 'bg-white border-stone-300 text-stone-600 hover:text-amber-700 hover:bg-stone-50'
+                  : 'bg-stone-800 border-stone-700 text-stone-300 hover:text-amber-400 hover:bg-stone-700'
+              }`}
+              title="一键收起右侧控制台"
+            >
+              <ChevronRight className="w-3 h-3 -mr-0.5" />
+            </button>
+          </div>
+        )}
+
         {/* 3. Right Control & AI Panel (整理为 Scene Style → Model DNA → Human Layout → Lighting → 添加模特) */}
         <SpaceStudioRightPanel
           activeShot={activeShot}
@@ -1546,18 +1766,38 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           isGeneratingHuman={isRenderingHuman}
           onRenderHumanPass={() => handleRenderHumanPass(activeShot)}
           humanLayout={humanLayout}
-          onChangeHumanLayout={setHumanLayout}
+          onChangeHumanLayout={handleUpdateHumanLayout}
           availableModels={availableModels}
           onOptimizeLightingAndPrompt={handleAiRefinePrompt}
           onUpdateCamera={handleUpdateCamera}
           activeAssets={activeAssets}
           onUpdateActiveAssets={(updater) => setActiveAssets(prev => ({ ...prev, ...updater }))}
+          onApplyStyleAndGenerateMaster={handleApplyStyleAndGenerateMaster}
           customPrompt={customPrompt}
           onChangeCustomPrompt={setCustomPrompt}
           negativePrompt={negativePrompt}
           onChangeNegativePrompt={setNegativePrompt}
           theme={theme}
+          width={rightPanelWidth}
+          isCollapsed={isRightCollapsed}
+          onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
         />
+
+        {/* Floating Expand button for Right Panel */}
+        {isRightCollapsed && (
+          <button
+            onClick={() => setIsRightCollapsed(false)}
+            className={`absolute right-3 top-16 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-l-xl rounded-r-md border shadow-md transition-all cursor-pointer font-bold text-xs ${
+              theme === 'light'
+                ? 'bg-white/95 border-stone-300 text-stone-700 hover:text-amber-800 hover:bg-stone-50'
+                : 'bg-stone-900/95 border-stone-700 text-stone-200 hover:text-amber-400 hover:bg-stone-800'
+            }`}
+            title="展开右侧 AI 摄影导演控制面板"
+          >
+            <ChevronLeft className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-[11px]">展开控制面板</span>
+          </button>
+        )}
       </div>
 
       {/* 4. Bottom Lookbook Shot Navigator (01 ~ 09) */}

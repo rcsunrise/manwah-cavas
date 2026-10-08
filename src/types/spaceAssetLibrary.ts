@@ -17,6 +17,9 @@ export interface BaseSpaceAsset {
   favorite?: boolean; // 便捷别名
   refCount?: number;
   author?: string;
+  userId?: string;
+  authorRole?: string;
+  scope?: 'system' | 'user';
   createdAt: string;
   updatedAt: string;
 }

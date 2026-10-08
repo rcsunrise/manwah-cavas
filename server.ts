@@ -245,17 +245,16 @@ const upload = multer({
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
 
   // Mount Supabase reverse proxy before JSON body parser to ensure exact streaming & raw payloads
   app.use('/api/supabase-proxy', express.raw({ type: () => true, limit: '150mb' }), supabaseProxyRoutes);
 
-  // 100MB decoded image budget needs roughly 134MB as Base64 JSON. Keep a
-  // bounded margin while rejecting the former unbounded 500MB request shape.
-  app.use(express.json({ limit: '150mb' }));
-  app.use(express.urlencoded({ limit: '150mb', extended: true }));
+  // 提升 JSON 与 Raw 请求体预算至 300MB，支持高精度模特资产图与母版多参考图并发传输
+  app.use(express.json({ limit: '300mb' }));
+  app.use(express.urlencoded({ limit: '300mb', extended: true }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'manwah-ai-studio' });
@@ -1596,6 +1595,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   app.use('/api/space/storage', spaceStorageRoutes);
   app.use('/api/space/build', spaceBuildRoutes);
   app.use('/api/space/shoot', spaceShootRoutes);
+  app.use('/api/space/human', spaceHumanRoutes);
 
   app.get('/api/ai/test-connection', async (req, res) => {
     const userUuid = req.headers['x-user-uuid'] as string;

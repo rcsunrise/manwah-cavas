@@ -15,181 +15,15 @@ import {
   FamilySceneTemplate,
   HumanLayoutConfig
 } from '../types/spaceAssetLibrary';
+import { dbService } from './dbService';
+import { resolveCurrentUser, isUserAdmin, getCurrentUserId } from '../utils/userUtils';
 
 const STORAGE_KEY_PREFIX = 'manwah_space_asset_';
+export const USER_MAX_STYLE_QUOTA = 10;
+export const USER_MAX_MODEL_QUOTA = 10;
 
-// 1. 默认精选场景风格资产
-export const DEFAULT_SCENE_STYLES: SceneStyleAsset[] = [
-  {
-    id: 'style-italian-luxury',
-    type: 'scene_style',
-    name: '意式轻奢 · 雅致大平层',
-    code: 'STYLE-01',
-    category: '意式轻奢',
-    description: '大理石悬空背景墙、无主灯线性磁吸轨道、落地全景窗与低饱和度暖灰调',
-    tags: ['大平层', '极简石材', '暖灰调', '全景窗'],
-    coverImage: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
-    referenceImages: [
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80'
-    ],
-    colorPalette: ['#EFECE6', '#C7B299', '#2C2B29', '#D4AF37'],
-    materialSystem: ['雪花白大理石', '微水泥哑光地坪', '黑胡桃木饰面', '拉丝香槟金五金'],
-    lifestyleTags: ['私享酒廊', '艺术品鉴', '沉浸式家庭影院'],
-    promptFragment: 'high-end modern Italian luxury living room, calacatta marble feature wall, ambient architectural cove lighting, floor-to-ceiling panoramic glass windows',
-    promptFragments: [
-      'high-end modern Italian luxury living room',
-      'calacatta marble feature wall',
-      'ambient architectural cove lighting',
-      'floor-to-ceiling panoramic glass windows'
-    ],
-    lightingTone: '通透漫射自然光',
-    lightingPreset: '通透漫射自然光',
-    isSystem: true,
-    isFavorite: true,
-    favorite: true,
-    refCount: 28,
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-09-28T00:00:00.000Z'
-  },
-  {
-    id: 'style-modern-minimal',
-    type: 'scene_style',
-    name: '现代极简 · 悬浮光影',
-    code: 'STYLE-02',
-    category: '现代极简',
-    description: '大面积留白、几何块面分割、微水泥无缝墙面与柔和漫反射晨光',
-    tags: ['纯粹留白', '微水泥', '漫射柔光', '几何美学'],
-    coverImage: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80',
-    referenceImages: [
-      'https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600573472591-ee6b68d14c68?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=80'
-    ],
-    colorPalette: ['#F9F9F8', '#E3E0D8', '#8A8780', '#1C1B1A'],
-    materialSystem: ['细纹微水泥', '极窄边框落地铝合金', '哑光羊毛绒面地毯'],
-    lifestyleTags: ['慢生活', '禅思冥想', '自然晨光'],
-    promptFragment: 'pure minimalist penthouse living room, seamless micro-cement walls and floors, soft daylight diffusing through sheer linen curtains',
-    promptFragments: [
-      'pure minimalist penthouse living room',
-      'seamless micro-cement walls and floors',
-      'soft daylight diffusing through sheer linen curtains'
-    ],
-    lightingTone: '清晨柔白漫射光',
-    lightingPreset: '清晨柔白漫射光',
-    isSystem: true,
-    isFavorite: false,
-    favorite: false,
-    refCount: 19,
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-09-28T00:00:00.000Z'
-  },
-  {
-    id: 'style-creamy-nordic',
-    type: 'scene_style',
-    name: '奶油原木 · 治愈温润',
-    code: 'STYLE-03',
-    category: '奶油原木',
-    description: '暖白奶油色艺术涂料、天然橡木木格栅、圆润弧形吊顶与温润治愈氛围',
-    tags: ['奶油风', '原木格栅', '弧形转角', '治愈温馨'],
-    coverImage: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80',
-    referenceImages: [
-      'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1618219908412-a29a1bb7b86e?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1617806118233-18e1de247200?auto=format&fit=crop&w=1200&q=80'
-    ],
-    colorPalette: ['#F7F3E9', '#DFD3C3', '#C7B198', '#594A42'],
-    materialSystem: ['暖白艺术肌理漆', '白橡木直纹木皮', '棉麻羊羔绒', '洞石茶几台面'],
-    lifestyleTags: ['下午茶', '温馨阅读', '疗愈居家'],
-    promptFragment: 'warm creamy aesthetic modern living space, curved ceiling details, organic travertine coffee table, cozy soft daylight',
-    promptFragments: [
-      'warm creamy aesthetic modern living space',
-      'curved ceiling details',
-      'organic travertine coffee table',
-      'cozy soft daylight'
-    ],
-    lightingTone: '午后3200K暖阳',
-    lightingPreset: '午后3200K暖阳',
-    isSystem: true,
-    isFavorite: false,
-    favorite: false,
-    refCount: 14,
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-09-28T00:00:00.000Z'
-  },
-  {
-    id: 'style-french-vintage',
-    type: 'scene_style',
-    name: '法式复古 · 浪漫线条',
-    code: 'STYLE-04',
-    category: '法式复古',
-    description: '经典法式石膏线条、鱼骨拼橡木地板、法式落地双开窗与古典浪漫',
-    tags: ['法式线条', '鱼骨拼地板', '古典优雅', '雕花吊顶'],
-    coverImage: 'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=80',
-    referenceImages: [
-      'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80'
-    ],
-    colorPalette: ['#FAF6F0', '#E4D5B7', '#4A3B32', '#9E8A78'],
-    materialSystem: ['法式石膏雕花线', '法式鱼骨拼橡木地板', '复古黄铜把手'],
-    lifestyleTags: ['艺术沙龙', '红酒品鉴', '复古浪漫'],
-    promptFragment: 'classic French Parisian chic living room, herringbone wood parquet floor, delicate wall moldings',
-    promptFragments: [
-      'classic French Parisian chic living room',
-      'herringbone wood parquet floor',
-      'delicate wall moldings'
-    ],
-    lightingTone: '柔和漫射天光',
-    lightingPreset: '柔和漫射天光',
-    isSystem: true,
-    isFavorite: true,
-    favorite: true,
-    refCount: 22,
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-09-28T00:00:00.000Z'
-  },
-  {
-    id: 'style-oriental-zen',
-    type: 'scene_style',
-    name: '东方禅意 · 幽微意境',
-    code: 'STYLE-05',
-    category: '东方禅意',
-    description: '水墨意境留白、深色胡桃木与格栅屏风、枯山水微景观与茶道空间',
-    tags: ['新中式', '格栅光影', '茶道静谧', '水墨留白'],
-    coverImage: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80',
-    thumbnail: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80',
-    referenceImages: [
-      'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80'
-    ],
-    colorPalette: ['#1C1B1A', '#5A544B', '#C9BA9B', '#F2EFE9'],
-    materialSystem: ['黑胡桃木', '粗陶茶具', '和纸漫射吊灯', '青石板'],
-    lifestyleTags: ['品茗闻香', '琴棋书画', '禅修静思'],
-    promptFragment: 'modern oriental Zen interior architecture, wooden lattice screens, minimalist tea corner',
-    promptFragments: [
-      'modern oriental Zen interior architecture',
-      'wooden lattice screens',
-      'minimalist tea corner'
-    ],
-    lightingTone: '幽微侧逆光',
-    lightingPreset: '幽微侧逆光',
-    isSystem: true,
-    isFavorite: false,
-    favorite: false,
-    refCount: 16,
-    createdAt: '2026-08-01T00:00:00.000Z',
-    updatedAt: '2026-09-28T00:00:00.000Z'
-  }
-];
+// 1. 默认精选场景风格资产库 (已清空内置预设，风格资产纯由管理员录入作为系统留存，或用户在配额内自建)
+export const DEFAULT_SCENE_STYLES: SceneStyleAsset[] = [];
 
 // 2. 模特资产库 (纯用户自建与AI导入，无默认固定家庭角色预设)
 export const DEFAULT_MODELS: ModelAsset[] = [];
@@ -362,9 +196,23 @@ export const DEFAULT_POSES: PoseAsset[] = [
 ];
 
 // 统一资产管理类 (SpaceAssetLibraryService)
+const INDEXEDDB_ASSETS_KEY = 'manwah_space_assets_v3';
+const INDEXEDDB_DELETED_KEY = 'manwah_space_deleted_ids_v3';
+const STANDARD_HUMAN_LAYOUT_KEY = 'manwah_standard_human_layout';
+
+const LEGACY_STYLE_PRESET_IDS = [
+  'style-italian-luxury',
+  'style-modern-minimal',
+  'style-creamy-nordic',
+  'style-french-vintage',
+  'style-oriental-zen'
+];
+
 class SpaceAssetLibraryService {
   private customAssets: Map<string, UnifiedSpaceAsset> = new Map();
+  private deletedAssetIds: Set<string> = new Set();
   private initialized: boolean = false;
+  private isHydratingDb: boolean = false;
 
   private init() {
     if (this.initialized) return;
@@ -375,22 +223,181 @@ class SpaceAssetLibraryService {
           const list: UnifiedSpaceAsset[] = JSON.parse(stored);
           list.forEach((item) => this.customAssets.set(item.id, item));
         }
+        const deletedStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}deleted_ids`);
+        if (deletedStored) {
+          const ids: string[] = JSON.parse(deletedStored);
+          ids.forEach((id) => this.deletedAssetIds.add(id));
+        }
       }
     } catch (e) {
       console.warn('[AssetLibraryService] LocalStorage load warning:', e);
     }
+
+    // 彻底清除旧硬编码预设
+    LEGACY_STYLE_PRESET_IDS.forEach((id) => {
+      this.deletedAssetIds.add(id);
+      this.customAssets.delete(id);
+    });
+
     this.initialized = true;
+
+    // 异步从 IndexedDB 中深度恢复（解决超大 base64 在 localStorage 无法保存丢失的问题）
+    this.hydrateFromIndexedDB();
+  }
+
+  /**
+   * 从 IndexedDB 异步恢复资产与被删除ID（支持数GB多媒体与大图）
+   */
+  public async hydrateFromIndexedDB(): Promise<void> {
+    if (this.isHydratingDb) return;
+    this.isHydratingDb = true;
+    try {
+      const [storedAssets, storedDeleted] = await Promise.all([
+        dbService.getDraft<UnifiedSpaceAsset[]>(INDEXEDDB_ASSETS_KEY),
+        dbService.getDraft<string[]>(INDEXEDDB_DELETED_KEY)
+      ]);
+
+      let hasChanges = false;
+      if (storedDeleted && Array.isArray(storedDeleted)) {
+        storedDeleted.forEach((id) => {
+          if (!this.deletedAssetIds.has(id)) {
+            this.deletedAssetIds.add(id);
+            hasChanges = true;
+          }
+        });
+      }
+
+      if (storedAssets && Array.isArray(storedAssets)) {
+        storedAssets.forEach((item) => {
+          if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !this.customAssets.has(item.id)) {
+            this.customAssets.set(item.id, item);
+            hasChanges = true;
+          }
+        });
+      }
+
+      if (hasChanges && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] IndexedDB hydration warning:', e);
+    } finally {
+      this.isHydratingDb = false;
+    }
   }
 
   private persist() {
+    const list = Array.from(this.customAssets.values());
+    const deletedList = Array.from(this.deletedAssetIds);
+
+    // 1. 同步存入 localStorage (尽力而为，用于快速首屏展示)
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const list = Array.from(this.customAssets.values());
         localStorage.setItem(`${STORAGE_KEY_PREFIX}custom_all`, JSON.stringify(list));
+        localStorage.setItem(
+          `${STORAGE_KEY_PREFIX}deleted_ids`,
+          JSON.stringify(deletedList)
+        );
       }
     } catch (e) {
-      console.warn('[AssetLibraryService] LocalStorage save warning:', e);
+      // 捕获 QuotaExceededError，不阻塞执行，由下面的 IndexedDB 彻底持久化
+      console.warn('[AssetLibraryService] LocalStorage quota exceeded, safely relying on IndexedDB:', e);
     }
+
+    // 2. 深度存入 IndexedDB（突破 5MB 限制，确保几百兆/高清 Base64 素材绝对不丢失）
+    try {
+      dbService.saveDraft(INDEXEDDB_ASSETS_KEY, list).catch((err) => {
+        console.warn('[AssetLibraryService] IndexedDB save assets error:', err);
+      });
+      dbService.saveDraft(INDEXEDDB_DELETED_KEY, deletedList).catch((err) => {
+        console.warn('[AssetLibraryService] IndexedDB save deleted error:', err);
+      });
+    } catch (err) {
+      console.warn('[AssetLibraryService] DB draft error:', err);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+    }
+  }
+
+  /**
+   * 获取当前用户资产配额信息
+   */
+  public getUserQuota(type: 'scene_style' | 'model'): { used: number; max: number; isAdmin: boolean } {
+    this.init();
+    const user = resolveCurrentUser();
+    const isAdmin = isUserAdmin(user);
+    const userId = getCurrentUserId(user);
+
+    if (isAdmin) {
+      return { used: 0, max: 99999, isAdmin: true };
+    }
+
+    const userAssets = Array.from(this.customAssets.values()).filter(
+      (a) => a.type === type && (a as any).userId === userId
+    );
+
+    const max = type === 'scene_style' ? USER_MAX_STYLE_QUOTA : USER_MAX_MODEL_QUOTA;
+    return {
+      used: userAssets.length,
+      max,
+      isAdmin: false
+    };
+  }
+
+  /**
+   * 保存人物编排标准配置（管理员或设计标准持久化）
+   */
+  public async saveStandardHumanLayout(layout: HumanLayoutConfig): Promise<void> {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(STANDARD_HUMAN_LAYOUT_KEY, JSON.stringify(layout));
+      }
+      await dbService.saveDraft(STANDARD_HUMAN_LAYOUT_KEY, layout);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('manwah_standard_layout_saved', { detail: layout }));
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] Failed to save standard human layout:', e);
+    }
+  }
+
+  /**
+   * 读取人物编排标准配置（同步+异步加载）
+   */
+  public getStandardHumanLayout(): HumanLayoutConfig | null {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = localStorage.getItem(STANDARD_HUMAN_LAYOUT_KEY);
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] Failed to read standard human layout from localStorage:', e);
+    }
+    return null;
+  }
+
+  /**
+   * 异步从 IndexedDB 深度加载人物编排标准配置
+   */
+  public async loadStandardHumanLayoutAsync(): Promise<HumanLayoutConfig | null> {
+    const syncVal = this.getStandardHumanLayout();
+    if (syncVal) return syncVal;
+    try {
+      const fromDb = await dbService.getDraft<HumanLayoutConfig>(STANDARD_HUMAN_LAYOUT_KEY);
+      if (fromDb) {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(STANDARD_HUMAN_LAYOUT_KEY, JSON.stringify(fromDb));
+        }
+        return fromDb;
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] Failed to read standard human layout from DB:', e);
+    }
+    return null;
   }
 
   /**
@@ -429,7 +436,7 @@ class SpaceAssetLibraryService {
     else if (type === 'pose') systemItems = DEFAULT_POSES;
 
     const userItems = Array.from(this.customAssets.values()).filter((a) => a.type === type);
-    let all = [...systemItems, ...userItems] as T[];
+    let all = [...systemItems, ...userItems].filter((a) => !this.deletedAssetIds.has(a.id)) as T[];
 
     if (filter?.search) {
       const q = filter.search.toLowerCase().trim();
@@ -453,9 +460,21 @@ class SpaceAssetLibraryService {
   }
 
   /**
-   * 创建场景风格资产
+   * 创建场景风格资产（管理员权限作为系统默认资产留存，普通用户绑定ID且限额）
    */
   public createSceneStyle(params: Partial<SceneStyleAsset> & { name: string }): SceneStyleAsset {
+    this.init();
+    const user = resolveCurrentUser();
+    const isAdmin = isUserAdmin(user);
+    const userId = getCurrentUserId(user);
+
+    if (!isAdmin) {
+      const quota = this.getUserQuota('scene_style');
+      if (quota.used >= quota.max) {
+        throw new Error(`您已达到个人风格素材配额上限（${quota.max}/${quota.max}），请删除旧素材后再试，或联系管理员留存为系统资产。`);
+      }
+    }
+
     const id = `style-custom-${Date.now().toString(36)}`;
     const asset: SceneStyleAsset = {
       id,
@@ -463,13 +482,16 @@ class SpaceAssetLibraryService {
       name: params.name,
       code: `STYLE-U${Math.floor(100 + Math.random() * 900)}`,
       category: params.category || '现代极简',
-      tags: params.tags || ['用户自建'],
+      tags: params.tags || (isAdmin ? ['系统资产', '官方留存'] : ['个人素材']),
       coverImage: params.coverImage || params.thumbnail || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
       thumbnail: params.thumbnail || params.coverImage || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
       referenceImages: params.referenceImages || [params.coverImage || params.thumbnail || ''],
       promptFragment: params.promptFragment || params.name,
       lightingTone: params.lightingTone || '天然通透漫射光',
-      isSystem: false,
+      isSystem: isAdmin,
+      scope: isAdmin ? 'system' : 'user',
+      authorRole: user?.role || (isAdmin ? '敏华首席工程设计师' : '注册设计师'),
+      userId: isAdmin ? undefined : userId,
       isFavorite: true,
       favorite: true,
       refCount: 1,
@@ -608,6 +630,7 @@ class SpaceAssetLibraryService {
   /**
    * 拼装 Human Layout 人物编排器结构化提示词
    * 严格锁定空间架构、主沙发产品、家具摆位、光线与 Camera，只新增指定角色
+   * 智能推导电动脚托展开状态、就座家具锚定（主沙发 vs 单椅）以及肢体与道具交互
    */
   public compileHumanLayoutPrompt(
     layout: HumanLayoutConfig,
@@ -621,17 +644,105 @@ class SpaceAssetLibraryService {
     const count = layout.characterCount || slots.length;
 
     const slotDirectives = slots.map((slot, index) => {
-      const boundModel = slot.modelId ? availableModels.find(m => m.id === slot.modelId) : null;
-      const modelDesc = boundModel
-        ? `${boundModel.nameZh || boundModel.name} (${boundModel.ageGroup || '40岁精英'}, ${boundModel.modelDna?.outfitStyle || 'Quiet Luxury'})`
-        : (slot.modelName || `角色位 ${index + 1}`);
+      // 1. 智能绑定或回退角色资产
+      let boundModel = slot.modelId ? availableModels.find(m => m.id === slot.modelId) : null;
+      if (!boundModel && availableModels.length > 0) {
+        boundModel = availableModels[index % availableModels.length];
+      }
 
-      return `[Character Slot #${index + 1} - ${modelDesc}]:\n- Designated Position: ${slot.positionDesc || '客厅主沙发人体工学功能位'}\n- Designated Action / Posture: ${slot.actionDesc || '从容就座，自然融入居室环境'}`;
+      // 提取角色画像与 DNA
+      let modelDesc: string;
+      const identityClauses: string[] = [];
+
+      if (boundModel) {
+        const name = boundModel.nameZh || boundModel.name;
+        const age = boundModel.ageGroup || (boundModel.nameZh?.includes('老') ? '60-65岁长者' : '40岁精英');
+        const outfit = boundModel.modelDna?.clothingDesc || boundModel.modelDna?.wardrobeStyle || boundModel.modelDna?.outfitStyle || 'Quiet Luxury';
+        const gender = boundModel.gender || (boundModel.roleType === 'grandfather' || boundModel.roleType === 'father' ? 'male' : 'female');
+        const role = boundModel.positioning || boundModel.roleType || '家庭核心成员';
+        
+        modelDesc = `${name} (${age}, ${outfit})`;
+
+        identityClauses.push(`- Target Character DNA: ${name}, ${gender === 'female' ? 'female' : 'male'}, approximately ${age}, family role: ${role}`);
+        if (boundModel.modelDna?.ethnicity) {
+          identityClauses.push(`- Ethnicity & Demeanor: ${boundModel.modelDna.ethnicity}, distinguished refined expression`);
+        } else if (name.includes('老') || age.includes('老') || age.includes('60')) {
+          identityClauses.push(`- Ethnicity & Demeanor: Distinguished East Asian senior patriarch / elderly (approx. 60-65 years old) with natural silver-gray hair, gentle dignified countenance`);
+        }
+        if (outfit) {
+          identityClauses.push(`- Attire: ${outfit}`);
+        }
+      } else {
+        const slotName = slot.modelName || `角色位 ${index + 1}`;
+        modelDesc = slotName;
+        if (slotName.includes('老') || slot.actionDesc?.includes('长者') || slot.actionDesc?.includes('老人')) {
+          identityClauses.push(`- Target Character DNA: Distinguished elderly senior (approx. 60-65 years old, natural silver hair, quiet luxury tailored knitwear)`);
+        } else {
+          identityClauses.push(`- Target Character DNA: Refined high-end living room resident in quiet luxury attire`);
+        }
+      }
+
+      // 2. 空间位置与产品功能语义推导 (Product Feature & Ergonomic Anchor)
+      const pos = slot.positionDesc || '客厅主沙发人体工学功能位';
+      const action = slot.actionDesc || '从容就座，自然融入居室环境';
+      const mechanicalClauses: string[] = [];
+
+      // 检测是否为展开脚托/电动功能位
+      const isFootrestExtended = /展开脚托|开脚托|伸出脚托|脚托展开|电动功能位|功能位|头等舱|半躺|伸展|零重力/i.test(pos + ' ' + action);
+      if (isFootrestExtended) {
+        mechanicalClauses.push(
+          `* CRITICAL PRODUCT MOTION MECHANISM: The motorized power recliner footrest of this designated seat MUST BE SMOOTHLY EXTENDED AND ELEVATED FORWARD, comfortably supporting the character's legs and feet in authentic zero-gravity relaxed comfort.`
+        );
+      }
+
+      // 检测就座主体家具 (主沙发 vs 单椅 vs 贵妃 vs 地毯)
+      if (/主沙发|大沙发|三人位|多功能主座|一号电动/i.test(pos)) {
+        mechanicalClauses.push(
+          `* STRICT SEATING ANCHOR: The character MUST BE SEATED ON THE MAIN SECTIONAL LIVING ROOM SOFA (specifically on the #1 power recliner seat of the main sofa). STRICTLY FORBIDDEN to place this character on the separate single accent armchair, side chairs, or coffee table.`
+        );
+      } else if (/单椅|单人|独立/i.test(pos)) {
+        mechanicalClauses.push(
+          `* STRICT SEATING ANCHOR: The character is seated on the standalone single leather accent recliner armchair.`
+        );
+      } else if (/地毯|茶几|席地/i.test(pos)) {
+        mechanicalClauses.push(
+          `* STRICT SEATING ANCHOR: Seated casually on the wool carpet beside the coffee table.`
+        );
+      } else if (/贵妃/i.test(pos)) {
+        mechanicalClauses.push(
+          `* STRICT SEATING ANCHOR: Lounging on the chaise lounge portion of the main sofa.`
+        );
+      }
+
+      // 3. 姿态与交互细化
+      const interactionClauses: string[] = [];
+      if (/搭扶手|左手搭扶手|右手搭扶手/i.test(action)) {
+        interactionClauses.push(`Arm resting naturally and comfortably on the soft genuine leather sofa armrest.`);
+      }
+      if (/画册|书|杂志|相册|图册/i.test(action)) {
+        interactionClauses.push(`Hand holding an open artistic picture album / design brochure / photo album with authentic finger grip.`);
+      }
+      if (/交谈|倾听|交流|聊天/i.test(action)) {
+        interactionClauses.push(`Head and gaze turned naturally in warm, authentic conversational expression.`);
+      }
+      if (/茶|杯|水/i.test(action)) {
+        interactionClauses.push(`Holding a fine white ceramic tea/coffee cup.`);
+      }
+
+      const enrichedDetails = [
+        ...identityClauses,
+        `- Designated Position: ${pos}`,
+        ...(mechanicalClauses.length > 0 ? mechanicalClauses : []),
+        `- Designated Action / Posture: ${action}`,
+        ...(interactionClauses.length > 0 ? [`- Pose & Interaction Detail: ${interactionClauses.join(' ')}`] : [])
+      ].join('\n');
+
+      return `[Character Slot #${index + 1} - ${modelDesc}]:\n${enrichedDetails}`;
     }).join('\n\n');
 
     const humanDirectives = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - EXACT ${count} PERSONS ONLY]
 COMMERCIAL MANDATE:
-1. Living room architecture, hero sofa, and all existing furnishings MUST REMAIN 100% UNCHANGED.
+1. Living room architecture, hero sofa, and all existing furnishings MUST REMAIN 100% UNCHANGED (except for motorized recliner seat footrest extension where explicitly designated).
 2. Photorealistically integrate exactly ${count} individuals into designated seats without altering furniture placement:
 ${slotDirectives}
 ${layout.disallowExtraCharacters ? '3. STRICT LIMIT: EXACTLY ' + count + ' PERSONS. STRICTLY PROHIBIT ANY EXTRA BACKGROUND PEOPLE, BYSTANDERS, OR STRANGERS.' : ''}`;
@@ -648,6 +759,11 @@ ${humanDirectives}`;
       'mutated hands',
       'missing fingers',
       'extra limbs',
+      'closed footrest when extended requested',
+      'wrong seating location',
+      'wrong character age',
+      'young model when elderly senior requested',
+      'sitting on coffee table',
       ...(layout.disallowExtraCharacters ? [
         'extra people',
         'additional people',
@@ -666,12 +782,13 @@ ${humanDirectives}`;
   }
 
   public async aiAnalyzeModelCard(
-    imageSrc: string
+    imageSrc: string,
+    projectId: string = 'manwah-space-default'
   ): Promise<{
     nameZh: string;
     nameEn: string;
     roleType: any;
-    gender: 'male' | 'female';
+    gender: 'male' | 'female' | 'couple' | 'family';
     ageGroup: string;
     height: string;
     positioning: string;
@@ -683,15 +800,35 @@ ${humanDirectives}`;
     lifestyleRefs: string[];
     modelDna: any;
   }> {
-    // 模拟 1.2s 高精度多模态 AI 扫描
-    await new Promise(r => setTimeout(r, 1200));
+    try {
+      const response = await fetch('/api/space/human/analyze-model-card', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          projectId,
+          imageBase64: imageSrc
+        })
+      });
 
+      if (response.ok) {
+        const json = await response.json();
+        if (json.success && json.data) {
+          return json.data;
+        }
+      }
+    } catch (err) {
+      console.warn('[spaceAssetLibraryService] aiAnalyzeModelCard network call failed, falling back to local heuristic:', err);
+    }
+
+    // 智能后备响应（当离线或未连通服务时）
     return {
       nameZh: '定制角色 · AI 识别导入',
       nameEn: 'Custom Role / Imported',
       roleType: 'father',
       gender: 'male',
-      ageGroup: '40-45岁 精英成熟期',
+      ageGroup: '35-42岁 黄金成熟期',
       height: '180cm 挺拔匀称',
       positioning: '家庭中枢 / 事业精英 / 沉稳男主',
       temperamentKeywords: ['沉稳儒雅', '亲和威严', '高智感', '从容温润'],
@@ -719,8 +856,8 @@ ${humanDirectives}`;
         identitySeed: Math.floor(100000 + Math.random() * 900000),
         roleType: 'father',
         gender: 'male',
-        ageRange: '40-45岁',
-        ageGroup: '40-45岁 精英成熟期',
+        ageRange: '35-42岁',
+        ageGroup: '35-42岁 黄金成熟期',
         ethnicity: '东亚',
         height: '180cm',
         heightCm: 180,
@@ -743,9 +880,21 @@ ${humanDirectives}`;
   }
 
   /**
-   * 创建模特资产
+   * 创建模特资产（管理员权限作为系统默认资产留存，普通用户绑定ID且限额）
    */
   public createModel(params: Partial<ModelAsset> & { name: string }): ModelAsset {
+    this.init();
+    const user = resolveCurrentUser();
+    const isAdmin = isUserAdmin(user);
+    const userId = getCurrentUserId(user);
+
+    if (!isAdmin) {
+      const quota = this.getUserQuota('model');
+      if (quota.used >= quota.max) {
+        throw new Error(`您已达到个人人物素材配额上限（${quota.max}/${quota.max}），请删除旧人物素材后再试，或联系管理员留存为系统资产。`);
+      }
+    }
+
     const id = `model-custom-${Date.now().toString(36)}`;
     const roleType = params.roleType || 'father';
     const nameZh = params.nameZh || params.name;
@@ -766,7 +915,7 @@ ${humanDirectives}`;
       positioning: params.positioning || '核心家庭成员',
       temperamentKeywords: params.temperamentKeywords || ['从容', '自然', '高智感'],
       bio: params.bio || '自定义录入的人物真值资产卡。',
-      tags: params.tags || ['自定义角色', nameZh],
+      tags: params.tags || (isAdmin ? ['系统资产', '官方留存', nameZh] : ['个人素材', nameZh]),
       coverImage: primaryImg,
       thumbnail: primaryImg,
       views: {
@@ -801,7 +950,10 @@ ${humanDirectives}`;
       },
       promptFragment: params.promptFragment || `${nameZh}, ${nameEn}`,
       negativeConstraints: params.negativeConstraints || ['face distortion', 'deformed limbs'],
-      isSystem: false,
+      isSystem: isAdmin,
+      scope: isAdmin ? 'system' : 'user',
+      authorRole: user?.role || (isAdmin ? '敏华首席工程设计师' : '注册设计师'),
+      userId: isAdmin ? undefined : userId,
       isFavorite: true,
       favorite: true,
       refCount: 1,
@@ -847,6 +999,30 @@ ${humanDirectives}`;
   }
 
   /**
+   * 更新模特资产（支持编辑姓名、角色、年龄、身高、气质、立绘等）
+   */
+  public updateModel(id: string, updates: Partial<ModelAsset>): ModelAsset {
+    this.init();
+    const allModels = this.getModels();
+    const existing = allModels.find(m => m.id === id);
+    if (!existing) {
+      throw new Error(`未找到目标模特资产: ${id}`);
+    }
+
+    const updatedName = updates.nameZh || updates.name || existing.nameZh || existing.name;
+    const updated: ModelAsset = {
+      ...existing,
+      ...updates,
+      nameZh: updatedName,
+      name: updatedName,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.saveAsset(updated);
+    return updated;
+  }
+
+  /**
    * 删除模特资产
    */
   public deleteModel(id: string): boolean {
@@ -873,16 +1049,23 @@ ${humanDirectives}`;
   }
 
   /**
-   * 删除用户自建资产
+   * 删除风格资产
+   */
+  public deleteSceneStyle(id: string): boolean {
+    return this.deleteAsset(id);
+  }
+
+  /**
+   * 删除资产素材（支持用户自建与系统预设素材删除）
    */
   public deleteAsset(id: string): boolean {
     this.init();
+    this.deletedAssetIds.add(id);
     if (this.customAssets.has(id)) {
       this.customAssets.delete(id);
-      this.persist();
-      return true;
     }
-    return false;
+    this.persist();
+    return true;
   }
 
   /**

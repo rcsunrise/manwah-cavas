@@ -24,6 +24,13 @@ export interface SpaceProductIdentityInput {
   referenceImage?: string; // base64, data URL, objectKey, 或 public URL
 }
 
+export interface SpaceCharacterReferenceInput {
+  modelId?: string;
+  name?: string;
+  imageUrl?: string;
+  role?: string;
+}
+
 export interface SpaceGenerateImageInput {
   projectId: string;
   shotCode: string;
@@ -47,6 +54,10 @@ export interface SpaceGenerateImageInput {
   productReferenceImage?: string;
   sceneMasterReferenceImage?: string; // A00 空间母版图
   currentShotReferenceImage?: string; // 当前机位底图 (用于 Human 植入等连续渲染)
+  isHumanPass?: boolean;
+  humanLayout?: any;
+  selectedModels?: any[];
+  characterReferenceImages?: SpaceCharacterReferenceInput[];
   preferredModel?: string;
   resolution?: string;
   seed?: number;
@@ -162,7 +173,11 @@ export class SpaceImageGenerationService {
       primaryProduct,
       productReferenceImage,
       sceneMasterReferenceImage,
-      currentShotReferenceImage
+      currentShotReferenceImage,
+      isHumanPass,
+      humanLayout,
+      selectedModels,
+      characterReferenceImages
     } = input;
 
     let imageBuffer: Buffer | null = null;
@@ -178,6 +193,23 @@ export class SpaceImageGenerationService {
       resolveImageInlineData(sceneMasterReferenceImage),
       resolveImageInlineData(currentShotReferenceImage)
     ]);
+
+    // 收集人物参考图 (从 characterReferenceImages 或 selectedModels 中提取真实模特真值)
+    const rawCharImages: string[] = [];
+    if (Array.isArray(characterReferenceImages) && characterReferenceImages.length > 0) {
+      for (const c of characterReferenceImages) {
+        if (c.imageUrl && typeof c.imageUrl === 'string') rawCharImages.push(c.imageUrl);
+      }
+    } else if (Array.isArray(selectedModels) && selectedModels.length > 0) {
+      for (const m of selectedModels) {
+        const img = m.views?.portrait || m.views?.front || m.thumbnail || m.coverImage;
+        if (img && typeof img === 'string') rawCharImages.push(img);
+      }
+    }
+
+    const charInlines = (
+      await Promise.all(rawCharImages.slice(0, 2).map(imgUrl => resolveImageInlineData(imgUrl)))
+    ).filter((item): item is { mimeType: string; data: string } => item !== null);
 
     // 确定有效色彩与材质描述
     const effectiveColor = productColor || primaryProduct?.colors?.[0] || '干邑暖橙 (Cognac Amber)';
@@ -213,6 +245,19 @@ export class SpaceImageGenerationService {
           mimeType: shotInline.mimeType,
           role: 'composition_reference'
         });
+
+        // 注入所选模特资产参考图，确保多模态视觉识别与面部特征锁定
+        if (charInlines.length > 0) {
+          for (let cIdx = 0; cIdx < charInlines.length; cIdx++) {
+            const charInline = charInlines[cIdx];
+            images.push({
+              data: `data:${charInline.mimeType};base64,${charInline.data}`,
+              mimeType: charInline.mimeType,
+              role: 'person_reference'
+            });
+          }
+        }
+
         if (productInline) {
           images.push({
             data: `data:${productInline.mimeType};base64,${productInline.data}`,
@@ -240,17 +285,24 @@ export class SpaceImageGenerationService {
       // 针对生图模式编织具备物理第一性原理的系统级摄影提示词
       let directivePrompt = positivePrompt;
       if (shotInline) {
-        // 模式 A: 模特植入 (Human Pass)：锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物
-        directivePrompt = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - ZERO FURNITURE DRIFT - ZERO CAMERA DRIFT]
-REFERENCE IMAGE 1: Approved empty room shot (${shotCode}) with the authentic ${effectiveProductName} in ${effectiveColor}.
+        // 模式 A: 模特植入 (Human Pass)：锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物，并精准响应电动功能位与脚托动作
+        directivePrompt = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - ZERO ARCHITECTURAL DRIFT]
+REFERENCE IMAGE 1: Approved empty room shot (${shotCode}) with authentic living room architecture and ${effectiveProductName} in ${effectiveColor}.
+${charInlines.length > 0 ? `REFERENCE IMAGE 2: Target Character Reference (Model DNA). Photorealistically replicate this exact individual's facial structure, age, hair, expression, and demeanor into the scene.` : ''}
 
 STRICT COMMERCIAL MANDATES:
-1. Reference Image 1 is the EXACT physical truth of this room and camera view.
-2. The living room architecture, background walls, floor, lighting, camera yaw/pitch, and the hero sofa MUST REMAIN 100% INVARIANT AND UNCHANGED.
-3. DO NOT change sofa color, shape, cushion layout, or reposition any furniture piece.
-4. Seamlessly and photorealistically integrate the requested characters resting comfortably in designated ergonomic seats and positions.
+1. Reference Image 1 is the physical truth of this room's architecture, background walls, flooring, lighting, and camera angle.
+2. The living room walls, floor, camera position, and overall hero sofa placement MUST REMAIN 100% INVARIANT.
+3. MOTION & ERGONOMIC FUNCTION MECHANISM:
+   - Keep sofa color (${effectiveColor}), leather grain (${effectiveMaterial}), and armrest styling completely unchanged.
+   - HOWEVER, if the character's designated position or posture specifies an extended footrest ("展开脚托", "电动功能位", "开脚托", "recline"), that specific seat on the main sofa MUST dynamically OPEN and EXTEND its motorized footrest forward to support the person's legs and feet. The rest of the sofa remains closed.
+4. EXACT SEAT ANCHOR & COUPLING:
+   - The person must sit on the EXACT designated seat specified (e.g. main multi-seat sofa functional seat, NOT the separate single armchair or coffee table).
+   - The character's body must make natural, photorealistic contact with the sofa cushions and footrest, with authentic contact shadows, folds in clothing, and proper body weight settling into the leather. No hovering, no clipping.
+5. CHARACTER FIDELITY:
+   - Seamlessly integrate the character matching the specified age, identity, and demeanor without generating random strangers or mismatched ages.
 ${positivePrompt}
-Negative constraints: ${negativePrompt || 'displaced furniture, changed sofa color, deformed limbs, floating human, extra people, bystanders, crowd'}`;
+Negative constraints: ${negativePrompt || 'displaced furniture, changed sofa color, deformed limbs, floating human, extra people, bystanders, crowd, wrong person age, retracted footrest when extended requested, sitting on coffee table'}`;
       } else if (productInline && masterInline) {
         // 模式 B: A01~A08 衍生镜头生图：必须与 A00 空间母版和主件产品保持 100% 连贯性
         directivePrompt = `[MULTIMODAL PRODUCTION INVARIANCE: PRESERVE EXACT PRODUCT AND ROOM FROM REFERENCE IMAGES]

@@ -1,0 +1,2059 @@
+{
+  "scriptCompleted": true,
+  "contentDigest": "2f111835088123f3d77de800ac0d0200103432a1c06547668d35ae2c1ca10269",
+  "files": [
+    {
+      "path": ".env.example",
+      "language": "config",
+      "sizeLines": 28,
+      "fileCategory": "config"
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "sizeLines": 90,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/API_DEPLOYMENT_DOC.md",
+      "language": "markdown",
+      "sizeLines": 50,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/API_EXTENSION_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 94,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/MAINTENANCE_TECH.md",
+      "language": "markdown",
+      "sizeLines": 41,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/MODEL_PRICING_GUIDE.md",
+      "language": "markdown",
+      "sizeLines": 47,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/PRODUCT_DOC.md",
+      "language": "markdown",
+      "sizeLines": 107,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/TECHNICAL_DOC.md",
+      "language": "markdown",
+      "sizeLines": 136,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "index.html",
+      "language": "html",
+      "sizeLines": 90,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "metadata.json",
+      "language": "json",
+      "sizeLines": 5,
+      "fileCategory": "config"
+    },
+    {
+      "path": "package.json",
+      "language": "json",
+      "sizeLines": 58,
+      "fileCategory": "config"
+    },
+    {
+      "path": "scripts/check-production-schema.ts",
+      "language": "typescript",
+      "sizeLines": 157,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/create_admin.ts",
+      "language": "typescript",
+      "sizeLines": 44,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/create_user.ts",
+      "language": "typescript",
+      "sizeLines": 44,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/execute_g0_2b_r2_smoke.ts",
+      "language": "typescript",
+      "sizeLines": 239,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/execute_g0_2b_r_smoke.ts",
+      "language": "typescript",
+      "sizeLines": 294,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/gcs_diagnostic_self_check.ts",
+      "language": "typescript",
+      "sizeLines": 506,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/providerSmokeTest.ts",
+      "language": "typescript",
+      "sizeLines": 369,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/run_c4b_http_regressions.cjs",
+      "language": "javascript",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/test-model-registry-p1b.ts",
+      "language": "typescript",
+      "sizeLines": 137,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/test_g0_2a.ts",
+      "language": "typescript",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/test_g0_2a_restart_recovery.ts",
+      "language": "typescript",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/test_g0_2b_p.ts",
+      "language": "typescript",
+      "sizeLines": 325,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_baseline_m1.cjs",
+      "language": "javascript",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_baseline_m1_runtime_env.cjs",
+      "language": "javascript",
+      "sizeLines": 276,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4a2.cjs",
+      "language": "javascript",
+      "sizeLines": 110,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4a2.js",
+      "language": "javascript",
+      "sizeLines": 195,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4a3.cjs",
+      "language": "javascript",
+      "sizeLines": 309,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4a3.js",
+      "language": "javascript",
+      "sizeLines": 310,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4b2.cjs",
+      "language": "javascript",
+      "sizeLines": 333,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4b3.cjs",
+      "language": "javascript",
+      "sizeLines": 308,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_c4b4_r2.cjs",
+      "language": "javascript",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_fast1_consistency.ts",
+      "language": "typescript",
+      "sizeLines": 177,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_fast2_screen01.ts",
+      "language": "typescript",
+      "sizeLines": 173,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_fast3_detail_export.ts",
+      "language": "typescript",
+      "sizeLines": 612,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_g0_1.cjs",
+      "language": "javascript",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "scripts/verify_g0_1_runtime.cjs",
+      "language": "javascript",
+      "sizeLines": 265,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server.ts",
+      "language": "typescript",
+      "sizeLines": 2024,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/__tests__/spaceCandidateRender.test.ts",
+      "language": "typescript",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/agentChat/runtimeTestSupport.ts",
+      "language": "typescript",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/agentModelRegistry.ts",
+      "language": "typescript",
+      "sizeLines": 281,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/agentResponses.ts",
+      "language": "typescript",
+      "sizeLines": 394,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/detailPlanSchema.ts",
+      "language": "typescript",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/imageInputSecurity.ts",
+      "language": "typescript",
+      "sizeLines": 246,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/imageProviderAdapter.ts",
+      "language": "typescript",
+      "sizeLines": 118,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/imageRequest.ts",
+      "language": "typescript",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/imageResponse.ts",
+      "language": "typescript",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/mockImageTransport.ts",
+      "language": "typescript",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/modelRegistry.ts",
+      "language": "typescript",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/promptCompiler.ts",
+      "language": "typescript",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/providerConfig.ts",
+      "language": "typescript",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/providerError.ts",
+      "language": "typescript",
+      "sizeLines": 112,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/ai/vectorEngineRouter.ts",
+      "language": "typescript",
+      "sizeLines": 477,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/config/features.ts",
+      "language": "typescript",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/lib/uuid.ts",
+      "language": "typescript",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/loadEnv.ts",
+      "language": "typescript",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/middleware/auth.ts",
+      "language": "typescript",
+      "sizeLines": 187,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/middleware/errorHandler.ts",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/middleware/roleGuard.ts",
+      "language": "typescript",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/repositories/assetRepository.ts",
+      "language": "typescript",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/repositories/layoutManifestRepository.ts",
+      "language": "typescript",
+      "sizeLines": 176,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/repositories/productDnaRepository.ts",
+      "language": "typescript",
+      "sizeLines": 197,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/repositories/projectRepository.ts",
+      "language": "typescript",
+      "sizeLines": 196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/adminRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/agentConversationRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 1072,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/agentRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 1494,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/assetRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 1073,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/canvasRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 1455,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/consistencyRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/copyRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 1951,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/detailCompositionRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 426,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/detailExportRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 512,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/layoutManifestRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 176,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/posterRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 438,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/productDnaRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 650,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/projectRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 696,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/spaceBuildRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 293,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/spaceHumanRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/spaceShootRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 454,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/spaceStorageRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/storageManagementRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/supabaseProxyRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/routes/videoRoutes.ts",
+      "language": "typescript",
+      "sizeLines": 479,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/aestheticLayoutService.ts",
+      "language": "typescript",
+      "sizeLines": 398,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/compositionAssemblerService.ts",
+      "language": "typescript",
+      "sizeLines": 990,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/consistencyPreflightService.ts",
+      "language": "typescript",
+      "sizeLines": 263,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/consistencyPromptService.ts",
+      "language": "typescript",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/consistencyScoringService.ts",
+      "language": "typescript",
+      "sizeLines": 148,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/consistencyService.ts",
+      "language": "typescript",
+      "sizeLines": 300,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/detailCompositionService.ts",
+      "language": "typescript",
+      "sizeLines": 195,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/detailExportService.ts",
+      "language": "typescript",
+      "sizeLines": 385,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/detailExportWorker.ts",
+      "language": "typescript",
+      "sizeLines": 128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/detailRenderService.ts",
+      "language": "typescript",
+      "sizeLines": 478,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/detailSliceService.ts",
+      "language": "typescript",
+      "sizeLines": 155,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/layoutManifestService.ts",
+      "language": "typescript",
+      "sizeLines": 278,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/manifestService.ts",
+      "language": "typescript",
+      "sizeLines": 214,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/paidAuthorizationGate.ts",
+      "language": "typescript",
+      "sizeLines": 310,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/productFeatureRegistryService.ts",
+      "language": "typescript",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/renderBatchManager.ts",
+      "language": "typescript",
+      "sizeLines": 452,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/revisionFinalizer.ts",
+      "language": "typescript",
+      "sizeLines": 212,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/spaceImageGenerationService.ts",
+      "language": "typescript",
+      "sizeLines": 656,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/spaceMultimodalRefereeService.ts",
+      "language": "typescript",
+      "sizeLines": 200,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/spaceProductAnalysisService.ts",
+      "language": "typescript",
+      "sizeLines": 400,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/storage/__tests__/gcsAssetStorage.test.ts",
+      "language": "typescript",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/storage/assetObjectStorage.ts",
+      "language": "typescript",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/storage/gcsAssetStorage.ts",
+      "language": "typescript",
+      "sizeLines": 490,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/storage/gcsVideoStorage.ts",
+      "language": "typescript",
+      "sizeLines": 269,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/storageManagementService.ts",
+      "language": "typescript",
+      "sizeLines": 481,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/textLayoutService.ts",
+      "language": "typescript",
+      "sizeLines": 173,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/video/providers/vectorEngineAdapter.ts",
+      "language": "typescript",
+      "sizeLines": 613,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/video/videoCapabilityRegistry.ts",
+      "language": "typescript",
+      "sizeLines": 418,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/video/videoDirectorService.ts",
+      "language": "typescript",
+      "sizeLines": 282,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/video/videoJobService.ts",
+      "language": "typescript",
+      "sizeLines": 501,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/services/video/videoSourceImageResolver.ts",
+      "language": "typescript",
+      "sizeLines": 134,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/types.ts",
+      "language": "typescript",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/utils/aiClient.ts",
+      "language": "typescript",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/App.tsx",
+      "language": "typescript",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/adapters/creativeCanvasDnaAdapter.ts",
+      "language": "typescript",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/adapters/creativeCanvasNineGridAdapter.ts",
+      "language": "typescript",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/AEPPanelNew.tsx",
+      "language": "typescript",
+      "sizeLines": 317,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/AdminHeader.tsx",
+      "language": "typescript",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/AdminNotepad.tsx",
+      "language": "typescript",
+      "sizeLines": 526,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/ApiStatusChecker.tsx",
+      "language": "typescript",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/BalanceDisplay.tsx",
+      "language": "typescript",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/GeneratedViewNew.tsx",
+      "language": "typescript",
+      "sizeLines": 529,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/HistoryModalNew.tsx",
+      "language": "typescript",
+      "sizeLines": 232,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/IconsNew.tsx",
+      "language": "typescript",
+      "sizeLines": 13,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/ImageUploaderNew.tsx",
+      "language": "typescript",
+      "sizeLines": 437,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/Layout.tsx",
+      "language": "typescript",
+      "sizeLines": 190,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/ProductChannelMaskNew.tsx",
+      "language": "typescript",
+      "sizeLines": 571,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/PromptBuilderNew.tsx",
+      "language": "typescript",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/RouteErrorBoundary.tsx",
+      "language": "typescript",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/SvgPreviewerNew.tsx",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/agent/DetailPageCanvasExport.tsx",
+      "language": "typescript",
+      "sizeLines": 343,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/agent/PlanConfirmation.tsx",
+      "language": "typescript",
+      "sizeLines": 200,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/agent/ProductDnaCard.tsx",
+      "language": "typescript",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/agent/ProjectDnaModal.tsx",
+      "language": "typescript",
+      "sizeLines": 748,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/agent/RenderingQueue.tsx",
+      "language": "typescript",
+      "sizeLines": 290,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/common/UserBadge.tsx",
+      "language": "typescript",
+      "sizeLines": 132,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/AgentPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 2432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/AspectFitPreview.tsx",
+      "language": "typescript",
+      "sizeLines": 179,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/AssetVersionModal.tsx",
+      "language": "typescript",
+      "sizeLines": 440,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/BatchConfirmModal.tsx",
+      "language": "typescript",
+      "sizeLines": 173,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/CanvasToolbar.tsx",
+      "language": "typescript",
+      "sizeLines": 324,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/CanvasWorkspace.tsx",
+      "language": "typescript",
+      "sizeLines": 688,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ConsistencyReportPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 299,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/CopyWorkspacePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 864,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/GeneratedImageNode.tsx",
+      "language": "typescript",
+      "sizeLines": 968,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/GptImagePreviewModal.tsx",
+      "language": "typescript",
+      "sizeLines": 249,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ImageGenerationNode.tsx",
+      "language": "typescript",
+      "sizeLines": 190,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ImageInpaintModal.tsx",
+      "language": "typescript",
+      "sizeLines": 1027,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/NewCanvasModal.tsx",
+      "language": "typescript",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/NineGridPlanNode.tsx",
+      "language": "typescript",
+      "sizeLines": 178,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/NodeTextEditor.tsx",
+      "language": "typescript",
+      "sizeLines": 1802,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/NoteNode.tsx",
+      "language": "typescript",
+      "sizeLines": 224,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/PosterDownloadModal.tsx",
+      "language": "typescript",
+      "sizeLines": 461,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/PosterTypographyOverlay.tsx",
+      "language": "typescript",
+      "sizeLines": 229,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ProductDnaNode.tsx",
+      "language": "typescript",
+      "sizeLines": 177,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ProductImageNode.tsx",
+      "language": "typescript",
+      "sizeLines": 318,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ResizableCanvasNode.tsx",
+      "language": "typescript",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/SafeAreaOverlay.tsx",
+      "language": "typescript",
+      "sizeLines": 199,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/SaveVersionModal.tsx",
+      "language": "typescript",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ScenePlanNode.tsx",
+      "language": "typescript",
+      "sizeLines": 423,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/ScreenCompositionPreview.tsx",
+      "language": "typescript",
+      "sizeLines": 386,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/StorageManagerModal.tsx",
+      "language": "typescript",
+      "sizeLines": 1128,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/TextLayerEditor.tsx",
+      "language": "typescript",
+      "sizeLines": 189,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/TypographyWorkspacePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 698,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/UniversalNode.tsx",
+      "language": "typescript",
+      "sizeLines": 157,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/VersionHistoryModal.tsx",
+      "language": "typescript",
+      "sizeLines": 278,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/WelcomeNode.tsx",
+      "language": "typescript",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/WorkflowHeader.tsx",
+      "language": "typescript",
+      "sizeLines": 286,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/WorkflowStageGroupNode.tsx",
+      "language": "typescript",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/video/VideoCreationNode.tsx",
+      "language": "typescript",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/video/VideoCreationPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 959,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/video/VideoGenerationNode.tsx",
+      "language": "typescript",
+      "sizeLines": 232,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/creative-canvas/video/VideoResultNode.tsx",
+      "language": "typescript",
+      "sizeLines": 136,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/DevDebugDrawer.tsx",
+      "language": "typescript",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/FloatingContextToolbar.tsx",
+      "language": "typescript",
+      "sizeLines": 260,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/LeftDrawer.tsx",
+      "language": "typescript",
+      "sizeLines": 249,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/NineScreenNavigator.tsx",
+      "language": "typescript",
+      "sizeLines": 118,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/NineScreenPreviewModal.tsx",
+      "language": "typescript",
+      "sizeLines": 215,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/PosterCanvas.tsx",
+      "language": "typescript",
+      "sizeLines": 417,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/components/poster-studio/RightAiAssistant.tsx",
+      "language": "typescript",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/config/imageModelRegistry.ts",
+      "language": "typescript",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/config/posterSpec.ts",
+      "language": "typescript",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/config/posterTemplates.ts",
+      "language": "typescript",
+      "sizeLines": 999,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/constants.ts",
+      "language": "typescript",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/data/craftVocab.ts",
+      "language": "typescript",
+      "sizeLines": 440,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/__tests__/humanErgonomics.test.ts",
+      "language": "typescript",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/__tests__/humanLayoutRefactor.test.ts",
+      "language": "typescript",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/__tests__/revisionGraphAndJudge.test.ts",
+      "language": "typescript",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/__tests__/spaceToPosterAdapter.test.ts",
+      "language": "typescript",
+      "sizeLines": 166,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/adapters/spaceToPosterAdapter.ts",
+      "language": "typescript",
+      "sizeLines": 147,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/BuildPhasePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 663,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/DesignPhasePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 220,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/HumanPhasePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 857,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/InteractiveViewport.tsx",
+      "language": "typescript",
+      "sizeLines": 509,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/ProductUploadModal.tsx",
+      "language": "typescript",
+      "sizeLines": 1308,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/RevisionGraphModal.tsx",
+      "language": "typescript",
+      "sizeLines": 240,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/ShootPhasePanel.tsx",
+      "language": "typescript",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/ShootPhaseWorkspace.tsx",
+      "language": "typescript",
+      "sizeLines": 1386,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/SpaceStudioCanvas.tsx",
+      "language": "typescript",
+      "sizeLines": 725,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/SpaceStudioLeftDrawer.tsx",
+      "language": "typescript",
+      "sizeLines": 1034,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/SpaceStudioRightPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 995,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/SpaceStudioShotNavigator.tsx",
+      "language": "typescript",
+      "sizeLines": 309,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/assets/FamilyTemplateGalleryModal.tsx",
+      "language": "typescript",
+      "sizeLines": 546,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/assets/ModelAssetModal.tsx",
+      "language": "typescript",
+      "sizeLines": 1107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/assets/PoseAssetGalleryModal.tsx",
+      "language": "typescript",
+      "sizeLines": 510,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/components/assets/SceneStyleGalleryModal.tsx",
+      "language": "typescript",
+      "sizeLines": 1096,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/data/humanPresets.ts",
+      "language": "typescript",
+      "sizeLines": 247,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/data/productAssets.ts",
+      "language": "typescript",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/data/shotTemplates.ts",
+      "language": "typescript",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/data/spacePresets.ts",
+      "language": "typescript",
+      "sizeLines": 156,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/data/stylePresets.ts",
+      "language": "typescript",
+      "sizeLines": 198,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/__tests__/placementEngine.test.ts",
+      "language": "typescript",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/__tests__/sceneMasterPromptCompiler.test.ts",
+      "language": "typescript",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/__tests__/shootCompiler.test.ts",
+      "language": "typescript",
+      "sizeLines": 166,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/__tests__/validationEngine.test.ts",
+      "language": "typescript",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/humanErgonomicsEngine.ts",
+      "language": "typescript",
+      "sizeLines": 204,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/placementEngine.ts",
+      "language": "typescript",
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/revisionGraphEngine.ts",
+      "language": "typescript",
+      "sizeLines": 146,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/sceneMasterPromptCompiler.ts",
+      "language": "typescript",
+      "sizeLines": 165,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/shootCompiler.ts",
+      "language": "typescript",
+      "sizeLines": 146,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/engine/validationEngine.ts",
+      "language": "typescript",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/features/space-studio/shell/SpaceStudioShell.tsx",
+      "language": "typescript",
+      "sizeLines": 1818,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/hooks/useCanvasVideo.ts",
+      "language": "typescript",
+      "sizeLines": 201,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/hooks/useCreativeCanvasWorkspace.ts",
+      "language": "typescript",
+      "sizeLines": 3961,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/index.css",
+      "language": "css",
+      "sizeLines": 55,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "src/lib/features.ts",
+      "language": "typescript",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/layoutGeometry.ts",
+      "language": "typescript",
+      "sizeLines": 491,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/resilience/backoff.ts",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/resilience/circuit-breaker.ts",
+      "language": "typescript",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/resilience/errors.ts",
+      "language": "typescript",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/resilience/maintenance.ts",
+      "language": "typescript",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/resilience/poller.ts",
+      "language": "typescript",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/storage/fileDownload.ts",
+      "language": "typescript",
+      "sizeLines": 129,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/lib/supabase.ts",
+      "language": "typescript",
+      "sizeLines": 806,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/main.tsx",
+      "language": "typescript",
+      "sizeLines": 159,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/AdminUsers.tsx",
+      "language": "typescript",
+      "sizeLines": 957,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/Dashboard.tsx",
+      "language": "typescript",
+      "sizeLines": 836,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/DepartmentBilling.tsx",
+      "language": "typescript",
+      "sizeLines": 646,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/Login.tsx",
+      "language": "typescript",
+      "sizeLines": 160,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/ManwahStudio.tsx",
+      "language": "typescript",
+      "sizeLines": 2369,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/PosterStudioPage.tsx",
+      "language": "typescript",
+      "sizeLines": 715,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/Profile.tsx",
+      "language": "typescript",
+      "sizeLines": 260,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/pages/creative-canvas/CreativeCanvasPage.tsx",
+      "language": "typescript",
+      "sizeLines": 855,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/agentChatService.ts",
+      "language": "typescript",
+      "sizeLines": 412,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/assetQueueService.ts",
+      "language": "typescript",
+      "sizeLines": 656,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/canvasService.ts",
+      "language": "typescript",
+      "sizeLines": 501,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/dbService.ts",
+      "language": "typescript",
+      "sizeLines": 466,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/detailCompositionService.ts",
+      "language": "typescript",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/detailExportService.ts",
+      "language": "typescript",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/geminiService.ts",
+      "language": "typescript",
+      "sizeLines": 1541,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/manifestService.ts",
+      "language": "typescript",
+      "sizeLines": 251,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/posterStudioService.ts",
+      "language": "typescript",
+      "sizeLines": 410,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/promptService.ts",
+      "language": "typescript",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/routerHubService.ts",
+      "language": "typescript",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/spaceAssetLibraryService.ts",
+      "language": "typescript",
+      "sizeLines": 993,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/storageManagementService.ts",
+      "language": "typescript",
+      "sizeLines": 201,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/services/videoGenerationService.ts",
+      "language": "typescript",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/shared/storage/__tests__/spaceObjectKeys.test.ts",
+      "language": "typescript",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/shared/storage/spaceObjectKeys.ts",
+      "language": "typescript",
+      "sizeLines": 179,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types.ts",
+      "language": "typescript",
+      "sizeLines": 475,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/consistencySchema.ts",
+      "language": "typescript",
+      "sizeLines": 320,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/creativeCanvas.ts",
+      "language": "typescript",
+      "sizeLines": 520,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/creativeCanvasVideo.ts",
+      "language": "typescript",
+      "sizeLines": 157,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/detailCompositionSchema.ts",
+      "language": "typescript",
+      "sizeLines": 263,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/layoutManifest.ts",
+      "language": "typescript",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/posterTemplate.ts",
+      "language": "typescript",
+      "sizeLines": 154,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/spaceAssetLibrary.ts",
+      "language": "typescript",
+      "sizeLines": 362,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/types/spaceStudio.ts",
+      "language": "typescript",
+      "sizeLines": 556,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/apiChannel.ts",
+      "language": "typescript",
+      "sizeLines": 148,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/apiUtils.ts",
+      "language": "typescript",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/canvasDiagnostic.ts",
+      "language": "typescript",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/creativeCanvasLayout.ts",
+      "language": "typescript",
+      "sizeLines": 618,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/downloadUtils.ts",
+      "language": "typescript",
+      "sizeLines": 61,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/fileHelperNew.ts",
+      "language": "typescript",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/lazyWithRetry.ts",
+      "language": "typescript",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/posterExportHelper.ts",
+      "language": "typescript",
+      "sizeLines": 353,
+      "fileCategory": "code"
+    },
+    {
+      "path": "src/utils/userUtils.ts",
+      "language": "typescript",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "supabase/migrations/20260808_baseline_m1_runtime_schema.sql",
+      "language": "sql",
+      "sizeLines": 219,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260818_c4a4_async_assets_and_revisions.sql",
+      "language": "sql",
+      "sizeLines": 116,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260819005300_r3_1_consistency_schema.sql",
+      "language": "sql",
+      "sizeLines": 124,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260819013800_r3_2_seed_default_consistency_policy.sql",
+      "language": "sql",
+      "sizeLines": 29,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260819030000_fast3_detail_export_schema.sql",
+      "language": "sql",
+      "sizeLines": 199,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260819033000_solidify_creative_canvases.sql",
+      "language": "sql",
+      "sizeLines": 91,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260820000000_align_detail_render_jobs_schema.sql",
+      "language": "sql",
+      "sizeLines": 95,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260823000000_align_creative_canvases_owner.sql",
+      "language": "sql",
+      "sizeLines": 30,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_01_reset_canvas_test_data.sql",
+      "language": "sql",
+      "sizeLines": 34,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_02_drop_legacy_asset_tables.sql",
+      "language": "sql",
+      "sizeLines": 11,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_03_create_canonical_runtime_schema.sql",
+      "language": "sql",
+      "sizeLines": 311,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_04_consolidate_usage_tables.sql",
+      "language": "sql",
+      "sizeLines": 106,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_05_drop_legacy_runtime_objects.sql",
+      "language": "sql",
+      "sizeLines": 12,
+      "fileCategory": "data"
+    },
+    {
+      "path": "supabase/migrations/20260824_06_create_schema_contract_checks.sql",
+      "language": "sql",
+      "sizeLines": 118,
+      "fileCategory": "data"
+    },
+    {
+      "path": "tests/agent_chat_runtime_support.test.ts",
+      "language": "typescript",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/agent_chat_service_stream.test.ts",
+      "language": "typescript",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/agent_export.test.ts",
+      "language": "typescript",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/agent_plan.test.ts",
+      "language": "typescript",
+      "sizeLines": 44,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/agent_tasks.test.ts",
+      "language": "typescript",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/auth_security.test.ts",
+      "language": "typescript",
+      "sizeLines": 139,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/billing.test.ts",
+      "language": "typescript",
+      "sizeLines": 12,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/creative_canvas.test.ts",
+      "language": "typescript",
+      "sizeLines": 236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/g1_provider_architecture.test.ts",
+      "language": "typescript",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/g2_image_edit_protocol.test.ts",
+      "language": "typescript",
+      "sizeLines": 159,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/layout_geometry.test.ts",
+      "language": "typescript",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/layout_manifest_api.test.ts",
+      "language": "typescript",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/legacy_provider_key_cleanup.test.ts",
+      "language": "typescript",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/mime_fidelity.test.ts",
+      "language": "typescript",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/project_dna.test.ts",
+      "language": "typescript",
+      "sizeLines": 88,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tests/server_middleware.test.ts",
+      "language": "typescript",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "tsconfig.json",
+      "language": "json",
+      "sizeLines": 28,
+      "fileCategory": "config"
+    },
+    {
+      "path": "tsconfig.server.json",
+      "language": "json",
+      "sizeLines": 13,
+      "fileCategory": "config"
+    },
+    {
+      "path": "vite.config.ts",
+      "language": "typescript",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 313,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "large",
+  "failures": [
+    {
+      "path": "API_DEPLOYMENT_DOC.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\API_DEPLOYMENT_DOC.md'"
+    },
+    {
+      "path": "API_EXTENSION_GUIDE.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\API_EXTENSION_GUIDE.md'"
+    },
+    {
+      "path": "BASELINE_M1_主线融合验收报告.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\BASELINE_M1_主线融合验收报告.md'"
+    },
+    {
+      "path": "LATEST_POSTER_STUDIO_CHANGES.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\LATEST_POSTER_STUDIO_CHANGES.md'"
+    },
+    {
+      "path": "MAINTENANCE_TECH.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\MAINTENANCE_TECH.md'"
+    },
+    {
+      "path": "MIGRATION_GUIDE.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\MIGRATION_GUIDE.md'"
+    },
+    {
+      "path": "MODEL_MIGRATION.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\MODEL_MIGRATION.md'"
+    },
+    {
+      "path": "MODEL_PRICING_GUIDE.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\MODEL_PRICING_GUIDE.md'"
+    },
+    {
+      "path": "PRODUCT_DOC.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\PRODUCT_DOC.md'"
+    },
+    {
+      "path": "TECHNICAL_DOC.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\TECHNICAL_DOC.md'"
+    },
+    {
+      "path": "VERCEL_ENV.md",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\VERCEL_ENV.md'"
+    },
+    {
+      "path": "app/applet/fix_billing.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\app\\applet\\fix_billing.ts'"
+    },
+    {
+      "path": "app/applet/get_cwd2.js",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\app\\applet\\get_cwd2.js'"
+    },
+    {
+      "path": "app/count.js",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\app\\count.js'"
+    },
+    {
+      "path": "app/fix_card.cjs",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\app\\fix_card.cjs'"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\pnpm-workspace.yaml'"
+    },
+    {
+      "path": "server/app.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\app.ts'"
+    },
+    {
+      "path": "server/repositories/canvasRepository.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\repositories\\canvasRepository.ts'"
+    },
+    {
+      "path": "server/repositories/compositionRepository.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\repositories\\compositionRepository.ts'"
+    },
+    {
+      "path": "server/repositories/copyRepository.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\repositories\\copyRepository.ts'"
+    },
+    {
+      "path": "server/repositories/exportRepository.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\repositories\\exportRepository.ts'"
+    },
+    {
+      "path": "server/repositories/usageRepository.ts",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\server\\repositories\\usageRepository.ts'"
+    },
+    {
+      "path": "src/components/creative-canvas/DetailExportPanel.tsx",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\src\\components\\creative-canvas\\DetailExportPanel.tsx'"
+    },
+    {
+      "path": "src/components/creative-canvas/DetailLongCanvasEditor.tsx",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\src\\components\\creative-canvas\\DetailLongCanvasEditor.tsx'"
+    },
+    {
+      "path": "src/components/creative-canvas/LongImageLayoutEditor.tsx",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\src\\components\\creative-canvas\\LongImageLayoutEditor.tsx'"
+    },
+    {
+      "path": "src/components/creative-canvas/TypographyEditorPanel.tsx",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\src\\components\\creative-canvas\\TypographyEditorPanel.tsx'"
+    },
+    {
+      "path": "supabase_agent_chat_schema.sql",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\supabase_agent_chat_schema.sql'"
+    },
+    {
+      "path": "supabase_c4a2_schema.sql",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\supabase_c4a2_schema.sql'"
+    },
+    {
+      "path": "supabase_c4b2_schema.sql",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\supabase_c4b2_schema.sql'"
+    },
+    {
+      "path": "supabase_canvas_schema.sql",
+      "stage": "file-lstat",
+      "message": "ENOENT: no such file or directory, lstat 'D:\\manwah-cavas\\supabase_canvas_schema.sql'"
+    }
+  ],
+  "stats": {
+    "filesScanned": 313,
+    "byCategory": {
+      "config": 5,
+      "docs": 7,
+      "markup": 2,
+      "code": 285,
+      "data": 14
+    },
+    "byLanguage": {
+      "config": 1,
+      "markdown": 7,
+      "html": 1,
+      "json": 4,
+      "typescript": 273,
+      "javascript": 12,
+      "css": 1,
+      "sql": 14
+    }
+  }
+}
