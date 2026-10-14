@@ -18,7 +18,7 @@ export const DevDebugDrawer: React.FC<DevDebugDrawerProps> = ({ currentCompositi
   };
 
   return (
-    <div className="fixed bottom-16 right-4 z-40 select-none">
+    <div className="fixed bottom-3 left-4 z-40 select-none">
       {!isOpen ? (
         <button
           onClick={() => setIsOpen(true)}

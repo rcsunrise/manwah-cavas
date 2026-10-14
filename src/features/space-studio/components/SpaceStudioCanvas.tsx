@@ -24,7 +24,11 @@ import {
   User,
   Activity,
   Layers,
-  Sparkle
+  Sparkle,
+  History,
+  Columns,
+  Users,
+  Home
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -43,6 +47,8 @@ interface SpaceStudioCanvasProps {
   onGenerateCurrent: () => void;
   onOpenCompareModal?: () => void;
   onRenderHumanPass?: () => void;
+  onSelectRevision?: (shotId: string, revisionId: string) => void;
+  onDeleteRevision?: (shotId: string, revisionId: string) => void;
 
   // New Phase 2 Candidate Batch Props
   candidateBatch?: ShotCandidateBatch | null;
@@ -67,6 +73,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onGenerateCurrent,
   onOpenCompareModal,
   onRenderHumanPass,
+  onSelectRevision,
+  onDeleteRevision,
   candidateBatch,
   selectedCandidateId,
   onSelectCandidate,
@@ -80,6 +88,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
+  const [isCompareMode, setIsCompareMode] = useState(false);
 
   // 视口交互状态：自由缩放 (Zoom) 与光标平移 (Pan)
   const [zoom, setZoom] = useState<number>(1.0);
@@ -97,6 +106,11 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   // Active revision image or sceneMaster image if active shot is A00
   const currentRevision = activeShot.revisions.find(
     (r) => r.id === activeShot.currentRevisionId
+  ) || activeShot.revisions[activeShot.revisions.length - 1];
+
+  // Base revision for comparison (prefer scene revision without human, or first revision)
+  const baseRevision = activeShot.revisions.find(
+    (r) => r.revisionType === 'scene' || (!r.id.includes('human') && r.id !== currentRevision?.id)
   ) || activeShot.revisions[activeShot.revisions.length - 1];
 
   const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
@@ -314,6 +328,52 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               待渲染
             </span>
           )}
+
+          {/* 镜头生成历史版本快速切换条 (同镜头多版本秒级切换对比) */}
+          {activeShot.revisions.length > 1 && (
+            <div className={`hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-xs ${
+              isLight ? 'bg-stone-100/90 border-stone-200 shadow-2xs' : 'bg-black/40 border-white/10'
+            }`}>
+              <span className="text-[10px] text-amber-500 font-bold flex items-center gap-0.5 px-1">
+                <History className="w-3 h-3" />
+                <span>历史版本({activeShot.revisions.length}):</span>
+              </span>
+              {activeShot.revisions.map((rev, revIdx) => {
+                const isSelected = rev.id === activeShot.currentRevisionId || (!activeShot.currentRevisionId && revIdx === 0);
+                const isHuman = rev.revisionType === 'human' || rev.id.includes('human');
+                return (
+                  <button
+                    key={rev.id}
+                    onClick={() => onSelectRevision?.(activeShot.id, rev.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                      isSelected
+                        ? isHuman
+                          ? 'bg-purple-600 text-white shadow-xs'
+                          : 'bg-amber-500 text-black shadow-xs'
+                        : isLight ? 'text-stone-600 hover:bg-stone-200' : 'text-neutral-400 hover:text-white hover:bg-white/10'
+                    }`}
+                    title={`${rev.label || `版本 ${rev.revisionNumber}`} (点击切换当前视图)`}
+                  >
+                    {isHuman ? <Users className="w-2.5 h-2.5" /> : <Layers className="w-2.5 h-2.5" />}
+                    <span>{isHuman ? '人物版' : '纯空间'} (v{rev.revisionNumber || (activeShot.revisions.length - revIdx)})</span>
+                  </button>
+                );
+              })}
+              {/* 前后对比按钮 */}
+              <button
+                onClick={() => setIsCompareMode(!isCompareMode)}
+                className={`ml-1 px-2 py-0.5 rounded text-[10px] font-bold border transition flex items-center gap-1 cursor-pointer ${
+                  isCompareMode
+                    ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
+                    : isLight ? 'border-stone-300 text-stone-700 hover:bg-stone-200' : 'border-white/10 text-neutral-300 hover:bg-white/10'
+                }`}
+                title="同镜头前后版本对比模式（纯空间 vs 人物入座）"
+              >
+                <Columns className="w-2.5 h-2.5" />
+                <span>{isCompareMode ? '退出对比' : '前后对比'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right: Tools & Aspect Ratio */}
@@ -420,7 +480,39 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               className="w-full h-full flex items-center justify-center relative overflow-hidden"
             >
               {/* Interactive Viewport */}
-              {currentImageUrl && !imageError ? (
+              {isCompareMode && baseRevision?.imageUrl && currentImageUrl && baseRevision.imageUrl !== currentImageUrl ? (
+                <div className="relative w-full h-full flex items-center divide-x divide-amber-500/30 overflow-hidden bg-black/80">
+                  {/* Left: Base Version (纯空间家具场景) */}
+                  <div className="relative flex-1 h-full flex items-center justify-center overflow-hidden group/left">
+                    <img
+                      src={baseRevision.imageUrl}
+                      alt="Base Space"
+                      className="w-full h-full object-contain select-none"
+                    />
+                    <div className="absolute top-3 left-3 px-2 py-1 rounded-md bg-black/80 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 backdrop-blur-md">
+                      <Home className="w-3 h-3 text-emerald-400" />
+                      <span>纯空间场景 (v{baseRevision.revisionNumber || 1})</span>
+                    </div>
+                  </div>
+                  {/* Right: Current Version (人物入座版) */}
+                  <div className="relative flex-1 h-full flex items-center justify-center overflow-hidden group/right">
+                    <img
+                      src={currentImageUrl}
+                      alt="Human Pass"
+                      className="w-full h-full object-contain select-none"
+                    />
+                    <div className="absolute top-3 right-3 px-2 py-1 rounded-md bg-purple-950/80 text-amber-300 border border-purple-400/30 text-[10px] font-bold flex items-center gap-1 backdrop-blur-md">
+                      <Users className="w-3 h-3 text-amber-400" />
+                      <span>人物入座方案 (当前已选)</span>
+                    </div>
+                  </div>
+                  {/* Center Divider Tag */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded-full bg-amber-500 text-black font-extrabold text-[10px] shadow-lg pointer-events-none tracking-wider flex items-center gap-1 z-30">
+                    <Columns className="w-3 h-3" />
+                    <span>A/B 对比</span>
+                  </div>
+                </div>
+              ) : currentImageUrl && !imageError ? (
                 <div
                   onWheel={handleWheel}
                   onMouseDown={handleMouseDown}
@@ -566,7 +658,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     <Camera className="w-6 h-6 text-amber-500 absolute inset-0 m-auto animate-pulse" />
                   </div>
                   <div className={`text-xs font-bold ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>
-                    AI 摄影大模型正在计算 4 张候选渲染图...
+                    AI 摄影大模型正在计算渲染方案...
                   </div>
                   <p className={`text-[10px] max-w-xs ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
                     正在执行空间几何锁定、模特面容对齐与落座物理真值护航
@@ -587,7 +679,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       ? '当前为 A00 空间母版。点击下方按钮生成并锁定空间世界（户型·家具·材质真值），确立后续镜头的物理基准。'
                       : sceneMaster?.isLocked
                       ? '已锁定 A00 空间世界与家具。保持空间不变，只改变 Camera DNA 驱动当前视角。'
-                      : 'A00 空间母版尚未锁定。点击将优先锁定 A00 空间母版并生成 4 张候选。'}
+                      : 'A00 空间母版尚未锁定。点击将优先生成并锁定 A00 空间母版。'}
                   </p>
                   <button
                     onClick={onGenerateCurrent}
@@ -597,7 +689,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     <span>
                       {activeShot.templateCode === 'A00'
                         ? (sceneMaster?.isLocked ? '重新生成并锁定 A00 母版' : '生成并锁定 A00 空间母版')
-                        : `生成 ${activeShot.templateCode} 4 张候选`}
+                        : `生成 ${activeShot.templateCode} 镜头方案`}
                     </span>
                   </button>
                 </div>
@@ -614,7 +706,15 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Sparkle className="w-3.5 h-3.5 text-amber-400" />
-                  <span>4 张候选方案</span>
+                  <span>
+                    {candidateBatch.candidates.length > 1
+                      ? `${candidateBatch.candidates.length} 张候选方案`
+                      : activeShot.hasHumanPass
+                      ? '精修人物方案'
+                      : activeShot.templateCode === 'A00'
+                      ? '精修母版方案'
+                      : '精修镜头方案'}
+                  </span>
                 </span>
                 <span className="text-[10px] text-neutral-400 font-mono">
                   (已选 #{activeCandidate?.variantIndex || 1})
@@ -626,7 +726,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 <button
                   onClick={onRegenerateBatch}
                   className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer"
-                  title="重新生成一套全新 4 张方案"
+                  title="重新生成当前镜头方案"
                 >
                   <RefreshCw className="w-3 h-3 text-amber-400" />
                   <span>换一批</span>
@@ -635,7 +735,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 <button
                   onClick={onKeepSpaceRefreshModel}
                   className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-[11px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer"
-                  title="锁空间与家具不变，重新生成 4 张不同的人物构图与细节"
+                  title="锁空间与家具不变，重新生成人物构图与细节"
                 >
                   <User className="w-3 h-3 text-purple-400" />
                   <span>保持空间重生人物</span>
@@ -644,7 +744,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 <button
                   onClick={onKeepModelRefreshPose}
                   className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-[11px] text-neutral-300 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer"
-                  title="轮换已导入角色，并生成 4 张全新候选"
+                  title="轮换已导入角色并重新生成"
                 >
                   <RefreshCw className="w-3 h-3 text-emerald-400" />
                   <span>替换角色重生</span>
@@ -662,8 +762,16 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               </div>
             </div>
 
-            {/* 4 Candidate Thumbnails Strip */}
-            <div className="grid grid-cols-4 gap-3">
+            {/* Candidate Thumbnails Strip */}
+            <div className={`grid gap-3 ${
+              candidateBatch.candidates.length === 1 
+                ? 'grid-cols-1 max-w-xs mx-auto' 
+                : candidateBatch.candidates.length === 2 
+                  ? 'grid-cols-2 max-w-md mx-auto' 
+                  : candidateBatch.candidates.length === 3
+                    ? 'grid-cols-3 max-w-2xl mx-auto'
+                    : 'grid-cols-4'
+            }`}>
               {candidateBatch.candidates.map((cand) => {
                 const isSelected = (activeCandidate?.id === cand.id);
                 return (

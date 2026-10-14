@@ -22,7 +22,7 @@ const STORAGE_KEY_PREFIX = 'manwah_space_asset_';
 export const USER_MAX_STYLE_QUOTA = 10;
 export const USER_MAX_MODEL_QUOTA = 10;
 
-// 1. 默认精选场景风格资产库 (已清空内置预设，风格资产纯由管理员录入作为系统留存，或用户在配额内自建)
+// 1. 场景风格资产库 (已清空默认系统预设，由用户自建与AI生成驱动，保障用户资产永久存盘)
 export const DEFAULT_SCENE_STYLES: SceneStyleAsset[] = [];
 
 // 2. 模特资产库 (纯用户自建与AI导入，无默认固定家庭角色预设)
@@ -203,9 +203,11 @@ const STANDARD_HUMAN_LAYOUT_KEY = 'manwah_standard_human_layout';
 const LEGACY_STYLE_PRESET_IDS = [
   'style-italian-luxury',
   'style-modern-minimal',
-  'style-creamy-nordic',
+  'style-oriental-zen',
   'style-french-vintage',
-  'style-oriental-zen'
+  'style-creamy-nordic',
+  'style-wabisabi-zen',
+  'style-pure-empty-room'
 ];
 
 class SpaceAssetLibraryService {
@@ -221,7 +223,11 @@ class SpaceAssetLibraryService {
         const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}custom_all`);
         if (stored) {
           const list: UnifiedSpaceAsset[] = JSON.parse(stored);
-          list.forEach((item) => this.customAssets.set(item.id, item));
+          list.forEach((item) => {
+            if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !item.isSystem && !item.tags?.includes('官方标准库')) {
+              this.customAssets.set(item.id, item);
+            }
+          });
         }
         const deletedStored = localStorage.getItem(`${STORAGE_KEY_PREFIX}deleted_ids`);
         if (deletedStored) {
@@ -233,16 +239,14 @@ class SpaceAssetLibraryService {
       console.warn('[AssetLibraryService] LocalStorage load warning:', e);
     }
 
-    // 彻底清除旧硬编码预设
-    LEGACY_STYLE_PRESET_IDS.forEach((id) => {
-      this.deletedAssetIds.add(id);
-      this.customAssets.delete(id);
-    });
-
     this.initialized = true;
 
     // 异步从 IndexedDB 中深度恢复（解决超大 base64 在 localStorage 无法保存丢失的问题）
     this.hydrateFromIndexedDB();
+    // 异步立即从服务端永久磁盘同步模特与风格资产，保障全新环境首屏毫秒级就绪
+    this.hydrateFromServer().catch(() => {});
+        this.hydrateStylesFromServer().catch(() => {});
+    this.hydrateStylesFromServer().catch(() => {});
   }
 
   /**
@@ -269,20 +273,250 @@ class SpaceAssetLibraryService {
 
       if (storedAssets && Array.isArray(storedAssets)) {
         storedAssets.forEach((item) => {
-          if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !this.customAssets.has(item.id)) {
+          if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !item.isSystem && !item.tags?.includes('官方标准库') && !this.customAssets.has(item.id)) {
             this.customAssets.set(item.id, item);
             hasChanges = true;
           }
         });
       }
 
-      if (hasChanges && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+        if (hasChanges && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+        }
+      } catch (e) {
+        console.warn('[AssetLibraryService] IndexedDB hydration warning:', e);
+      } finally {
+        this.isHydratingDb = false;
+        // 关键：IndexedDB就绪后，立即与服务端永久磁盘存储双向同步，确保数据长存
+        this.hydrateFromServer().catch(() => {});
+      }
+    }
+
+  /**
+   * 从服务端永久磁盘 (.data/space_model_assets.json) 深度双向同步与恢复资产
+   */
+  public async hydrateFromServer(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      const res = await fetch('/api/space/storage/models');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        const serverModels: ModelAsset[] = data.data;
+        let hasChanges = false;
+
+        // 1. 服务端已存盘资产为最高权威资产库，强制清除误删除标记并合并入本地
+        serverModels.forEach((sm) => {
+          if (sm && sm.id) {
+            this.deletedAssetIds.delete(sm.id);
+            const local = this.customAssets.get(sm.id);
+            if (!local || JSON.stringify(local) !== JSON.stringify(sm)) {
+              this.customAssets.set(sm.id, {
+                ...sm,
+                type: 'model',
+                updatedAt: sm.updatedAt || new Date().toISOString()
+              });
+              hasChanges = true;
+            }
+          }
+        });
+
+        // 2. 检查本地是否有新录入但服务端尚未保存的模特资产，立即上报持久化
+        const localModels = this.getModels();
+        if (localModels.length > 0) {
+          const serverModelIds = new Set(serverModels.map((m) => m.id));
+          const hasUnsaved = localModels.some((m) => !serverModelIds.has(m.id));
+          if (hasUnsaved || (localModels.length > 0 && serverModels.length === 0)) {
+            await this.syncModelsToServer(localModels);
+          }
+        }
+
+        if (hasChanges) {
+          this.persist();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+          }
+        }
       }
     } catch (e) {
-      console.warn('[AssetLibraryService] IndexedDB hydration warning:', e);
-    } finally {
-      this.isHydratingDb = false;
+      console.warn('[AssetLibraryService] Server models hydration warning:', e);
+    }
+  }
+
+  /**
+   * 从服务端永久磁盘 (.data/space_scene_styles.json) 深度拉取与恢复场景风格资产
+   */
+  public async hydrateStylesFromServer(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+      // 1. 确保旧默认资产从本地彻底清理并记录为已删除
+      LEGACY_STYLE_PRESET_IDS.forEach((id) => {
+        this.customAssets.delete(id);
+        this.deletedAssetIds.add(id);
+      });
+
+      const res = await fetch('/api/space/storage/styles');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        // 过滤服务端残留的旧系统默认资产
+        const serverStyles: SceneStyleAsset[] = data.data.filter(
+          (st: any) =>
+            st &&
+            st.id &&
+            !LEGACY_STYLE_PRESET_IDS.includes(st.id)
+        );
+
+        let hasChanges = false;
+
+        serverStyles.forEach((st) => {
+          if (st && st.id) {
+            this.deletedAssetIds.delete(st.id);
+            const local = this.customAssets.get(st.id);
+            if (!local || JSON.stringify(local) !== JSON.stringify(st)) {
+              this.customAssets.set(st.id, {
+                ...st,
+                type: 'scene_style',
+                updatedAt: st.updatedAt || new Date().toISOString()
+              });
+              hasChanges = true;
+            }
+          }
+        });
+
+        // 2. 检查本地是否有用户自建/AI生成的风格资产，立即上报同步至服务端永久磁盘存盘
+        const localStyles = this.getSceneStyles();
+        if (localStyles.length > 0) {
+          const serverStyleIds = new Set(serverStyles.map((s) => s.id));
+          const hasUnsaved = localStyles.some((s) => !serverStyleIds.has(s.id));
+          if (hasUnsaved || (localStyles.length > 0 && serverStyles.length === 0)) {
+            console.log(`[AssetLibraryService] 检测到本地有 ${localStyles.length} 个用户自建风格资产，正在自动同步至服务端磁盘永久保存...`);
+            await this.syncStylesToServer(localStyles);
+          }
+        }
+
+        if (hasChanges) {
+          this.persist();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] Server styles hydration warning:', e);
+    }
+  }
+
+  /**
+   * 将当前全部风格资产推送到服务端磁盘保存
+   */
+  public async syncStylesToServer(stylesToSync?: SceneStyleAsset[]): Promise<boolean> {
+    if (typeof window === 'undefined') return true;
+    try {
+      const allStyles = stylesToSync || this.getSceneStyles();
+      const styles = allStyles.filter(
+        (st) =>
+          st &&
+          !LEGACY_STYLE_PRESET_IDS.includes(st.id)
+      );
+      const res = await fetch('/api/space/storage/styles/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ styles })
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log(`[AssetLibraryService] ✓ 成功同步 ${styles.length} 个风格资产至服务端磁盘永久保存`);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.warn('[AssetLibraryService] Failed to sync styles to server:', e);
+      return false;
+    }
+  }
+
+  /**
+   * 将当前全部模特资产实时推送到服务端磁盘保存
+   */
+  public async syncModelsToServer(modelsToSync?: ModelAsset[]): Promise<boolean> {
+    if (typeof window === 'undefined') return true;
+    try {
+      const models = modelsToSync || this.getModels();
+      if (models.length === 0) return true;
+      const res = await fetch('/api/space/storage/models/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models })
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log(`[AssetLibraryService] ✓ 成功同步 ${models.length} 个模特资产至服务端磁盘永久保存`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('manwah_space_models_synced', { detail: { count: models.length } }));
+        }
+        return true;
+      }
+    } catch (e) {
+      console.warn('[AssetLibraryService] Failed to sync models to server:', e);
+    }
+    return false;
+  }
+
+  /**
+   * 导出全部模特资产为 JSON 备份文件（离线归档，万无一失）
+   */
+  public exportModelsBackup(): void {
+    const models = this.getModels();
+    const backupData = {
+      version: '1.0',
+      type: 'manwah_space_models_backup',
+      exportedAt: new Date().toISOString(),
+      count: models.length,
+      models
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `敏华空间模特资产标准库备份_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * 从 JSON 备份文件恢复模特资产并自动推送到服务端磁盘
+   */
+  public async importModelsBackup(jsonString: string): Promise<number> {
+    try {
+      const parsed = JSON.parse(jsonString);
+      const list: ModelAsset[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.models)
+        ? parsed.models
+        : [];
+      if (list.length === 0) {
+        throw new Error('备份文件中未发现有效的模特资产数据');
+      }
+
+      list.forEach((m) => {
+        if (m.id && (m.name || m.nameZh)) {
+          this.customAssets.set(m.id, {
+            ...m,
+            type: 'model',
+            updatedAt: new Date().toISOString()
+          });
+          this.deletedAssetIds.delete(m.id);
+        }
+      });
+
+      this.persist();
+      await this.syncModelsToServer();
+      return list.length;
+    } catch (e: any) {
+      throw new Error(`导入备份失败: ${e.message}`);
     }
   }
 
@@ -315,6 +549,10 @@ class SpaceAssetLibraryService {
     } catch (err) {
       console.warn('[AssetLibraryService] DB draft error:', err);
     }
+
+    // 3. 异步永久固化存入服务端磁盘文件 (.data/space_model_assets.json)
+    this.syncModelsToServer().catch(() => {});
+    this.syncStylesToServer().catch(() => {});
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('manwah_space_assets_changed'));
@@ -1052,7 +1290,9 @@ ${humanDirectives}`;
    * 删除风格资产
    */
   public deleteSceneStyle(id: string): boolean {
-    return this.deleteAsset(id);
+    const res = this.deleteAsset(id);
+    this.syncStylesToServer().catch(() => {});
+    return res;
   }
 
   /**
@@ -1098,28 +1338,28 @@ ${humanDirectives}`;
   }
 
   /**
-   * AI 刷新风格 4 张参考图变体
+  /**
+   * AI 刷新/扩展风格参考图变体（基于真实 AI 生图结果，拒绝假模板图）
    */
-  public async generateStyleVariants(styleId: string): Promise<SceneStyleAsset> {
+  public async generateStyleVariants(styleId: string, newVariantImageUrl?: string): Promise<SceneStyleAsset> {
     const list = this.getSceneStyles();
     const style = list.find(s => s.id === styleId) || list[0];
-    
-    const candidatePool = [
-      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80'
-    ];
+    if (!style) return style;
 
-    const shuffled = [...candidatePool].sort(() => 0.5 - Math.random()).slice(0, 4);
+    const existingRefs = style.referenceImages && style.referenceImages.length > 0
+      ? [...style.referenceImages]
+      : [style.coverImage || style.thumbnail].filter(Boolean) as string[];
+
+    let nextRefs = existingRefs;
+    if (newVariantImageUrl && !nextRefs.includes(newVariantImageUrl)) {
+      nextRefs = [newVariantImageUrl, ...nextRefs];
+    }
+
     const updatedStyle: SceneStyleAsset = {
       ...style,
-      referenceImages: shuffled,
-      thumbnail: shuffled[0],
-      coverImage: shuffled[0]
+      referenceImages: nextRefs,
+      thumbnail: nextRefs[0] || style.thumbnail,
+      coverImage: nextRefs[0] || style.coverImage
     };
 
     if (!style.isSystem) {

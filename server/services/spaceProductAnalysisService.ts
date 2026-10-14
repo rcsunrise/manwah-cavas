@@ -46,6 +46,7 @@ export const ProductDnaReadoutSchema = z.object({
   }),
   materials: z.array(z.string()),
   colors: z.array(z.string()),
+  adaptiveStyles: z.array(z.string()).default([]),
   surfaceTexture: z.string(),
   functionCapable: z.boolean(),
   structuralFeatures: z.array(
@@ -252,7 +253,10 @@ export class SpaceProductAnalysisService {
    - 提取主色调及高级辅助配色（如“云雾暖灰”、“鞍褐焦糖”、“曜石深灰”、“极地奶白”等）。
    - 提取皮革纹理、手工车缝明线、包边滚边、压褶工艺细节。
 
-5. 视觉真值不可篡改锁定规则 (lockedRules):
+5. 适配空间风格推荐 (adaptiveStyles):
+   - 结合产品形态设计、皮革面料质感与色彩体系，提炼 1~3 个最适配的室内空间风格（如“意式轻奢”、“现代极简”、“奶油原木”、“法式复古”、“侘寂原力”、“轻奢高定”、“新中式”等）。
+
+6. 视觉真值不可篡改锁定规则 (lockedRules):
    - 给出 3~5 条后续在空间母版 A00 及分镜 A01~A08 渲染中必须 100% 保持一致性的硬性物理约束。
 
 ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
@@ -271,6 +275,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   },
   "materials": ["南美进口头层牛皮 (半苯胺)", "德国超静音低压双电机", "高碳钢五金伸缩架"],
   "colors": ["云雾暖灰 (Warm Greige)", "拉丝黑钛金属"],
+  "adaptiveStyles": ["意式轻奢", "现代极简", "奶油原木"],
   "surfaceTexture": "细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边",
   "functionCapable": true,
   "structuralFeatures": [
@@ -336,6 +341,11 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
       height: Number(extracted?.dimensions?.height) || (isRecliner ? 1050 : isTable ? 420 : 950)
     };
 
+    const finalAdaptiveStyles =
+      Array.isArray(extracted?.adaptiveStyles) && extracted.adaptiveStyles.length > 0
+        ? extracted.adaptiveStyles
+        : ['意式轻奢', '现代极简', detectedDominantColorName.includes('橙') || detectedDominantColorName.includes('焦糖') ? '轻奢高定' : '奶油风'];
+
     const finalProduct: ProductDnaReadout = {
       id: productId,
       name: finalName,
@@ -357,6 +367,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
         Array.isArray(extracted?.colors) && extracted.colors.length > 0
           ? extracted.colors
           : [detectedDominantColorName, detectedSecondaryColor],
+      adaptiveStyles: finalAdaptiveStyles,
       surfaceTexture:
         extracted?.surfaceTexture ||
         `细腻平纹半苯胺牛皮，真皮透气毛孔，法式立体双缝线手工包边，呈现${detectedDominantColorName.split(' ')[0]}温润微光`,

@@ -598,7 +598,7 @@ async function startServer() {
   // Endpoint: /api/gateway/generate-image
   app.post('/api/gateway/generate-image', optionalAuthenticateToken as any, async (req, res) => {
     try {
-      let { prompt, model = "google/gemini-3-pro-image-preview", generationIntent, aspectRatio = "1:1", images = [], resolution = "1K", seed, size, quality, format, output_format, background, moderation, mask } = req.body;
+      let { prompt, model = "openai/gpt-image-2", generationIntent, aspectRatio = "1:1", images = [], resolution = "1K", seed, size, quality, format, output_format, background, moderation, mask } = req.body;
       const user = (req as any).user;
       const userUuid = 
         (user?.id && user.id !== '00000000-0000-0000-0000-000000000001' ? user.id : undefined) ||
@@ -1084,7 +1084,10 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         const modelAdapter = getImageProviderAdapter(registeredModel);
 
         const executeRequestForModel = async () => {
-          const finalModel = registeredModel.id;
+          let finalModel = registeredModel.id;
+          if (currentProvider === 'tiantoken' && finalModel === 'gpt-image-2') {
+            finalModel = 'gpt-image-2-c';
+          }
           let targetUrl = modelAdapter.buildEndpoint(currentBaseUrl, registeredModel, intent);
           let reqPayload: any = payload;
           

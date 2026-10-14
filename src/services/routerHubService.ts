@@ -12,7 +12,7 @@ export interface GenerateImageRequest {
 // 2. 核心调用函数 (现在通过我们自己的后端代理)
 export const generateImageFromRouterHub = async ({
   prompt,
-  model = "gemini-2.5-flash-image",
+  model = "gpt-image-2",
   aspectRatio = "1:1",
   userUuid,
 }: GenerateImageRequest): Promise<string> => {

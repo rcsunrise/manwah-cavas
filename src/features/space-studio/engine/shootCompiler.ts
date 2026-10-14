@@ -57,10 +57,14 @@ export class ShootCompiler {
       'architectural vertical perspective correction, razor sharp optical clarity, natural cinematic depth of field'
     ];
 
-    // 2. 镜头意图描述 (Shot Intent)
+    // 2. 镜头意图描述 (Shot Intent) - 净化为纯视觉英文，彻底杜绝中文商品名被 AI 误印在画面上
+    const cleanProductName = primaryProduct?.role === 'recliner_1seat' 
+      ? 'ergonomic power motion recliner chair' 
+      : 'luxury power motion genuine leather sofa';
+
     const intentClauses: string[] = [
       `shot aesthetic goal: ${intent.name}`,
-      `subject emphasis: ${intent.productDominancePct}% visual prominence on ${primaryProduct?.name || 'MANWAH luxury furniture'}`,
+      `subject emphasis: ${intent.productDominancePct}% visual prominence on ${cleanProductName}`,
       `background treatment: ${intent.backgroundSuppression} background suppression with harmonious bokeh`
     ];
 
@@ -95,9 +99,12 @@ export class ShootCompiler {
       );
     }
 
-    // 5. 空间与风格基准及家具摆位拓扑（强制继承母版不变量）
+    // 5. 空间与风格基准及家具摆位拓扑（强制继承母版不变量，使用纯视觉英文定位标签）
     const placementClauses = input.blueprint?.items
-      ? input.blueprint.items.map((item) => `${item.assetName} securely anchored at zone ${item.zoneId} with zero translation`)
+      ? input.blueprint.items.map((item) => {
+          const itemTag = item.role === 'sofa_3seat' ? 'hero sectional sofa' : item.role === 'recliner_1seat' ? 'accent recliner chair' : item.role === 'coffee_table' ? 'natural stone coffee table' : 'furniture element';
+          return `${itemTag} securely anchored at zone ${item.zoneId} with zero translation`;
+        })
       : [];
 
     const sceneMasterHeritage = [
@@ -113,14 +120,14 @@ export class ShootCompiler {
       ...mustIncludeClauses,
       ...specializedClauses,
       ...sceneMasterHeritage,
-      'commercial furniture catalog masterpiece, authentic luxury materiality, clean composition, 8k crisp resolution'
+      'commercial furniture catalog masterpiece, authentic luxury materiality, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
     ].filter(Boolean).join(', ');
 
     const negativePrompt = [
       'physically moved furniture positions, shifted sofa coordinates, displaced coffee table',
       'deformed sofa structure, distorted perspective distortion, warped straight lines',
       'plastic textures, cheap laminate, cartoon CGI rendering, overexposed highlights',
-      'people, human, faces, extra fingers, text, watermark, signature',
+      'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
       ...(camera.mustExclude || []),
       ...stylePreset.negativeRules
     ].filter(Boolean).join(', ');

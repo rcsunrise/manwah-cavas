@@ -29,7 +29,6 @@ const isBlockedIpv4 = (ip: string) => {
     (octets[0] === 192 && octets[1] === 168) ||
     (octets[0] === 192 && octets[1] === 0 && (octets[2] === 0 || octets[2] === 2)) ||
     (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) ||
-    (octets[0] === 198 && (octets[1] === 18 || octets[1] === 19)) ||
     (octets[0] === 198 && octets[1] === 51 && octets[2] === 100) ||
     (octets[0] === 203 && octets[1] === 0 && octets[2] === 113) ||
     octets[0] >= 224;

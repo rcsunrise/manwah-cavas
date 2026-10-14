@@ -18,6 +18,7 @@ export interface SpaceProductIdentityInput {
   id?: string;
   sku?: string;
   name?: string;
+  role?: string;
   materials?: string[];
   colors?: string[];
   surfaceTexture?: string;
@@ -211,10 +212,10 @@ export class SpaceImageGenerationService {
       await Promise.all(rawCharImages.slice(0, 2).map(imgUrl => resolveImageInlineData(imgUrl)))
     ).filter((item): item is { mimeType: string; data: string } => item !== null);
 
-    // 确定有效色彩与材质描述
-    const effectiveColor = productColor || primaryProduct?.colors?.[0] || '干邑暖橙 (Cognac Amber)';
-    const effectiveMaterial = productMaterial || primaryProduct?.materials?.[0] || '南美进口头层牛皮 (半苯胺)';
-    const effectiveProductName = primaryProduct?.name || productName;
+    // 确定有效色彩与材质描述 (净化为纯视觉英文，彻底阻断中文商品名被生图模型误渲染为画面字迹)
+    const effectiveColor = (productColor || primaryProduct?.colors?.[0] || 'warm cognac amber').replace(/[\u4e00-\u9fa5\(\)]/g, '').trim() || 'warm cognac amber';
+    const effectiveMaterial = (productMaterial || primaryProduct?.materials?.[0] || 'genuine top-grain semi-aniline leather').replace(/[\u4e00-\u9fa5\(\)]/g, '').trim() || 'genuine top-grain leather';
+    const effectiveProductName = primaryProduct?.role === 'recliner_1seat' ? 'luxury power motion recliner chair' : 'luxury power motion genuine leather sofa';
 
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
     try {
@@ -222,13 +223,13 @@ export class SpaceImageGenerationService {
       if (!isProviderKeyValid(config?.provider)) {
         throw new Error(`Provider "${config?.provider || 'none'}" has no valid API key, switching to deterministic renderer`);
       }
-      const rawPreferred = input.preferredModel?.trim() || 'gemini-3.1-flash-image';
+      const rawPreferred = input.preferredModel?.trim() || 'gpt-image-2';
       
       // 统一模型别名映射
       let targetModel = rawPreferred;
       if (targetModel === 'gemini-2.5-flash') targetModel = 'gemini-2.5-flash-image';
       else if (targetModel === 'google/gemini-3-pro-image' || targetModel === 'gemini-3-pro-image-preview') targetModel = 'gemini-3-pro-image';
-      else if (targetModel === 'openai/gpt-image-2') targetModel = 'gpt-image-2';
+      else if (targetModel === 'openai/gpt-image-2' || targetModel === 'gpt-image-2') targetModel = 'gpt-image-2-c';
       else if (targetModel === 'openai/gpt-image-2-c') targetModel = 'gpt-image-2-c';
       else if (targetModel === 'openai/gpt-image-2-all') targetModel = 'gpt-image-2-all';
 
@@ -284,52 +285,58 @@ export class SpaceImageGenerationService {
 
       // 针对生图模式编织具备物理第一性原理的系统级摄影提示词
       let directivePrompt = positivePrompt;
-      if (shotInline) {
-        // 模式 A: 模特植入 (Human Pass)：锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物，并精准响应电动功能位与脚托动作
-        directivePrompt = `[IN-PLACE ERGONOMIC HUMAN INTEGRATION - ZERO ARCHITECTURAL DRIFT]
-REFERENCE IMAGE 1: Approved empty room shot (${shotCode}) with authentic living room architecture and ${effectiveProductName} in ${effectiveColor}.
-${charInlines.length > 0 ? `REFERENCE IMAGE 2: Target Character Reference (Model DNA). Photorealistically replicate this exact individual's facial structure, age, hair, expression, and demeanor into the scene.` : ''}
+      if (isHumanPass || shotInline) {
+        // 模式 A: 模特植入 (Human Pass)：强制要求必须生成人物坐入场景，绝不返回空场景，并强制零文字
+        directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
+PRIMARY OBJECTIVE:
+You are an architectural lifestyle photographer. You MUST photorealistically insert real human models into the room shown in Reference Image 1.
+DO NOT LEAVE THE ROOM EMPTY. DO NOT RETURN AN EMPTY ROOM.
+THE HERO SOFA MUST HAVE THE SPECIFIED PEOPLE SEATED AND RELAXING IN IT.
+
+${charInlines.length > 0 ? `REFERENCE IMAGE 2 & 3: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ''}
 
 STRICT COMMERCIAL MANDATES:
-1. Reference Image 1 is the physical truth of this room's architecture, background walls, flooring, lighting, and camera angle.
-2. The living room walls, floor, camera position, and overall hero sofa placement MUST REMAIN 100% INVARIANT.
-3. MOTION & ERGONOMIC FUNCTION MECHANISM:
+1. POPULATE THE HERO SOFA: The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with realistic body weight, folds in clothes, and authentic contact shadows on the leather cushions.
+2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a 100% clean pristine photograph.
+3. MOTION & ERGONOMIC FUNCTION:
    - Keep sofa color (${effectiveColor}), leather grain (${effectiveMaterial}), and armrest styling completely unchanged.
-   - HOWEVER, if the character's designated position or posture specifies an extended footrest ("展开脚托", "电动功能位", "开脚托", "recline"), that specific seat on the main sofa MUST dynamically OPEN and EXTEND its motorized footrest forward to support the person's legs and feet. The rest of the sofa remains closed.
-4. EXACT SEAT ANCHOR & COUPLING:
-   - The person must sit on the EXACT designated seat specified (e.g. main multi-seat sofa functional seat, NOT the separate single armchair or coffee table).
-   - The character's body must make natural, photorealistic contact with the sofa cushions and footrest, with authentic contact shadows, folds in clothing, and proper body weight settling into the leather. No hovering, no clipping.
-5. CHARACTER FIDELITY:
-   - Seamlessly integrate the character matching the specified age, identity, and demeanor without generating random strangers or mismatched ages.
+   - If the posture specifies an extended footrest ("展开脚托", "recline", "电动功能位"), that specific seat on the main sofa MUST smoothly OPEN and EXTEND its motorized footrest forward supporting the person's legs and feet.
+4. ARCHITECTURAL CONTINUITY:
+   - The room's architecture, window view, flooring, and camera perspective in Reference Image 1 must remain solid and preserved while the people are inserted.
+
 ${positivePrompt}
-Negative constraints: ${negativePrompt || 'displaced furniture, changed sofa color, deformed limbs, floating human, extra people, bystanders, crowd, wrong person age, retracted footrest when extended requested, sitting on coffee table'}`;
+
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
       } else if (productInline && masterInline) {
-        // 模式 B: A01~A08 衍生镜头生图：必须与 A00 空间母版和主件产品保持 100% 连贯性
+        // 模式 B: A01~A08 衍生镜头生图：必须与 A00 空间母版和主件产品保持 100% 连贯性，强制零文字
         directivePrompt = `[MULTIMODAL PRODUCTION INVARIANCE: PRESERVE EXACT PRODUCT AND ROOM FROM REFERENCE IMAGES]
 REFERENCE IMAGE 1: Authentic Hero Product Reference (${effectiveProductName}, color: ${effectiveColor}, material: ${effectiveMaterial}).
 REFERENCE IMAGE 2: Approved A00 Scene Master of this exact luxury living room.
 
 STRICT COMMERCIAL MANDATES:
-1. You are photographing the EXACT SAME room and the EXACT SAME sofa shown in Reference Image 2.
-2. The central hero sofa MUST REMAIN 100% INVARIANT AND IDENTICAL to Reference Image 1 and Reference Image 2 in terms of:
-   - Color: Exactly ${effectiveColor} (do not shift to gray or any other color).
+1. Photograph the EXACT SAME room and the EXACT SAME sofa shown in Reference Image 2 from the specified camera angle.
+2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE.
+3. The central hero sofa MUST REMAIN 100% INVARIANT:
+   - Color: Exactly ${effectiveColor} (do not shift to gray or unintended colors).
    - Silhouette: Specific high-back contour, three-seat split cushions, and signature curved armrests.
    - Texture: ${effectiveMaterial} with natural leather sheen.
-3. DO NOT change the architecture, flooring, wall finish, or lighting tone from Reference Image 2.
 4. Render the new designated shot angle (${shotCode}) strictly following this camera specification:
 ${positivePrompt}
-Negative constraints: ${negativePrompt || 'different sofa, different color, random furniture, altered architecture, distorted logo, blur'}`;
+
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, different sofa, different color, random furniture, altered architecture, people, human, faces`;
       } else if (productInline) {
-        // A00 空间母版初创：以产品实拍图为最高基石
+        // A00 空间母版初创：以产品实拍图为最高基石，强制零文字
         directivePrompt = `[HERO PRODUCT GROUND TRUTH ANCHOR - ZERO RE-INVENTION]
 REFERENCE IMAGE 1: Authentic product ground truth for ${effectiveProductName}.
 
 STRICT COMMERCIAL MANDATES:
 1. The central hero furniture piece in the generated luxury room MUST FAITHFULLY AND ACCURATELY MATCH the sofa in Reference Image 1.
-2. Match its specific color (${effectiveColor}), materials (${effectiveMaterial}), cushion tufting, armrest silhouette, and power recliner base.
-3. DO NOT generate a random or generic sofa. Replicate the authentic design from Reference Image 1 and place it in the following luxury living room:
+2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE.
+3. Match its specific color (${effectiveColor}), materials (${effectiveMaterial}), cushion tufting, armrest silhouette, and power recliner base.
+4. Place it into the following luxury architectural room:
 ${positivePrompt}
-Negative constraints: ${negativePrompt || 'generic sofa, wrong color, cloth fabric, cheap furniture, cartoon, distorted anatomy'}`;
+
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cloth fabric, cheap furniture, cartoon, people, human, faces`;
       }
 
       const mappedAspectRatio =

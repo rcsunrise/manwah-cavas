@@ -54,6 +54,7 @@ import {
 } from '../../../types/spaceAssetLibrary';
 import { SceneStyleGalleryModal } from './assets/SceneStyleGalleryModal';
 import { ModelAssetModal } from './assets/ModelAssetModal';
+import { AiHumanChoreographerModal } from './AiHumanChoreographerModal';
 import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
 
 interface SpaceStudioRightPanelProps {
@@ -86,6 +87,7 @@ interface SpaceStudioRightPanelProps {
   activeAssets?: ActivePhotographyAssets;
   onUpdateActiveAssets?: (updater: Partial<ActivePhotographyAssets>) => void;
   onApplyStyleAndGenerateMaster?: (style: SceneStyleAsset) => void;
+  onApplyStyleAsMasterDirectly?: (style: SceneStyleAsset) => void;
 
   // Custom Prompt / Negative Prompt support
   customPrompt?: string;
@@ -102,7 +104,7 @@ interface SpaceStudioRightPanelProps {
 }
 
 const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
-  model: 'gemini-3.1-flash-image',
+  model: 'gpt-image-2',
   resolution: '2K',
   aspectRatio: '4:3',
   customAspectRatio: '',
@@ -142,6 +144,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   activeAssets,
   onUpdateActiveAssets,
   onApplyStyleAndGenerateMaster,
+  onApplyStyleAsMasterDirectly,
   customPrompt = '',
   onChangeCustomPrompt,
   negativePrompt = 'nsfw, low quality, deformed anatomy, blurry, distorted furniture, extra limbs, watermark',
@@ -155,6 +158,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [isHumanLayoutCollapsed, setIsHumanLayoutCollapsed] = useState(false);
+  const [isAiChoreographerOpen, setIsAiChoreographerOpen] = useState(false);
   const [isLightingCollapsed, setIsLightingCollapsed] = useState(true);
 
   // Local state for Human Layout if not controlled from parent
@@ -534,17 +538,46 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-black/50 border-white/10 text-amber-300'
                 }`}
               >
-                <optgroup label="Google Gemini 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (推荐 · 极速高精)</option>
-                  <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
-                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
-                </optgroup>
-                <optgroup label="OpenAI GPT Image 2 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="gpt-image-2">GPT Image 2 (电影级写实 · 材质保护)</option>
+                <optgroup label="OpenAI GPT Image 2 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="gpt-image-2">GPT Image 2 (系统默认 · 电影级写实 · 材质保护)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
                 </optgroup>
+                <optgroup label="Google Gemini 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (极速高精)</option>
+                  <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
+                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
+                </optgroup>
               </select>
+            </div>
+
+            {/* 生成候选数量控制 (默认 1 张模板，防止重复并发调用 API 与资源浪费) */}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/5">
+              <span className={`text-[10px] shrink-0 font-medium ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>生成候选数量:</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => onChangeComputeConfig?.({ candidateCount: 1 } as any)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                    ((cfg as any).candidateCount || 1) === 1
+                      ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
+                      : isLight ? 'bg-stone-100 text-stone-600 border-stone-200 hover:text-stone-900' : 'bg-black/30 text-neutral-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  1 张 (默认 · 推荐)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeComputeConfig?.({ candidateCount: 4 } as any)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                    ((cfg as any).candidateCount || 1) === 4
+                      ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
+                      : isLight ? 'bg-stone-100 text-stone-600 border-stone-200 hover:text-stone-900' : 'bg-black/30 text-neutral-400 border-white/10 hover:text-white'
+                  }`}
+                >
+                  4 张变体
+                </button>
+              </div>
             </div>
           </div>
 
@@ -569,7 +602,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   ? `正在渲染 ${activeShot.templateCode} 基础机位...`
                   : activeShot.templateCode === 'A00'
                   ? (sceneMaster?.isLocked ? '重新生成 A00 空间母版' : '生成并锁定 A00 空间母版')
-                  : `生成 ${activeShot.templateCode} 基础机位 (4 候选)`}
+                  : ((cfg as any).candidateCount > 1 ? `生成 ${activeShot.templateCode} 基础机位 (${(cfg as any).candidateCount} 候选)` : `生成 ${activeShot.templateCode} 基础机位 (单张精修)`)}
               </span>
             </button>
           </div>
@@ -600,35 +633,64 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
             {activeAssets?.style ? (
               <div
-                onClick={() => setIsStyleModalOpen(true)}
-                className={`group flex gap-2.5 p-2 rounded-lg border cursor-pointer transition-all ${
+                className={`group flex flex-col p-2 rounded-lg border transition-all ${
                   isLight
                     ? 'bg-stone-50 border-stone-200/80 hover:border-amber-400'
                     : 'bg-black/40 border-white/5 hover:border-amber-500/30'
                 }`}
               >
-                <div className={`w-14 h-14 rounded-lg overflow-hidden shrink-0 relative ${isLight ? 'bg-stone-200' : 'bg-black/60'}`}>
-                  <img
-                    src={activeAssets.style.thumbnail}
-                    alt={activeAssets.style.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                  />
-                </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <div className={`text-xs font-bold transition-colors truncate ${
-                    isLight ? 'text-stone-900 group-hover:text-amber-700' : 'text-white group-hover:text-amber-400'
-                  }`}>
-                    {activeAssets.style.name}
+                <div
+                  onClick={() => setIsStyleModalOpen(true)}
+                  className="flex gap-2.5 cursor-pointer"
+                >
+                  <div className={`w-14 h-14 rounded-lg overflow-hidden shrink-0 relative ${isLight ? 'bg-stone-200' : 'bg-black/60'}`}>
+                    <img
+                      src={activeAssets.style.thumbnail}
+                      alt={activeAssets.style.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
                   </div>
-                  <div className={`text-[10px] flex items-center gap-1 mt-0.5 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
-                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium ${
-                      isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/10 text-amber-300'
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className={`text-xs font-bold transition-colors truncate ${
+                      isLight ? 'text-stone-900 group-hover:text-amber-700' : 'text-white group-hover:text-amber-400'
                     }`}>
-                      {activeAssets.style.category}
-                    </span>
-                    <span className="truncate">{activeAssets.style.lightingTone}</span>
+                      {activeAssets.style.name}
+                    </div>
+                    <div className={`text-[10px] flex items-center gap-1 mt-0.5 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium ${
+                        isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/10 text-amber-300'
+                      }`}>
+                        {activeAssets.style.category}
+                      </span>
+                      <span className="truncate">{activeAssets.style.lightingTone}</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* 关键功能：直接设为空间母版，避免二次生成 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeAssets.style) {
+                      onApplyStyleAsMasterDirectly?.(activeAssets.style);
+                    }
+                  }}
+                  className={`w-full mt-2 py-1.5 px-2 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98 ${
+                    sceneMaster?.imageUrl === (activeAssets.style.coverImage || activeAssets.style.thumbnail)
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : isLight
+                      ? 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-900 hover:text-black'
+                      : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-300 hover:text-white'
+                  }`}
+                  title="直接将此风格原图锁定为空间母版，避免二次生成，100%保持大平层开阔视野"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {sceneMaster?.imageUrl === (activeAssets.style.coverImage || activeAssets.style.thumbnail)
+                      ? '✓ 已设为当前空间母版 (原图大视野)'
+                      : '🎯 直接设为空间母版 (免二次生成)'}
+                  </span>
+                </button>
               </div>
             ) : (
               <button
@@ -795,6 +857,39 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
             {!isHumanLayoutCollapsed ? (
               <div className="space-y-2.5 animate-in fade-in duration-150">
+                {/* AI 智能构思人物编排入口卡片 */}
+                <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 shadow-xs transition-all ${
+                  isLight
+                    ? 'bg-gradient-to-r from-amber-100/80 via-amber-50 to-white border-amber-300'
+                    : 'bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border-amber-500/30'
+                }`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[11px] font-bold text-white flex items-center gap-1.5">
+                        <span className={isLight ? 'text-amber-950 font-bold' : 'text-white'}>AI 智能人物编排构思</span>
+                        <span className="text-[9px] px-1 py-0.2 rounded font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          图像识别 + 意图
+                        </span>
+                      </div>
+                      <p className={`text-[10px] truncate ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                        扫描沙发座次动线，构思动作并自动匹配角色库
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAiChoreographerOpen(true)}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 active:scale-95 flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-black" />
+                    <span>智能构思</span>
+                  </button>
+                </div>
+
                 {/* Mode Switcher: 支持全员对齐 / 4人 / 6人 / 自定义 */}
                 <div className={`grid grid-cols-4 gap-1 p-0.5 rounded-lg border text-[10px] ${
                   isLight ? 'bg-stone-100 border-stone-200' : 'bg-black/50 border-white/10'
@@ -896,13 +991,13 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 })()}
 
                 {/* Slots List */}
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-2 scrollbar-thin">
                   {activeLayout.slots.map((slot, idx) => {
                     const boundModel = availableModels.find(m => m.id === slot.modelId);
                     return (
                       <div
                         key={slot.id}
-                        className={`p-2 rounded-lg border space-y-1.5 transition-all text-[11px] ${
+                        className={`p-2 rounded-lg border space-y-2 transition-all text-[11px] ${
                           !boundModel
                             ? isLight
                               ? 'bg-rose-50/30 border-rose-300/80'
@@ -912,64 +1007,89 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                               : 'bg-black/40 border-white/5 hover:border-amber-500/20'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-1.5">
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        {/* 1. 槽位卡片头部：序号、角色标签与右上角独立的删除按钮 (彻底消除遮挡与误触) */}
+                        <div className={`flex items-center justify-between gap-1.5 pb-1.5 border-b ${
+                          isLight ? 'border-stone-100' : 'border-white/5'
+                        }`}>
+                          <div className="flex items-center gap-1.5 min-w-0">
                             <span className={`w-4 h-4 rounded-full text-[9px] font-mono font-bold flex items-center justify-center shrink-0 ${
                               isLight ? 'bg-amber-100 text-amber-900' : 'bg-amber-500/20 text-amber-400'
                             }`}>
                               {idx + 1}
                             </span>
-
-                            {/* Bound Model Thumbnail */}
-                            {boundModel ? (
-                              <div className="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-amber-500/50">
-                                <img
-                                  src={boundModel.thumbnail || boundModel.coverImage}
-                                  alt={boundModel.nameZh || boundModel.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-full border border-dashed border-rose-400/60 flex items-center justify-center shrink-0">
-                                <User className="w-2.5 h-2.5 text-rose-400" />
-                              </div>
+                            <span className={`text-[10px] font-semibold truncate ${
+                              isLight ? 'text-stone-600' : 'text-neutral-400'
+                            }`}>
+                              角色位 {idx + 1}
+                            </span>
+                            {boundModel && (
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium border truncate max-w-[120px] ${
+                                isLight
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                              }`}>
+                                {boundModel.ageGroup || boundModel.roleType || '已绑定'}
+                              </span>
                             )}
-
-                            {/* Model Selector */}
-                            <select
-                              value={slot.modelId || ''}
-                              onChange={(e) => {
-                                const mId = e.target.value;
-                                const found = availableModels.find(m => m.id === mId);
-                                handleUpdateSlot(slot.id, {
-                                  modelId: mId || undefined,
-                                  modelName: found ? (found.nameZh || found.name) : undefined
-                                });
-                              }}
-                              className={`border rounded px-1.5 py-0.5 text-[10px] focus:border-amber-400 outline-none flex-1 truncate ${
-                                !slot.modelId
-                                  ? isLight ? 'bg-rose-50 border-rose-300 text-rose-800 font-semibold' : 'bg-rose-500/10 border-rose-500/30 text-rose-300 font-semibold'
-                                  : isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-[#1e202e] border-white/15 text-white'
-                              }`}
-                            >
-                              <option value="">-- 请选择关联人物 --</option>
-                              {availableModels.map(m => (
-                                <option key={m.id} value={m.id}>
-                                  {m.nameZh || m.name} ({m.ageGroup || m.roleType || '已导入角色'})
-                                </option>
-                              ))}
-                            </select>
                           </div>
 
-                          {activeLayout.mode === 'custom' && activeLayout.slots.length > 1 && (
+                          {activeLayout.slots.length > 1 && (
                             <button
+                              type="button"
                               onClick={() => handleRemoveSlot(slot.id)}
-                              className="text-neutral-400 hover:text-rose-500 transition shrink-0"
+                              className={`px-1.5 py-0.5 rounded text-[9px] flex items-center gap-1 transition shrink-0 cursor-pointer border ${
+                                isLight
+                                  ? 'text-stone-400 hover:text-rose-600 hover:bg-rose-50 border-stone-200 hover:border-rose-200'
+                                  : 'text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 border-white/10 hover:border-rose-500/20'
+                              }`}
                               title="删除该角色位"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3 h-3 text-rose-400" />
+                              <span>删除角色</span>
                             </button>
                           )}
+                        </div>
+
+                        {/* 2. 模特选择器 (独立一行，头像 + 全宽下拉框，空间充裕，绝不与任何操作按钮重叠) */}
+                        <div className="flex items-center gap-1.5">
+                          {/* 模特头像 */}
+                          {boundModel ? (
+                            <div className="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-amber-500/50">
+                              <img
+                                src={boundModel.thumbnail || boundModel.coverImage}
+                                alt={boundModel.nameZh || boundModel.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 rounded-full border border-dashed border-rose-400/60 flex items-center justify-center shrink-0">
+                              <User className="w-2.5 h-2.5 text-rose-400" />
+                            </div>
+                          )}
+
+                          <select
+                            value={slot.modelId || ''}
+                            onChange={(e) => {
+                              const mId = e.target.value;
+                              const found = availableModels.find(m => m.id === mId);
+                              handleUpdateSlot(slot.id, {
+                                modelId: mId || undefined,
+                                modelName: found ? (found.nameZh || found.name) : undefined
+                              });
+                            }}
+                            className={`border rounded px-2 py-1 pr-6 text-[10px] focus:border-amber-400 outline-none flex-1 min-w-0 truncate font-medium cursor-pointer ${
+                              !slot.modelId
+                                ? isLight ? 'bg-rose-50 border-rose-300 text-rose-800 font-semibold' : 'bg-rose-500/10 border-rose-500/30 text-rose-300 font-semibold'
+                                : isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-[#1e202e] border-white/15 text-white'
+                            }`}
+                          >
+                            <option value="">-- 请选择关联人物 --</option>
+                            {availableModels.map(m => (
+                              <option key={m.id} value={m.id}>
+                                {m.nameZh || m.name} ({m.ageGroup || m.roleType || '已导入角色'})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Position Input */}
@@ -1122,7 +1242,9 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
                   <span className="text-xs tracking-wider text-white font-bold">
-                    正在为 {activeShot.templateCode} 生成 4 张人物版候选... ({generationProgress}%)
+                    {((cfg as any).candidateCount || 1) > 1
+                      ? `正在为 ${activeShot.templateCode} 生成 ${((cfg as any).candidateCount || 4)} 张人物版候选... (${generationProgress}%)`
+                      : `正在为 ${activeShot.templateCode} 生成精修人物版方案... (${generationProgress}%)`}
                   </span>
                 </>
               ) : (
@@ -1146,7 +1268,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-bold text-xs text-purple-900 dark:text-purple-200">
                     <Sparkle className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-                    <span>AI 人物版候选生成中</span>
+                    <span>AI 人物版方案生成中</span>
                   </div>
                   <span className="font-mono text-[11px] px-2 py-0.5 rounded-full bg-purple-500/25 text-purple-900 dark:text-amber-300 font-extrabold border border-purple-500/30">
                     进度 {generationProgress}%
@@ -1168,14 +1290,18 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                     <span>
                       {generationPhase === 1 && '第 1 阶段：严格锁死空间硬装与沙发骨架物理真值'}
                       {generationPhase === 2 && '第 2 阶段：编排模特五官 DNA 与人体工程座包接触面'}
-                      {generationPhase === 3 && '第 3 阶段：空间多通道渲染器并发输出 4 组人物方案'}
+                      {generationPhase === 3 && (((cfg as any).candidateCount || 1) > 1
+                        ? `第 3 阶段：空间多通道渲染器并发输出 ${((cfg as any).candidateCount || 4)} 组人物方案`
+                        : '第 3 阶段：空间多通道渲染器输出高精人物方案')}
                     </span>
                   </div>
 
                   <p className="text-[10px] leading-relaxed text-purple-900/80 dark:text-purple-300/80 pl-4">
                     {generationPhase === 1 && '保持户型建筑与已审定产品绝对零形变，仅保留模特图层留白...'}
                     {generationPhase === 2 && '锁定所选家庭角色面部特征与着装，精确适配沙发功能位就座姿态...'}
-                    {generationPhase === 3 && '生成天然通透漫射光、温暖侧光、柔焦生活意境及黄金金字塔 4 套方案...'}
+                    {generationPhase === 3 && (((cfg as any).candidateCount || 1) > 1
+                      ? '生成天然通透漫射光、温暖侧光、柔焦生活意境及黄金金字塔等多组候选变体...'
+                      : '精细渲染模特入座光影交互与真皮座包自然承重折痕，保障零形变商用交付...')}
                   </p>
                 </div>
               </div>
@@ -1361,6 +1487,24 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             );
             updateLayout({ slots: nextSlots });
           }
+        }}
+      />
+
+      <AiHumanChoreographerModal
+        isOpen={isAiChoreographerOpen}
+        onClose={() => setIsAiChoreographerOpen(false)}
+        availableModels={availableModels}
+        currentShotImageUrl={
+          activeShot.revisions.find(r => r.id === activeShot.currentRevisionId)?.imageUrl ||
+          activeShot.revisions[activeShot.revisions.length - 1]?.imageUrl
+        }
+        sceneMasterImageUrl={sceneMaster?.imageUrl}
+        onApplyLayout={(newSlots, mode) => {
+          updateLayout({
+            characterCount: newSlots.length,
+            mode,
+            slots: newSlots
+          });
         }}
       />
     </div>

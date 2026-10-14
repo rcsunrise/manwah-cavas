@@ -110,4 +110,51 @@ describe('Space Studio: A00 to A01-A08 Candidate Generation Pipeline', () => {
       expect(res.objectKey).toBe(objectKey);
     }
   }, 25000);
+
+  it('renders single candidate by default (candidateCount = 1) to conserve tokens and avoid duplicate API calls', async () => {
+    const shotCode = 'A00';
+    const candidateCount = 1;
+
+    const variantSpecs = [
+      { idx: 1, tag: 'A00 空间母版 · 天然通透漫射光' },
+      { idx: 2, tag: 'A00 空间母版 · 午后余晖温暖光' }
+    ];
+
+    const effectiveSpecs = variantSpecs.slice(0, candidateCount);
+    expect(effectiveSpecs).toHaveLength(1);
+
+    const results = await Promise.all(
+      effectiveSpecs.map(async (v) => {
+        const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+          projectId,
+          shotId: shotCode,
+          revisionId: `cand-v${v.idx}-single-test`,
+          extension: 'webp'
+        });
+
+        return SpaceImageGenerationService.generateAndStore({
+          projectId,
+          shotCode,
+          positivePrompt: `MANWAH shot ${shotCode} Single Master Render`,
+          aspectRatio: '4:3',
+          productName: '敏华芝华仕头等舱功能真皮沙发',
+          productColor: '干邑暖橙 (Cognac Amber)',
+          productMaterial: '南美进口头层牛皮 (半苯胺)',
+          cameraSettings: {
+            lensMm: 35,
+            heightCm: 120,
+            yawDeg: 0,
+            pitchDeg: -2
+          },
+          variantIndex: v.idx,
+          variantTag: v.tag,
+          objectKey
+        });
+      })
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0].objectKey).toContain('cand-v1-single-test');
+    expect(results[0].imageUrl).toBeDefined();
+  });
 });

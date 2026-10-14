@@ -48,6 +48,8 @@ interface SpaceStudioLeftDrawerProps {
   onUpdateProduct?: (product: ProductAsset) => void;
   onRemoveProduct?: (productId: string) => void;
   onSetPrimaryProduct?: (productId: string) => void;
+  onToggleEnsembleInclude?: (productId: string) => void;
+  onBatchToggleEnsemble?: (allIncluded: boolean) => void;
 
   shots: ShotInstance[];
   activeShotIndex: number;
@@ -77,6 +79,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   onUpdateProduct,
   onRemoveProduct,
   onSetPrimaryProduct,
+  onToggleEnsembleInclude,
+  onBatchToggleEnsemble,
   shots,
   activeShotIndex,
   onSelectShot,
@@ -466,6 +470,106 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                   className="hidden"
                 />
 
+                {/* 1.5 场景产品套组概览与合理搭配校验看板 (Ensemble & Smart Compatibility) */}
+                {(() => {
+                  const ensembleProducts = products.filter(
+                    (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+                  );
+                  const totalCount = products.length;
+                  const ensembleCount = ensembleProducts.length;
+
+                  // 角色分布统计
+                  const sofaCount = ensembleProducts.filter(
+                    (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat'
+                  ).length;
+                  const reclinerCount = ensembleProducts.filter(
+                    (p) => p.role === 'recliner_1seat'
+                  ).length;
+                  const tableCount = ensembleProducts.filter(
+                    (p) => p.role === 'coffee_table' || p.role === 'side_table'
+                  ).length;
+
+                  let validationType: 'success' | 'warning' | 'info' = 'info';
+                  let validationTitle = '场景套组就绪';
+                  let validationDesc = `已关联 ${ensembleCount} 款产品协同编排进入当前场景。`;
+
+                  if (sofaCount > 1) {
+                    validationType = 'warning';
+                    validationTitle = '主位动线拥堵提示';
+                    validationDesc = `当前勾选了 ${sofaCount} 款主位大沙发，易造成客厅拥挤冲突。建议保留 1 款主沙发，其余搭配单椅或茶几。`;
+                  } else if (sofaCount === 1 && tableCount >= 1 && reclinerCount >= 1) {
+                    validationType = 'success';
+                    validationTitle = '黄金客厅套组 (3+1+几)';
+                    validationDesc = '主沙发 + 单人躺椅 + 奢石茶几，符合人体工学与开阔动线规范。';
+                  } else if (sofaCount === 1 && tableCount >= 1) {
+                    validationType = 'success';
+                    validationTitle = '极简客厅套组 (主沙发+茶几)';
+                    validationDesc = '开阔通透，视线延伸感强，适合大平层空间母版视角。';
+                  } else if (sofaCount === 1 && reclinerCount >= 1) {
+                    validationType = 'info';
+                    validationTitle = '双座休闲套组';
+                    validationDesc = '已组合主沙发与功能单椅，可按需勾选茶几以丰富视觉层次。';
+                  } else if (ensembleCount === 1) {
+                    validationType = 'info';
+                    validationTitle = '核心单品聚焦';
+                    validationDesc = '当前仅勾选主件，适用于大特写镜头或单品极简陈设。';
+                  }
+
+                  return (
+                    <div
+                      className={`p-3 rounded-xl border space-y-2 transition-all ${
+                        isLight
+                          ? validationType === 'warning'
+                            ? 'bg-amber-50/90 border-amber-300 text-amber-950'
+                            : validationType === 'success'
+                            ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                            : 'bg-stone-50 border-stone-200 text-stone-800'
+                          : validationType === 'warning'
+                          ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                          : validationType === 'success'
+                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                          : 'bg-stone-900/60 border-stone-800 text-stone-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <Layers className="w-3.5 h-3.5 text-amber-500" />
+                          <span>场景产品套组 ({ensembleCount}/{totalCount})</span>
+                        </div>
+                        {onBatchToggleEnsemble && totalCount > 1 && (
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => onBatchToggleEnsemble(true)}
+                              className="px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                            >
+                              全选关联
+                            </button>
+                            <span className="text-stone-400">|</span>
+                            <button
+                              type="button"
+                              onClick={() => onBatchToggleEnsemble(false)}
+                              className="px-1.5 py-0.5 rounded text-stone-500 hover:underline cursor-pointer"
+                            >
+                              仅留主品
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] leading-relaxed flex items-start gap-1.5">
+                        <span className="shrink-0 mt-0.5">
+                          {validationType === 'warning' ? '⚠️' : validationType === 'success' ? '✓' : '💡'}
+                        </span>
+                        <div>
+                          <div className="font-bold">{validationTitle}</div>
+                          <div className="text-[10px] mt-0.5 opacity-85">{validationDesc}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* 2. 主选产品卡片 (含完整读数与标记) */}
                 {primaryProduct && (
                   <div
@@ -479,8 +583,9 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] bg-amber-500 text-stone-950 font-bold px-1.5 py-0.5 rounded shadow-2xs">
-                            核心主品
+                          <span className="text-[10px] bg-amber-500 text-stone-950 font-bold px-1.5 py-0.5 rounded shadow-2xs flex items-center gap-1">
+                            <Check className="w-2.5 h-2.5" />
+                            <span>核心主品 (已关联)</span>
                           </span>
                           {primaryProduct.productionTruth && (
                             <span className="text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
@@ -493,6 +598,32 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                         </h4>
                         <div className={`text-[10px] font-mono mt-0.5 ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
                           SKU: {primaryProduct.sku || 'MW-MASTER'} · {primaryProduct.role}
+                        </div>
+
+                        {/* 核心标记药丸徽章流：尺寸、主色、适配风格 */}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                          {primaryProduct.dimensions && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                              isLight ? 'bg-white border-stone-200 text-stone-700' : 'bg-stone-900 border-stone-800 text-stone-300'
+                            }`}>
+                              {primaryProduct.dimensions.width}×{primaryProduct.dimensions.depth}mm
+                            </span>
+                          )}
+                          {primaryProduct.colors?.[0] && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 ${
+                              isLight ? 'bg-white border-stone-200 text-stone-700' : 'bg-stone-900 border-stone-800 text-stone-300'
+                            }`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0" />
+                              <span className="truncate max-w-[80px]">{primaryProduct.colors[0].split(' ')[0]}</span>
+                            </span>
+                          )}
+                          {primaryProduct.adaptiveStyles && primaryProduct.adaptiveStyles.length > 0 && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
+                              isLight ? 'bg-amber-100/70 border-amber-300 text-amber-900' : 'bg-amber-950/40 border-amber-700 text-amber-300'
+                            }`}>
+                              风格: {primaryProduct.adaptiveStyles.slice(0, 2).join('/')}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -824,29 +955,57 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                   </div>
                 )}
 
-                {/* 3. 多产品资产库列表 (切换主品 / 搭配商品) */}
+                {/* 3. 多产品资产库列表 (切换主品 / 搭配商品 / 勾选关联到场景套组) */}
                 {products.length > 1 && (
                   <div className="space-y-2 pt-2 border-t border-stone-700/20">
-                    <span className={`text-[11px] font-bold px-1 ${isLight ? 'text-stone-600' : 'text-stone-400'}`}>
-                      其他搭配产品资产 ({products.length - 1})
-                    </span>
+                    <div className="flex items-center justify-between px-1">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-stone-700' : 'text-stone-300'}`}>
+                        搭配产品库 ({products.length - 1}) · 可勾选关联
+                      </span>
+                      <span className={`text-[10px] font-mono ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>
+                        仅勾选品进入场景
+                      </span>
+                    </div>
+
                     <div className="space-y-1.5">
                       {products
                         .filter((p) => p.id !== primaryProduct?.id)
                         .map((p) => {
                           const ref = p.referenceImages?.[0];
+                          const isIncluded = p.isEnsembleIncluded !== false;
+
                           return (
                             <div
                               key={p.id}
-                              className={`p-2 rounded-xl border flex items-center justify-between gap-2 transition ${
-                                isLight
-                                  ? 'bg-[#FAF8F5] border-stone-200 hover:border-amber-400 text-stone-800'
-                                  : 'bg-stone-950/60 border-stone-800 hover:border-stone-700 text-stone-300'
+                              className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition ${
+                                isIncluded
+                                  ? isLight
+                                    ? 'bg-amber-50/70 border-amber-300/80 shadow-2xs text-stone-900'
+                                    : 'bg-stone-900/90 border-amber-500/40 shadow-2xs text-stone-100'
+                                  : isLight
+                                  ? 'bg-[#FAF8F5]/80 border-stone-200 text-stone-500 opacity-70 hover:opacity-100'
+                                  : 'bg-stone-950/40 border-stone-800 text-stone-500 opacity-60 hover:opacity-100'
                               }`}
                             >
-                              <div className="flex items-center gap-2 min-w-0">
+                              {/* 左侧 Checkbox 勾选框 */}
+                              <div
+                                onClick={() => onToggleEnsembleInclude && onToggleEnsembleInclude(p.id)}
+                                className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 cursor-pointer transition ${
+                                  isIncluded
+                                    ? 'bg-amber-600 border-amber-600 text-white'
+                                    : isLight
+                                    ? 'border-stone-300 bg-white hover:border-amber-400'
+                                    : 'border-stone-700 bg-stone-900 hover:border-amber-500'
+                                }`}
+                                title={isIncluded ? '取消关联（不出现在当前场景中）' : '勾选关联（参与当前场景渲染与摆位）'}
+                              >
+                                {isIncluded && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+
+                              {/* 中间图片与产品核心标记 */}
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <div
-                                  className={`w-9 h-9 rounded-lg border overflow-hidden shrink-0 flex items-center justify-center ${
+                                  className={`w-10 h-10 rounded-lg border overflow-hidden shrink-0 flex items-center justify-center ${
                                     isLight ? 'bg-white border-stone-200' : 'bg-stone-900 border-stone-800'
                                   }`}
                                 >
@@ -857,17 +1016,49 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                       className="w-full h-full object-contain"
                                     />
                                   ) : (
-                                    <Box className="w-4 h-4 text-stone-500" />
+                                    <Box className="w-4 h-4 text-stone-400" />
                                   )}
                                 </div>
-                                <div className="min-w-0">
-                                  <div className="font-semibold text-xs truncate">{p.name}</div>
-                                  <div className={`text-[10px] font-mono truncate ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>
-                                    {p.dimensions ? `${p.dimensions.width}×${p.dimensions.depth}mm` : p.role}
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-semibold text-xs truncate max-w-[140px]">{p.name}</span>
+                                    <span
+                                      className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                                        isIncluded
+                                          ? isLight
+                                            ? 'bg-amber-100 text-amber-900 font-bold'
+                                            : 'bg-amber-950 text-amber-300 font-bold'
+                                          : 'bg-stone-200/60 dark:bg-stone-800 text-stone-500'
+                                      }`}
+                                    >
+                                      {isIncluded ? '已关联场景' : '仅存库'}
+                                    </span>
+                                  </div>
+
+                                  {/* 核心标记流：尺寸、主色、适配风格 */}
+                                  <div className="flex items-center gap-1.5 flex-wrap text-[9px] font-mono mt-0.5">
+                                    {p.dimensions && (
+                                      <span className={isLight ? 'text-stone-600' : 'text-stone-400'}>
+                                        {p.dimensions.width}×{p.dimensions.depth}mm
+                                      </span>
+                                    )}
+                                    {p.colors?.[0] && (
+                                      <span className="flex items-center gap-0.5 text-stone-500">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block" />
+                                        <span>{p.colors[0].split(' ')[0]}</span>
+                                      </span>
+                                    )}
+                                    {p.adaptiveStyles?.[0] && (
+                                      <span className={isLight ? 'text-amber-800 font-medium' : 'text-amber-400/90 font-medium'}>
+                                        {p.adaptiveStyles[0]}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
 
+                              {/* 右侧操作按钮 */}
                               <div className="flex items-center gap-1 shrink-0">
                                 {onSetPrimaryProduct && (
                                   <button
@@ -881,6 +1072,18 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                     title="将此产品设为画册主拍摄对象"
                                   >
                                     设为主品
+                                  </button>
+                                )}
+                                {onOpenUploadModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenUploadModal(p)}
+                                    className={`p-1 rounded text-stone-400 hover:text-amber-600 transition cursor-pointer ${
+                                      isLight ? 'hover:bg-stone-200/60' : 'hover:bg-stone-800'
+                                    }`}
+                                    title="编辑此产品名称、颜色、适配风格与尺寸"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                                 {onRemoveProduct && (

@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import fs from 'fs';
+import path from 'path';
 import { GcsAssetStorage } from '../services/storage/gcsAssetStorage';
 
 const router = Router();
@@ -198,6 +199,123 @@ router.put('/local-upload', (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).send(error.message);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// 核心资产长期存储与服务端磁盘双向同步 (跨设备/跨浏览器/防清理数据)
+// ════════════════════════════════════════════════════════════════════════
+const DATA_DIR = path.join(process.cwd(), '.data');
+const MODELS_FILE = path.join(DATA_DIR, 'space_model_assets.json');
+const MODELS_BACKUP_FILE = path.join(DATA_DIR, 'space_model_assets.backup.json');
+const STYLES_FILE = path.join(DATA_DIR, 'space_scene_styles.json');
+const STYLES_BACKUP_FILE = path.join(DATA_DIR, 'space_scene_styles.backup.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+/**
+ * GET /api/space/storage/models
+ * 获取服务端持久化保存的模特资产列表
+ */
+router.get('/models', (_req: Request, res: Response) => {
+  try {
+    ensureDataDir();
+    if (!fs.existsSync(MODELS_FILE)) {
+      return res.json({ success: true, data: [] });
+    }
+    const content = fs.readFileSync(MODELS_FILE, 'utf-8');
+    const parsed = JSON.parse(content);
+    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+  } catch (err: any) {
+    console.error('[spaceStorageRoutes] read models error:', err);
+    return res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+/**
+ * POST /api/space/storage/models/sync
+ * 客户端将录入好的模特资产同步并固化到服务端磁盘
+ */
+router.post('/models/sync', (req: Request, res: Response) => {
+  try {
+    ensureDataDir();
+    const models = req.body?.models;
+    if (!Array.isArray(models)) {
+      return res.status(400).json({ success: false, error: 'Models payload must be an array' });
+    }
+
+    // 若旧文件存在，自动生成轮转备份，确保任何情况下历史录入永不损坏
+    if (fs.existsSync(MODELS_FILE)) {
+      try {
+        fs.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
+      } catch (backupErr) {
+        console.warn('[spaceStorageRoutes] backup error:', backupErr);
+      }
+    }
+
+    fs.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), 'utf-8');
+    console.log(`[spaceStorageRoutes] Successfully persisted ${models.length} model assets to disk at ${MODELS_FILE}`);
+
+    return res.json({
+      success: true,
+      count: models.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error('[spaceStorageRoutes] sync models error:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/space/storage/styles
+ * 获取服务端持久化保存的场景风格资产列表
+ */
+router.get('/styles', (_req: Request, res: Response) => {
+  try {
+    ensureDataDir();
+    if (!fs.existsSync(STYLES_FILE)) {
+      return res.json({ success: true, data: [] });
+    }
+    const content = fs.readFileSync(STYLES_FILE, 'utf-8');
+    const parsed = JSON.parse(content);
+    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
+/**
+ * POST /api/space/storage/styles/sync
+ * 客户端将场景风格资产同步并固化到服务端磁盘
+ */
+router.post('/styles/sync', (req: Request, res: Response) => {
+  try {
+    ensureDataDir();
+    const styles = req.body?.styles;
+    if (!Array.isArray(styles)) {
+      return res.status(400).json({ success: false, error: 'Styles payload must be an array' });
+    }
+
+    if (fs.existsSync(STYLES_FILE)) {
+      try {
+        fs.copyFileSync(STYLES_FILE, STYLES_BACKUP_FILE);
+      } catch {}
+    }
+
+    fs.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), 'utf-8');
+    console.log(`[spaceStorageRoutes] ✓ 成功将 ${styles.length} 个场景风格资产持久化保存至服务端磁盘:`, styles.map((s: any) => s.name || s.id));
+    return res.json({
+      success: true,
+      count: styles.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

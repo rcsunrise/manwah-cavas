@@ -13,6 +13,8 @@ export const INITIAL_MANWAH_PRODUCTS: ProductAsset[] = [
     dimensions: { width: 3100, depth: 1080, height: 950 },
     materials: ['南美进口头层牛皮 (半苯胺)', '德国超静音低压双电机', '高碳钢五金伸缩架'],
     colors: ['云雾暖灰 (Warm Greige)', '鞍褐经典 (Saddle Brown)'],
+    adaptiveStyles: ['意式轻奢', '现代极简', '奶油风'],
+    isEnsembleIncluded: true,
     functionCapable: true,
     referenceImages: [
       {
@@ -40,11 +42,13 @@ export const INITIAL_MANWAH_PRODUCTS: ProductAsset[] = [
     sku: 'MW-CH-1028-1S',
     name: '头等舱单人电动功能躺椅 (太空舱级包裹)',
     role: 'recliner_1seat',
-    priority: 'primary',
+    priority: 'secondary',
     identityLock: 'strict',
     dimensions: { width: 920, depth: 980, height: 1040 },
     materials: ['细腻摔纹头层黄牛皮', '零重力无级调节机构', '高回弹太空记忆棉'],
     colors: ['劳斯莱斯橙 (Heritage Amber)', '曜石深灰 (Obsidian Grey)'],
+    adaptiveStyles: ['意式轻奢', '轻奢高定', '现代极简'],
+    isEnsembleIncluded: true,
     functionCapable: true,
     referenceImages: [
       {
@@ -71,6 +75,8 @@ export const INITIAL_MANWAH_PRODUCTS: ProductAsset[] = [
     dimensions: { width: 1200, depth: 1200, height: 380 },
     materials: ['巴西进口潘多拉奢石', '哑光黑钛金属底座'],
     colors: ['天然透光奢石纹', '哑黑金属'],
+    adaptiveStyles: ['意式轻奢', '现代极简', '侘寂原力'],
+    isEnsembleIncluded: true,
     functionCapable: false,
     referenceImages: []
   },
@@ -84,6 +90,8 @@ export const INITIAL_MANWAH_PRODUCTS: ProductAsset[] = [
     dimensions: { width: 450, depth: 450, height: 520 },
     materials: ['意大利手工马鞍皮', '香槟金拉丝不锈钢'],
     colors: ['焦糖色', '香槟金'],
+    adaptiveStyles: ['意式轻奢', '法式复古', '现代极简'],
+    isEnsembleIncluded: true,
     functionCapable: false,
     referenceImages: []
   }

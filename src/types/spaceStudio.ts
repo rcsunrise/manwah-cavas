@@ -46,6 +46,8 @@ export interface ProductAsset {
   provenance?: 'PROVIDED' | 'AI_ESTIMATED' | 'SOLVER_RESOLVED' | 'DERIVED' | 'MANUAL_CONFIRMED';
   productionTruth?: boolean;
   sourceType?: 'upload' | 'canvas_dna' | 'preset';
+  adaptiveStyles?: string[];
+  isEnsembleIncluded?: boolean;
 }
 
 // 2. SPACE PROTOTYPE & PRESET (BUILD)
@@ -401,6 +403,9 @@ export interface ShotRevision {
   promptSnapshotId: string;
   generationJobId?: string;
   status: 'candidate' | 'current' | 'approved' | 'rejected';
+  revisionType?: 'scene' | 'human' | 'custom' | 'variation';
+  label?: string;
+  metaSummary?: string;
   score?: MultimodalScoreDetail;
   validationReport?: MultimodalValidationReport;
   provenance: ProvenanceLevel;

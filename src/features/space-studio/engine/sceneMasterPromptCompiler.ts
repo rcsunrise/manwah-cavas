@@ -39,8 +39,10 @@ export class SceneMasterPromptCompiler {
   public static compile(input: CompileSceneMasterInput): CompiledSceneMasterPrompt {
     const { products, spacePreset, stylePreset, placementBlueprint, aspectRatio = '4:3' } = input;
 
-    const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
-    const secondaryProducts = products.filter((p) => p.id !== primaryProduct?.id);
+    // 仅编译已勾选关联至当前场景套组的产品
+    const activeProducts = products.filter((p) => p.priority === 'primary' || p.isEnsembleIncluded !== false);
+    const primaryProduct = activeProducts.find((p) => p.priority === 'primary') || activeProducts[0];
+    const secondaryProducts = activeProducts.filter((p) => p.id !== primaryProduct?.id);
 
     // 1. 核心产品真值描述 (按产品真实品类动态生成，杜绝把边几或茶几写死为三人沙发)
     const productClauses: string[] = [];
@@ -84,21 +86,25 @@ export class SceneMasterPromptCompiler {
       );
     }
 
-    // 次要家具配搭
+    // 次要家具配搭（仅包含已勾选关联的产品，支持动态名称/材质/色彩）
     for (const sec of secondaryProducts) {
+      const secColor = sec.colors?.[0] || 'matching tone';
+      const secMat = sec.materials?.[0] || 'premium material';
       if (sec.role === 'recliner_1seat') {
         productClauses.push(
-          `angled side lounge: matching MANWAH power recliner armchair in ${
-            sec.colors?.[0] || 'heritage amber leather'
-          }, positioned in conversational 35-degree angle`
+          `angled side lounge: matching MANWAH power recliner armchair (${sec.name}) in ${secColor} with ${secMat}, positioned in conversational 35-degree angle`
         );
       } else if (sec.role === 'coffee_table') {
         productClauses.push(
-          `center living table: low-slung Brazilian Pandora crystallite natural luxury marble coffee table with polished organic stone veining and matte dark metallic base`
+          `center living table: low-slung living coffee table (${sec.name}) featuring ${secMat} in ${secColor} with stable architectural base`
         );
       } else if (sec.role === 'side_table') {
         productClauses.push(
-          `beside accent: minimalist saddle leather side table in ${sec.colors?.[0] || 'caramel & champagne gold'}`
+          `beside accent: minimalist side table (${sec.name}) in ${secColor} with refined ${secMat} finish`
+        );
+      } else {
+        productClauses.push(
+          `harmonious matching piece: (${sec.name}) in ${secColor}`
         );
       }
     }
@@ -135,7 +141,7 @@ export class SceneMasterPromptCompiler {
       ...architecturalClauses,
       ...styleClauses,
       ...cameraClauses,
-      'masterpiece, ultra-high resolution, architectural digest award-winning interior photography, commercial luxury furniture catalog benchmark, 8k crisp details'
+      'masterpiece, ultra-high resolution, architectural digest award-winning interior photography, commercial luxury furniture catalog benchmark, pure clean photograph, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp details'
     ].join(', ');
 
     const negativePrompt = [
@@ -143,7 +149,8 @@ export class SceneMasterPromptCompiler {
       'furniture squeezed or cut off at bottom edge, excessive empty ceiling void, tilted perspective lines, crooked horizon',
       'wrong product color, unintended dark burgundy or maroon shift, deformed furniture legs, mutated seams, messy clutter',
       'cheap melamine laminate, garish neon colors, harsh flash glare, overblown highlights',
-      'people, human, faces, extra hands, text, watermark, logo, typography overlay',
+      'people, human, faces, extra hands',
+      'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
       ...stylePreset.negativeRules
     ].join(', ');
 

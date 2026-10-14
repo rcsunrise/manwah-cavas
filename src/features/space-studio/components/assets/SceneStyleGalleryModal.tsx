@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, Search, Sparkles, RefreshCw, Star, Plus, Check, 
   Image as ImageIcon, Layers, Eye, ChevronRight, Upload, Info,
@@ -113,7 +114,7 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiStyleName, setAiStyleName] = useState('');
   const [aiCategory, setAiCategory] = useState('意式轻奢');
-  const [selectedModelId, setSelectedModelId] = useState<string>('gemini-2.5-flash-image');
+  const [selectedModelId, setSelectedModelId] = useState<string>('gpt-image-2');
   const [aiAspectRatio, setAiAspectRatio] = useState('16:9');
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -124,10 +125,16 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
   const [uploadCategory, setUploadCategory] = useState('现代极简');
   const [uploadPrompt, setUploadPrompt] = useState('');
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [isAnalyzingStyleImage, setIsAnalyzingStyleImage] = useState(false);
+  const [analyzeSuccessTip, setAnalyzeSuccessTip] = useState<string | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       loadStyles();
+      spaceAssetLibraryService.hydrateStylesFromServer().then(() => {
+        loadStyles();
+      });
     }
     const handleAssetsChanged = () => {
       if (isOpen) {
@@ -204,14 +211,28 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
   };
 
   const handleAiRefresh = async (styleId: string) => {
+    if (!activeStyle) return;
     setIsRefreshing(true);
     try {
-      const updated = await spaceAssetLibraryService.generateStyleVariants(styleId);
+      const currentModel = SPACE_IMAGE_MODELS.find(m => m.id === selectedModelId) || SPACE_IMAGE_MODELS[0];
+      const prompt = activeStyle.promptFragment || `${activeStyle.name}, professional architectural interior photography, masterwork, 8K, cinematic lighting, photorealistic`;
+      
+      // 真实调用 AI 模型生成同风格视角变体
+      const newImageUrl = await generateImageFromRouterHub({
+        prompt,
+        model: currentModel.id,
+        aspectRatio: '16:9'
+      });
+
+      const updated = await spaceAssetLibraryService.generateStyleVariants(styleId, newImageUrl);
       loadStyles();
       if (activeStyle?.id === styleId) {
         setActiveStyle(updated);
         setActiveImageIdx(0);
       }
+    } catch (err: any) {
+      console.error('AI refresh variant failed:', err);
+      alert(`AI 衍生参考图失败：${err?.message || '请检查模型服务配置'}`);
     } finally {
       setIsRefreshing(false);
     }
@@ -242,23 +263,12 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
     const cleanPrompt = `${targetStyle.promptFragment || targetStyle.name}, completely empty unfurnished living room, remove all existing furniture, strictly no sofa, no couch, no armchair, no coffee table, no rug, no carpet, no dining table, no chairs, no clutter, totally clean bare hardwood or marble floor, open vacant interior architecture, pristine architectural hard decoration, expansive windows, natural daylight, waiting for furniture placement, masterwork architectural interior photography, 8k, photorealistic`;
 
     try {
-      let generatedImageUrl = '';
-      try {
-        generatedImageUrl = await generateImageFromRouterHub({
-          prompt: cleanPrompt,
-          model: currentModel.id,
-          aspectRatio: '16:9'
-        });
-      } catch (err: any) {
-        console.warn('RouterHub clean furniture fallback triggered:', err);
-        const emptyRoomFallbacks = [
-          'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=85',
-          'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=85',
-          'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=85',
-          'https://images.unsplash.com/photo-1600585152220-90363fe7e115?auto=format&fit=crop&w=1200&q=85'
-        ];
-        generatedImageUrl = emptyRoomFallbacks[Math.floor(Math.random() * emptyRoomFallbacks.length)];
-      }
+      // 真实调用统一模型网关生成纯净空场景
+      const generatedImageUrl = await generateImageFromRouterHub({
+        prompt: cleanPrompt,
+        model: currentModel.id,
+        aspectRatio: '16:9'
+      });
 
       // 创建纯净空场景风格资产
       const created = spaceAssetLibraryService.createSceneStyle({
@@ -275,10 +285,10 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
       loadStyles();
       setActiveStyle(created);
       setActiveImageIdx(0);
-      setCleanSuccessTip(`✓ 已成功清除沙发茶几地毯餐桌，生成 "${cleanName}" 资产！`);
+      setCleanSuccessTip(`✓ 已成功清除家具，真实生成 "${cleanName}" 纯净空间母版！`);
       setTimeout(() => setCleanSuccessTip(null), 4000);
     } catch (error: any) {
-      alert(error?.message || '生成空场景失败，请重试');
+      alert(`生成纯净空场景失败：${error?.message || '请检查模型网络连通性'}`);
     } finally {
       setIsCleaningFurniture(false);
     }
@@ -302,41 +312,19 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
       : `${aiPrompt.trim()}, professional architectural interior photography, masterwork, 8K, cinematic lighting, photorealistic`;
 
     try {
-      let generatedImageUrl = '';
-
-      try {
-        // 调用统一模型网关生成图片
-        generatedImageUrl = await generateImageFromRouterHub({
-          prompt: finalPrompt,
-          model: currentModel.id,
-          aspectRatio: aiAspectRatio
-        });
-      } catch (err: any) {
-        console.warn('RouterHub generation fallback triggered:', err);
-        // 如果网关未配置或报错，采用精选高质量空间建筑真值素材进行高可用 fallback
-        const fallbackUrls = isEmptyRoomMode
-          ? [
-              'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1600585152220-90363fe7e115?auto=format&fit=crop&w=1200&q=85'
-            ]
-          : [
-              'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1600585154526-990dced4db0d?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=85',
-              'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=85',
-            ];
-        generatedImageUrl = fallbackUrls[Math.floor(Math.random() * fallbackUrls.length)];
-      }
+      // 真实调用统一模型网关生成图片，严禁假图 fallback
+      const generatedImageUrl = await generateImageFromRouterHub({
+        prompt: finalPrompt,
+        model: currentModel.id,
+        aspectRatio: aiAspectRatio
+      });
 
       const tags = [aiCategory, 'AI生成', currentModel.badge];
       if (isEmptyRoomMode) {
         tags.push('纯净空场景', '硬装母版', '无家具');
       }
 
-      // 保存为新风格资产（管理员权限自动保存为系统默认资产，普通用户受配额限制）
+      // 保存为新风格资产（默认 1 张真实生成的参考图）
       const created = spaceAssetLibraryService.createSceneStyle({
         name,
         category: aiCategory,
@@ -358,9 +346,46 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
       setAiStyleName('');
       setIsEmptyRoomMode(false);
     } catch (error: any) {
-      setGenError(error?.message || '生成失败，请稍后重试');
+      console.error('AI 风格资产生成失败:', error);
+      setGenError(error?.message || '生成失败，请检查模型服务或重试');
     } finally {
       setIsAiGenerating(false);
+    }
+  };
+
+  // AI 智能识别已上传的参考图并自动填充表单
+  const handleAiAnalyzeUploadedImage = async () => {
+    if (uploadedImages.length === 0) {
+      alert('请先上传至少一张本地参考图');
+      return;
+    }
+    setIsAnalyzingStyleImage(true);
+    setAnalyzeError(null);
+    setAnalyzeSuccessTip(null);
+    try {
+      const targetImage = uploadedImages[0];
+      const res = await fetch('/api/space/build/analyze-style-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ image: targetImage })
+      });
+      const json = await res.json();
+      if (!json.success || !json.data) {
+        throw new Error(json.error || 'AI 风格分析失败');
+      }
+      const { styleName, category, promptFragment } = json.data;
+      if (styleName) setUploadStyleName(styleName);
+      if (category) setUploadCategory(category);
+      if (promptFragment) setUploadPrompt(promptFragment);
+      setAnalyzeSuccessTip('✓ AI 智能识别完成！已自动解析提取风格名称、分类与高精空间 Prompt');
+      setTimeout(() => setAnalyzeSuccessTip(null), 4000);
+    } catch (err: any) {
+      console.error('AI style analysis error:', err);
+      setAnalyzeError(err?.message || 'AI 识别失败，请检查网络或重试');
+    } finally {
+      setIsAnalyzingStyleImage(false);
     }
   };
 
@@ -782,25 +807,25 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
                   )}
                 </div>
 
-                {/* AI Refresh 4 Variants Action Bar */}
+                {/* AI 衍生参考图 Action Bar (默认 1 张) */}
                 <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>AI 场景裂变与刷新</span>
+                      <span>AI 风格衍生与扩充</span>
                     </div>
-                    <span className="text-[10px] text-neutral-400">实时生成4张变体</span>
+                    <span className="text-[10px] text-amber-400 font-mono">默认 1 张新参考</span>
                   </div>
                   <p className="text-[11px] text-neutral-400">
-                    基于空间物理真值与该风格 DNA，AI 自动生成 4 套同风格不同采光/构图参考。
+                    基于该风格 DNA 与材质参数，调用 AI 实时生成 1 套同风格新机位/采光实景参考。
                   </p>
                   <button
                     onClick={() => handleAiRefresh(activeStyle.id)}
                     disabled={isRefreshing}
-                    className="w-full py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                    className="w-full py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    <span>{isRefreshing ? 'AI 裂变运算中...' : 'AI 刷新 4 张参考图'}</span>
+                    <span>{isRefreshing ? 'AI 正在生图渲染中...' : 'AI 生成同风格新参考 (1张)'}</span>
                   </button>
                 </div>
 
@@ -892,14 +917,14 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
 
               {/* Action Bottom Bar - 常驻固定在底部 */}
               <div className="pt-2.5 pb-1 border-t border-white/10 flex flex-col gap-2 shrink-0">
-                {/* 关键需求：一键跳转到生成并锁定空间母版 */}
+                {/* 关键需求：直接设为空间母版 (避免二次生成) */}
                 <button
                   onClick={() => handleLockMasterClick(activeStyle)}
-                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                  title="应用此风格，并直接跳转到 A00 启动生成与锁定空间母版"
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:brightness-110 text-black text-xs font-extrabold shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  title="直接将此风格原图锁定为空间母版，避免二次生成，100%保持大平层开阔视野"
                 >
                   <Sparkles className="w-4 h-4 text-black animate-pulse" />
-                  <span>一键跳转：生成并锁定空间母版</span>
+                  <span>直接设为空间母版 (避免二次生成 · 原图锁定)</span>
                   <ChevronRight className="w-4 h-4 text-black stroke-[3]" />
                 </button>
 
@@ -931,40 +956,47 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
           )}
         </div>
 
-        {/* 综合新建 / AI 生成风格模态窗 */}
-        {showCreateModal && (
-          <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-150">
-            <div className="w-full max-w-xl bg-[#191b26] border border-white/15 rounded-2xl p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+        {/* 综合新建 / AI 生成风格模态窗 - 通过 createPortal 挂载到 document.body，彻底消除视口遮挡并常驻底部操作栏 */}
+        {showCreateModal && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-hidden animate-in fade-in duration-150">
+            <div className="w-full max-w-2xl bg-[#171925] border border-white/20 rounded-2xl shadow-2xl flex flex-col h-[min(88vh,660px)] max-h-[88vh] overflow-hidden text-neutral-200">
               
-              {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              {/* 1. 固定头部 Modal Header (shrink-0) */}
+              <div className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-white/10 bg-[#1a1d2c]/95">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
                     {createMode === 'ai' ? <Wand2 className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
                   </div>
-                  <h3 className="text-sm font-bold text-white">
-                    {createMode === 'ai' ? '通过 AI 提示词生成风格资产' : '本地上传自建风格'}
-                  </h3>
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-tight">
+                      {createMode === 'ai' ? '通过 AI 提示词生成风格资产' : '本地上传自建风格'}
+                    </h3>
+                    <p className="text-[10px] text-neutral-400 mt-0.5">
+                      {createMode === 'ai' ? '智能解析空间与光影特征，默认使用 GPT 图像模型一键生成' : '导入本地参考图并提取结构化 Prompt'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   {/* Mode Switcher Tabs */}
                   <div className="flex bg-black/40 rounded-lg p-0.5 border border-white/10 text-xs">
                     <button
+                      type="button"
                       onClick={() => setCreateMode('ai')}
-                      className={`px-3 py-1 rounded-md transition-all ${
+                      className={`px-3 py-1 rounded-md transition-all font-medium cursor-pointer ${
                         createMode === 'ai'
-                          ? 'bg-amber-500 text-black font-semibold'
+                          ? 'bg-amber-500 text-black font-semibold shadow-xs'
                           : 'text-neutral-400 hover:text-white'
                       }`}
                     >
                       AI 提示词生成
                     </button>
                     <button
+                      type="button"
                       onClick={() => setCreateMode('upload')}
-                      className={`px-3 py-1 rounded-md transition-all ${
+                      className={`px-3 py-1 rounded-md transition-all font-medium cursor-pointer ${
                         createMode === 'upload'
-                          ? 'bg-amber-500 text-black font-semibold'
+                          ? 'bg-amber-500 text-black font-semibold shadow-xs'
                           : 'text-neutral-400 hover:text-white'
                       }`}
                     >
@@ -973,339 +1005,431 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => setShowCreateModal(false)}
-                    className="text-neutral-400 hover:text-white p-1"
+                    className="w-7 h-7 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all cursor-pointer ml-1"
+                    title="关闭"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Mode 1: AI Prompt Generation */}
-              {createMode === 'ai' && (
-                <div className="space-y-4 text-xs">
-                  {/* 提示词输入区 */}
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <span>风格描述提示词 (Prompt)</span>
-                        <span className="text-amber-400 font-bold">*</span>
-                      </span>
-                      <span className="text-[10px] text-neutral-400 font-normal">支持直接修改或套用灵感</span>
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={aiPrompt}
-                      onChange={e => setAiPrompt(e.target.value)}
-                      placeholder="例如：现代意式轻奢大平层，全景落地窗，大理石电视背景墙，隐形线性漫射光，高奢皮革沙发，写实室内摄影..."
-                      className="w-full px-3.5 py-2.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed font-mono text-[11px] transition-all shadow-inner"
-                    />
-                    
-                    {/* 灵感快捷预设标签 */}
-                    <div className="mt-2 flex flex-wrap gap-1.5 items-center">
-                      <span className="text-[10px] text-amber-300 font-medium">✨ 灵感模板：</span>
-                      {PROMPT_PRESETS.map((preset, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => handleApplyPreset(preset)}
-                          className="text-[10px] px-2.5 py-1 rounded-full bg-[#222536] hover:bg-amber-500 hover:text-black text-neutral-200 border border-white/15 hover:border-amber-400 transition-all font-medium cursor-pointer shadow-xs"
-                        >
-                          {preset.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 风格名称与分类 */}
-                  <div className="grid grid-cols-2 gap-3.5">
+              {/* 2. 可滚动的主体表单区域 Body (flex-1 min-h-0 overflow-y-auto) */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 space-y-3 text-xs overscroll-contain">
+                {/* Mode 1: AI Prompt Generation */}
+                {createMode === 'ai' && (
+                  <div className="space-y-3">
+                    {/* 提示词输入区 */}
                     <div>
-                      <label className="block text-neutral-200 font-semibold mb-1.5">风格名称 (选填)</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-neutral-200 font-semibold flex items-center gap-1">
+                          <span>风格描述提示词 (Prompt)</span>
+                          <span className="text-amber-400 font-bold">*</span>
+                        </label>
+                        <span className="text-[10px] text-neutral-400 font-mono">
+                          {aiPrompt.length > 0 ? `${aiPrompt.length} 字` : '支持直接修改或套用灵感'}
+                        </span>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={aiPrompt}
+                        onChange={e => setAiPrompt(e.target.value)}
+                        placeholder="例如：现代意式轻奢大平层，全景落地窗，大理石电视背景墙，隐形线性漫射光，高奢皮革沙发，写实室内摄影..."
+                        className="w-full px-3 py-1.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed font-mono text-[11px] transition-all shadow-inner resize-y min-h-[52px]"
+                      />
+                      
+                      {/* 灵感快捷预设标签 - 单行横向轻快滚动，节省纵向高度并提升操作感 */}
+                      <div className="mt-1 flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+                        <span className="text-[10px] text-amber-300 font-medium shrink-0">✨ 灵感模板：</span>
+                        {PROMPT_PRESETS.map((preset, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => handleApplyPreset(preset)}
+                            className="text-[10px] px-2.5 py-0.5 rounded-full bg-[#202334] hover:bg-amber-500 hover:text-black text-neutral-200 border border-white/10 hover:border-amber-400 transition-all font-medium cursor-pointer shrink-0 shadow-xs active:scale-95 whitespace-nowrap"
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 风格名称与分类 */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-neutral-200 font-semibold mb-1">风格名称 (选填)</label>
+                        <input
+                          type="text"
+                          value={aiStyleName}
+                          onChange={e => setAiStyleName(e.target.value)}
+                          placeholder="如：意式轻奢 · 雅致大平层"
+                          className="w-full px-3 py-1.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none transition-all text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-neutral-200 font-semibold mb-1">空间风格分类</label>
+                        <select
+                          value={aiCategory}
+                          onChange={e => setAiCategory(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white outline-none transition-all cursor-pointer font-medium text-xs"
+                        >
+                          <option value="意式轻奢">意式轻奢</option>
+                          <option value="现代极简">现代极简</option>
+                          <option value="侘寂风">侘寂风</option>
+                          <option value="法式复古">法式复古</option>
+                          <option value="新中式">新中式</option>
+                          <option value="自然原木">自然原木</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 内置模型选择器 (3 列紧凑卡片，默认 GPT Image 2) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-neutral-200 font-semibold flex items-center gap-1.5">
+                          <Cpu className="w-3.5 h-3.5 text-amber-400" />
+                          <span>生图计算模型 (默认推荐 GPT 图像生成)</span>
+                        </label>
+                        <span className="text-[10px] text-amber-400/80 font-mono">点击选择当前模型</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {SPACE_IMAGE_MODELS.map(model => {
+                          const isChosen = selectedModelId === model.id;
+                          return (
+                            <div
+                              key={model.id}
+                              onClick={() => setSelectedModelId(model.id)}
+                              className={`p-2 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                                isChosen
+                                  ? 'bg-amber-500/15 border-amber-400 text-white shadow-md shadow-amber-500/10 ring-1 ring-amber-400/40'
+                                  : 'bg-[#141622] border-white/10 hover:border-white/25 hover:bg-[#181b2a] text-neutral-300'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-1 mb-1">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                      isChosen ? 'border-amber-400 bg-amber-400' : 'border-neutral-500 bg-transparent'
+                                    }`}>
+                                      {isChosen && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                                    </div>
+                                    <span className={`text-[11px] font-bold truncate ${isChosen ? 'text-amber-300' : 'text-white'}`}>
+                                      {model.name.replace(/\(.*\)/, '').trim()}
+                                    </span>
+                                  </div>
+                                  <span className="text-[8px] px-1 py-0.2 rounded font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                    {model.badge}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-neutral-400 line-clamp-2 leading-tight">
+                                  {model.description}
+                                </p>
+                              </div>
+                              <div className="mt-1.5 pt-1 border-t border-white/5 flex items-center justify-between text-[9px] text-neutral-500 font-mono">
+                                <span className="uppercase">{model.provider}</span>
+                                <span>{model.capabilities.supports4K ? '最高4K' : '最高2K'}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 画幅比例 */}
+                    <div>
+                      <label className="block text-neutral-200 font-semibold mb-1">画幅比例</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['16:9', '4:3', '1:1', '9:16'].map(ratio => {
+                          const isRatioActive = aiAspectRatio === ratio;
+                          return (
+                            <button
+                              key={ratio}
+                              type="button"
+                              onClick={() => setAiAspectRatio(ratio)}
+                              className={`py-1.5 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
+                                isRatioActive
+                                  ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/25 scale-[1.01]'
+                                  : 'bg-[#141622] border-white/15 text-neutral-300 hover:text-white hover:border-white/30'
+                              }`}
+                            >
+                              {ratio}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 核心功能：纯净空场景模式 Toggle */}
+                    <div className={`p-2.5 rounded-xl border transition-all ${
+                      isEmptyRoomMode
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+                        : 'bg-[#141622] border-white/10 text-neutral-300'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+                            isEmptyRoomMode ? 'bg-emerald-500 text-black font-bold' : 'bg-white/5 text-neutral-400'
+                          }`}>
+                            <Eraser className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-white">纯净空场景模式</span>
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${
+                                isEmptyRoomMode
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                  : 'bg-white/5 text-neutral-400 border-white/10'
+                              }`}>
+                                清除沙发/茶几/地毯/餐桌
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 mt-0.5">
+                              自动注入无家具指令，保证地面纯净留白，方便后期自由添加敏华产品
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsEmptyRoomMode(!isEmptyRoomMode)}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer shrink-0 ml-2 ${
+                            isEmptyRoomMode ? 'bg-emerald-500' : 'bg-white/20'
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                              isEmptyRoomMode ? 'translate-x-4' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {genError && (
+                      <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 text-xs flex items-center gap-2 font-medium">
+                        <span>⚠️</span>
+                        <span>{genError}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Mode 2: Upload Local Images */}
+                {createMode === 'upload' && (
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-neutral-200 font-semibold mb-1">风格名称 <span className="text-amber-400">*</span></label>
                       <input
                         type="text"
-                        value={aiStyleName}
-                        onChange={e => setAiStyleName(e.target.value)}
-                        placeholder="如：意式轻奢 · 雅致大平层"
-                        className="w-full px-3.5 py-2 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none transition-all"
+                        value={uploadStyleName}
+                        onChange={e => setUploadStyleName(e.target.value)}
+                        placeholder="如：意式轻奢暖灰大平层..."
+                        className="w-full px-3 py-1.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none transition-all text-xs"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-neutral-200 font-semibold mb-1.5">空间风格分类</label>
+                      <label className="block text-neutral-200 font-semibold mb-1">风格分类</label>
                       <select
-                        value={aiCategory}
-                        onChange={e => setAiCategory(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white outline-none transition-all cursor-pointer font-medium"
+                        value={uploadCategory}
+                        onChange={e => setUploadCategory(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white outline-none transition-all cursor-pointer font-medium text-xs"
                       >
-                        <option value="意式轻奢">意式轻奢</option>
                         <option value="现代极简">现代极简</option>
                         <option value="侘寂风">侘寂风</option>
+                        <option value="意式轻奢">意式轻奢</option>
                         <option value="法式复古">法式复古</option>
                         <option value="新中式">新中式</option>
                         <option value="自然原木">自然原木</option>
                       </select>
                     </div>
-                  </div>
 
-                  {/* 需求核心：内置模型选择器 */}
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Cpu className="w-4 h-4 text-amber-400" />
-                        <span>生图计算模型 (内置配置)</span>
-                      </span>
-                      <span className="text-[10px] text-amber-400/80 font-mono">点击选择当前模型</span>
-                    </label>
-                    <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                      {SPACE_IMAGE_MODELS.map(model => {
-                        const isChosen = selectedModelId === model.id;
-                        return (
-                          <div
-                            key={model.id}
-                            onClick={() => setSelectedModelId(model.id)}
-                            className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                              isChosen
-                                ? 'bg-amber-500/15 border-amber-400 text-white shadow-md shadow-amber-500/15 ring-1 ring-amber-400/50'
-                                : 'bg-[#151824] border-white/10 hover:border-white/30 hover:bg-[#1a1e2e] text-neutral-300'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                isChosen ? 'border-amber-400 bg-amber-400' : 'border-neutral-400 bg-transparent'
-                              }`}>
-                                {isChosen && (
-                                  <div className="w-1.5 h-1.5 rounded-full bg-black" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-xs font-bold ${isChosen ? 'text-amber-300' : 'text-white'}`}>{model.name}</span>
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
-                                    {model.badge}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-neutral-300 mt-0.5 line-clamp-1">{model.description}</p>
-                              </div>
-                            </div>
-                            <span className="text-[10px] uppercase font-mono font-semibold px-2 py-0.5 rounded bg-black/40 text-neutral-300 shrink-0 ml-2">
-                              {model.provider}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* 画幅比例 */}
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5">画幅比例</label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {['16:9', '4:3', '1:1', '9:16'].map(ratio => {
-                        const isRatioActive = aiAspectRatio === ratio;
-                        return (
-                          <button
-                            key={ratio}
-                            type="button"
-                            onClick={() => setAiAspectRatio(ratio)}
-                            className={`py-2 rounded-xl border text-xs font-mono font-bold transition-all cursor-pointer ${
-                              isRatioActive
-                                ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/25 scale-[1.02]'
-                                : 'bg-[#151824] border-white/15 text-neutral-300 hover:text-white hover:border-white/30'
-                            }`}
-                          >
-                            {ratio}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* 核心功能：纯净空场景模式 Toggle */}
-                  <div className={`p-3 rounded-xl border transition-all ${
-                    isEmptyRoomMode
-                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
-                      : 'bg-[#151824] border-white/10 text-neutral-300'
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                          isEmptyRoomMode ? 'bg-emerald-500 text-black font-bold' : 'bg-white/5 text-neutral-400'
-                        }`}>
-                          <Eraser className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white">纯净空场景模式</span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold border ${
-                              isEmptyRoomMode
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                : 'bg-white/5 text-neutral-400 border-white/10'
-                            }`}>
-                              清除沙发/茶几/地毯/餐桌
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-neutral-400 mt-0.5">
-                            自动注入无家具指令，保证地面大面积纯净留白，方便后期自由添加敏华产品家具
-                          </p>
-                        </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-neutral-200 font-semibold">上传参考图</label>
+                        {uploadedImages.length > 0 ? (
+                          <span className="text-[10px] text-amber-300 font-mono flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            已上传 {uploadedImages.length} 张，支持 AI 识别
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-neutral-400">上传后可一键 AI 识别</span>
+                        )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setIsEmptyRoomMode(!isEmptyRoomMode)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                          isEmptyRoomMode ? 'bg-emerald-500' : 'bg-white/20'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            isEmptyRoomMode ? 'translate-x-6' : 'translate-x-1'
-                          }`}
+                      <label className="border-2 border-dashed border-white/20 hover:border-amber-400/80 rounded-xl p-3.5 flex flex-col items-center justify-center cursor-pointer bg-[#141622] hover:bg-[#181b2a] transition-all group shadow-inner">
+                        <Upload className="w-5 h-5 text-amber-400 mb-1 group-hover:scale-110 transition-transform" />
+                        <span className="text-neutral-200 font-medium text-xs">点击上传风格参考图</span>
+                        <span className="text-[10px] text-neutral-400 mt-0.5">支持 JPG / PNG / WEBP</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleUploadImageFile}
+                          className="hidden"
                         />
-                      </button>
+                      </label>
+
+                      {/* 上传后的图片列表与 AI 识别专属操作条 */}
+                      {uploadedImages.length > 0 && (
+                        <div className="mt-2.5 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-sm">
+                          <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+                            {uploadedImages.map((img, i) => (
+                              <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden border border-amber-400/70 shrink-0 shadow-md group">
+                                <img src={img} alt="" className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setUploadedImages(prev => prev.filter((_, idx) => idx !== i));
+                                  }}
+                                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/80 text-white hover:bg-red-500 flex items-center justify-center text-[11px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  title="移除此图"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* AI 识别核心操作按钮 */}
+                          <button
+                            type="button"
+                            onClick={handleAiAnalyzeUploadedImage}
+                            disabled={isAnalyzingStyleImage}
+                            className="shrink-0 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:brightness-110 text-black font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-60 cursor-pointer"
+                          >
+                            {isAnalyzingStyleImage ? (
+                              <>
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
+                                <span>AI 深度识别空间中...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3.5 h-3.5 text-black" />
+                                <span>AI 识别提取风格与 Prompt</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 成功与失败状态微提示 */}
+                      {analyzeSuccessTip && (
+                        <div className="mt-2 p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs flex items-center gap-1.5 font-medium animate-in fade-in">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>{analyzeSuccessTip}</span>
+                        </div>
+                      )}
+
+                      {analyzeError && (
+                        <div className="mt-2 p-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 text-xs flex items-center gap-1.5 font-medium animate-in fade-in">
+                          <span>⚠️</span>
+                          <span>{analyzeError}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-neutral-200 font-semibold">Prompt 片段与空间描述 (下方将直接展示)</label>
+                        <span className="text-[10px] text-neutral-400 font-mono">可由 AI 自动提取或手动微调</span>
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={uploadPrompt}
+                        onChange={e => setUploadPrompt(e.target.value)}
+                        placeholder="描述该风格的材质特征、采光方向、色调及软装氛围，或点击上方【AI 识别提取风格与 Prompt】自动生成..."
+                        className="w-full px-3 py-2 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed font-mono text-[11px] transition-all shadow-inner resize-y min-h-[60px]"
+                      />
                     </div>
                   </div>
+                )}
+              </div>
 
-                  {genError && (
-                    <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-red-200 text-xs flex items-center gap-2 font-medium">
-                      <span>⚠️</span>
-                      <span>{genError}</span>
-                    </div>
+              {/* 3. 始终常驻底部的操作栏 Footer (shrink-0 sticky) - 绝对保证在视口内清晰可见，彻底消除遮挡 */}
+              <div className="shrink-0 sticky bottom-0 z-20 px-5 py-3 bg-[#141620] border-t border-white/15 flex items-center justify-between shadow-2xl">
+                {/* 状态与配置摘要 */}
+                <div className="flex items-center gap-2 text-[11px]">
+                  {createMode === 'ai' ? (
+                    <>
+                      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-300 font-mono">
+                        <Cpu className="w-3 h-3 text-amber-400" />
+                        <span>{SPACE_IMAGE_MODELS.find(m => m.id === selectedModelId)?.name.split('(')[0].trim() || 'GPT Image 2'}</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 font-mono text-neutral-300">
+                        {aiAspectRatio}
+                      </span>
+                      {isEmptyRoomMode && (
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-medium">
+                          纯净空场景
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-neutral-400">
+                      已选择 {uploadedImages.length} 张参考图
+                    </span>
                   )}
+                </div>
 
-                  {/* Actions - 增强可视性，杜绝死黑与模糊 */}
-                  <div className="flex items-center justify-end gap-3 pt-3.5 border-t border-white/15">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(false)}
-                      disabled={isAiGenerating}
-                      className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition-all cursor-pointer"
-                    >
-                      取消
-                    </button>
+                {/* 操作按键组 */}
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    disabled={isAiGenerating}
+                    className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-semibold text-neutral-300 hover:text-white transition-all cursor-pointer"
+                  >
+                    取消
+                  </button>
+
+                  {createMode === 'ai' ? (
                     <button
                       type="button"
                       onClick={handleGenerateAiStyle}
                       disabled={!aiPrompt.trim() || isAiGenerating}
-                      style={{
-                        backgroundColor: !aiPrompt.trim() || isAiGenerating ? '#24283b' : '#f59e0b',
-                        color: !aiPrompt.trim() || isAiGenerating ? '#94a3b8' : '#000000',
-                        border: !aiPrompt.trim() || isAiGenerating ? '1px solid rgba(255,255,255,0.12)' : '1px solid #fbbf24',
-                        boxShadow: !aiPrompt.trim() || isAiGenerating ? 'none' : '0 4px 14px rgba(245, 158, 11, 0.35)'
-                      }}
-                      className="px-6 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer active:scale-98 disabled:cursor-not-allowed"
+                      className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md ${
+                        !aiPrompt.trim() || isAiGenerating
+                          ? 'bg-[#24283b] text-neutral-500 border border-white/10 cursor-not-allowed shadow-none'
+                          : 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black border border-amber-300 shadow-amber-500/25 active:scale-98'
+                      }`}
                     >
                       {isAiGenerating ? (
                         <>
-                          <RefreshCw className="w-4 h-4 animate-spin text-black" />
-                          <span className="font-extrabold tracking-wide">AI 正在生成并保存...</span>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
+                          <span>AI 正在生成并保存...</span>
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-4 h-4 text-black" />
-                          <span className="font-extrabold tracking-wide">立即生成并保存至风格库</span>
+                          <Sparkles className="w-3.5 h-3.5 text-black" />
+                          <span>立即生成并保存至风格库</span>
                         </>
                       )}
                     </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Mode 2: Upload Local Images */}
-              {createMode === 'upload' && (
-                <div className="space-y-4 text-xs">
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5">风格名称 <span className="text-amber-400">*</span></label>
-                    <input
-                      type="text"
-                      value={uploadStyleName}
-                      onChange={e => setUploadStyleName(e.target.value)}
-                      placeholder="如：意式轻奢暖灰大平层..."
-                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5">风格分类</label>
-                    <select
-                      value={uploadCategory}
-                      onChange={e => setUploadCategory(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white outline-none transition-all cursor-pointer font-medium"
-                    >
-                      <option value="现代极简">现代极简</option>
-                      <option value="侘寂风">侘寂风</option>
-                      <option value="意式轻奢">意式轻奢</option>
-                      <option value="法式复古">法式复古</option>
-                      <option value="新中式">新中式</option>
-                      <option value="自然原木">自然原木</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5">上传参考图</label>
-                    <label className="border-2 border-dashed border-white/25 hover:border-amber-400 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer bg-[#141622] hover:bg-[#181b2a] transition-all group">
-                      <Upload className="w-6 h-6 text-amber-400 mb-1.5 group-hover:scale-110 transition-transform" />
-                      <span className="text-neutral-200 font-medium">点击上传单张或多张风格参考图</span>
-                      <span className="text-[10px] text-neutral-400 mt-0.5">支持 JPG / PNG / WEBP</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleUploadImageFile}
-                        className="hidden"
-                      />
-                    </label>
-
-                    {uploadedImages.length > 0 && (
-                      <div className="flex gap-2.5 mt-2.5 overflow-x-auto pb-1">
-                        {uploadedImages.map((img, i) => (
-                          <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-amber-400/50 flex-shrink-0 shadow-md">
-                            <img src={img} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-neutral-200 font-semibold mb-1.5">Prompt 片段与空间描述 (下方将直接展示)</label>
-                    <textarea
-                      rows={3}
-                      value={uploadPrompt}
-                      onChange={e => setUploadPrompt(e.target.value)}
-                      placeholder="描述该风格的材质特征、采光方向、色调及软装氛围..."
-                      className="w-full px-3.5 py-2.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed font-mono text-[11px] transition-all shadow-inner"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3 pt-3.5 border-t border-white/15">
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateModal(false)}
-                      className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition-all cursor-pointer"
-                    >
-                      取消
-                    </button>
+                  ) : (
                     <button
                       type="button"
                       onClick={handleCreateCustomStyle}
                       disabled={!uploadStyleName.trim()}
-                      style={{
-                        backgroundColor: !uploadStyleName.trim() ? '#24283b' : '#f59e0b',
-                        color: !uploadStyleName.trim() ? '#94a3b8' : '#000000',
-                        border: !uploadStyleName.trim() ? '1px solid rgba(255,255,255,0.12)' : '1px solid #fbbf24',
-                        boxShadow: !uploadStyleName.trim() ? 'none' : '0 4px 14px rgba(245, 158, 11, 0.35)'
-                      }}
-                      className="px-6 py-2.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer active:scale-98 disabled:cursor-not-allowed"
+                      className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md ${
+                        !uploadStyleName.trim()
+                          ? 'bg-[#24283b] text-neutral-500 border border-white/10 cursor-not-allowed shadow-none'
+                          : 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black border border-amber-300 shadow-amber-500/25 active:scale-98'
+                      }`}
                     >
-                      <Plus className="w-4 h-4 text-black" />
-                      <span className="font-extrabold tracking-wide">保存并加入资产库</span>
+                      <Plus className="w-3.5 h-3.5 text-black" />
+                      <span>保存并加入资产库</span>
                     </button>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
+
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

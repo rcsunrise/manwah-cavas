@@ -314,7 +314,7 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     },
     status: 'draft',
     revisions: [],
-    hasHumanPass: true
+    hasHumanPass: false
   },
   {
     id: 'shot-a08',
@@ -599,10 +599,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           ? [newProduct, ...prev.filter((p) => p.id !== newProduct.id)]
           : [...prev.filter((p) => p.id !== newProduct.id), newProduct];
 
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
       try {
         const newBp = PlacementEngine.generateStandardBlueprint({
           spacePreset: selectedSpace,
-          products: updated
+          products: activeEnsemble
         });
         setBlueprint(newBp);
       } catch (e: unknown) {
@@ -615,10 +619,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const handleUpdateProduct = (updatedProduct: ProductAsset) => {
     setProducts((prev) => {
       const updated = prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p));
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
       try {
         const newBp = PlacementEngine.generateStandardBlueprint({
           spacePreset: selectedSpace,
-          products: updated
+          products: activeEnsemble
         });
         setBlueprint(newBp);
       } catch (e: unknown) {
@@ -631,10 +639,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const handleRemoveProduct = (productId: string) => {
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== productId);
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
       try {
         const newBp = PlacementEngine.generateStandardBlueprint({
           spacePreset: selectedSpace,
-          products: updated
+          products: activeEnsemble
         });
         setBlueprint(newBp);
       } catch (e: unknown) {
@@ -658,17 +670,74 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             | 'decor'
         }));
       const updated = [
-        { ...target, priority: 'primary' as const, identityLock: 'strict' as const },
+        { ...target, priority: 'primary' as const, identityLock: 'strict' as const, isEnsembleIncluded: true },
         ...others
       ];
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
       try {
         const newBp = PlacementEngine.generateStandardBlueprint({
           spacePreset: selectedSpace,
-          products: updated
+          products: activeEnsemble
         });
         setBlueprint(newBp);
       } catch (e: unknown) {
         console.warn('Blueprint update error:', e);
+      }
+      return updated;
+    });
+  };
+
+  // 勾选 / 取消勾选某件产品是否关联到当前场景套组
+  const handleToggleEnsembleInclude = (productId: string) => {
+    setProducts((prev) => {
+      const updated = prev.map((p) => {
+        if (p.id === productId) {
+          const current = p.isEnsembleIncluded ?? true;
+          return { ...p, isEnsembleIncluded: !current };
+        }
+        return p;
+      });
+
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
+      try {
+        const newBp = PlacementEngine.generateStandardBlueprint({
+          spacePreset: selectedSpace,
+          products: activeEnsemble
+        });
+        setBlueprint(newBp);
+      } catch (e: unknown) {
+        console.warn('Blueprint update on toggle ensemble error:', e);
+      }
+      return updated;
+    });
+  };
+
+  // 批量全选或仅留主品
+  const handleBatchToggleEnsemble = (allIncluded: boolean) => {
+    setProducts((prev) => {
+      const updated = prev.map((p) => {
+        if (p.priority === 'primary') return { ...p, isEnsembleIncluded: true };
+        return { ...p, isEnsembleIncluded: allIncluded };
+      });
+
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
+      try {
+        const newBp = PlacementEngine.generateStandardBlueprint({
+          spacePreset: selectedSpace,
+          products: activeEnsemble
+        });
+        setBlueprint(newBp);
+      } catch (e: unknown) {
+        console.warn('Blueprint update on batch toggle error:', e);
       }
       return updated;
     });
@@ -713,15 +782,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染引擎配置选项 (默认 4:3 画幅)
-  const [computeConfig, setComputeConfig] = useState<RenderComputeConfig>({
-    model: 'gemini-3.1-flash-image',
+  // 渲染引擎配置选项 (默认使用 GPT 图像生成模型与单张模板生成)
+  const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>({
+    model: 'gpt-image-2',
     resolution: '2K',
     aspectRatio: '4:3',
     customAspectRatio: '',
     seed: undefined,
     namingPreset: 'detailed',
-    customPrefix: ''
+    customPrefix: '',
+    candidateCount: 1
   });
 
   const handleUpdateComputeConfig = (updater: Partial<RenderComputeConfig>) => {
@@ -993,8 +1063,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染单个镜头的 4 候选方案 (SHOOT + 继承 A00 空间与家具世界 + 单变量 Camera DNA 驱动)
-  const handleRenderShot = async (targetShot: ShotInstance, customSettings?: GenerationSettings) => {
+  // 渲染单个镜头候选方案 (SHOOT + 继承 A00 空间与家具世界 + 单变量 Camera DNA 驱动)
+  const handleRenderShot = async (targetShot: ShotInstance, customSettings?: GenerationSettings & { candidateCount?: number }) => {
+    // 渲染中防重入拦截，彻底杜绝重复点击造成重复调用 API
+    if (isRenderingShot) {
+      console.warn('[SpaceStudioShell] 镜头渲染正在执行中，拦截重复触发');
+      return;
+    }
+
     // 门禁：A00 没有真实生成结果并由用户执行 LOCK 时，自动先触发生成并锁定 A00 空间母版真值以保证物理不变量
     if (targetShot.templateCode !== 'A00' && (!sceneMaster || !sceneMaster.isLocked)) {
       console.log('正在优先生成并锁定 A00 空间母版真值...');
@@ -1016,7 +1092,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gemini-3.1-flash-image',
+      provider: activeSettings.model || 'gpt-image-2',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -1028,6 +1104,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     );
 
     try {
+      const activeEnsemble = products.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
       const compiled = ShootCompiler.compileShotPrompt({
         shot: targetShot,
         sceneMaster: sceneMaster || {
@@ -1048,7 +1128,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           },
           promptSnapshotId: 'rev-01'
         },
-        products,
+        products: activeEnsemble,
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
         blueprint
@@ -1056,7 +1136,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: compiled } : null));
 
-      const primaryProd = products.find((p) => p.priority === 'primary') || products[0];
+      const primaryProd =
+        activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0];
       const primaryRef =
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
@@ -1071,11 +1152,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           shotId: targetShot.id,
           shotCode: targetShot.templateCode,
           revisionNumber: (targetShot.revisions.length || 0) + 1,
+          candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
           camera: compiled.cameraSpec,
           intent: targetShot.intent,
           productDNA: {
             modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.name,
+            name: primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa',
             leatherType: primaryProd?.materials?.[0] || '真皮',
             colorCode: primaryProd?.colors?.[0] || '标准色',
             referenceImage: primaryRef
@@ -1332,6 +1414,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
     // 03 HUMAN 阶段：基于当前镜头生成人物版 (锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物)
   const handleRenderHumanPass = async (targetShot: ShotInstance = activeShot) => {
+    if (isRenderingHuman) {
+      console.warn('[SpaceStudioShell] 人物合成正在执行中，拦截重复触发');
+      return;
+    }
     setIsRenderingHuman(true);
     const jobId = `job-human-${Date.now()}`;
     const activeSettings: GenerationSettings = {
@@ -1348,7 +1434,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gemini-3.1-flash-image',
+      provider: activeSettings.model || 'gpt-image-2',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -1358,6 +1444,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const allModels = spaceAssetLibraryService.getModels();
       setAvailableModels(allModels);
       const compiledHuman = spaceAssetLibraryService.compileHumanLayoutPrompt(humanLayout, allModels);
+
+      const activeEnsemble = products.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
 
       const baseCompiled = ShootCompiler.compileShotPrompt({
         shot: targetShot,
@@ -1379,7 +1469,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           },
           promptSnapshotId: 'rev-01'
         },
-        products,
+        products: activeEnsemble,
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
         blueprint
@@ -1387,7 +1477,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40 } : null));
 
-      const primaryProd = products.find((p) => p.priority === 'primary') || products[0];
+      const primaryProd =
+        activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0];
       const primaryRef =
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
@@ -1412,12 +1503,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(50000), // 50秒安全超时，杜绝网络假死卡顿
+        signal: AbortSignal.timeout(180000), // 180秒充足算力超时，杜绝多图复杂融合生图时抢先抛出 signal timed out
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
           shotId: targetShot.id,
           shotCode: targetShot.templateCode,
           revisionNumber: (targetShot.revisions.length || 0) + 1,
+          candidateCount: 1,
           isHumanPass: true,
           baseShotReferenceImage: baseShotImage,
           currentShotReferenceImage: baseShotImage,
@@ -1444,7 +1536,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           intent: targetShot.intent,
           productDNA: {
             modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.name,
+            name: primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa',
             leatherType: primaryProd?.materials?.[0] || '真皮',
             colorCode: primaryProd?.colors?.[0] || '标准色',
             referenceImage: primaryRef
@@ -1459,8 +1551,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           generationSettings: activeSettings,
           promptSnapshot: {
             ...baseCompiled,
-            positivePrompt: `${baseCompiled.positivePrompt}, ${compiledHuman.humanDirectives}`,
-            negativePrompt: compiledHuman.negativePrompt,
+            positivePrompt: `${compiledHuman.positivePrompt}, ${baseCompiled.positivePrompt}`,
+            negativePrompt: `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
             isHumanPass: true
           }
         })
@@ -1485,18 +1577,51 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         [targetShot.id]: initialCandidate.id
       }));
 
-      // 以候选 1 建立人物版 Revision
-      const parentRevId = targetShot.currentRevisionId || (targetShot.revisions.length > 0 ? targetShot.revisions[0].id : undefined);
+      // 1. 如果当前镜头还没有任何基础场景 Revision，将先前的基准底图自动归档为 v1 空间家具纯场景
+      const existingRevs = [...targetShot.revisions];
+      if (existingRevs.length === 0 && baseShotImage) {
+        const baseRevId = `rev-${targetShot.templateCode.toLowerCase()}-base-${Date.now().toString(36)}`;
+        existingRevs.push({
+          id: baseRevId,
+          shotId: targetShot.id,
+          revisionNumber: 1,
+          objectKey: sceneMaster?.objectKey || `shots/${targetShot.templateCode.toLowerCase()}/base.webp`,
+          imageUrl: baseShotImage,
+          thumbnailUrl: baseShotImage,
+          promptSnapshotId: 'base-spatial-ground-truth',
+          status: 'approved',
+          revisionType: 'scene',
+          label: 'v1 · 空间家具纯场景',
+          metaSummary: '空间硬装与沙发骨架基准 (无人物)',
+          score: {
+            productIdentity: 98,
+            placement: 98,
+            sceneContinuity: 98,
+            shotIntent: 98,
+            overall: 98
+          },
+          provenance: 'PROVIDED',
+          productionTruth: true,
+          createdAt: new Date(Date.now() - 60000).toISOString()
+        });
+      }
+
+      // 2. 以候选 1 建立新一代人物版 Revision (v2 或递增版本)
+      const nextRevNum = existingRevs.length + 1;
+      const parentRevId = targetShot.currentRevisionId || (existingRevs.length > 0 ? existingRevs[0].id : undefined);
       const newRevision: ShotRevision = {
         id: `rev-${targetShot.templateCode.toLowerCase()}-human-${Date.now().toString(36)}`,
         shotId: targetShot.id,
-        revisionNumber: (targetShot.revisions.length || 0) + 1,
+        revisionNumber: nextRevNum,
         parentRevisionId: parentRevId,
         objectKey: initialCandidate.objectKey || `shots/${initialCandidate.id}.webp`,
         imageUrl: initialCandidate.imageUrl,
         thumbnailUrl: initialCandidate.imageUrl,
         promptSnapshotId: initialCandidate.id,
         status: 'approved',
+        revisionType: 'human',
+        label: `v${nextRevNum} · ${humanLayout.characterCount}人模特入座方案`,
+        metaSummary: `模特自然落座 · 零形变商用精修`,
         score: {
           productIdentity: 96,
           placement: 97,
@@ -1512,12 +1637,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       setShots((prev) =>
         prev.map((s) => {
           if (s.id !== targetShot.id) return s;
+          const mergedRevisions = [newRevision, ...existingRevs.filter((r) => r.id !== newRevision.id)];
           return {
             ...s,
             status: 'passed',
             hasHumanPass: true,
             currentRevisionId: newRevision.id,
-            revisions: [newRevision, ...s.revisions.filter((r) => r.id !== newRevision.id)]
+            revisions: mergedRevisions
           };
         })
       );
@@ -1526,7 +1652,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'FAILED';
       console.error('Failed to render human pass candidates:', err);
-      alert(`生成人物版候选提示: ${errorMessage}`);
+      alert(`生成人物版方案提示: ${errorMessage}`);
       setCurrentJob((j) =>
         j
           ? {
@@ -1541,6 +1667,43 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     } finally {
       setIsRenderingHuman(false);
     }
+  };
+
+  // 镜头历史生成版本快速切换与选择 (让同一个镜头多版本在中心画布与底栏秒级响应)
+  const handleSelectRevision = (shotId: string, revisionId: string) => {
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.id !== shotId) return s;
+        const targetRev = s.revisions.find((r) => r.id === revisionId);
+        if (!targetRev) return s;
+        const isHuman = targetRev.revisionType === 'human' || targetRev.id.includes('human');
+        return {
+          ...s,
+          currentRevisionId: revisionId,
+          hasHumanPass: isHuman
+        };
+      })
+    );
+  };
+
+  // 删除指定的镜头历史生成版本
+  const handleDeleteRevision = (shotId: string, revisionId: string) => {
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.id !== shotId) return s;
+        if (s.revisions.length <= 1) return s; // 至少保留一个版本
+        const remaining = s.revisions.filter((r) => r.id !== revisionId);
+        const nextCurrentId = s.currentRevisionId === revisionId ? remaining[0].id : s.currentRevisionId;
+        const currentRev = remaining.find((r) => r.id === nextCurrentId);
+        const isHuman = currentRev?.revisionType === 'human' || currentRev?.id.includes('human');
+        return {
+          ...s,
+          currentRevisionId: nextCurrentId,
+          hasHumanPass: isHuman,
+          revisions: remaining
+        };
+      })
+    );
   };
 
   // 户型切换联动：自动重新适配空间蓝图并保持固定
@@ -1575,19 +1738,92 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 风格资产库一键跳转：绑定新风格并生成锁定空间母版
-  const handleApplyStyleAndGenerateMaster = async (style: SceneStyleAsset) => {
+  // 风格资产直接设为空间母版（免二次生成，100%保留原图大视野与开阔感）
+  const handleApplyStyleAsSceneMasterDirectly = (style: SceneStyleAsset) => {
+    if (!style) return;
+
+    // 1. 设置当前活跃空间风格
     setActiveAssets((prev) => ({ ...prev, style }));
+
+    // 2. 提取该风格的高清母版实景图（优先封面/缩略图/首张参考图）
+    const masterImageUrl = style.coverImage || style.thumbnail || style.referenceImages?.[0] || '';
+    if (!masterImageUrl) return;
+
     const a00Shot = shots.find((s) => s.templateCode === 'A00') || shots[0];
+
+    // 3. 构建规范化的 SceneMaster 对象并立即加锁，彻底杜绝多余的后台重新生成
+    const newMaster: SceneMaster = {
+      id: `master-${style.id || Date.now()}`,
+      projectId: 'manwah-noble-space-01',
+      objectKey: `styles/${style.id || 'custom'}/master.webp`,
+      imageUrl: masterImageUrl,
+      isLocked: true,
+      lockedAt: new Date().toISOString(),
+      aspectRatio: (computeConfig.aspectRatio || '16:9') as any,
+      locks: {
+        productIdentity: true,
+        placement: true,
+        architecture: true,
+        style: true,
+        material: true,
+        lighting: true,
+        camera: true,
+        human: false
+      },
+      promptSnapshotId: `style-snapshot-${style.id || Date.now()}`
+    };
+
+    setSceneMaster(newMaster);
+
+    // 4. 将该大图直接设为 A00 镜头的候选方案，立即在画布中以 100% 原始大视野无裁切呈现！
+    buildAndSetCandidateBatch(a00Shot, masterImageUrl, newMaster.objectKey);
+
+    // 5. 更新 A00 镜头状态为已通过，导航缩略图同步为该大图
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.templateCode === 'A00') {
+          const revId = `rev-master-${Date.now()}`;
+          const newRevision: ShotRevision = {
+            id: revId,
+            shotId: s.id,
+            revisionNumber: (s.revisions.length || 0) + 1,
+            objectKey: newMaster.objectKey,
+            imageUrl: masterImageUrl,
+            thumbnailUrl: masterImageUrl,
+            promptSnapshotId: newMaster.promptSnapshotId,
+            status: 'approved',
+            provenance: 'MANUAL_CONFIRMED',
+            productionTruth: true,
+            createdAt: new Date().toISOString()
+          };
+          return {
+            ...s,
+            status: 'passed',
+            currentRevisionId: revId,
+            thumbnailUrl: masterImageUrl,
+            revisions: [newRevision, ...s.revisions]
+          };
+        }
+        return s;
+      })
+    );
+
+    // 6. 切换当前活跃镜头至 A00 空间母版
     setActiveShotId(a00Shot.id);
-    setIsGeneratingMaster(true);
+
+    // 7. 持久化存盘
     try {
-      await handleRenderShot(a00Shot);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('manwah_space_active_master', JSON.stringify(newMaster));
+      }
     } catch (e) {
-      console.error('Failed to generate and lock master with selected style:', e);
-    } finally {
-      setIsGeneratingMaster(false);
+      console.warn('saveSceneMaster notice:', e);
     }
+  };
+
+  // 风格资产库一键跳转：直接绑定新风格并设为空间母版（避免二次生成）
+  const handleApplyStyleAndGenerateMaster = (style: SceneStyleAsset) => {
+    handleApplyStyleAsSceneMasterDirectly(style);
   };
 
   // 衔接进入 Poster Studio 营销排版
@@ -1637,6 +1873,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onUpdateProduct={handleUpdateProduct}
           onRemoveProduct={handleRemoveProduct}
           onSetPrimaryProduct={handleSetPrimaryProduct}
+          onToggleEnsembleInclude={handleToggleEnsembleInclude}
+          onBatchToggleEnsemble={handleBatchToggleEnsemble}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           shots={shots}
@@ -1709,6 +1947,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onKeepProductRefreshScene={handleKeepProductRefreshScene}
           onToggleFavoriteCandidate={handleToggleFavoriteCandidate}
           onRenderHumanPass={() => handleRenderHumanPass(activeShot)}
+          onSelectRevision={handleSelectRevision}
+          onDeleteRevision={handleDeleteRevision}
           theme={theme}
         />
 
@@ -1773,6 +2013,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           activeAssets={activeAssets}
           onUpdateActiveAssets={(updater) => setActiveAssets(prev => ({ ...prev, ...updater }))}
           onApplyStyleAndGenerateMaster={handleApplyStyleAndGenerateMaster}
+          onApplyStyleAsMasterDirectly={handleApplyStyleAsSceneMasterDirectly}
           customPrompt={customPrompt}
           onChangeCustomPrompt={setCustomPrompt}
           negativePrompt={negativePrompt}
@@ -1806,6 +2047,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         sceneMaster={sceneMaster}
         activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
         onSelectShot={(idx) => setActiveShotId(shots[idx].id)}
+        onSelectRevision={handleSelectRevision}
+        onDeleteRevision={handleDeleteRevision}
         onBatchRenderAll={handleBatchRenderAll}
         isGeneratingAll={false}
         theme={theme}

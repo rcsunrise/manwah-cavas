@@ -74,21 +74,5 @@ export async function createServerGenAI(userUuid: string = 'system') {
     return { ai, config, isValidKey: true };
   }
 
-  // 2. 仅在 Supabase 和第三方环境无任何有效 Key 时，才作为本地开发调试兜底使用 GEMINI_API_KEY
-  if (isProviderKeyValid(process.env.GEMINI_API_KEY)) {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    return {
-      ai,
-      config: {
-        apiKey: process.env.GEMINI_API_KEY,
-        baseUrl: 'https://generativelanguage.googleapis.com',
-        deptId: null,
-        provider: 'google_native' as any,
-        source: 'global' as const
-      },
-      isValidKey: true
-    };
-  }
-
   return { ai: null, config, isValidKey: false };
 }

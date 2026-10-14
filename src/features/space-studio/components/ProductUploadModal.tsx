@@ -24,8 +24,12 @@ import {
   Image as ImageIcon,
   Check,
   DownloadCloud,
-  FileCheck
+  FileCheck,
+  Palette
 } from 'lucide-react';
+
+const PRESET_STYLES = ['意式轻奢', '现代极简', '奶油原木', '法式复古', '侘寂原力', '轻奢高定', '新中式', '原木风'];
+const PRESET_COLORS = ['云雾暖灰', '极地奶白', '干邑暖橙', '鞍褐焦糖', '曜石深灰', '复古深栗', '珍珠米金'];
 
 interface UploadedImageItem {
   id: string;
@@ -88,6 +92,13 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
     initialProduct?.colors || ['云雾暖灰 (Warm Greige)', '曜石深灰']
   );
   const [newColorInput, setNewColorInput] = useState<string>('');
+  const [adaptiveStyles, setAdaptiveStyles] = useState<string[]>(
+    initialProduct?.adaptiveStyles || ['意式轻奢', '现代极简']
+  );
+  const [newStyleInput, setNewStyleInput] = useState<string>('');
+  const [isEnsembleIncluded, setIsEnsembleIncluded] = useState<boolean>(
+    initialProduct?.isEnsembleIncluded ?? true
+  );
   const [surfaceTexture, setSurfaceTexture] = useState<string>(
     '细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边'
   );
@@ -186,6 +197,83 @@ interface CanvasDraftPayload {
   const [cloudReferences, setCloudReferences] = useState<ProductReference[]>(
     initialProduct?.referenceImages || []
   );
+
+  // 当打开弹窗或编辑目标切换时，自动同步表单状态
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initialProduct) {
+      if (initialProduct.referenceImages && initialProduct.referenceImages.length > 0) {
+        setUploadedImages(
+          initialProduct.referenceImages.map((ref, idx) => ({
+            id: ref.id || `ref-init-${idx}`,
+            base64: ref.publicUrl || '',
+            type: ref.type,
+            name: `参考图 ${idx + 1}`
+          }))
+        );
+      } else {
+        setUploadedImages([]);
+      }
+      setName(initialProduct.name || '');
+      setSku(initialProduct.sku || '');
+      setRole(initialProduct.role || 'sofa_3seat');
+      setPriority(initialProduct.priority || 'primary');
+      setIdentityLock(initialProduct.identityLock || 'strict');
+      setWidth(initialProduct.dimensions?.width || 3100);
+      setDepth(initialProduct.dimensions?.depth || 1080);
+      setHeight(initialProduct.dimensions?.height || 950);
+      setMaterials(initialProduct.materials || ['南美进口头层牛皮 (半苯胺)', '德国超静音低压双电机', '高碳钢五金伸缩架']);
+      setColors(initialProduct.colors || ['云雾暖灰 (Warm Greige)', '曜石深灰']);
+      setAdaptiveStyles(initialProduct.adaptiveStyles || ['意式轻奢', '现代极简']);
+      setIsEnsembleIncluded(initialProduct.isEnsembleIncluded ?? true);
+      setSurfaceTexture(initialProduct.surfaceTexture || '细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边');
+      setFunctionCapable(initialProduct.functionCapable ?? true);
+      setLockedRules(initialProduct.lockedRules || [
+        '严格保持原图中的扶手双包线造型与饱满弧度',
+        '皮质光泽度与原厂 Warm Greige 调色禁止漂移',
+        '电动功能脚踏收缩态轮廓比例严格锁定'
+      ]);
+      setConfidenceScore(initialProduct.readoutConfidence || null);
+      setStructuralFeatures(initialProduct.structuralFeatures || []);
+      setProvenance(initialProduct.provenance || 'AI_ESTIMATED');
+      setProductionTruth(initialProduct.productionTruth || false);
+      setDossierSummary(initialProduct.dossierSummary || '');
+      setDossierGeneratedAt(initialProduct.dossierGeneratedAt || '');
+      setCloudReferences(initialProduct.referenceImages || []);
+      setActiveImageIndex(0);
+      setAnalysisError(null);
+    } else {
+      setUploadedImages([]);
+      setName('');
+      setSku('');
+      setRole('sofa_3seat');
+      setPriority('secondary');
+      setIdentityLock('strict');
+      setWidth(3100);
+      setDepth(1080);
+      setHeight(950);
+      setMaterials(['南美进口头层牛皮 (半苯胺)', '德国超静音低压双电机', '高碳钢五金伸缩架']);
+      setColors(['云雾暖灰 (Warm Greige)', '曜石深灰']);
+      setAdaptiveStyles(['意式轻奢', '现代极简']);
+      setIsEnsembleIncluded(true);
+      setSurfaceTexture('细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边');
+      setFunctionCapable(true);
+      setLockedRules([
+        '严格保持原图中的扶手双包线造型与饱满弧度',
+        '皮质光泽度与原厂 Warm Greige 调色禁止漂移',
+        '电动功能脚踏收缩态轮廓比例严格锁定'
+      ]);
+      setConfidenceScore(null);
+      setStructuralFeatures([]);
+      setProvenance('AI_ESTIMATED');
+      setProductionTruth(false);
+      setDossierSummary('');
+      setDossierGeneratedAt('');
+      setCloudReferences([]);
+      setActiveImageIndex(0);
+      setAnalysisError(null);
+    }
+  }, [isOpen, initialProduct]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -406,6 +494,9 @@ interface CanvasDraftPayload {
       if (Array.isArray(data.colors) && data.colors.length > 0) {
         setColors(data.colors);
       }
+      if (Array.isArray(data.adaptiveStyles) && data.adaptiveStyles.length > 0) {
+        setAdaptiveStyles(data.adaptiveStyles);
+      }
       if (data.surfaceTexture) setSurfaceTexture(data.surfaceTexture);
       if (typeof data.functionCapable === 'boolean') setFunctionCapable(data.functionCapable);
       if (Array.isArray(data.lockedRules) && data.lockedRules.length > 0) {
@@ -477,6 +568,19 @@ interface CanvasDraftPayload {
     setColors((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // 添加/移除适配风格标签
+  const handleAddStyle = (styleName?: string) => {
+    const val = (styleName || newStyleInput).trim();
+    if (val && !adaptiveStyles.includes(val)) {
+      setAdaptiveStyles((prev) => [...prev, val]);
+      setNewStyleInput('');
+    }
+  };
+
+  const handleRemoveStyle = (index: number) => {
+    setAdaptiveStyles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // 添加锁定规则
   const handleAddRule = () => {
     if (newRuleInput.trim()) {
@@ -517,6 +621,8 @@ interface CanvasDraftPayload {
       },
       materials,
       colors,
+      adaptiveStyles,
+      isEnsembleIncluded,
       surfaceTexture,
       functionCapable,
       referenceImages: finalReferences,
@@ -986,132 +1092,327 @@ interface CanvasDraftPayload {
               </div>
             )}
 
-            {/* 1. 基础商业属性 */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 1. 核心标记 ①: 产品商业名称与编码 */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2 space-y-1">
-                <label className="text-[11px] font-semibold text-stone-700">产品全称 (Product Name)</label>
+                <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                  <Tag className="w-3.5 h-3.5 text-amber-600" />
+                  <span>产品规范全称 (Product Name)</span>
+                  <span className="text-[10px] text-amber-600 font-normal">★ 核心标记</span>
+                </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="如：敏华芝华仕头等舱·意式极简电动功能真皮主沙发"
-                  className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden font-medium"
+                  className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden font-semibold shadow-2xs"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-stone-700">SKU 编码 (Model/SKU)</label>
+                <label className="text-[11px] font-bold text-stone-800">SKU / 货号编码</label>
                 <input
                   type="text"
                   value={sku}
                   onChange={(e) => setSku(e.target.value)}
                   placeholder="MW-CH-9866-3S"
-                  className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden font-mono"
+                  className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden font-mono font-bold shadow-2xs"
                 />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-stone-700">空间角色 (Space Role)</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as ProductRole)}
-                  className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden bg-white"
-                >
-                  <option value="sofa_3seat">3人位主功能沙发 (sofa_3seat)</option>
-                  <option value="sofa_2seat">2人位功能沙发 (sofa_2seat)</option>
-                  <option value="recliner_1seat">单人电动功能躺椅 (recliner_1seat)</option>
-                  <option value="coffee_table">主次茶几组合 (coffee_table)</option>
-                  <option value="side_table">边几 (side_table)</option>
-                  <option value="dining_table">餐桌 (dining_table)</option>
-                  <option value="dining_chair">餐椅 (dining_chair)</option>
-                  <option value="tv_console">电视地柜 (tv_console)</option>
-                  <option value="decor">软装陈设 (decor)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-stone-700">空间定位 (Priority)</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as 'primary' | 'secondary' | 'decor')}
-                  className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden bg-white"
-                >
-                  <option value="primary">主件主角 (Strict Lock 绝对物理保真)</option>
-                  <option value="secondary">配套次件 (Secondary)</option>
-                  <option value="decor">环境点缀 (Decor)</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-stone-700">锁定级别 (Identity Lock)</label>
-                <select
-                  value={identityLock}
-                  onChange={(e) => setIdentityLock(e.target.value as 'strict' | 'normal' | 'loose')}
-                  className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden bg-white"
-                >
-                  <option value="strict">Strict (严格几何与材质锁死)</option>
-                  <option value="normal">Normal (标准保真)</option>
-                  <option value="loose">Loose (仅继承色调与轮廓)</option>
-                </select>
               </div>
             </div>
 
-            {/* 2. 三维工业尺寸毫米读数 (Dimensions mm) */}
-            <div className="space-y-1.5 p-3 rounded-xl bg-[#FAF8F5] border border-stone-200/80">
+            {/* 2. 核心标记 ②: 三维工业尺寸毫米读数 (Dimensions mm) */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-stone-50 border border-stone-300/80 shadow-2xs">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                <span className="text-[11px] font-extrabold text-stone-900 flex items-center gap-1.5">
                   <Maximize2 className="w-3.5 h-3.5 text-amber-600" />
-                  三维工业尺寸毫米读数 (Dimensions mm)
+                  <span>三维工程尺寸读数 (Dimensions mm)</span>
+                  <span className="text-[10px] text-amber-600 font-normal font-sans">★ 核心标记</span>
                 </span>
-                <span className="text-[10px] text-stone-400 font-mono">W × D × H</span>
+                <span className="text-[10px] text-stone-500 font-mono font-semibold">W × D × H (毫米)</span>
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                <div>
-                  <span className="text-[10px] text-stone-500 font-mono">宽度 W (mm)</span>
+              <div className="grid grid-cols-3 gap-2.5 pt-1">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-stone-700 font-mono font-bold flex items-center justify-between">
+                    <span>总宽 W</span>
+                    <span className="text-stone-400 font-normal">mm</span>
+                  </span>
                   <input
                     type="number"
                     value={width}
                     onChange={(e) => setWidth(Number(e.target.value))}
-                    className="w-full text-xs p-1.5 rounded-lg border border-stone-200 bg-white font-mono font-semibold"
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-950 font-mono font-extrabold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs text-center"
                   />
                 </div>
-                <div>
-                  <span className="text-[10px] text-stone-500 font-mono">深度 D (mm)</span>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-stone-700 font-mono font-bold flex items-center justify-between">
+                    <span>总深 D</span>
+                    <span className="text-stone-400 font-normal">mm</span>
+                  </span>
                   <input
                     type="number"
                     value={depth}
                     onChange={(e) => setDepth(Number(e.target.value))}
-                    className="w-full text-xs p-1.5 rounded-lg border border-stone-200 bg-white font-mono font-semibold"
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-950 font-mono font-extrabold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs text-center"
                   />
                 </div>
-                <div>
-                  <span className="text-[10px] text-stone-500 font-mono">高度 H (mm)</span>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-stone-700 font-mono font-bold flex items-center justify-between">
+                    <span>总高 H</span>
+                    <span className="text-stone-400 font-normal">mm</span>
+                  </span>
                   <input
                     type="number"
                     value={height}
                     onChange={(e) => setHeight(Number(e.target.value))}
-                    className="w-full text-xs p-1.5 rounded-lg border border-stone-200 bg-white font-mono font-semibold"
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-950 font-mono font-extrabold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs text-center"
                   />
                 </div>
               </div>
             </div>
 
-            {/* 3. 材质与机构读数 (Materials & Mechanics) */}
+            {/* 3. 核心标记 ③: 色彩体系与主色调 (Colors) */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-stone-50 border border-stone-300/80 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5 text-amber-600" />
+                  <span>产品色彩体系与主色调 (Colors)</span>
+                  <span className="text-[10px] text-amber-600 font-normal">★ 核心标记</span>
+                </label>
+                <span className="text-[10px] text-stone-500">已标记 {colors.length} 组色彩</span>
+              </div>
+
+              {/* 已选色彩标签 */}
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-white border border-stone-200 min-h-[38px]">
+                {colors.map((c, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md bg-stone-100 border border-stone-300 text-stone-900 font-semibold shadow-2xs"
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600 border border-black/10 shrink-0" />
+                    <span>{c}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveColor(idx)}
+                      className="text-stone-400 hover:text-rose-600 transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* 快捷色彩点选与自定义添加 */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-stone-500 shrink-0">快捷色彩库:</span>
+                  {PRESET_COLORS.map((pc) => {
+                    const isAdded = colors.some((c) => c.includes(pc));
+                    return (
+                      <button
+                        key={pc}
+                        type="button"
+                        onClick={() => {
+                          if (!isAdded) {
+                            setColors((prev) => [...prev, pc]);
+                          }
+                        }}
+                        disabled={isAdded}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition cursor-pointer ${
+                          isAdded
+                            ? 'bg-amber-100 text-amber-800 border-amber-300 opacity-60 cursor-default'
+                            : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-300'
+                        }`}
+                      >
+                        + {pc}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newColorInput}
+                    onChange={(e) => setNewColorInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddColor())}
+                    placeholder="自定义色彩（如：劳斯莱斯橙、云雾暖灰、曜石黑）..."
+                    className="flex-1 text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 font-medium focus:border-amber-500 focus:outline-hidden shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddColor}
+                    className="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                  >
+                    添加色彩
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. 核心标记 ④: 适配空间风格 (Adaptive Styles) */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-stone-50 border border-stone-300/80 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>适配空间风格 (Adaptive Styles)</span>
+                  <span className="text-[10px] text-amber-600 font-normal">★ 核心标记 · 用于场景智能匹配</span>
+                </label>
+                <span className="text-[10px] text-stone-500">已标记 {adaptiveStyles.length} 款风格</span>
+              </div>
+
+              {/* 已选适配风格标签 */}
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-white border border-stone-200 min-h-[38px]">
+                {adaptiveStyles.map((st, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md bg-amber-50 border border-amber-300 text-amber-950 font-bold shadow-2xs"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-600" />
+                    <span>{st}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveStyle(idx)}
+                      className="text-stone-400 hover:text-rose-600 transition cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              {/* 快捷推荐风格芯片 */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-stone-500 shrink-0">快捷空间风格:</span>
+                  {PRESET_STYLES.map((ps) => {
+                    const isAdded = adaptiveStyles.includes(ps);
+                    return (
+                      <button
+                        key={ps}
+                        type="button"
+                        onClick={() => {
+                          if (isAdded) {
+                            setAdaptiveStyles((prev) => prev.filter((s) => s !== ps));
+                          } else {
+                            handleAddStyle(ps);
+                          }
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition cursor-pointer ${
+                          isAdded
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-300'
+                        }`}
+                      >
+                        {isAdded ? `✓ ${ps}` : `+ ${ps}`}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newStyleInput}
+                    onChange={(e) => setNewStyleInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddStyle())}
+                    placeholder="自定义适配风格（如：意式轻奢、法式复古、侘寂风）..."
+                    className="flex-1 text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 font-medium focus:border-amber-500 focus:outline-hidden shadow-2xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddStyle()}
+                    className="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+                  >
+                    添加风格
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 5. 空间角色定位与产品组合关联 (Product Role & Ensemble Association) */}
+            <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-amber-700" />
+                  <span className="text-xs font-bold text-stone-900">产品组合与空间角色设定 (Ensemble & Role)</span>
+                </div>
+                {/* 勾选关联到当前场景套组 */}
+                <label className="flex items-center gap-1.5 cursor-pointer bg-white px-2 py-1 rounded-md border border-amber-300 shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={isEnsembleIncluded}
+                    onChange={(e) => setIsEnsembleIncluded(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-600 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-bold text-amber-900">关联至当前场景套组</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-stone-800">空间角色 (Space Role)</label>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as ProductRole)}
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs cursor-pointer"
+                  >
+                    <option value="sofa_3seat">3人位主功能沙发 (sofa_3seat)</option>
+                    <option value="sofa_2seat">2人位功能沙发 (sofa_2seat)</option>
+                    <option value="recliner_1seat">单人电动功能躺椅 (recliner_1seat)</option>
+                    <option value="coffee_table">主次茶几组合 (coffee_table)</option>
+                    <option value="side_table">边几 (side_table)</option>
+                    <option value="dining_table">餐桌 (dining_table)</option>
+                    <option value="dining_chair">餐椅 (dining_chair)</option>
+                    <option value="tv_console">电视地柜 (tv_console)</option>
+                    <option value="decor">软装陈设 (decor)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-stone-800">空间定位 (Priority)</label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as 'primary' | 'secondary' | 'decor')}
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs cursor-pointer"
+                  >
+                    <option value="primary">核心主品 (Hero 焦点)</option>
+                    <option value="secondary">配套次件 (Secondary)</option>
+                    <option value="decor">环境点缀 (Decor)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-stone-800">锁定级别 (Identity Lock)</label>
+                  <select
+                    value={identityLock}
+                    onChange={(e) => setIdentityLock(e.target.value as 'strict' | 'normal' | 'loose')}
+                    className="w-full text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 font-semibold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs cursor-pointer"
+                  >
+                    <option value="strict">Strict (严格几何与材质锁死)</option>
+                    <option value="normal">Normal (标准保真)</option>
+                    <option value="loose">Loose (仅继承色调与轮廓)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* 6. 材质与机构读数 (Materials & Mechanics) */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-stone-700 flex items-center justify-between">
+              <label className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                 <span>材质与机械机构读数 (Materials & Mechanics)</span>
-                <span className="text-[10px] text-stone-400 font-normal">可增删定制</span>
+                <span className="text-[10px] text-stone-500 font-normal">可增删定制</span>
               </label>
-              <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-stone-50 border border-stone-200 min-h-[44px]">
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-stone-100/70 border border-stone-300 min-h-[44px]">
                 {materials.map((m, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-lg bg-white border border-stone-200 text-stone-800 shadow-2xs"
+                    className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-white border border-stone-300 text-stone-900 font-semibold shadow-2xs"
                   >
                     • {m}
                     <button
                       onClick={() => handleRemoveMaterial(idx)}
-                      className="text-stone-400 hover:text-rose-600 transition"
+                      className="text-stone-400 hover:text-rose-600 transition cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1125,51 +1426,12 @@ interface CanvasDraftPayload {
                   onChange={(e) => setNewMaterialInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddMaterial())}
                   placeholder="添加材质/电机/海绵描述..."
-                  className="flex-1 text-xs p-1.5 rounded-lg border border-stone-200 focus:border-amber-500 focus:outline-hidden"
+                  className="flex-1 text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 font-medium focus:border-amber-500 focus:outline-hidden shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={handleAddMaterial}
-                  className="px-3 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-medium"
-                >
-                  添加
-                </button>
-              </div>
-            </div>
-
-            {/* 4. 色彩体系与表面纹理 */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-stone-700">色彩体系 (Colors)</label>
-              <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-stone-50 border border-stone-200">
-                {colors.map((c, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-lg bg-white border border-stone-200 text-stone-800"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-amber-600" />
-                    {c}
-                    <button
-                      onClick={() => handleRemoveColor(idx)}
-                      className="text-stone-400 hover:text-rose-600 transition"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newColorInput}
-                  onChange={(e) => setNewColorInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddColor())}
-                  placeholder="添加色彩（如：极地奶白、鞍褐焦糖）..."
-                  className="flex-1 text-xs p-1.5 rounded-lg border border-stone-200 focus:border-amber-500 focus:outline-hidden"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddColor}
-                  className="px-3 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-medium"
+                  className="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
                 >
                   添加
                 </button>
@@ -1178,12 +1440,12 @@ interface CanvasDraftPayload {
 
             {/* 5. 表面纹理与功能特性 */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-stone-700">表面皮革肌理与缝制工艺</label>
+              <label className="text-[11px] font-bold text-stone-800">表面皮革肌理与缝制工艺</label>
               <input
                 type="text"
                 value={surfaceTexture}
                 onChange={(e) => setSurfaceTexture(e.target.value)}
-                className="w-full text-xs p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden"
+                className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-white text-stone-900 font-semibold focus:border-amber-500 focus:outline-hidden shadow-2xs"
               />
             </div>
 
@@ -1231,12 +1493,12 @@ interface CanvasDraftPayload {
                   onChange={(e) => setNewRuleInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddRule())}
                   placeholder="添加一条不可篡改规则..."
-                  className="flex-1 text-xs p-1.5 rounded-lg border border-stone-200 focus:border-amber-500 focus:outline-hidden"
+                  className="flex-1 text-xs p-2 rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 font-medium focus:border-amber-500 focus:outline-hidden shadow-2xs"
                 />
                 <button
                   type="button"
                   onClick={handleAddRule}
-                  className="px-3 py-1.5 rounded-lg bg-stone-200 hover:bg-stone-300 text-stone-700 text-xs font-medium"
+                  className="px-3.5 py-2 rounded-lg bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
                 >
                   添加
                 </button>

@@ -10,10 +10,14 @@ import { SpaceImageGenerationService } from '../services/spaceImageGenerationSer
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
 
+// 内存中活跃渲染锁，防止重复并发调用生图 API (5秒锁)
+const activeRenderingLocks = new Map<string, number>();
+
 const RenderShotSchema = z.object({
   projectId: z.string().min(1),
   shotCode: z.string().min(1), // e.g. A01, A02
   revisionNumber: z.number().int().positive().default(1),
+  candidateCount: z.number().int().min(1).max(4).optional().default(1),
   camera: z.object({
     lensMm: z.number(),
     heightCm: z.number(),
@@ -302,6 +306,20 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
 
     const shotId = (req.body as any).shotId || `shot-${shotCode.toLowerCase()}`;
     const isHumanPass = Boolean((req.body as any).isHumanPass);
+
+    // 防抖防并发锁：拦截 4 秒内同镜头的重复提交，避免重复调用生图 API
+    const lockKey = `${projectId}:${shotCode}:${isHumanPass ? 'human' : 'base'}`;
+    const now = Date.now();
+    const existingLockTime = activeRenderingLocks.get(lockKey);
+    if (existingLockTime && now - existingLockTime < 4000) {
+      console.warn(`[spaceShootRoutes] Debounced duplicate render request for ${lockKey}`);
+      return res.status(429).json({
+        success: false,
+        error: '镜头渲染任务已在执行中，请勿重复提交请求'
+      });
+    }
+    activeRenderingLocks.set(lockKey, now);
+
     const baseShotRef = (req.body as any).currentShotReferenceImage || (req.body as any).baseShotReferenceImage;
     const humanLayout = (req.body as any).humanLayout;
     const selectedModels = (req.body as any).selectedModels || [];
@@ -370,9 +388,13 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           }
         ];
 
+    // 默认生成 1 张模板，防止默认生成 4 张并发调用多次 API；只有显式指定数量时才生成更多变体
+    const candidateCount = Math.max(1, Math.min(4, Number(parsed.data.candidateCount || (req.body as any).candidateCount) || 1));
+    const effectiveSpecs = variantSpecs.slice(0, candidateCount);
+
     const batchTimestamp = Date.now();
     const candidates = await Promise.all(
-      variantSpecs.map(async (v) => {
+      effectiveSpecs.map(async (v) => {
         const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
           projectId,
           shotId: shotCode,
@@ -474,6 +496,12 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
       success: false,
       error: err.message || 'Failed to render candidates'
     });
+  } finally {
+    // 渲染完成后延迟释放锁，避免毫秒级连击
+    const lockKey = `${(req.body as any)?.projectId}:${(req.body as any)?.shotCode}:${(req.body as any)?.isHumanPass ? 'human' : 'base'}`;
+    setTimeout(() => {
+      activeRenderingLocks.delete(lockKey);
+    }, 1500);
   }
 });
 

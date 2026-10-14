@@ -16,10 +16,18 @@ export class PlacementEngine {
     const { spacePreset, products } = input;
     const items: PlacementItem[] = [];
 
-    const primarySofa = products.find((p) => p.role === 'sofa_3seat') || products[0];
-    const recliner = products.find((p) => p.role === 'recliner_1seat');
-    const coffeeTable = products.find((p) => p.role === 'coffee_table');
-    const sideTable = products.find((p) => p.role === 'side_table');
+    // 仅针对已勾选关联至当前场景套组的产品进行空间摆位布局
+    const activeProducts = products.filter(
+      (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+    );
+    const primarySofa =
+      activeProducts.find((p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat') ||
+      activeProducts.find((p) => p.priority === 'primary') ||
+      activeProducts[0];
+
+    const coffeeTable = activeProducts.find((p) => p.role === 'coffee_table' && p.id !== primarySofa?.id);
+    const recliners = activeProducts.filter((p) => p.role === 'recliner_1seat' && p.id !== primarySofa?.id);
+    const sideTable = activeProducts.find((p) => p.role === 'side_table' && p.id !== primarySofa?.id);
 
     const livingZoneId = spacePreset.zones[0]?.id || 'living_zone';
 
@@ -51,19 +59,32 @@ export class PlacementEngine {
       });
     }
 
-    // 3. 芝华仕功能单椅 (Recliner: 位于主沙发侧翼 40°~45° 黄金围合夹角，留足展开行程)
-    if (recliner) {
-      items.push({
-        assetId: recliner.id,
-        assetName: recliner.name,
-        role: recliner.role,
-        x: 0.28,
-        y: 0.52,
-        rotationDeg: 35, // 优雅朝向茶几与主客区
-        scale: 1.0,
-        zoneId: livingZoneId
-      });
-    }
+    // 3. 芝华仕功能单椅 (Recliners: 位于主沙发侧翼 35°~45° 黄金围合夹角，留足展开行程)
+    recliners.forEach((recliner, idx) => {
+      if (idx === 0) {
+        items.push({
+          assetId: recliner.id,
+          assetName: recliner.name,
+          role: recliner.role,
+          x: 0.28,
+          y: 0.52,
+          rotationDeg: 35, // 优雅朝向茶几与主客区
+          scale: 1.0,
+          zoneId: livingZoneId
+        });
+      } else if (idx === 1) {
+        items.push({
+          assetId: recliner.id,
+          assetName: recliner.name,
+          role: recliner.role,
+          x: 0.72,
+          y: 0.54,
+          rotationDeg: -35,
+          scale: 1.0,
+          zoneId: livingZoneId
+        });
+      }
+    });
 
     // 4. 边几 (Side Table: 位于主沙发右侧端头)
     if (sideTable) {
@@ -71,7 +92,7 @@ export class PlacementEngine {
         assetId: sideTable.id,
         assetName: sideTable.name,
         role: sideTable.role,
-        x: 0.74,
+        x: 0.76,
         y: 0.44,
         rotationDeg: -10,
         scale: 1.0,

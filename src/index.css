@@ -14,6 +14,12 @@
   body {
     @apply bg-[#FDFBF7] text-[#292524];
   }
+  input, select, textarea {
+    color: #1c1917;
+  }
+  input::placeholder, textarea::placeholder {
+    color: #78716c;
+  }
 }
 
 @media (max-width: 768px) {

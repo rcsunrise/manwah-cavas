@@ -112,7 +112,7 @@ export const ShootPhaseWorkspace: React.FC<ShootPhaseWorkspaceProps> = ({
 
   // Generation Settings 状态
   const [selectedTemplate, setSelectedTemplate] = useState<string>('commercial-hero');
-  const [selectedModelId, setSelectedModelId] = useState<string>('gemini-3.1-flash-image-preview');
+  const [selectedModelId, setSelectedModelId] = useState<string>('gpt-image-2');
   const [resolution, setResolution] = useState<'1K' | '2K' | '4K'>('2K');
   const [aspectRatio, setAspectRatio] = useState<string>('4:3');
   const [useRandomSeed, setUseRandomSeed] = useState<boolean>(true);

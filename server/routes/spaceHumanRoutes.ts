@@ -16,6 +16,10 @@ import {
   SpaceHumanAnalysisService,
   AnalyzeModelCardRequestSchema
 } from '../services/spaceHumanAnalysisService';
+import {
+  SpaceHumanChoreographyService,
+  ChoreographLayoutRequestSchema
+} from '../services/spaceHumanChoreographyService';
 import { SeatAssignment } from '../../src/types/spaceStudio';
 
 const router = Router();
@@ -48,6 +52,37 @@ router.post('/analyze-model-card', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to analyze model card'
+    });
+  }
+});
+
+/**
+ * POST /api/space/human/choreograph-layout
+ * AI 多模态空间人物编排构思与角色资产匹配
+ */
+router.post('/choreograph-layout', async (req: Request, res: Response) => {
+  try {
+    const parsed = ChoreographLayoutRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid choreograph payload',
+        details: parsed.error.format()
+      });
+    }
+
+    const userId = (req as any).user?.id || (req as any).headers?.['x-user-id'] || 'system';
+    const result = await SpaceHumanChoreographyService.choreograph(parsed.data, String(userId));
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (err: any) {
+    console.error('[spaceHumanRoutes] choreograph-layout error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to choreograph human layout'
     });
   }
 });

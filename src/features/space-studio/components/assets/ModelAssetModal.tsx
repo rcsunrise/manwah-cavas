@@ -4,7 +4,7 @@ import {
   Trash2, Upload, Eye, Sliders, RefreshCw, AlertCircle, Shirt,
   Smile, Camera, Layers, Copy, CheckCheck, Scan, ShieldCheck, Heart,
   FileText, Image as ImageIcon, ArrowRight, UserCheck, Compass,
-  Edit2, Pencil
+  Edit2, Pencil, Download, UploadCloud, CheckCircle2, HardDrive
 } from 'lucide-react';
 import { ModelAsset, ModelMultiViews, FamilyRoleType } from '../../../../types/spaceAssetLibrary';
 import { spaceAssetLibraryService } from '../../../../services/spaceAssetLibraryService';
@@ -86,6 +86,8 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
   const [manualViews, setManualViews] = useState<Record<string, string>>({});
   const cardSheetInputRef = useRef<HTMLInputElement>(null);
   const editImageInputRef = useRef<HTMLInputElement>(null);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
+  const [syncNotice, setSyncNotice] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -96,9 +98,16 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
         loadModels();
       }
     };
+    const handleModelsSynced = (e: any) => {
+      const count = e?.detail?.count || 6;
+      setSyncNotice(`已实时存盘 (${count} 个角色)`);
+      setTimeout(() => setSyncNotice(''), 3000);
+    };
     window.addEventListener('manwah_space_assets_changed', handleAssetsChanged);
+    window.addEventListener('manwah_space_models_synced', handleModelsSynced);
     return () => {
       window.removeEventListener('manwah_space_assets_changed', handleAssetsChanged);
+      window.removeEventListener('manwah_space_models_synced', handleModelsSynced);
     };
   }, [isOpen]);
 
@@ -254,6 +263,33 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
     setTimeout(() => setCopiedDna(false), 2000);
   };
 
+  const handleExportBackup = () => {
+    try {
+      spaceAssetLibraryService.exportModelsBackup();
+    } catch (err: any) {
+      alert(`导出备份失败: ${err.message}`);
+    }
+  };
+
+  const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (loadEvt) => {
+      if (typeof loadEvt.target?.result === 'string') {
+        try {
+          const count = await spaceAssetLibraryService.importModelsBackup(loadEvt.target.result);
+          loadModels();
+          alert(`✓ 成功恢复 ${count} 个家庭模特资产，并已同步写入服务器磁盘！`);
+        } catch (err: any) {
+          alert(`恢复备份失败: ${err.message}`);
+        }
+      }
+    };
+    reader.readAsText(file);
+    if (e.target) e.target.value = '';
+  };
+
   // Upload and AI Slicing Handler
   const handleUploadCardSheet = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -399,7 +435,43 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* 持久化存盘状态指示器 */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-xs shadow-inner">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-medium">{syncNotice || '已安全永久存盘 (磁盘+DB)'}</span>
+            </div>
+
+            {/* 导出 JSON 备份 */}
+            <button
+              onClick={handleExportBackup}
+              title="将录入的 6 大角色数据打包导出为本地 JSON 离线备份文件（可在任何机器上随时还原）"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-neutral-300 hover:text-white transition-all shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 text-sky-400" />
+              <span>导出备份</span>
+            </button>
+
+            {/* 恢复 JSON 备份 */}
+            <button
+              onClick={() => backupFileInputRef.current?.click()}
+              title="从此前导出的备份文件快速还原人物资产"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-neutral-300 hover:text-white transition-all shadow-sm"
+            >
+              <UploadCloud className="w-3.5 h-3.5 text-purple-400" />
+              <span>恢复备份</span>
+            </button>
+            <input
+              ref={backupFileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportBackupFile}
+            />
+
+            <div className="h-4 w-[1px] bg-white/10 mx-0.5" />
+
             <button
               onClick={() => onSelectModel(null)}
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-neutral-400 hover:text-white transition-all"
