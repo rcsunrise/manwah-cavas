@@ -17465,12 +17465,14 @@ var VideoJobService = class _VideoJobService {
    * Broadcasts job update via SSE
    */
   broadcastJobUpdate(job) {
-    const listeners = this.sseListeners.get(job.canvasId);
-    if (listeners && listeners.size > 0) {
+    const targetSet = this.sseListeners.get(job.canvasId) || /* @__PURE__ */ new Set();
+    const defaultSet = this.sseListeners.get("canvas-default") || /* @__PURE__ */ new Set();
+    const merged = /* @__PURE__ */ new Set([...targetSet, ...defaultSet]);
+    if (merged.size > 0) {
       const payload = `data: ${JSON.stringify({ type: "video_job_updated", job })}
 
 `;
-      for (const res of listeners) {
+      for (const res of merged) {
         try {
           res.write(payload);
         } catch {
@@ -17598,7 +17600,9 @@ var VideoJobService = class _VideoJobService {
             job.readyAt = (/* @__PURE__ */ new Date()).toISOString();
             this.saveToDisk();
             this.broadcastJobUpdate(job);
-            await this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl);
+            this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl).catch((e) => {
+              console.warn(`[VideoJobService] Background transfer non-fatal error:`, e);
+            });
           } else if (providerStatus.status === "failed") {
             job.status = "failed";
             job.errorCode = providerStatus.errorCode || "PROVIDER_FAILED";
@@ -17789,7 +17793,13 @@ var VideoJobService = class _VideoJobService {
     return this.jobs.get(jobId) || null;
   }
   listJobsByCanvas(canvasId) {
-    return Array.from(this.jobs.values()).filter((j) => j.canvasId === canvasId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const target = String(canvasId || "").trim();
+    return Array.from(this.jobs.values()).filter((j) => {
+      if (!target || target === "all" || target === "*") return true;
+      if (j.canvasId === target || j.workspaceId === target) return true;
+      if (target === "canvas-default" || j.canvasId === "canvas-default") return true;
+      return j.canvasId.includes(target) || target.includes(j.canvasId);
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 };
 
@@ -19691,7 +19701,27 @@ var handlePlaybackUrl = async (req, res) => {
       return;
     }
     const ttl = Number(process.env.GCS_SIGNED_URL_TTL_SECONDS) || 86400;
-    const playback = await GcsVideoStorage.getInstance().createPlaybackUrl(objectKey, ttl);
+    let playback = null;
+    try {
+      playback = await GcsVideoStorage.getInstance().createPlaybackUrl(objectKey, ttl);
+    } catch (signErr) {
+      console.warn("[videoRoutes] GcsVideoStorage.createPlaybackUrl warning:", signErr);
+    }
+    if (!playback || !playback.url) {
+      const fallbackUrl = directUrl || `/api/canvases/assets/video?key=${encodeURIComponent(objectKey)}`;
+      if (req.method === "GET" && !req.headers.accept?.includes("application/json")) {
+        res.redirect(302, fallbackUrl);
+        return;
+      }
+      res.json({
+        assetVersionId,
+        playbackUrl: fallbackUrl,
+        expiresAt: new Date(Date.now() + 864e5).toISOString(),
+        storageProvider: "fallback_stream",
+        rangeSupported: true
+      });
+      return;
+    }
     if (req.method === "GET" && !req.headers.accept?.includes("application/json")) {
       res.redirect(302, playback.url);
       return;
@@ -19704,6 +19734,7 @@ var handlePlaybackUrl = async (req, res) => {
       rangeSupported: playback.rangeSupported
     });
   } catch (err) {
+    console.error("[videoRoutes] handlePlaybackUrl exception:", err);
     res.status(500).json({ error: { code: "PLAYBACK_SIGN_FAILED", message: err.message } });
   }
 };
@@ -19724,14 +19755,38 @@ router14.post("/api/video-assets/:assetVersionId/download-url", async (req, res)
 router14.get("/api/canvases/:canvasId/video-events", (req, res) => {
   const canvasId = String(req.params.canvasId);
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
   res.write(`data: ${JSON.stringify({ type: "connected", canvasId })}
 
 `);
+  try {
+    const existingJobs = VideoJobService.getInstance().listJobsByCanvas(canvasId);
+    if (existingJobs && existingJobs.length > 0) {
+      res.write(`data: ${JSON.stringify({ type: "init_jobs", jobs: existingJobs })}
+
+`);
+      for (const j of existingJobs) {
+        res.write(`data: ${JSON.stringify({ type: "video_job_updated", job: j })}
+
+`);
+      }
+    }
+  } catch (initErr) {
+    console.warn("[videoRoutes] SSE initial replay error:", initErr);
+  }
   const unsubscribe = VideoJobService.getInstance().subscribeCanvasEvents(canvasId, res);
+  const keepAliveTimer = setInterval(() => {
+    try {
+      res.write(": keepalive\n\n");
+    } catch {
+      clearInterval(keepAliveTimer);
+    }
+  }, 15e3);
   req.on("close", () => {
+    clearInterval(keepAliveTimer);
     unsubscribe();
   });
 });

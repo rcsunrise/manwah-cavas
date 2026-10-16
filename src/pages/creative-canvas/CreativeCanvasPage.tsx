@@ -361,11 +361,12 @@ export default function CreativeCanvasPage() {
 
   const effectiveCanvasId = canvasId || workspaceId || 'canvas-default';
 
-  // Real-time synchronization of video generation jobs to canvas nodes
+  // Dual-track real-time synchronization of video generation jobs to canvas nodes (SSE + Active Polling)
   React.useEffect(() => {
     if (!effectiveCanvasId) return;
 
-    const unsubscribe = VideoGenerationService.subscribeVideoEvents(effectiveCanvasId, (updatedJob: any) => {
+    // Helper: update or inject video job state into canvas nodes
+    const applyJobUpdate = (updatedJob: any) => {
       setNodes((currentNodes: any[]) => {
         const targetIndex = currentNodes.findIndex(
           n => n.id === `node-video-gen-${updatedJob.id}` || n.data?.job?.id === updatedJob.id
@@ -374,22 +375,36 @@ export default function CreativeCanvasPage() {
 
         const next = [...currentNodes];
         const existingNode = next[targetIndex];
+        const effectiveUrl = updatedJob.videoUrl || (updatedJob as any).supabaseVideoUrl || (updatedJob as any).playbackUrl || '';
+
         next[targetIndex] = {
           ...existingNode,
           data: {
             ...existingNode.data,
             job: {
               ...(existingNode.data?.job || {}),
-              ...updatedJob
+              ...updatedJob,
+              videoUrl: effectiveUrl || existingNode.data?.job?.videoUrl
             }
           }
         };
 
-        // When ready, also automatically produce the videoResultNode if not yet created
-        if (updatedJob.status === 'ready') {
+        // When ready or when direct videoUrl exists, ensure videoResultNode is present and linked
+        if (updatedJob.status === 'ready' || effectiveUrl) {
           const resultNodeId = `node-video-res-${updatedJob.id}`;
-          const hasResultNode = next.some(n => n.id === resultNodeId);
-          if (!hasResultNode) {
+          const existingResIndex = next.findIndex(n => n.id === resultNodeId);
+          if (existingResIndex >= 0) {
+            // Update existing result node data with latest direct video URL
+            next[existingResIndex] = {
+              ...next[existingResIndex],
+              data: {
+                ...next[existingResIndex].data,
+                videoUrl: effectiveUrl || next[existingResIndex].data?.videoUrl,
+                assetVersionId: updatedJob.assetVersionId || updatedJob.id,
+                posterUrl: updatedJob.posterUrl || next[existingResIndex].data?.posterUrl
+              }
+            };
+          } else {
             const posX = (existingNode.position?.x ?? 400) + 360;
             const posY = existingNode.position?.y ?? 200;
             const resultNode: any = {
@@ -400,6 +415,8 @@ export default function CreativeCanvasPage() {
                 title: `${updatedJob.shotId || '镜头'} 成果`,
                 assetVersionId: updatedJob.assetVersionId || updatedJob.id,
                 posterUrl: updatedJob.posterUrl,
+                videoUrl: effectiveUrl,
+                job: updatedJob,
                 modelKey: updatedJob.modelKey
               }
             };
@@ -416,10 +433,36 @@ export default function CreativeCanvasPage() {
 
         return next;
       });
+    };
+
+    // 1. Initial sync & periodic polling fallback (every 2.5s) to guarantee updates even if SSE drops
+    const syncActiveJobs = async () => {
+      try {
+        const jobs = await VideoGenerationService.fetchCanvasJobs(effectiveCanvasId);
+        if (jobs && jobs.length > 0) {
+          for (const j of jobs) {
+            applyJobUpdate(j);
+          }
+        }
+      } catch (e) {
+        // quiet fallback
+      }
+    };
+
+    syncActiveJobs();
+
+    const pollInterval = setInterval(() => {
+      syncActiveJobs();
+    }, 2500);
+
+    // 2. SSE subscription for instantaneous push updates
+    const unsubscribe = VideoGenerationService.subscribeVideoEvents(effectiveCanvasId, (updatedJob: any) => {
+      applyJobUpdate(updatedJob);
     });
 
     return () => {
       unsubscribe();
+      clearInterval(pollInterval);
     };
   }, [effectiveCanvasId, setNodes, onEdgesChange]);
 

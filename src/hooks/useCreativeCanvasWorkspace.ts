@@ -1622,7 +1622,18 @@ export function useCreativeCanvasWorkspace(
     }
 
     generatingScenesRef.current.add(screenIndex);
-    const modelLabel = isGpt ? 'OpenAI GPT image-2' : modelToUse.includes('3-pro') ? 'Google Gemini v3.0 Pro' : modelToUse.includes('2.5') ? 'Google Gemini v2.5 Flash' : 'Google Gemini v3.1 Flash';
+    const getModelFriendlyName = (m: string) => {
+      if (m.includes('flare')) return 'GPT 2.5 Flare (高保真原画·局部Mask重绘)';
+      if (m.includes('sunburst')) return 'GPT 2.5 Sunburst (旗舰高光·质感重绘)';
+      if (m.includes('banana')) return 'Nano Banana 2.1 (极速响应·轻量多图融合)';
+      if (m.includes('gpt-image-2-c')) return 'GPT 2-c (高一致性母版)';
+      if (m.includes('gpt-image-2-all')) return 'GPT 2-all (全能写实增强)';
+      if (m.includes('gpt-image')) return 'OpenAI GPT Image 2';
+      if (m.includes('3-pro')) return 'Google Gemini 3 Pro (复杂光影)';
+      if (m === 'gemini-2.5-flash-image') return 'Google Gemini 2.5 Flash';
+      return 'Google Gemini 3.1 Flash (极速高精)';
+    };
+    const modelLabel = getModelFriendlyName(modelToUse);
     addAgentMessage(`正在调用 ${modelLabel} (${resolutionToUse}) 渲染引擎生成第 ${screenIndex} 屏画面...`);
 
     // Determine initial node position and exact scene plan node ID

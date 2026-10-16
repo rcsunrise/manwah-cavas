@@ -879,16 +879,16 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
                 className="w-full bg-[#181615] border border-stone-700 rounded-xl px-2.5 py-2 text-xs text-stone-200 outline-none focus:border-amber-500 font-mono"
               >
                 <optgroup label="OpenAI GPT 图像大模型 (支持极高保真重绘)">
-                  <option value="gpt-image-2-c">gpt-image-2-c (推荐 · 商业级图像重绘旗舰)</option>
-                  <option value="gpt-image-2.5-flare-c">gpt-image-2.5-flare-c (高保真原画 · 局部Mask重绘)</option>
-                  <option value="gpt-image-2.5-sunburst-c">gpt-image-2.5-sunburst-c (旗舰级高光细节重绘)</option>
-                  <option value="gpt-image-2">gpt-image-2 (标准生图与图像编辑)</option>
-                  <option value="gpt-image-1.5">gpt-image-1.5 (极速图像编辑)</option>
+                  <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版 · 商业级重绘旗舰)</option>
+                  <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
+                  <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
+                  <option value="gpt-image-2">GPT Image 2 (系统默认 · 电影级写实)</option>
+                  <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
                 </optgroup>
                 <optgroup label="Google Gemini 视觉多模态模型">
-                  <option value="gemini-3.1-flash-image">gemini-3.1-flash-image (高速推理与无缝修补)</option>
-                  <option value="google/gemini-3-pro-image-preview">gemini-3-pro-image-preview (专业级细节)</option>
-                  <option value="gemini-nano-banana-2.1-preview">gemini-nano-banana-2.1-preview (极速多图融合)</option>
+                  <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image (极速高精 · 多模态)</option>
+                  <option value="google/gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影旗舰)</option>
+                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速响应 · 轻量多图融合)</option>
                 </optgroup>
               </select>
 

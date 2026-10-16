@@ -56,18 +56,17 @@ export function useCanvasVideo(canvasId: string) {
       });
     });
 
-    // Active Jobs fallback polling (in case SSE disconnected or backgrounded)
-    const pollInterval = setInterval(() => {
-      setJobs(currentJobs => {
-        const hasActive = currentJobs.some(j => j.status === 'running' || j.status === 'transferring');
-        if (hasActive) {
-          VideoGenerationService.fetchCanvasJobs(canvasId).then(newJobs => {
-            setJobs(newJobs);
-          }).catch(() => {});
+    // Active Jobs fallback polling (covers queued, submitting, running, transferring)
+    const pollInterval = setInterval(async () => {
+      try {
+        const currentJobs = await VideoGenerationService.fetchCanvasJobs(canvasId);
+        if (currentJobs && currentJobs.length > 0) {
+          setJobs(currentJobs);
         }
-        return currentJobs;
-      });
-    }, 3000);
+      } catch (pollErr) {
+        // quiet fallback
+      }
+    }, 2500);
 
     return () => {
       unsubscribe();

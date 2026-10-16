@@ -9,6 +9,8 @@ export interface VideoResultNodeData {
   title?: string;
   assetVersionId?: string;
   posterUrl?: string;
+  videoUrl?: string;
+  job?: any;
   durationSeconds?: number;
   modelKey?: string;
   onRegenerate?: () => void;
@@ -19,12 +21,36 @@ export const VideoResultNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as VideoResultNodeData;
   const { assetVersionId, title, posterUrl, modelKey } = nodeData;
 
-  const [playbackInfo, setPlaybackInfo] = useState<VideoPlaybackInfo | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const directUrl = nodeData.videoUrl || (nodeData.job as any)?.videoUrl || (nodeData.job as any)?.supabaseVideoUrl || '';
+  const [playbackInfo, setPlaybackInfo] = useState<VideoPlaybackInfo | null>(() => {
+    if (directUrl) {
+      return {
+        assetVersionId: assetVersionId || 'direct-v1',
+        playbackUrl: directUrl,
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        storageProvider: 'direct_stream',
+        rangeSupported: true
+      };
+    }
+    return null;
+  });
+  const [loading, setLoading] = useState<boolean>(!directUrl && !!assetVersionId);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(true);
 
   useEffect(() => {
+    if (directUrl) {
+      setPlaybackInfo({
+        assetVersionId: assetVersionId || 'direct-v1',
+        playbackUrl: directUrl,
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        storageProvider: 'direct_stream',
+        rangeSupported: true
+      });
+      setLoading(false);
+      return;
+    }
+
     if (!assetVersionId) return;
 
     setLoading(true);
@@ -34,15 +60,25 @@ export const VideoResultNode = memo(({ id, data, selected }: NodeProps) => {
       })
       .catch(err => {
         console.warn('[VideoResultNode] Failed to load playback URL:', err);
+        if (directUrl) {
+          setPlaybackInfo({
+            assetVersionId,
+            playbackUrl: directUrl,
+            expiresAt: new Date(Date.now() + 86400000).toISOString(),
+            storageProvider: 'direct_stream',
+            rangeSupported: true
+          });
+        }
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [assetVersionId]);
+  }, [assetVersionId, directUrl]);
 
   const handleDownload = () => {
-    if (!assetVersionId) return;
-    window.open(`/api/canvases/assets/video?assetId=${assetVersionId}&download=1`, '_blank');
+    const downloadTarget = playbackInfo?.playbackUrl || directUrl || (assetVersionId ? `/api/canvases/assets/video?assetId=${assetVersionId}&download=1` : '');
+    if (!downloadTarget) return;
+    window.open(downloadTarget, '_blank');
   };
 
   return (

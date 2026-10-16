@@ -101,10 +101,13 @@ export class VideoJobService {
    * Broadcasts job update via SSE
    */
   private broadcastJobUpdate(job: VideoJob): void {
-    const listeners = this.sseListeners.get(job.canvasId);
-    if (listeners && listeners.size > 0) {
+    const targetSet = this.sseListeners.get(job.canvasId) || new Set();
+    const defaultSet = this.sseListeners.get('canvas-default') || new Set();
+    const merged = new Set<Response>([...targetSet, ...defaultSet]);
+
+    if (merged.size > 0) {
       const payload = `data: ${JSON.stringify({ type: 'video_job_updated', job })}\n\n`;
-      for (const res of listeners) {
+      for (const res of merged) {
         try {
           res.write(payload);
         } catch {
@@ -260,8 +263,10 @@ export class VideoJobService {
             this.saveToDisk();
             this.broadcastJobUpdate(job);
 
-            // 后台异步安全落盘至 GCS + Supabase Storage
-            await this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl);
+            // 后台异步安全落盘至 GCS + Supabase Storage（非阻塞执行，不阻断其他任务轮询）
+            this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl).catch(e => {
+              console.warn(`[VideoJobService] Background transfer non-fatal error:`, e);
+            });
           } else if (providerStatus.status === 'failed') {
             job.status = 'failed';
             job.errorCode = providerStatus.errorCode || 'PROVIDER_FAILED';
@@ -494,8 +499,14 @@ export class VideoJobService {
   }
 
   public listJobsByCanvas(canvasId: string): VideoJob[] {
+    const target = String(canvasId || '').trim();
     return Array.from(this.jobs.values())
-      .filter(j => j.canvasId === canvasId)
+      .filter(j => {
+        if (!target || target === 'all' || target === '*') return true;
+        if (j.canvasId === target || j.workspaceId === target) return true;
+        if (target === 'canvas-default' || j.canvasId === 'canvas-default') return true;
+        return j.canvasId.includes(target) || target.includes(j.canvasId);
+      })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }

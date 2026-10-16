@@ -154,57 +154,57 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
     {
       id: 'openai/gpt-image-2-c',
       icon: '🪐',
-      title: 'GPT 增强',
-      subtitle: 'image-2-c',
+      title: 'GPT 2-c',
+      subtitle: '高一致性母版',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {
       id: 'openai/gpt-image-2.5-flare-c',
       icon: '🔥',
       title: 'GPT 2.5 Flare',
-      subtitle: '高保真原画',
+      subtitle: '高保真原画·局部Mask重绘',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {
       id: 'openai/gpt-image-2.5-sunburst-c',
       icon: '☀️',
       title: 'GPT 2.5 Sunburst',
-      subtitle: '高光细节',
+      subtitle: '旗舰高光·质感重绘',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
+    },
+    {
+      id: 'gemini-nano-banana-2.1-preview',
+      icon: '🍌',
+      title: 'Nano Banana 2.1',
+      subtitle: '极速响应·轻量多图融合',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {
       id: 'openai/gpt-image-2',
       icon: '🌌',
-      title: 'GPT 标准',
-      subtitle: 'image-2',
-      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
-    },
-    {
-      id: 'gemini-nano-banana-2.1-preview',
-      icon: '🍌',
-      title: 'Nano Banana',
-      subtitle: 'v2.1 极速',
+      title: 'GPT Image 2',
+      subtitle: '系统默认·电影级写实',
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
     },
     {
       id: 'gemini-3.1-flash-image',
       icon: '⚡',
-      title: 'Gemini 标准',
-      subtitle: 'v3.1 Flash',
+      title: 'Gemini 3.1 Flash',
+      subtitle: '极速高精·多模态',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {
       id: 'google/gemini-3-pro-image',
       icon: '✨',
-      title: 'Gemini 旗舰',
-      subtitle: 'v3.0 Pro',
+      title: 'Gemini 3 Pro',
+      subtitle: '复杂光影旗舰',
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
     },
     {
       id: 'openai/gpt-image-2-all',
       icon: '🧩',
-      title: 'GPT 多图',
-      subtitle: 'image-2-all',
+      title: 'GPT 2-all',
+      subtitle: '全能写实增强',
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
     }
   ];
@@ -231,12 +231,14 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
 
       {/* Models Grid */}
       <div className="space-y-1">
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-4 gap-1.5">
           {models.map(m => {
             const isSelected =
               selectedModel === m.id ||
               (m.id === 'gemini-3.1-flash-image' &&
-                (selectedModel === 'gemini-3.1-flash-image' || selectedModel === 'gemini-3.1-flash-image-preview'));
+                (selectedModel === 'gemini-3.1-flash-image' || selectedModel === 'gemini-3.1-flash-image-preview')) ||
+              (m.id === 'gemini-nano-banana-2.1-preview' &&
+                (selectedModel === 'gemini-nano-banana-2.1-preview' || selectedModel === 'nano-banana-2.1'));
             return (
               <button
                 key={m.id}
@@ -249,8 +251,8 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
                 }`}
               >
                 <div className="text-sm mb-0.5">{m.icon}</div>
-                <div className="text-[10px] font-bold leading-tight">{m.title}</div>
-                <div className="text-[8px] opacity-70 leading-tight">{m.subtitle}</div>
+                <div className="text-[10px] font-bold leading-tight truncate">{m.title}</div>
+                <div className="text-[8px] opacity-75 leading-tight truncate mt-0.5">{m.subtitle}</div>
               </button>
             );
           })}
@@ -262,8 +264,9 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
         <span className="text-[10px] text-stone-400 font-bold block">渲染精度 (Resolution)</span>
         <div className="flex gap-1.5">
           {(['1K', '2K', '4K'] as const).map(r => {
-            const isV25 = selectedModel.includes('2.5');
-            const isDisabled = isV25 && (r === '2K' || r === '4K');
+            // 仅旧版 gemini-2.5-flash-image 限制 1K，而 GPT 2.5 Flare、GPT 2.5 Sunburst、Nano Banana 2.1 均完全支持 1K/2K/4K 旗舰画质
+            const isOldGemini25 = selectedModel === 'gemini-2.5-flash-image' || selectedModel === 'google/gemini-2.5-flash-image';
+            const isDisabled = isOldGemini25 && (r === '2K' || r === '4K');
             const isSelected = selectedResolution === r;
 
             return (
@@ -273,7 +276,7 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
                 disabled={isDisabled}
                 onClick={() => {
                   setSelectedResolution(r);
-                  if ((r === '2K' || r === '4K') && selectedModel.includes('2.5')) {
+                  if ((r === '2K' || r === '4K') && isOldGemini25) {
                     setSelectedModel('gemini-3.1-flash-image');
                   }
                 }}

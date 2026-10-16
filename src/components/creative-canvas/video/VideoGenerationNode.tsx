@@ -145,35 +145,38 @@ export const VideoGenerationNode = memo(({ id, data, selected }: NodeProps) => {
             )}
 
             {/* In-place playable video when ready OR when videoUrl exists */}
-            {(job.status === 'ready' || (job as any).videoUrl) && (
-              <div className="space-y-2">
-                <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-neutral-200 group">
-                  <video
-                    src={(job as any).videoUrl || `/api/video-assets/${job.assetVersionId || job.id}/playback-url`}
-                    controls
-                    playsInline
-                    className="w-full h-full object-contain"
-                  />
+            {(job.status === 'ready' || (job as any).videoUrl || (job as any).supabaseVideoUrl) && (() => {
+              const videoSrc = (job as any).videoUrl || (job as any).supabaseVideoUrl || (job.assetVersionId ? `/api/video-assets/${job.assetVersionId}/playback-url` : '');
+              return (
+                <div className="space-y-2">
+                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-neutral-200 group">
+                    <video
+                      src={videoSrc}
+                      controls
+                      playsInline
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{job.status === 'transferring' ? '已就绪 (云端归档中)' : '渲染完成'}</span>
+                    </span>
+                    {videoSrc && (
+                      <a
+                        href={videoSrc}
+                        target="_blank"
+                        rel="noreferrer"
+                        download
+                        className="text-[11px] px-2 py-1 bg-neutral-900 text-white hover:bg-neutral-800 rounded transition font-medium"
+                      >
+                        下载视频
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{job.status === 'transferring' ? '已就绪 (云端归档中)' : '渲染完成'}</span>
-                  </span>
-                  {((job as any).videoUrl || job.assetVersionId) && (
-                    <a
-                      href={(job as any).videoUrl || `/api/video-assets/${job.assetVersionId || job.id}/playback-url`}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
-                      className="text-[11px] px-2 py-1 bg-neutral-900 text-white hover:bg-neutral-800 rounded transition font-medium"
-                    >
-                      下载视频
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Error & Action buttons */}
             {(job.status === 'failed' || job.status === 'submission_unknown') && (

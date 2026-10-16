@@ -370,7 +370,29 @@ const handlePlaybackUrl = async (req: Request, res: Response) => {
     }
 
     const ttl = Number(process.env.GCS_SIGNED_URL_TTL_SECONDS) || 86400;
-    const playback = await GcsVideoStorage.getInstance().createPlaybackUrl(objectKey, ttl);
+    let playback: any = null;
+    try {
+      playback = await GcsVideoStorage.getInstance().createPlaybackUrl(objectKey, ttl);
+    } catch (signErr) {
+      console.warn('[videoRoutes] GcsVideoStorage.createPlaybackUrl warning:', signErr);
+    }
+
+    if (!playback || !playback.url) {
+      // 优雅降级：如果 GCS 签名失败，优先使用本地代理流或直链
+      const fallbackUrl = directUrl || `/api/canvases/assets/video?key=${encodeURIComponent(objectKey)}`;
+      if (req.method === 'GET' && !req.headers.accept?.includes('application/json')) {
+        res.redirect(302, fallbackUrl);
+        return;
+      }
+      res.json({
+        assetVersionId,
+        playbackUrl: fallbackUrl,
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        storageProvider: 'fallback_stream',
+        rangeSupported: true
+      });
+      return;
+    }
 
     if (req.method === 'GET' && !req.headers.accept?.includes('application/json')) {
       res.redirect(302, playback.url);
@@ -385,6 +407,7 @@ const handlePlaybackUrl = async (req: Request, res: Response) => {
       rangeSupported: playback.rangeSupported
     });
   } catch (err: any) {
+    console.error('[videoRoutes] handlePlaybackUrl exception:', err);
     res.status(500).json({ error: { code: 'PLAYBACK_SIGN_FAILED', message: err.message } });
   }
 };
@@ -411,22 +434,45 @@ router.post('/api/video-assets/:assetVersionId/download-url', async (req: Reques
 
 /**
  * GET /api/canvases/:canvasId/video-events
- * Server-Sent Events (SSE) stream for live updates
+ * Server-Sent Events (SSE) stream for live updates with keepalive & initial state replay
  */
 router.get('/api/canvases/:canvasId/video-events', (req: Request, res: Response) => {
   const canvasId = String(req.params.canvasId);
 
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable proxy buffering for Nginx/Cloud Run
   res.flushHeaders?.();
 
-  // Send connected ping
+  // Send connected ping and replay initial active/ready jobs
   res.write(`data: ${JSON.stringify({ type: 'connected', canvasId })}\n\n`);
+
+  try {
+    const existingJobs = VideoJobService.getInstance().listJobsByCanvas(canvasId);
+    if (existingJobs && existingJobs.length > 0) {
+      res.write(`data: ${JSON.stringify({ type: 'init_jobs', jobs: existingJobs })}\n\n`);
+      for (const j of existingJobs) {
+        res.write(`data: ${JSON.stringify({ type: 'video_job_updated', job: j })}\n\n`);
+      }
+    }
+  } catch (initErr) {
+    console.warn('[videoRoutes] SSE initial replay error:', initErr);
+  }
 
   const unsubscribe = VideoJobService.getInstance().subscribeCanvasEvents(canvasId, res);
 
+  // Send 15s keepalive comment to prevent Cloud Run or proxy connection drop
+  const keepAliveTimer = setInterval(() => {
+    try {
+      res.write(': keepalive\n\n');
+    } catch {
+      clearInterval(keepAliveTimer);
+    }
+  }, 15000);
+
   req.on('close', () => {
+    clearInterval(keepAliveTimer);
     unsubscribe();
   });
 });
