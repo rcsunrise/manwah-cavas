@@ -33,7 +33,10 @@ export function loadEnvFiles() {
           ) {
             val = val.slice(1, -1);
           }
-          process.env[key] = val;
+          // 仅在环境变量未被系统/容器预先注入时才回填，绝不覆盖云端注入的值
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
 
           // Auto-bridge VITE_ and standard keys
           if (key.startsWith('SUPABASE_')) {
