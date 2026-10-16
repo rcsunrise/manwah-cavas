@@ -186,7 +186,8 @@ export const ShootPhaseWorkspace: React.FC<ShootPhaseWorkspaceProps> = ({
       products,
       spacePreset: selectedSpace,
       stylePreset: selectedStyle,
-      blueprint
+      blueprint,
+      aspectRatio: activeShot.aspectRatio
     });
   }, [activeShot, sceneMaster, products, selectedSpace, selectedStyle, blueprint, mustIncludes, mustNotIncludes]);
 
@@ -863,9 +864,9 @@ export const ShootPhaseWorkspace: React.FC<ShootPhaseWorkspaceProps> = ({
                     onChange={(e) => setAspectRatio(e.target.value)}
                     className="w-full bg-white border border-stone-300 rounded-lg px-2 py-1 text-xs text-stone-800 focus:ring-1 focus:ring-amber-500 focus:outline-hidden"
                   >
-                    <option value="3:4">3:4 (竖屏海报推荐)</option>
+                    <option value="4:3">4:3 (空间透视 · 画册默认)</option>
                     <option value="16:9">16:9 (横屏大平层)</option>
-                    <option value="4:3">4:3 (画册图谱)</option>
+                    <option value="3:4">3:4 (竖屏海报推荐)</option>
                     <option value="1:1">1:1 (正方特写)</option>
                   </select>
                 </div>

@@ -19,6 +19,7 @@ dist-ssr
 .env.local
 .data/
 .tempmediaStorage/
+.ua/
 
 # Temp Task Docs
 G0_*.md

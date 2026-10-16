@@ -6,6 +6,7 @@ import multer from 'multer';
 import path from 'path';
 import sharp from 'sharp';
 import fs from 'fs';
+import os from 'os';
 import { supabaseAdmin} from './src/lib/supabase';
 import adminRoutes from './server/routes/adminRoutes';
 import projectRoutes from './server/routes/projectRoutes';
@@ -252,9 +253,9 @@ async function startServer() {
   // Mount Supabase reverse proxy before JSON body parser to ensure exact streaming & raw payloads
   app.use('/api/supabase-proxy', express.raw({ type: () => true, limit: '150mb' }), supabaseProxyRoutes);
 
-  // 提升 JSON 与 Raw 请求体预算至 300MB，支持高精度模特资产图与母版多参考图并发传输
-  app.use(express.json({ limit: '300mb' }));
-  app.use(express.urlencoded({ limit: '300mb', extended: true }));
+  // 提升 JSON 与 Raw 请求体预算至 150MB，支持高精度模特资产图与母版多参考图传输
+  app.use(express.json({ limit: '150mb' }));
+  app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'manwah-ai-studio' });
@@ -1244,6 +1245,9 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           fileLog(`[OpenAI Proxy Debug] upstream status: ${resObj.status}`);
 
           const text = await resObj.text();
+          if (!resObj.ok) {
+            fileLog(`[OpenAI Proxy Debug] upstream ERROR! status: ${resObj.status}, response body: ${text}`);
+          }
 
           let data;
           try {
@@ -1558,6 +1562,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         }
 
         res.write(JSON.stringify({ 
+          success: isSuccessfulResponse,
           ...fetchResult, 
           imageUrl: topLevelImageUrl,
           points_deducted: pointsDeducted, 
@@ -1990,8 +1995,11 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_VITE !== 'true') {
+  // 生产环境与静态资源托管判定：如果运行在 production 模式或 dist/index.html 存在且非显式开发模式
+  const hasDist = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || (hasDist && process.env.NODE_ENV !== 'development');
+
+  if (!isProduction && process.env.DISABLE_VITE !== 'true') {
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
@@ -2011,8 +2019,23 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const HOST = '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => {
+    const interfaces = os.networkInterfaces();
+    const networkIps: string[] = [];
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] || []) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          networkIps.push(iface.address);
+        }
+      }
+    }
+    console.log(`\n  🚀 MANWAH Server Running:`);
+    console.log(`  ➜  Listening: http://${HOST}:${PORT}/`);
+    networkIps.forEach(ip => {
+      console.log(`  ➜  Network:   http://${ip}:${PORT}/ (局域网测试)`);
+    });
+    console.log('');
   });
   
   // Set long timeout for VectorEngine/Proxy requests

@@ -28,12 +28,20 @@ describe('SceneMasterPromptCompiler (G2 A00 Master Spec)', () => {
 
     // Ensure camera DNA is eye-level medium lens
     expect(result.cameraSettings.lensMm).toBe(35);
-    expect(result.cameraSettings.heightCm).toBe(115);
+    expect(result.cameraSettings.heightCm).toBe(135);
     expect(result.cameraSettings.yawDeg).toBe(0);
 
     // Negative prompt must suppress plastic CGI and people in master pass
     expect(result.negativePrompt).toContain('plastic');
     expect(result.negativePrompt).toContain('human');
     expect(result.negativePrompt).toContain('watermark');
+
+    // Architectural sofa-to-wall continuous backdrop and orthogonal perspective
+    expect(result.positivePrompt).toContain('continuous solid architectural backdrop');
+    expect(result.positivePrompt).toContain('side panoramic floor-to-ceiling window');
+    expect(result.positivePrompt).toContain('strict orthogonal architectural grid alignment');
+    expect(result.negativePrompt).toContain('sofa overlapping window and wall seam');
+    expect(result.negativePrompt).toContain('crooked sofa angle');
+    expect(result.negativePrompt).toContain('mismatched perspective alignment');
   });
 });

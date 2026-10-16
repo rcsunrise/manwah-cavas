@@ -311,21 +311,19 @@ export class GcsAssetStorage implements AssetObjectStorage {
         const file = bucket.file(objectKey);
         const [exists] = await file.exists();
 
-        if (!exists) {
-          return { exists: false, size: 0, contentType: 'application/octet-stream' };
+        if (exists) {
+          const [meta] = await file.getMetadata();
+          return {
+            exists: true,
+            size: Number(meta.size) || 0,
+            contentType: meta.contentType || 'application/octet-stream',
+            updated: meta.updated,
+            md5Hash: meta.md5Hash,
+            crc32c: meta.crc32c,
+            generation: meta.generation ? String(meta.generation) : undefined,
+            customMetadata: (meta.metadata as Record<string, string>) || {}
+          };
         }
-
-        const [meta] = await file.getMetadata();
-        return {
-          exists: true,
-          size: Number(meta.size) || 0,
-          contentType: meta.contentType || 'application/octet-stream',
-          updated: meta.updated,
-          md5Hash: meta.md5Hash,
-          crc32c: meta.crc32c,
-          generation: meta.generation ? String(meta.generation) : undefined,
-          customMetadata: (meta.metadata as Record<string, string>) || {}
-        };
       } catch (err: any) {
         if (this.strictGcsMode) {
           throw err;
@@ -458,25 +456,23 @@ export class GcsAssetStorage implements AssetObjectStorage {
     bucketType: 'source' | 'generated' | 'export' = 'generated'
   ): Promise<void> {
     const bucketName = this.resolveBucketName(bucketType);
+    const localFilePath = path.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, '/'));
+    if (fs.existsSync(localFilePath)) {
+      try {
+        fs.unlinkSync(localFilePath);
+      } catch (e) {}
+    }
 
     if (this.isGcsAvailable && this.gcsStorage) {
       try {
         const bucket = this.gcsStorage.bucket(bucketName);
         const file = bucket.file(objectKey);
         await file.delete({ ignoreNotFound: true });
-        return;
       } catch (err: any) {
         if (this.strictGcsMode) {
           throw err;
         }
       }
-    }
-
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, '/'));
-    if (fs.existsSync(localFilePath)) {
-      try {
-        fs.unlinkSync(localFilePath);
-      } catch (e) {}
     }
   }
 

@@ -16,7 +16,9 @@ import {
   ShieldCheck,
   User,
   Compass,
-  Cpu
+  Cpu,
+  Video,
+  Layers
 } from 'lucide-react';
 import { ModelAsset, HumanSlotAssignment, HumanLayoutConfig } from '../../../types/spaceAssetLibrary';
 import {
@@ -25,6 +27,12 @@ import {
   ChoreographedLayoutResult,
   ChoreographedSlotItem
 } from '../../../services/spaceHumanChoreographyService';
+import {
+  STUDIO_CHOREOGRAPHY_TEMPLATES,
+  StudioChoreographyTemplate,
+  getRecommendedStudioTemplate,
+  mapStudioSlotsToAssignments
+} from '../data/choreographyPresets';
 
 interface AiHumanChoreographerModalProps {
   isOpen: boolean;
@@ -32,6 +40,7 @@ interface AiHumanChoreographerModalProps {
   availableModels: ModelAsset[];
   currentShotImageUrl?: string;
   sceneMasterImageUrl?: string;
+  currentShotCode?: string; // 当前镜头代码，例如 A01~A08
   onApplyLayout: (newSlots: HumanSlotAssignment[], mode: '4' | '6' | 'custom') => void;
 }
 
@@ -41,10 +50,9 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
   availableModels,
   currentShotImageUrl,
   sceneMasterImageUrl,
+  currentShotCode,
   onApplyLayout
 }) => {
-  if (!isOpen) return null;
-
   // 输入方式: prompt | vision
   const [inputMode, setInputMode] = useState<'prompt' | 'vision'>('prompt');
   const [prompt, setPrompt] = useState<string>(
@@ -64,6 +72,8 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
 
   // 本地编辑的 slots（支持生成后用户再次手动微调）
   const [editableSlots, setEditableSlots] = useState<ChoreographedSlotItem[]>([]);
+
+  if (!isOpen) return null;
 
   // 获取当前选中的分析图
   const getActiveImageUrl = () => {
@@ -91,6 +101,13 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
   const handleApplyPreset = (preset: typeof CHOREOGRAPHY_PRESET_SCENARIOS[0]) => {
     setPrompt(preset.prompt);
     setTargetCount(preset.count);
+  };
+
+  // 一键直接套用影棚标准姿态模板（跳过等待，即刻绑定角色与工学姿态）
+  const handleApplyStudioTemplateDirectly = (tpl: StudioChoreographyTemplate) => {
+    const formatted = mapStudioSlotsToAssignments(tpl, availableModels);
+    onApplyLayout(formatted, tpl.mode);
+    onClose();
   };
 
   // 触发 AI 智能构思
@@ -327,10 +344,91 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
               className="w-full px-3.5 py-2.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed text-[11px] transition-all shadow-inner"
             />
 
-            {/* 灵感场景模板 */}
-            <div className="flex flex-wrap gap-1.5 items-center pt-1">
-              <span className="text-[10px] text-amber-300 font-medium shrink-0">✨ 灵感模板：</span>
-              {CHOREOGRAPHY_PRESET_SCENARIOS.map((preset, idx) => (
+            {/* 影棚实拍 5 套核心姿态与动作模版 (商业对齐) */}
+            <div className="space-y-2 pt-1 pb-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5">
+                  <Video className="w-3.5 h-3.5 text-amber-400" />
+                  <span>🎬 影棚实拍 5 套核心姿态模版 (对齐真实影棚机位与人体工学)</span>
+                </span>
+                {currentShotCode && (
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    当前镜头: <strong className="text-amber-400">{currentShotCode}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {STUDIO_CHOREOGRAPHY_TEMPLATES.map((tpl) => {
+                  const isCurrentShotMatch =
+                    currentShotCode &&
+                    (tpl.targetShotCode === currentShotCode ||
+                      (tpl.id === 'studio-tpl-05' && (currentShotCode === 'A01' || currentShotCode === 'A07')));
+
+                  return (
+                    <div
+                      key={tpl.id}
+                      className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                        isCurrentShotMatch
+                          ? 'bg-amber-500/15 border-amber-400/80 shadow-md ring-1 ring-amber-400/40'
+                          : 'bg-[#181a26] border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-bold text-white text-[11px] truncate">{tpl.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                            {tpl.targetShotCode} 专拍
+                          </span>
+                        </div>
+                        {isCurrentShotMatch && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-500 text-black shadow-xs shrink-0 animate-pulse">
+                            ★ 当前镜头推荐
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] text-neutral-300 line-clamp-2 leading-relaxed mb-2">
+                        {tpl.summary}
+                      </p>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px]">
+                        <span className="text-neutral-400 font-mono">
+                          {tpl.count} 人编制 · {tpl.slots[0]?.positionDesc.split('(')[0].trim()}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPrompt(tpl.fullPrompt);
+                              setTargetCount(tpl.count);
+                            }}
+                            className="px-2 py-0.5 rounded text-neutral-300 hover:text-white bg-white/5 hover:bg-white/10 transition cursor-pointer"
+                            title="将详细情景要求填入上方描述框"
+                          >
+                            填入提示词
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyStudioTemplateDirectly(tpl)}
+                            className="px-2.5 py-0.5 rounded font-bold bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1"
+                            title="直接将此影棚动作编制应用至工作台"
+                          >
+                            <span>一键直接套用</span>
+                            <ArrowRight className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 其他灵感场景模板 */}
+            <div className="flex flex-wrap gap-1.5 items-center pt-1 border-t border-white/5">
+              <span className="text-[10px] text-neutral-400 font-medium shrink-0">✨ 更多全案情境：</span>
+              {CHOREOGRAPHY_PRESET_SCENARIOS.slice(5).map((preset, idx) => (
                 <button
                   key={idx}
                   type="button"

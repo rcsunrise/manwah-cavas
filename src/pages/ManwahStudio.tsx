@@ -2083,6 +2083,16 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                          <div className="text-[10px] font-bold">极速</div>
                          <div className="text-[8px] opacity-70">v2.5 Flash</div>
                        </button>
+                       
+                       <button 
+                         onClick={() => setModel('gemini-nano-banana-2.1-preview')}
+                         className={`p-2 rounded-xl text-center border transition-all ${(model === 'gemini-nano-banana-2.1-preview' || model === 'google/gemini-nano-banana-2.1-preview') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="Nano Banana 2.1: 极速响应、轻量计算、多图融合"
+                       >
+                         <div className="text-lg mb-1">🍌</div>
+                         <div className="text-[10px] font-bold">Banana</div>
+                         <div className="text-[8px] opacity-70">v2.1 极速</div>
+                       </button>
                        <button 
                          onClick={() => setModel('gemini-3.1-flash-image')}
                          className={`p-2 rounded-xl text-center border transition-all ${(model === 'gemini-3.1-flash-image' || model === 'gemini-3.1-flash-image-preview') ? 'bg-brand-gold text-white border-brand-gold shadow-lg shadow-brand-gold/20' : 'bg-[#F9F5EF] border-[#B28C5A]/30 text-[#B28C5A] hover:border-[#B28C5A]'}`}
@@ -2098,6 +2108,25 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                          <div className="text-lg mb-1">✨</div>
                          <div className="text-[10px] font-bold">旗舰</div>
                          <div className="text-[8px] opacity-70">v3.0 Pro</div>
+                       </button>
+                       
+                       <button 
+                         onClick={() => setModel('openai/gpt-image-2.5-flare-c')}
+                         className={`p-2 rounded-xl text-center border transition-all ${(model === 'openai/gpt-image-2.5-flare-c' || model === 'gpt-image-2.5-flare-c') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="GPT 2.5 Flare: 文生图、图生图、局部Mask重绘、高保真原画"
+                       >
+                         <div className="text-lg mb-1 opacity-80">🔥</div>
+                         <div className="text-[10px] font-bold">GPT Flare</div>
+                         <div className="text-[8px] opacity-70">v2.5 原画</div>
+                       </button>
+                       <button 
+                         onClick={() => setModel('openai/gpt-image-2.5-sunburst-c')}
+                         className={`p-2 rounded-xl text-center border transition-all ${(model === 'openai/gpt-image-2.5-sunburst-c' || model === 'gpt-image-2.5-sunburst-c') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="GPT 2.5 Sunburst: 文生图、图生图、局部Mask重绘、旗舰级高光细节"
+                       >
+                         <div className="text-lg mb-1 opacity-80">☀️</div>
+                         <div className="text-[10px] font-bold">Sunburst</div>
+                         <div className="text-[8px] opacity-70">v2.5 高光</div>
                        </button>
                        <button 
                          onClick={() => setModel('openai/gpt-image-2')}
@@ -2131,7 +2160,7 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                      <p className="text-xs font-bold text-stone-500">渲染精度 (Resolution)</p>
                      <div className="flex gap-2">
                        {(['1K', '2K', '4K'] as const).map(r => {
-                         const isV25 = model.includes('2.5');
+                         const isV25 = model === 'gemini-2.5-flash' || model === 'gemini-2.5-flash-image';
                          const isDisabled = isV25 && (r === '2K' || r === '4K');
                          
                          return (

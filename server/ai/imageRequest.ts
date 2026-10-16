@@ -4,6 +4,7 @@ export type GenerationIntent = 'text_to_image' | 'image_edit';
 
 export type ImageRole =
   | 'primary_product'
+  | 'secondary_product'
   | 'scene_reference'
   | 'material_reference'
   | 'person_reference'
@@ -30,6 +31,7 @@ export interface NormalizedImageReference {
 
 const IMAGE_ROLES = new Set<ImageRole>([
   'primary_product',
+  'secondary_product',
   'scene_reference',
   'material_reference',
   'person_reference',
@@ -39,6 +41,7 @@ const IMAGE_ROLES = new Set<ImageRole>([
 
 export const IMAGE_ROLE_LABELS: Record<ImageRole, string> = {
   primary_product: '主产品参考',
+  secondary_product: '搭配产品参考',
   scene_reference: '场景参考',
   material_reference: '材质参考',
   person_reference: '人物参考',

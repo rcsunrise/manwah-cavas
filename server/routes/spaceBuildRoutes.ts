@@ -162,7 +162,7 @@ router.post('/lock-master', async (req: Request, res: Response) => {
       pitchDeg: -2
     };
 
-    const effectiveAspectRatio = parsed.data.aspectRatio || promptSnapshot?.aspectRatio || '3:4';
+    const effectiveAspectRatio = parsed.data.aspectRatio || promptSnapshot?.aspectRatio || '4:3';
 
     // 2. 触发真实工程资产生成 (注入产品真实视觉真值与多模态参考图)
     const imageResult = await SpaceImageGenerationService.generateAndStore({

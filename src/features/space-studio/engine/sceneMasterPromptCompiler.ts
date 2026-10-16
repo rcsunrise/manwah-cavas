@@ -7,6 +7,11 @@ import {
   PlacementBlueprint,
   ImageAspectRatio
 } from '../../../types/spaceStudio';
+import {
+  translateColorToEnglish,
+  translateMaterialToEnglish
+} from './materialDnaTranslator';
+import { compileStyleDnaToEnglish } from './stylePaletteTranslator';
 
 export interface CompileSceneMasterInput {
   products: ProductAsset[];
@@ -53,8 +58,8 @@ export class SceneMasterPromptCompiler {
       if (primaryProduct.materials) productDNAKeywords.push(...primaryProduct.materials);
       if (primaryProduct.colors) productDNAKeywords.push(...primaryProduct.colors);
 
-      const mainColor = primaryProduct.colors?.[0] || 'Warm Greige';
-      const mainMaterial = primaryProduct.materials?.[0] || 'genuine top-grain semi-aniline cowhide leather';
+      const mainColor = translateColorToEnglish(primaryProduct.colors?.[0], 'ivory greige, soft pale grey');
+      const mainMaterial = translateMaterialToEnglish(primaryProduct.materials?.[0], 'genuine top-grain semi-aniline cowhide leather');
       const mainTexture = primaryProduct.surfaceTexture || 'subtle soft natural leather grain pores, precision tailored stitching';
       const rules = primaryProduct.lockedRules?.join('. ') || '';
       const dims = primaryProduct.dimensions
@@ -63,9 +68,14 @@ export class SceneMasterPromptCompiler {
 
       let roleSpecificDesc = '';
       switch (primaryProduct.role) {
-        case 'sofa_3seat':
         case 'sofa_2seat':
-          roleSpecificDesc = `authentic MANWAH first-class luxury power motion sofa ensemble (${primaryProduct.name}, SKU: ${primaryProduct.sku || 'MW-CH-9866-3S'}). Features signature ergonomic contoured backrest, multi-split seating cushions, power reclining footrest mechanism. Dimensions: ${dims}.`;
+          roleSpecificDesc = `authentic MANWAH first-class generous wide-body two-seater power motion sofa (${primaryProduct.name}, SKU: ${primaryProduct.sku || 'MW-CH-7588-2S'}). STATED SEATING CAPACITY: EXACTLY TWO SEATS (2 individual expansive seating cushions and 2 backrest sections only, wide horizontal stance, low-profile deep proportions, contrasting brown welt cord piping trim along seat front and armrest edges, twin-cushion division, strictly NOT a three-seater sofa, strictly NO middle seat cushion). Power reclining mechanism on outer seats. Dimensions: ${dims}.`;
+          break;
+        case 'sofa_3seat':
+          roleSpecificDesc = `authentic MANWAH first-class luxury three-seater power motion sofa ensemble (${primaryProduct.name}, SKU: ${primaryProduct.sku || 'MW-CH-9866-3S'}). Features signature ergonomic contoured backrest, three distinct seating cushions, power reclining footrest mechanism. Dimensions: ${dims}.`;
+          break;
+        case 'lounge_chair':
+          roleSpecificDesc = `authentic modern minimalist armless lounge chair (${primaryProduct.name}, SKU: ${primaryProduct.sku || 'MW-CH-3011-LC'}). Low-profile block silhouette, armless design, textured fabric upholstery, sleek swivel or stationary base, strictly NO footrest mechanism, strictly NO bulky armrests. Dimensions: ${dims}.`;
           break;
         case 'recliner_1seat':
           roleSpecificDesc = `authentic MANWAH first-class single power recliner armchair (${primaryProduct.name}, SKU: ${primaryProduct.sku || 'MW-CH-1028-1S'}). Zero-gravity aerospace-grade wrapping contour, power motorized footrest. Dimensions: ${dims}.`;
@@ -86,17 +96,21 @@ export class SceneMasterPromptCompiler {
       );
     }
 
-    // 次要家具配搭（仅包含已勾选关联的产品，支持动态名称/材质/色彩）
+    // 次要家具配搭（仅包含已勾选关联的产品，支持动态名称/材质/色彩纯视觉英文翻译）
     for (const sec of secondaryProducts) {
-      const secColor = sec.colors?.[0] || 'matching tone';
-      const secMat = sec.materials?.[0] || 'premium material';
-      if (sec.role === 'recliner_1seat') {
+      const secColor = translateColorToEnglish(sec.colors?.[0], 'pristine polar milk-white');
+      const secMat = translateMaterialToEnglish(sec.materials?.[0], 'genuine top-grain semi-aniline leather');
+      if (sec.role === 'lounge_chair' || sec.name?.includes('无扶手') || sec.name?.includes('休闲单椅')) {
         productClauses.push(
-          `angled side lounge: matching MANWAH power recliner armchair (${sec.name}) in ${secColor} with ${secMat}, positioned in conversational 35-degree angle`
+          `angled side accent: modern minimalist armless lounge chair (${sec.name}) in ${secColor} with ${secMat}, sleek armless profile, strictly NO bulky footrest, positioned closely in intimate 45-degree conversational cluster alongside the hero sofa around the center coffee table, forming a cohesive tight-knit living room conversation circle on the central rug, strictly NOT drifting apart or pushed against the window edge`
+        );
+      } else if (sec.role === 'recliner_1seat') {
+        productClauses.push(
+          `angled side lounge: matching MANWAH power recliner armchair (${sec.name}) in ${secColor} with ${secMat}, positioned closely in intimate conversational cluster alongside the hero sofa around the center coffee table on the central rug, strictly NOT pushed against the window edge`
         );
       } else if (sec.role === 'coffee_table') {
         productClauses.push(
-          `center living table: low-slung living coffee table (${sec.name}) featuring ${secMat} in ${secColor} with stable architectural base`
+          `center living table: harmonious proportioned living coffee table (${sec.name}) featuring ${secMat} in ${secColor} placed neatly in front of the sofa`
         );
       } else if (sec.role === 'side_table') {
         productClauses.push(
@@ -109,34 +123,40 @@ export class SceneMasterPromptCompiler {
       }
     }
 
-    // 2. 空间户型描述
+    // 2. 空间户型描述与建筑轴线对齐 (Architectural Space & Sofa Alignment)
     const architecturalClauses = [
       `luxury interior architecture: ${spacePreset.name}`,
-      ...spacePreset.promptFragments,
-      `grand open layout, ${spacePreset.ceilingHeight || 3.5}m high structural ceiling with recessed ambient shadow gaps and architectural floor-to-ceiling glass windows`
+      ...(spacePreset.promptFragments || []),
+      `grand open layout, ${spacePreset.ceilingHeight || 3.5}m high structural ceiling with recessed ambient shadow gaps`,
+      'continuous solid architectural backdrop feature wall securely anchoring the hero sofa (strictly continuous curated wall paneling or luxury stone backdrop extending seamlessly across the entire width behind the sofa, strictly NO window seam or wall transition splitting behind the sofa)',
+      'side panoramic floor-to-ceiling window wall positioned on the room flank, providing expansive natural volumetric side daylight orthogonal to the sofa arrangement',
+      'strict orthogonal architectural grid alignment: the hero sofa, center coffee table, and large area rug are precisely aligned parallel with the backdrop wall and room perspective grid, sharing cohesive vanishing points with floor tiles and architectural axes, eliminating mismatched angles or floating orientation'
     ];
 
-    // 3. 风格材质与采光系统
+    // 3. 美学硬装空间色调与材质采光系统 (Interior Dominant Palette & Lighting)
+    const styleDna = compileStyleDnaToEnglish(stylePreset);
     const styleClauses = [
+      styleDna.styleMandateClause,
       `interior design aesthetic: ${stylePreset.name}`,
-      ...stylePreset.promptFragments,
-      `color harmony: ${stylePreset.colorPalette.join(', ')}`,
-      `curated material palette: ${stylePreset.materialSystem.join(', ')}`,
-      'lighting: diffused natural architectural daylight balancing with soft 2700k indirect warm cove illumination, raytraced photorealistic interior global illumination'
+      ...(stylePreset.promptFragments || []),
+      `spatial color harmony: ${styleDna.dominantColorTone}`,
+      `curated architectural materiality: ${styleDna.materialFinishes}`,
+      `lighting: ${styleDna.atmosphericLighting}, raytraced photorealistic interior global illumination`
     ];
 
-    // 4. 摄影机与构图约定 (黄金分割构图，杜绝天花板占大半、家具挤底部的沉底缺陷)
+    // 4. 摄影机与构图约定 (经典大平层平视构图，天地平衡，严防沉底与空地毯)
     const cameraClauses = [
       'shot on Hasselblad H6D-100c medium format architectural camera',
-      '35mm architectural prime lens at eye level (height 115cm)',
-      'perfect two-point architectural perspective, clean vertical straight lines without keystone distortion',
+      '35mm architectural prime lens at eye level (height 135cm)',
+      'perfect two-point architectural perspective, strictly plumb vertical lines without keystone convergence or wall tilting',
       `proportional ${aspectRatio} composition`,
-      'masterful rule-of-thirds spatial balance: hero furniture ensemble is solidly and comfortably anchored in the lower-middle golden ratio with generous floor rug breathing space',
-      'eye-level camera elevation ensuring the furniture is never squeezed or clipped against the bottom frame edge, balanced floor-to-ceiling height ratio without empty ceiling void',
-      'neutral straight-on architectural elevation angle (yaw 0 deg, pitch 0 deg)'
+      'masterful architectural spatial balance: harmonious 1:1 vertical balance between soaring ceiling architectural volume and floor rug, capturing both the ceiling lighting architecture and the grounded living room ensemble',
+      'centered furniture ensemble anchored comfortably in mid-ground parallel to the architectural backdrop wall, preventing excessive empty rug void in foreground',
+      'neutral straight-on architectural perspective angle (yaw 0 deg, pitch -1 deg), sofa aligned squarely with camera axis and backdrop elevation'
     ];
 
     const positivePrompt = [
+      styleDna.styleMandateClause,
       ...productClauses,
       ...architecturalClauses,
       ...styleClauses,
@@ -144,15 +164,23 @@ export class SceneMasterPromptCompiler {
       'masterpiece, ultra-high resolution, architectural digest award-winning interior photography, commercial luxury furniture catalog benchmark, pure clean photograph, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp details'
     ].join(', ');
 
+    const isPrimaryFabric = /fabric|cloth|microfiber|woven|linen|textile|麻|布/i.test(
+      `${primaryProduct?.materials?.join(' ') || ''} ${primaryProduct?.name || ''}`
+    );
+
     const negativePrompt = [
-      'unrealistic cartoon, 3d render plastic look, CGI artifacts, lowres, distorted sofa cushions, blurry leather texture',
-      'furniture squeezed or cut off at bottom edge, excessive empty ceiling void, tilted perspective lines, crooked horizon',
+      'unrealistic cartoon, 3d render plastic look, CGI artifacts, lowres, distorted sofa cushions',
+      primaryProduct?.role === 'sofa_2seat' ? 'three-seater sofa, 3 seating cushions, 3 backrest cushions, sectional couch, middle seat cushion, extra seating unit' : '',
+      isPrimaryFabric ? 'glossy leather, shiny patent leather, cowhide texture' : '',
+      'excessive empty rug void in foreground, cut-off ceiling, missing ceiling structure, lonely drifting side chair, disconnected furniture grouping, accent chair pushed against window, lopsided dark wall imbalance, crooked vertical lines, ground-level low shot, furniture squeezed or cut off at bottom edge',
+      'sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls, obstructed window frame, half wall half window background, conflicting vanishing points, floating furniture angle, mismatched ground plane vanishing lines, sofa placed sideways against room perspective, sofa cut in half by background wall seam, asymmetrical split backdrop behind sofa',
+      'mismatched wall colors, wrong architectural palette, generic sterile white room without intended style color tone, garish neon colors',
       'wrong product color, unintended dark burgundy or maroon shift, deformed furniture legs, mutated seams, messy clutter',
       'cheap melamine laminate, garish neon colors, harsh flash glare, overblown highlights',
       'people, human, faces, extra hands',
       'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
-      ...stylePreset.negativeRules
-    ].join(', ');
+      ...(stylePreset.negativeRules || [])
+    ].filter(Boolean).join(', ');
 
     return {
       positivePrompt,
@@ -160,9 +188,9 @@ export class SceneMasterPromptCompiler {
       aspectRatio,
       cameraSettings: {
         lensMm: 35,
-        heightCm: 115,
+        heightCm: 135,
         yawDeg: 0,
-        pitchDeg: 0,
+        pitchDeg: -1,
         framing: 'wide'
       },
       productDNAKeywords,

@@ -115,7 +115,7 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
   const [aiStyleName, setAiStyleName] = useState('');
   const [aiCategory, setAiCategory] = useState('意式轻奢');
   const [selectedModelId, setSelectedModelId] = useState<string>('gpt-image-2');
-  const [aiAspectRatio, setAiAspectRatio] = useState('16:9');
+  const [aiAspectRatio, setAiAspectRatio] = useState('4:3');
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [isEmptyRoomMode, setIsEmptyRoomMode] = useState(false); // 纯净空场景模式（清除沙发、茶几、地毯、餐桌）
@@ -221,7 +221,7 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
       const newImageUrl = await generateImageFromRouterHub({
         prompt,
         model: currentModel.id,
-        aspectRatio: '16:9'
+        aspectRatio: '4:3'
       });
 
       const updated = await spaceAssetLibraryService.generateStyleVariants(styleId, newImageUrl);
@@ -267,7 +267,7 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
       const generatedImageUrl = await generateImageFromRouterHub({
         prompt: cleanPrompt,
         model: currentModel.id,
-        aspectRatio: '16:9'
+        aspectRatio: '4:3'
       });
 
       // 创建纯净空场景风格资产
@@ -1141,7 +1141,7 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
                     <div>
                       <label className="block text-neutral-200 font-semibold mb-1">画幅比例</label>
                       <div className="grid grid-cols-4 gap-2">
-                        {['16:9', '4:3', '1:1', '9:16'].map(ratio => {
+                        {['4:3', '16:9', '1:1', '9:16'].map(ratio => {
                           const isRatioActive = aiAspectRatio === ratio;
                           return (
                             <button

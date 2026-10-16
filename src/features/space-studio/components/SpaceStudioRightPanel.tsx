@@ -32,7 +32,10 @@ import {
   Link2,
   UserCheck,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw,
+  ArrowRight,
+  XCircle
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -41,6 +44,8 @@ import {
   IMAGE_ASPECT_SPECS,
   CameraDNA,
   RenderComputeConfig,
+  RenderResolution,
+  calculateRenderDimensions,
 } from '../../../types/spaceStudio';
 import {
   ActivePhotographyAssets,
@@ -56,6 +61,11 @@ import { SceneStyleGalleryModal } from './assets/SceneStyleGalleryModal';
 import { ModelAssetModal } from './assets/ModelAssetModal';
 import { AiHumanChoreographerModal } from './AiHumanChoreographerModal';
 import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
+import {
+  STUDIO_CHOREOGRAPHY_TEMPLATES,
+  getRecommendedStudioTemplate,
+  mapStudioSlotsToAssignments
+} from '../data/choreographyPresets';
 
 interface SpaceStudioRightPanelProps {
   activeShot: ShotInstance;
@@ -72,6 +82,10 @@ interface SpaceStudioRightPanelProps {
   isGeneratingAll: boolean;
   onGenerateCurrentShot: () => void;
   onGenerateAllShots: () => void;
+  onGenerateSceneMaster?: () => void;
+  onCancelRendering?: () => void;
+  renderingShotCode?: string;
+  backgroundRenderingShotCodes?: string[];
 
   // 人物添加重构专属参数
   isGeneratingHuman?: boolean;
@@ -82,6 +96,7 @@ interface SpaceStudioRightPanelProps {
 
   onOptimizeLightingAndPrompt: () => void;
   onUpdateCamera: (shotId: string, updates: Partial<CameraDNA>) => void;
+  onResetCamera?: (shotId: string) => void;
 
   // Asset Library integration props
   activeAssets?: ActivePhotographyAssets;
@@ -134,6 +149,10 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   isGeneratingAll,
   onGenerateCurrentShot,
   onGenerateAllShots,
+  onGenerateSceneMaster,
+  onCancelRendering,
+  renderingShotCode,
+  backgroundRenderingShotCodes = [],
   isGeneratingHuman = false,
   onRenderHumanPass,
   humanLayout,
@@ -141,6 +160,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   availableModels = [],
   onOptimizeLightingAndPrompt,
   onUpdateCamera,
+  onResetCamera,
   activeAssets,
   onUpdateActiveAssets,
   onApplyStyleAndGenerateMaster,
@@ -538,17 +558,70 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-black/50 border-white/10 text-amber-300'
                 }`}
               >
-                <optgroup label="OpenAI GPT Image 2 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                <optgroup label="OpenAI GPT Image 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
                   <option value="gpt-image-2">GPT Image 2 (系统默认 · 电影级写实 · 材质保护)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
+                  <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
+                  <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
                 </optgroup>
                 <optgroup label="Google Gemini 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
                   <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (极速高精)</option>
                   <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
                   <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
+                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速响应 · 轻量多图融合)</option>
                 </optgroup>
               </select>
+            </div>
+
+            {/* 出图精度 (Resolution) 选择控制 */}
+            <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className={`font-medium ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>出图精度 (Resolution):</span>
+                <span className="font-mono text-[9px] text-amber-500 font-semibold">
+                  {calculateRenderDimensions(aspectRatio, (cfg.resolution as RenderResolution) || '2K').text}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {(['1K', '2K', '4K'] as const).map((res) => {
+                  const isSelected = (cfg.resolution || '2K') === res;
+                  const tag = res === '1K' ? '预览' : res === '2K' ? '旗舰' : '极清';
+                  const subDesc = res === '1K' ? '极速试错' : res === '2K' ? '画册标准' : '巨幕印刷';
+                  return (
+                    <button
+                      key={res}
+                      type="button"
+                      onClick={() => onChangeComputeConfig?.({ resolution: res })}
+                      className={`py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400 font-bold shadow-xs'
+                          : isLight
+                          ? 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                          : 'bg-black/30 hover:bg-white/5 text-neutral-300 border-white/10'
+                      }`}
+                      title={`${res} 出图精度 (${subDesc})`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] font-mono leading-tight">{res}</span>
+                        <span className={`text-[8px] px-1 py-0.2 rounded font-normal leading-tight ${
+                          isSelected ? 'bg-black/20 text-stone-900' : isLight ? 'bg-stone-200/60 text-stone-600' : 'bg-white/10 text-neutral-400'
+                        }`}>
+                          {tag}
+                        </span>
+                      </div>
+                      <span className={`text-[8px] scale-90 -mt-0.5 ${isSelected ? 'text-stone-900/80 font-medium' : 'opacity-60'}`}>
+                        {subDesc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className={`text-[9px] flex items-center justify-between px-1.5 py-0.5 rounded font-mono ${
+                isLight ? 'bg-stone-100 text-stone-500' : 'bg-black/30 text-neutral-400'
+              }`}>
+                <span>计算画幅: {aspectRatio}</span>
+                <span>算法: Lanczos-3 锐化</span>
+              </div>
             </div>
 
             {/* 生成候选数量控制 (默认 1 张模板，防止重复并发调用 API 与资源浪费) */}
@@ -583,28 +656,89 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
           {/* Quick Render Base Shot Header Button */}
           <div className="space-y-1.5">
-            <button
-              onClick={onGenerateCurrentShot}
-              disabled={isGeneratingCurrent || isGeneratingAll || isGeneratingHuman}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 border font-bold rounded-xl transition cursor-pointer disabled:opacity-50 ${
-                isLight
-                  ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent hover:bg-amber-500/20 border-amber-400/50 text-amber-900 shadow-2xs'
-                  : 'bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent hover:bg-amber-500/25 border-amber-500/30 text-amber-300'
-              }`}
-            >
-              {isGeneratingCurrent ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
-              ) : (
-                <Camera className="w-3.5 h-3.5 text-amber-500" />
+            {/* 空间母版未确立警示横幅：防止分镜在无母版约束下独立盲跑乱生成 */}
+            {activeShot.templateCode !== 'A00' && !sceneMaster && (
+              <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 transition-all ${
+                isLight ? 'bg-amber-50/90 border-amber-300/80 text-amber-900 shadow-2xs' : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+              }`}>
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between font-bold">
+                    <span>空间母版未确立 (缺少硬装基准)</span>
+                    {onGenerateSceneMaster && (
+                      <button
+                        type="button"
+                        onClick={onGenerateSceneMaster}
+                        disabled={isGeneratingCurrent || isGeneratingAll}
+                        className="text-[11px] px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold transition cursor-pointer disabled:opacity-50"
+                      >
+                        先生成 A00 母版 →
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] leading-relaxed opacity-85">
+                    当前镜头尚未绑定全局空间母版。直接生成将独立想象空间硬装，导致各镜头风格不连贯。推荐先确立 A00 母版或直接点击下方「一键生成全部」自动完成母版约束。
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onGenerateCurrentShot}
+                disabled={isGeneratingCurrent || isGeneratingAll || isGeneratingHuman}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 border font-bold rounded-xl transition cursor-pointer disabled:opacity-60 ${
+                  isLight
+                    ? 'bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent hover:bg-amber-500/20 border-amber-400/50 text-amber-900 shadow-2xs'
+                    : 'bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent hover:bg-amber-500/25 border-amber-500/30 text-amber-300'
+                }`}
+              >
+                {isGeneratingCurrent ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5 text-amber-500" />
+                )}
+                <span className="text-xs">
+                  {isGeneratingCurrent
+                    ? `正在渲染 ${activeShot.templateCode} 基础机位...`
+                    : activeShot.templateCode === 'A00'
+                    ? (sceneMaster?.isLocked ? '重新生成 A00 空间母版' : '生成并锁定 A00 空间母版')
+                    : ((cfg as any).candidateCount > 1 ? `生成 ${activeShot.templateCode} 基础机位 (${(cfg as any).candidateCount} 候选)` : `生成 ${activeShot.templateCode} 基础机位 (单张精修)`)}
+                </span>
+              </button>
+
+              {/* 当正在生成时，渲染醒目的打断按钮 */}
+              {isGeneratingCurrent && onCancelRendering && (
+                <button
+                  type="button"
+                  onClick={onCancelRendering}
+                  className="px-3 py-2.5 rounded-xl border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                  title="立即打断当前渲染"
+                >
+                  <XCircle className="w-4 h-4 text-rose-500" />
+                  <span>打断</span>
+                </button>
               )}
-              <span className="text-xs">
-                {isGeneratingCurrent
-                  ? `正在渲染 ${activeShot.templateCode} 基础机位...`
-                  : activeShot.templateCode === 'A00'
-                  ? (sceneMaster?.isLocked ? '重新生成 A00 空间母版' : '生成并锁定 A00 空间母版')
-                  : ((cfg as any).candidateCount > 1 ? `生成 ${activeShot.templateCode} 基础机位 (${(cfg as any).candidateCount} 候选)` : `生成 ${activeShot.templateCode} 基础机位 (单张精修)`)}
-              </span>
-            </button>
+            </div>
+
+            {/* 若后台有其他机位正在并行渲染，展示并发进度提示（绝不阻塞当前机位生成） */}
+            {((backgroundRenderingShotCodes && backgroundRenderingShotCodes.length > 0) || (renderingShotCode && renderingShotCode !== activeShot.templateCode)) && (
+              <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-[11px] ${
+                isLight ? 'bg-sky-50 border-sky-200 text-sky-900' : 'bg-sky-950/30 border-sky-500/30 text-sky-300'
+              }`}>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse shrink-0" />
+                  <span className="truncate">
+                    后台并行渲染中: {backgroundRenderingShotCodes && backgroundRenderingShotCodes.length > 0
+                      ? backgroundRenderingShotCodes.join(', ')
+                      : renderingShotCode} 机位
+                  </span>
+                </div>
+                <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono font-bold shrink-0 ml-1.5">
+                  {(backgroundRenderingShotCodes && backgroundRenderingShotCodes.length > 0 ? backgroundRenderingShotCodes.length : 1)}并发中
+                </span>
+              </div>
+            )}
           </div>
 
           {/* ═════════════════════════════════════════════════════════════
@@ -937,6 +1071,74 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   </button>
                 </div>
 
+                {/* 影棚动作模板快捷套用与当前镜头推荐 (商业对齐) */}
+                {(() => {
+                  const recommendedTpl = getRecommendedStudioTemplate(activeShot.templateCode);
+                  return (
+                    <div className={`p-2 rounded-xl border text-[10px] space-y-1.5 ${
+                      isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-amber-500/10 border-amber-500/25'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold flex items-center gap-1 text-amber-800 dark:text-amber-300">
+                          <Users className="w-3 h-3 text-amber-500" />
+                          <span>影棚动作模板 ({activeShot.templateCode} 镜头推荐)</span>
+                        </span>
+                        <span className="font-mono text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 font-semibold">
+                          {recommendedTpl.badge.split('·')[0].trim()}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="truncate text-stone-700 dark:text-neutral-200 font-medium text-[11px]">
+                          {recommendedTpl.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newSlots = mapStudioSlotsToAssignments(recommendedTpl, availableModels);
+                            updateLayout({
+                              characterCount: newSlots.length,
+                              mode: recommendedTpl.mode,
+                              slots: newSlots
+                            });
+                          }}
+                          className="shrink-0 px-2 py-0.5 rounded font-bold bg-amber-500 hover:bg-amber-400 text-black transition active:scale-95 shadow-2xs cursor-pointer flex items-center gap-0.5 text-[10px]"
+                          title="一键套用此影棚推荐动作与槽位"
+                        >
+                          <span>一键套用</span>
+                          <ArrowRight className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+
+                      {/* 5套模板快捷切换下拉 */}
+                      <select
+                        onChange={(e) => {
+                          const found = STUDIO_CHOREOGRAPHY_TEMPLATES.find(t => t.id === e.target.value);
+                          if (found) {
+                            const newSlots = mapStudioSlotsToAssignments(found, availableModels);
+                            updateLayout({
+                              characterCount: newSlots.length,
+                              mode: found.mode,
+                              slots: newSlots
+                            });
+                          }
+                        }}
+                        defaultValue=""
+                        className={`w-full border rounded px-1.5 py-1 text-[10px] outline-none cursor-pointer ${
+                          isLight ? 'bg-white border-amber-300 text-stone-800' : 'bg-black/50 border-white/10 text-neutral-200'
+                        }`}
+                      >
+                        <option value="" disabled>-- 切换其他影棚动作模板 (共5套) --</option>
+                        {STUDIO_CHOREOGRAPHY_TEMPLATES.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.targetShotCode}: {t.name} ({t.count}人)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
+
                 {/* 数量与对象对应状态栏 */}
                 {(() => {
                   const uniqueAssignedCount = new Set(activeLayout.slots.map(s => s.modelId).filter(Boolean)).size;
@@ -1225,37 +1427,51 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             </div>
 
             {/* Core Action Button - 高对比度视觉设计，杜绝浅色模式白底白字隐形 */}
-            <button
-              onClick={onRenderHumanPass}
-              disabled={isGeneratingHuman || isGeneratingCurrent || isGeneratingAll}
-              className={`relative overflow-hidden w-full flex items-center justify-center gap-2 py-3 px-4 font-extrabold rounded-xl shadow-lg transition-all active:scale-98 cursor-pointer ${
-                isGeneratingHuman
-                  ? isLight
-                    ? 'bg-purple-900 hover:bg-purple-950 text-white shadow-purple-900/30 ring-2 ring-purple-400'
-                    : 'bg-[#2b1842] border border-purple-400/50 text-amber-200 shadow-purple-900/50 ring-1 ring-purple-500/40'
-                  : isLight
-                  ? 'bg-gradient-to-r from-purple-800 via-indigo-700 to-amber-600 hover:from-purple-900 hover:to-amber-700 text-white shadow-purple-900/20'
-                  : 'bg-gradient-to-r from-purple-600 via-purple-500 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white shadow-purple-600/30'
-              } disabled:cursor-not-allowed`}
-            >
-              {isGeneratingHuman ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
-                  <span className="text-xs tracking-wider text-white font-bold">
-                    {((cfg as any).candidateCount || 1) > 1
-                      ? `正在为 ${activeShot.templateCode} 生成 ${((cfg as any).candidateCount || 4)} 张人物版候选... (${generationProgress}%)`
-                      : `正在为 ${activeShot.templateCode} 生成精修人物版方案... (${generationProgress}%)`}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Users className="w-4 h-4 text-white stroke-[2.5] shrink-0" />
-                  <span className="text-xs tracking-wider text-white font-bold">
-                    基于当前镜头添加模特 ({activeShot.templateCode})
-                  </span>
-                </>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onRenderHumanPass}
+                disabled={isGeneratingHuman || isGeneratingCurrent || isGeneratingAll}
+                className={`relative overflow-hidden flex-1 flex items-center justify-center gap-2 py-3 px-4 font-extrabold rounded-xl shadow-lg transition-all active:scale-98 cursor-pointer ${
+                  isGeneratingHuman
+                    ? isLight
+                      ? 'bg-purple-900 hover:bg-purple-950 text-white shadow-purple-900/30 ring-2 ring-purple-400'
+                      : 'bg-[#2b1842] border border-purple-400/50 text-amber-200 shadow-purple-900/50 ring-1 ring-purple-500/40'
+                    : isLight
+                    ? 'bg-gradient-to-r from-purple-800 via-indigo-700 to-amber-600 hover:from-purple-900 hover:to-amber-700 text-white shadow-purple-900/20'
+                    : 'bg-gradient-to-r from-purple-600 via-purple-500 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white shadow-purple-600/30'
+                } disabled:cursor-not-allowed`}
+              >
+                {isGeneratingHuman ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
+                    <span className="text-xs tracking-wider text-white font-bold">
+                      {((cfg as any).candidateCount || 1) > 1
+                        ? `正在为 ${activeShot.templateCode} 生成 ${((cfg as any).candidateCount || 4)} 张人物版候选... (${generationProgress}%)`
+                        : `正在为 ${activeShot.templateCode} 生成精修人物版方案... (${generationProgress}%)`}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Users className="w-4 h-4 text-white stroke-[2.5] shrink-0" />
+                    <span className="text-xs tracking-wider text-white font-bold">
+                      基于当前镜头添加模特 ({activeShot.templateCode})
+                    </span>
+                  </>
+                )}
+              </button>
+
+              {isGeneratingHuman && onCancelRendering && (
+                <button
+                  type="button"
+                  onClick={onCancelRendering}
+                  className="px-3 py-3 rounded-xl border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                  title="立即打断当前人物生成"
+                >
+                  <XCircle className="w-4 h-4 text-rose-500" />
+                  <span>打断</span>
+                </button>
               )}
-            </button>
+            </div>
 
             {/* 正在生成时的动态多阶段状态提示指示器 */}
             {isGeneratingHuman && (
@@ -1394,42 +1610,218 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             </button>
 
             {showAdvanced && (
-              <div className={`space-y-3 p-3 rounded-xl border animate-in fade-in duration-150 ${
+              <div className={`space-y-3.5 p-3 rounded-xl border animate-in fade-in duration-150 ${
                 isLight ? 'bg-white border-stone-200 shadow-2xs text-stone-800' : 'bg-black/40 border-white/10 text-neutral-200'
               }`}>
-                {/* 1. 机位参数 */}
-                <div className="space-y-2 text-[10px]">
-                  <div className={`flex items-center justify-between ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
-                    <span>焦距: {activeShot.camera.lensMm}mm</span>
-                    <span>高度: {activeShot.camera.heightCm}cm</span>
-                    <span>偏角: {activeShot.camera.yawDeg}°</span>
+                {/* 1. 焦距参数 (Lens Focal Length) */}
+                <div className="space-y-1.5">
+                  <div className={`flex items-center justify-between text-[10px] ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                    <span className="font-semibold flex items-center gap-1">
+                      <Camera className="w-3 h-3 text-amber-500" /> 镜头焦距
+                    </span>
+                    <span className={`font-mono font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>
+                      {activeShot.camera.lensMm}mm · {
+                        activeShot.camera.lensMm <= 24 ? '超广角 (建筑全景)' :
+                        activeShot.camera.lensMm <= 35 ? '广角/人文 (大平层)' :
+                        activeShot.camera.lensMm <= 55 ? '标准镜头 (人眼透视)' :
+                        '长焦微距 (皮质特写)'
+                      }
+                    </span>
                   </div>
-                  <div>
-                    <div className={`flex justify-between mb-1 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
-                      <span>机位高度</span>
-                      <span className={`font-mono font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>{activeShot.camera.heightCm}cm</span>
+                  {/* 焦距快捷预设 */}
+                  <div className="grid grid-cols-5 gap-1 text-[9px] font-mono">
+                    {[
+                      { mm: 24, label: '24mm' },
+                      { mm: 28, label: '28mm' },
+                      { mm: 35, label: '35mm' },
+                      { mm: 50, label: '50mm' },
+                      { mm: 85, label: '85mm' }
+                    ].map(preset => (
+                      <button
+                        key={preset.mm}
+                        onClick={() => onUpdateCamera(activeShot.id, { lensMm: preset.mm })}
+                        className={`py-1 rounded text-center transition cursor-pointer ${
+                          activeShot.camera.lensMm === preset.mm
+                            ? 'bg-amber-500 text-black font-bold shadow-xs'
+                            : isLight ? 'bg-stone-100 text-stone-600 hover:bg-stone-200' : 'bg-white/5 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="range"
+                    min={18}
+                    max={100}
+                    step={1}
+                    value={activeShot.camera.lensMm}
+                    onChange={e => onUpdateCamera(activeShot.id, { lensMm: parseInt(e.target.value, 10) })}
+                    className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-700 rounded-lg"
+                  />
+                </div>
+
+                {/* 2. 机位视高 (Camera Height) */}
+                <div className="space-y-1.5">
+                  <div className={`flex items-center justify-between text-[10px] ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                    <span className="font-semibold flex items-center gap-1">
+                      <Sliders className="w-3 h-3 text-amber-500" /> 机位高度
+                    </span>
+                    <span className={`font-mono font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>
+                      {activeShot.camera.heightCm}cm · {
+                        activeShot.camera.heightCm <= 80 ? '低角度仰视' :
+                        activeShot.camera.heightCm <= 120 ? '沙发就坐视高' :
+                        activeShot.camera.heightCm <= 145 ? '站姿平视' :
+                        '俯瞰大视野'
+                      }
+                    </span>
+                  </div>
+                  {/* 高度快捷预设 */}
+                  <div className="grid grid-cols-4 gap-1 text-[9px] font-mono">
+                    {[
+                      { h: 60, label: '60cm 仰拍' },
+                      { h: 110, label: '110cm 坐视' },
+                      { h: 130, label: '130cm 平视' },
+                      { h: 155, label: '155cm 俯视' }
+                    ].map(preset => (
+                      <button
+                        key={preset.h}
+                        onClick={() => onUpdateCamera(activeShot.id, { heightCm: preset.h })}
+                        className={`py-1 rounded text-center transition cursor-pointer ${
+                          Math.abs(activeShot.camera.heightCm - preset.h) < 5
+                            ? 'bg-amber-500 text-black font-bold shadow-xs'
+                            : isLight ? 'bg-stone-100 text-stone-600 hover:bg-stone-200' : 'bg-white/5 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="range"
+                    min={50}
+                    max={180}
+                    step={5}
+                    value={activeShot.camera.heightCm}
+                    onChange={e => onUpdateCamera(activeShot.id, { heightCm: parseInt(e.target.value, 10) })}
+                    className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-700 rounded-lg"
+                  />
+                </div>
+
+                {/* 3. 偏角与俯仰 (Yaw & Pitch) */}
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  {/* 水平偏角 (Yaw) */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className={isLight ? 'text-stone-500' : 'text-neutral-400'}>水平偏角 (Yaw)</span>
+                      <span className="font-mono font-bold text-amber-500">{activeShot.camera.yawDeg}°</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-0.5 text-[9px] font-mono">
+                      {[
+                        { y: -42, label: '-42°' },
+                        { y: 0, label: '0° 正' },
+                        { y: 42, label: '+42°' }
+                      ].map(p => (
+                        <button
+                          key={p.y}
+                          onClick={() => onUpdateCamera(activeShot.id, { yawDeg: p.y })}
+                          className={`py-0.5 rounded text-center transition cursor-pointer ${
+                            Math.abs(activeShot.camera.yawDeg - p.y) < 3
+                              ? 'bg-amber-500 text-black font-bold'
+                              : isLight ? 'bg-stone-100 text-stone-600' : 'bg-white/5 text-neutral-400'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
                     </div>
                     <input
                       type="range"
-                      min={60}
-                      max={180}
-                      step={5}
-                      value={activeShot.camera.heightCm}
-                      onChange={e => onUpdateCamera(activeShot.id, { heightCm: parseInt(e.target.value, 10) })}
-                      className="w-full accent-amber-500 cursor-pointer"
+                      min={-45}
+                      max={45}
+                      step={1}
+                      value={activeShot.camera.yawDeg}
+                      onChange={e => onUpdateCamera(activeShot.id, { yawDeg: parseInt(e.target.value, 10) })}
+                      className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-700 rounded-lg"
+                    />
+                  </div>
+
+                  {/* 垂直俯仰 (Pitch) */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className={isLight ? 'text-stone-500' : 'text-neutral-400'}>俯仰倾角 (Pitch)</span>
+                      <span className="font-mono font-bold text-amber-500">{activeShot.camera.pitchDeg}°</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-0.5 text-[9px] font-mono">
+                      {[
+                        { p: 6, label: '+6° 仰' },
+                        { p: 0, label: '0° 平' },
+                        { p: -10, label: '-10° 俯' }
+                      ].map(p => (
+                        <button
+                          key={p.p}
+                          onClick={() => onUpdateCamera(activeShot.id, { pitchDeg: p.p })}
+                          className={`py-0.5 rounded text-center transition cursor-pointer ${
+                            Math.abs(activeShot.camera.pitchDeg - p.p) < 2
+                              ? 'bg-amber-500 text-black font-bold'
+                              : isLight ? 'bg-stone-100 text-stone-600' : 'bg-white/5 text-neutral-400'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="range"
+                      min={-15}
+                      max={12}
+                      step={1}
+                      value={activeShot.camera.pitchDeg}
+                      onChange={e => onUpdateCamera(activeShot.id, { pitchDeg: parseInt(e.target.value, 10) })}
+                      className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-700 rounded-lg"
                     />
                   </div>
                 </div>
 
-                {/* 2. 渲染画幅 */}
+                {/* 4. 构图景别切换器 (Framing Composition) */}
                 <div className="space-y-1">
-                  <span className={`text-[10px] ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>渲染画幅</span>
+                  <div className="flex justify-between text-[10px]">
+                    <span className={isLight ? 'text-stone-500' : 'text-neutral-400'}>构图景别 (Framing)</span>
+                    <span className="font-bold text-amber-500 uppercase">{activeShot.camera.framing}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[
+                      { id: 'wide', label: '全景 (Wide)', desc: '大平层全貌' },
+                      { id: 'product', label: '主体 (Hero)', desc: '主沙发侧翼' },
+                      { id: 'detail', label: '特写 (Macro)', desc: '微距皮革' }
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => onUpdateCamera(activeShot.id, { framing: f.id as any })}
+                        className={`py-1 rounded text-[10px] font-medium transition cursor-pointer ${
+                          activeShot.camera.framing === f.id
+                            ? 'bg-amber-500 text-black font-bold shadow-xs'
+                            : isLight ? 'bg-stone-100 text-stone-600 hover:bg-stone-200' : 'bg-white/5 text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 5. 渲染画幅规格 (Aspect Ratio) */}
+                <div className="space-y-1 pt-1 border-t border-white/5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className={isLight ? 'text-stone-500' : 'text-neutral-400'}>渲染画幅</span>
+                    <span className="font-mono font-bold text-amber-500">{aspectRatio}</span>
+                  </div>
                   <div className="grid grid-cols-4 gap-1">
                     {['4:3', '16:9', '1:1', '3:4'].map(r => (
                       <button
                         key={r}
                         onClick={() => handleUpdateCompute({ aspectRatio: r as ImageAspectRatio })}
-                        className={`py-1 rounded text-[10px] font-mono transition ${
+                        className={`py-1 rounded text-[10px] font-mono transition cursor-pointer ${
                           aspectRatio === r
                             ? 'bg-amber-500 text-black font-bold'
                             : isLight ? 'bg-stone-100 text-stone-700 hover:bg-stone-200' : 'bg-black/30 text-neutral-400 hover:text-white'
@@ -1440,6 +1832,22 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* 6. 重置为推荐工业机位按钮 */}
+                {onResetCamera && (
+                  <button
+                    onClick={() => onResetCamera(activeShot.id)}
+                    className={`w-full py-1.5 rounded-lg border text-[10px] font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      isLight
+                        ? 'border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-600'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10 text-neutral-300 hover:text-white'
+                    }`}
+                    title="恢复为该镜头的标准工业摄影设定"
+                  >
+                    <RotateCcw className="w-3 h-3 text-amber-400" />
+                    <span>恢复 {activeShot.templateCode} 推荐工业机位设定</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1461,52 +1869,59 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
       </div>
 
       {/* Asset Modals */}
-      <SceneStyleGalleryModal
-        isOpen={isStyleModalOpen}
-        onClose={() => setIsStyleModalOpen(false)}
-        selectedStyleId={activeAssets?.style?.id}
-        onSelectStyle={(style) => onUpdateActiveAssets?.({ style })}
-        onApplyAndLockMaster={(style) => {
-          onUpdateActiveAssets?.({ style });
-          setIsStyleModalOpen(false);
-          onApplyStyleAndGenerateMaster?.(style);
-        }}
-      />
+      {isStyleModalOpen && (
+        <SceneStyleGalleryModal
+          isOpen={isStyleModalOpen}
+          onClose={() => setIsStyleModalOpen(false)}
+          selectedStyleId={activeAssets?.style?.id}
+          onSelectStyle={(style) => onUpdateActiveAssets?.({ style })}
+          onApplyAndLockMaster={(style) => {
+            onUpdateActiveAssets?.({ style });
+            setIsStyleModalOpen(false);
+            onApplyStyleAndGenerateMaster?.(style);
+          }}
+        />
+      )}
 
-      <ModelAssetModal
-        isOpen={isModelModalOpen}
-        onClose={() => setIsModelModalOpen(false)}
-        selectedModelId={activeAssets?.model?.id}
-        onSelectModel={(model) => {
-          onUpdateActiveAssets?.({ model });
-          if (model) {
-            const nextSlots = activeLayout.slots.map((s, idx) =>
-              idx === 0
-                ? { ...s, modelId: model.id, modelName: model.nameZh || model.name }
-                : s
-            );
-            updateLayout({ slots: nextSlots });
+      {isModelModalOpen && (
+        <ModelAssetModal
+          isOpen={isModelModalOpen}
+          onClose={() => setIsModelModalOpen(false)}
+          selectedModelId={activeAssets?.model?.id}
+          onSelectModel={(model) => {
+            onUpdateActiveAssets?.({ model });
+            if (model) {
+              const nextSlots = activeLayout.slots.map((s, idx) =>
+                idx === 0
+                  ? { ...s, modelId: model.id, modelName: model.nameZh || model.name }
+                  : s
+              );
+              updateLayout({ slots: nextSlots });
+            }
+          }}
+        />
+      )}
+
+      {isAiChoreographerOpen && (
+        <AiHumanChoreographerModal
+          isOpen={isAiChoreographerOpen}
+          onClose={() => setIsAiChoreographerOpen(false)}
+          availableModels={availableModels}
+          currentShotImageUrl={
+            activeShot.revisions.find(r => r.id === activeShot.currentRevisionId)?.imageUrl ||
+            activeShot.revisions[activeShot.revisions.length - 1]?.imageUrl
           }
-        }}
-      />
-
-      <AiHumanChoreographerModal
-        isOpen={isAiChoreographerOpen}
-        onClose={() => setIsAiChoreographerOpen(false)}
-        availableModels={availableModels}
-        currentShotImageUrl={
-          activeShot.revisions.find(r => r.id === activeShot.currentRevisionId)?.imageUrl ||
-          activeShot.revisions[activeShot.revisions.length - 1]?.imageUrl
-        }
-        sceneMasterImageUrl={sceneMaster?.imageUrl}
-        onApplyLayout={(newSlots, mode) => {
-          updateLayout({
-            characterCount: newSlots.length,
-            mode,
-            slots: newSlots
-          });
-        }}
-      />
+          sceneMasterImageUrl={sceneMaster?.imageUrl}
+          currentShotCode={activeShot.templateCode}
+          onApplyLayout={(newSlots, mode) => {
+            updateLayout({
+              characterCount: newSlots.length,
+              mode,
+              slots: newSlots
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

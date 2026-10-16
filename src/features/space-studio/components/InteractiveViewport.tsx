@@ -20,7 +20,8 @@ import {
   Palette,
   GitBranch,
   Camera,
-  Info
+  Info,
+  XCircle
 } from 'lucide-react';
 import { ShotInstance, SceneMaster, ShotRevision } from '../../../types/spaceStudio';
 
@@ -30,6 +31,7 @@ interface InteractiveViewportProps {
   selectedSpaceCode: string;
   isGeneratingMaster: boolean;
   isRenderingShot: boolean;
+  onCancelRendering?: () => void;
   isLeftCollapsed: boolean;
   isRightCollapsed: boolean;
   isBottomCollapsed?: boolean;
@@ -46,6 +48,7 @@ export const InteractiveViewport: React.FC<InteractiveViewportProps> = ({
   selectedSpaceCode,
   isGeneratingMaster,
   isRenderingShot,
+  onCancelRendering,
   isLeftCollapsed,
   isRightCollapsed,
   isBottomCollapsed = false,
@@ -343,7 +346,9 @@ export const InteractiveViewport: React.FC<InteractiveViewportProps> = ({
                     : '配置好户型原型、风格与摆位蓝图后，点击生成并锁定 A00 空间母版。'
                   : activeShot.status === 'passed'
                   ? `生审分离解耦通过：产品保真分 ${activeShot.revisions[0]?.score?.productIdentity || 96}，摆位保真分 ${activeShot.revisions[0]?.score?.placement || 98}。`
-                  : '已继承 A00 空间母版与固定摆位，将基于特定 Camera DNA 与产品聚焦技能生成。'}
+                  : sceneMaster?.isLocked || (sceneMaster && sceneMaster.imageUrl)
+                  ? '已继承 A00 空间母版与固定摆位，将基于特定 Camera DNA 与产品聚焦技能生成。'
+                  : '⚠️ 提示：A00 空间母版尚未生成。建议先确立母版或点击下方一键生成，以锁定房间硬装与采光基准。'}
               </p>
             </div>
 
@@ -358,7 +363,18 @@ export const InteractiveViewport: React.FC<InteractiveViewportProps> = ({
               <span>俯仰 {activeShot.camera.pitchDeg}°</span>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 flex items-center justify-center gap-2">
+              {activeShot.templateCode !== 'A00' && !sceneMaster && onGenerateSceneMaster && (
+                <button
+                  type="button"
+                  onClick={onGenerateSceneMaster}
+                  disabled={isGeneratingMaster || isRenderingShot}
+                  className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-medium text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>优先生成 A00 母版</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={
@@ -367,7 +383,7 @@ export const InteractiveViewport: React.FC<InteractiveViewportProps> = ({
                     : () => onRenderShot(activeShot)
                 }
                 disabled={isGeneratingMaster || isRenderingShot}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs rounded-xl shadow-lg transition flex items-center gap-2 mx-auto cursor-pointer"
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs rounded-xl shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-200" />
                 <span>
@@ -379,9 +395,23 @@ export const InteractiveViewport: React.FC<InteractiveViewportProps> = ({
                     ? '正在渲染与过审...'
                     : activeShot.status === 'passed'
                     ? '重新渲染该镜头'
+                    : !sceneMaster
+                    ? '仍直接渲染当前镜头 (无母版)'
                     : '执行当前镜头渲染'}
                 </span>
               </button>
+
+              {(isRenderingShot || isGeneratingMaster) && onCancelRendering && (
+                <button
+                  type="button"
+                  onClick={onCancelRendering}
+                  className="px-3 py-2 rounded-xl border border-rose-500/40 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-lg"
+                  title="立即打断当前渲染"
+                >
+                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>打断</span>
+                </button>
+              )}
             </div>
           </div>
         )}

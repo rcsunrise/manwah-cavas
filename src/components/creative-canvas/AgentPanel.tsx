@@ -159,10 +159,31 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {
+      id: 'openai/gpt-image-2.5-flare-c',
+      icon: '🔥',
+      title: 'GPT 2.5 Flare',
+      subtitle: '高保真原画',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
+    },
+    {
+      id: 'openai/gpt-image-2.5-sunburst-c',
+      icon: '☀️',
+      title: 'GPT 2.5 Sunburst',
+      subtitle: '高光细节',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
+    },
+    {
       id: 'openai/gpt-image-2',
       icon: '🌌',
       title: 'GPT 标准',
       subtitle: 'image-2',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
+    },
+    {
+      id: 'gemini-nano-banana-2.1-preview',
+      icon: '🍌',
+      title: 'Nano Banana',
+      subtitle: 'v2.1 极速',
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
     },
     {

@@ -37,7 +37,7 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     const shotA02: ShotInstance = {
       id: 'shot-a02',
       templateCode: 'A02',
-      name: '产品 45° 黄金视角',
+      name: STANDARD_SHOT_TEMPLATES[1].name,
       camera: STANDARD_SHOT_TEMPLATES[1].defaultCamera,
       intent: STANDARD_SHOT_TEMPLATES[1].intent,
       status: 'draft',
@@ -55,27 +55,27 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     });
 
     expect(compiled.shotCode).toBe('A02');
-    expect(compiled.positivePrompt).toContain('45mm');
+    expect(compiled.positivePrompt).toContain('38mm');
     expect(compiled.positivePrompt).toContain('Hasselblad');
-    expect(compiled.positivePrompt).toContain('45-degree silhouette');
+    expect(compiled.positivePrompt).toContain('45-DEGREE 3+1 ENSEMBLE VIEW');
     expect(compiled.invarianceChecks.furnitureFixed).toBe(true);
     expect(compiled.invarianceChecks.productLocked).toBe(true);
   });
 
-  it('compiles A04 Macro Leather Craftsmanship with high-detail cues', () => {
-    const shotA04: ShotInstance = {
-      id: 'shot-a04',
-      templateCode: 'A04',
-      name: '皮质特写',
-      camera: STANDARD_SHOT_TEMPLATES[3].defaultCamera,
-      intent: STANDARD_SHOT_TEMPLATES[3].intent,
+  it('compiles A08 Craftsmanship & Material Focus with high-detail cues', () => {
+    const shotA08: ShotInstance = {
+      id: 'shot-a08',
+      templateCode: 'A08',
+      name: '皮质工艺/高定特写 (Craftsmanship & Elegant Portrait)',
+      camera: STANDARD_SHOT_TEMPLATES[7].defaultCamera,
+      intent: STANDARD_SHOT_TEMPLATES[7].intent,
       status: 'draft',
       revisions: [],
       hasHumanPass: false
     };
 
     const compiled = ShootCompiler.compileShotPrompt({
-      shot: shotA04,
+      shot: shotA08,
       sceneMaster,
       products,
       spacePreset,
@@ -83,9 +83,9 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
       blueprint
     });
 
-    expect(compiled.shotCode).toBe('A04');
-    expect(compiled.positivePrompt).toContain('85mm');
-    expect(compiled.positivePrompt).toContain('microscopic genuine semi-aniline leather pores');
+    expect(compiled.shotCode).toBe('A08');
+    expect(compiled.positivePrompt).toContain('45mm');
+    expect(compiled.positivePrompt).toContain('RECLINER 5-MODE FUNCTION SHOWCASE');
     expect(compiled.negativePrompt).toContain('shifted sofa coordinates');
   });
 
@@ -94,7 +94,7 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
       id: 'shot-a01',
       templateCode: 'A01',
       name: '空间主大全景',
-      camera: STANDARD_SHOT_TEMPLATES[0].defaultCamera, // 28mm, 140cm, yaw: 0, pitch: -3, framing: 'wide'
+      camera: STANDARD_SHOT_TEMPLATES[0].defaultCamera, // 24mm, 118cm, yaw: 0, pitch: 0, framing: 'wide'
       intent: STANDARD_SHOT_TEMPLATES[0].intent,
       status: 'draft',
       revisions: [],
@@ -114,13 +114,13 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     expect(compiled.shotCode).toBe('A01');
 
     // 2. 验证 Camera DNA 单变量改变
-    expect(compiled.cameraSpec.lensMm).toBe(28);
-    expect(compiled.cameraSpec.heightCm).toBe(140);
+    expect(compiled.cameraSpec.lensMm).toBe(24);
+    expect(compiled.cameraSpec.heightCm).toBe(118);
     expect(compiled.cameraSpec.yawDeg).toBe(0);
-    expect(compiled.cameraSpec.pitchDeg).toBe(-3);
+    expect(compiled.cameraSpec.pitchDeg).toBe(0);
     expect(compiled.cameraSpec.framing).toBe('wide');
-    expect(compiled.positivePrompt).toContain('28mm architectural prime lens');
-    expect(compiled.positivePrompt).toContain('140cm above finished floor');
+    expect(compiled.positivePrompt).toContain('ultra-wide 24mm architectural lens');
+    expect(compiled.positivePrompt).toContain('118cm above finished floor');
 
     // 3. 验证空间世界与家具物理不变量严格继承
     expect(compiled.positivePrompt).toContain(`space prototype anchor: ${spacePreset.name}`);

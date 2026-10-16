@@ -7,6 +7,8 @@ import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys'
 import { SpaceMultimodalRefereeService } from '../services/spaceMultimodalRefereeService';
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
 
+import sharp from 'sharp';
+
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
 
@@ -18,6 +20,12 @@ const RenderShotSchema = z.object({
   shotCode: z.string().min(1), // e.g. A01, A02
   revisionNumber: z.number().int().positive().default(1),
   candidateCount: z.number().int().min(1).max(4).optional().default(1),
+  roomName: z.string().optional(),
+  spaceCode: z.string().optional(),
+  styleName: z.string().optional(),
+  styleCode: z.string().optional(),
+  spacePreset: z.any().optional(),
+  stylePreset: z.any().optional(),
   camera: z.object({
     lensMm: z.number(),
     heightCm: z.number(),
@@ -44,6 +52,24 @@ const RenderShotSchema = z.object({
     imageUrl: z.string().optional()
   }).passthrough().optional(),
   productReferenceImage: z.string().optional(),
+  ensembleProducts: z.array(z.object({
+    id: z.string().optional(),
+    sku: z.string().optional(),
+    role: z.string().optional(),
+    priority: z.string().optional(),
+    name: z.string().optional(),
+    color: z.string().optional(),
+    colors: z.array(z.string()).optional(),
+    material: z.string().optional(),
+    materials: z.array(z.string()).optional(),
+    referenceImage: z.string().optional(),
+    referenceImages: z.array(z.any()).optional(),
+    dimensions: z.object({
+      width: z.number().optional(),
+      depth: z.number().optional(),
+      height: z.number().optional()
+    }).optional()
+  }).passthrough()).optional(),
   promptSnapshot: z.record(z.string(), z.any()),
   isHumanPass: z.boolean().optional(),
   baseShotReferenceImage: z.string().optional(),
@@ -84,6 +110,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
       productDNA,
       sceneMasterReference,
       productReferenceImage,
+      ensembleProducts,
       promptSnapshot,
       generationSettings
     } = parsed.data;
@@ -128,7 +155,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
       shotCode,
       positivePrompt,
       negativePrompt,
-      aspectRatio: generationSettings?.aspectRatio || '3:4',
+      aspectRatio: generationSettings?.aspectRatio || '4:3',
       preferredModel: generationSettings?.model,
       resolution: generationSettings?.resolution,
       seed: generationSettings?.seed,
@@ -141,6 +168,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
         materials: [effectiveProductMaterial],
         referenceImage: effectiveProductRef
       },
+      ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
       productReferenceImage: effectiveProductRef,
       sceneMasterReferenceImage: effectiveSceneMasterRef,
       roomName: '都会收藏家大平层客厅',
@@ -300,6 +328,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
       productDNA,
       sceneMasterReference,
       productReferenceImage,
+      ensembleProducts,
       promptSnapshot,
       generationSettings
     } = parsed.data;
@@ -320,6 +349,13 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     }
     activeRenderingLocks.set(lockKey, now);
 
+    // 若客户端主动取消或断开连接，及时释放防重锁
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        activeRenderingLocks.delete(lockKey);
+      }
+    });
+
     const baseShotRef = (req.body as any).currentShotReferenceImage || (req.body as any).baseShotReferenceImage;
     const humanLayout = (req.body as any).humanLayout;
     const selectedModels = (req.body as any).selectedModels || [];
@@ -330,8 +366,16 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const effectiveProductRef = productReferenceImage || (productDNA as any)?.referenceImage;
     const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
 
-    const effectiveStyleName = promptSnapshot?.styleName || '意式轻奢';
-    const effectiveRoomName = promptSnapshot?.roomName || '雅致大平层';
+    const effectiveStyleName =
+      (req.body as any).styleName ||
+      promptSnapshot?.styleName ||
+      (req.body as any).stylePreset?.name?.split(' (')[0] ||
+      '都会收藏家';
+    const effectiveRoomName =
+      (req.body as any).roomName ||
+      promptSnapshot?.roomName ||
+      (req.body as any).spacePreset?.name?.split(' (')[0] ||
+      '顶层天际会所大宅';
     const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || '4:3';
 
     const variantSpecs = isHumanPass
@@ -422,8 +466,8 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             positivePrompt,
             negativePrompt: promptSnapshot?.negativePrompt || '',
             aspectRatio: effectiveAspect,
-            preferredModel: generationSettings?.model,
-            resolution: generationSettings?.resolution,
+            preferredModel: generationSettings?.model || (req.body as any).preferredModel,
+            resolution: generationSettings?.resolution || (req.body as any).resolution,
             seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
             productName: effectiveProductName,
             productColor: effectiveProductColor,
@@ -434,6 +478,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
               materials: [effectiveProductMaterial],
               referenceImage: effectiveProductRef
             },
+            ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
             productReferenceImage: effectiveProductRef,
             sceneMasterReferenceImage: effectiveSceneMasterRef,
             currentShotReferenceImage: baseShotRef,
@@ -461,7 +506,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           };
         } catch (candErr: any) {
           console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation fallback:`, candErr?.message);
-          // 兜底候选保障高可用：使用高质量默认或当前机位图
+          // 高可用自愈保障：当云端接口严重报错或超时，返回真值底图，杜绝 500 导致视口瘫痪
           const fallbackUrl = baseShotRef || effectiveSceneMasterRef || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
           return {
             id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
@@ -470,7 +515,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             imageUrl: fallbackUrl,
             objectKey: `shots/${shotCode}/fallback-v${v.idx}.webp`,
             thumbnailUrl: fallbackUrl,
-            summaryTag: `${v.tag} (高可用备选)`,
+            summaryTag: `${v.tag} (高可用自愈备选)`,
             promptFragment: v.promptAddon,
             seed: 1000 + v.idx,
             score: 90,
@@ -502,6 +547,149 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     setTimeout(() => {
       activeRenderingLocks.delete(lockKey);
     }, 1500);
+  }
+});
+
+/**
+ * POST /api/space/shoot/outpaint
+ * 专业级智能扩图接口：基于已有机位图，支持四周外扩、左右延展、上下拉升，生成新全景 Revision
+ */
+router.post('/outpaint', async (req: Request, res: Response) => {
+  try {
+    const {
+      projectId = 'manwah-noble-space-01',
+      shotId,
+      shotCode = 'A03',
+      baseRevisionId,
+      paddedImage,      // 带延展区域的底图 (base64 或 url)
+      maskImage,        // 黑白遮罩图 (base64 或 url)
+      outpaintMode = 'uniform', // 'uniform' | 'horizontal' | 'vertical' | 'custom'
+      scale = 1.5,
+      promptSupplement,
+      roomName = '都会收藏家大宅',
+      styleName = '都会收藏家',
+      preferredModel = 'gpt-image-2',
+      aspectRatio = '4:3',
+      resolution = '2K'
+    } = req.body;
+
+    if (!paddedImage) {
+      return res.status(400).json({ success: false, error: '缺少待扩图的原图或延展底图 (paddedImage)' });
+    }
+
+    const timestamp = Date.now();
+    const revisionId = `rev-outpaint-${shotCode.toLowerCase()}-${timestamp.toString(36)}`;
+    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId,
+      shotId: shotCode,
+      revisionId,
+      extension: 'webp'
+    });
+
+    const directionDescription =
+      outpaintMode === 'horizontal' ? '左右两侧横向开阔延展 (Horizontal Outpaint)' :
+      outpaintMode === 'vertical' ? '上下纵向拉高延展 (Vertical Outpaint)' :
+      `四周全向等比外扩 ${scale}x (360° Outward Panorama Expansion)`;
+
+    const directivePrompt = `[CRITICAL ARCHITECTURAL OUTPAINTING & PANORAMIC EXPANSION MANDATE]
+PRIMARY TASK:
+You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) from Reference Image 1.
+
+MANDATORY RULES:
+1. ABSOLUTE IDENTITY & POSITION PRESERVATION:
+   - The central hero furniture (luxury sofa, coffee table, accessories, lighting, texture) and already generated living room area from Reference Image 1 MUST REMAIN 100% IDENTICAL, UNTOUCHED, AND PERSISTENT.
+   - Do NOT alter, redraw, distort, or relocate the existing furniture or room elements in the center!
+2. SEAMLESS ARCHITECTURAL CONTINUATION:
+   - Natural and seamless continuation of the architectural shell: continue the solid wood paneling, luxury stone slab feature walls, ceiling cove lighting, floor rugs, and floor tiles.
+   - If expanding horizontally: naturally extend the floor-to-ceiling panoramic windows, sheer drapery, side accent tables, or matching lounge seating into the periphery.
+   - If expanding vertically: naturally reveal the majestic ceiling coffered structure, architectural pendant chandeliers overhead, and complete the full area rug and floor perspective below.
+3. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO LABELS, NO CHINESE CHARACTERS, NO WATERMARKS.
+4. FLAWLESS TRANSITION: Flawlessly blend the expanded borders with zero visible seams, pixelation, or boundary artifacts.
+
+Style Context: ${styleName} aesthetic, ${roomName}.
+${promptSupplement ? `User Focus: ${promptSupplement}` : ''}`;
+
+    let modelToUse = preferredModel;
+    if (!modelToUse || modelToUse === 'gemini-2.5-flash-image') {
+      modelToUse = 'gemini-3.1-flash-image-preview';
+    }
+
+    const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
+    const gatewayRes = await fetch(gatewayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-uuid': 'system'
+      },
+      body: JSON.stringify({
+        prompt: directivePrompt,
+        model: modelToUse,
+        aspectRatio,
+        resolution,
+        images: [{ data: paddedImage, role: 'composition_reference' }],
+        mask: maskImage,
+        generationIntent: 'image_edit'
+      }),
+      signal: AbortSignal.timeout(180000)
+    });
+
+    const gatewayData = await gatewayRes.json();
+    if (!gatewayRes.ok || gatewayData.error) {
+      const errorMsg =
+        gatewayData.error?.message ||
+        (typeof gatewayData.error === 'string' ? gatewayData.error : '') ||
+        gatewayData.message ||
+        '扩图模型处理失败';
+      throw new Error(errorMsg);
+    }
+
+    const imgUrlOrBase64 =
+      gatewayData.imageUrl ||
+      gatewayData.data?.[0]?.url ||
+      gatewayData.data?.[0]?.b64_json ||
+      gatewayData.images?.[0]?.data;
+
+    if (!imgUrlOrBase64) {
+      throw new Error('扩图网关未返回有效图像数据');
+    }
+
+    let finalImageUrl = imgUrlOrBase64;
+    // 若为 base64，转为 buffer 并存入本地存储
+    if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.startsWith('data:')) {
+      const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+      let imgBuffer = Buffer.from(base64Clean, 'base64');
+      try {
+        imgBuffer = await sharp(imgBuffer).webp({ quality: 90 }).toBuffer();
+      } catch (sharpErr) {
+        console.warn('Direct webp conversion fallback:', sharpErr);
+      }
+      await storage.put({
+        objectKey,
+        buffer: imgBuffer,
+        contentType: 'image/webp'
+      });
+      finalImageUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        revisionId,
+        imageUrl: finalImageUrl,
+        objectKey,
+        outpaintMode,
+        scale,
+        aspectRatio,
+        label: outpaintMode === 'horizontal' ? `左右扩图 (${scale}x)` : outpaintMode === 'vertical' ? `上下扩图 (${scale}x)` : `四周扩图 (${scale}x)`,
+        metaSummary: `视野向${outpaintMode === 'horizontal' ? '左右两侧' : outpaintMode === 'vertical' ? '上下两侧' : '四周'}自然延展 ${scale}x · 保留主沙发与摆位`
+      }
+    });
+  } catch (err: any) {
+    console.error('[spaceShootRoutes] Outpaint error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to outpaint shot'
+    });
   }
 });
 

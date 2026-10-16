@@ -10,6 +10,7 @@ export type ProductRole =
   | 'sofa_3seat'
   | 'sofa_2seat'
   | 'recliner_1seat'
+  | 'lounge_chair'
   | 'coffee_table'
   | 'dining_table'
   | 'dining_chair'
@@ -23,6 +24,33 @@ export interface ProductReference {
   objectKey: string;
   publicUrl?: string;
   verified: boolean;
+}
+
+export interface DisaggregatedProductItem {
+  id: string;
+  name: string;
+  sku?: string;
+  role: ProductRole;
+  priority: 'primary' | 'secondary' | 'decor';
+  dimensions: { width: number; depth: number; height: number };
+  materials: string[];
+  colors: string[];
+  adaptiveStyles?: string[];
+  surfaceTexture?: string;
+  functionCapable?: boolean;
+  boundingBox: {
+    ymin: number; // 0..100
+    xmin: number; // 0..100
+    ymax: number; // 0..100
+    xmax: number; // 0..100
+  };
+  cropImageUrl?: string;
+  cropBase64?: string;
+  sourceMasterImageUrl?: string;
+  ensembleId?: string;
+  roleTitle?: string;
+  lockedRules?: string[];
+  dossierSummary?: string;
 }
 
 export interface ProductAsset {
@@ -48,6 +76,14 @@ export interface ProductAsset {
   sourceType?: 'upload' | 'canvas_dna' | 'preset';
   adaptiveStyles?: string[];
   isEnsembleIncluded?: boolean;
+  // 多产品识别与来源总图索引 (Multi-Product Disaggregation & Source Master Index)
+  sourceMasterImageUrl?: string;
+  sourceBoundingBox?: { ymin: number; xmin: number; ymax: number; xmax: number };
+  ensembleId?: string;
+  ensembleRoleTitle?: string;
+  cropImageUrl?: string;
+  cropBase64?: string;
+  detectedProducts?: DisaggregatedProductItem[];
 }
 
 // 2. SPACE PROTOTYPE & PRESET (BUILD)
@@ -72,17 +108,22 @@ export interface SpacePreset {
 }
 
 // 3. STYLE LIBRARY (BUILD)
+export type StyleCollectionCategory = '东方住宅' | '欧美住宅' | '国际现代' | string;
+
 export interface StylePreset {
   id: string;
   name: string;
   code: string;
-  category: string;
+  category: StyleCollectionCategory;
+  cityCharacter?: string;
   colorPalette: string[];
   materialSystem: string[];
   lifestyleTags: string[];
   recommendedProductTypes: string[];
+  typicalLayout?: string;
   promptFragments: string[];
   negativeRules: string[];
+  referenceImages?: string[];
   thumbnailUrl?: string;
 }
 
@@ -159,13 +200,13 @@ export interface ImageSizeSpec {
 }
 
 export const IMAGE_ASPECT_SPECS: Record<string, ImageSizeSpec> = {
-  '3:4': {
-    aspectRatio: '3:4',
-    label: '3:4 商业海报',
-    sublabel: '2100 × 2800 px',
-    width: 2100,
-    height: 2800,
-    useCase: '电商详情主图 · 商业竖版海报'
+  '4:3': {
+    aspectRatio: '4:3',
+    label: '4:3 空间透视',
+    sublabel: '2560 × 1920 px',
+    width: 2560,
+    height: 1920,
+    useCase: '建筑室内经典画幅 · 画册标准 · 空间摄影默认'
   },
   '16:9': {
     aspectRatio: '16:9',
@@ -175,6 +216,14 @@ export const IMAGE_ASPECT_SPECS: Record<string, ImageSizeSpec> = {
     height: 1440,
     useCase: '大平层宽画幅 · 4K 大屏展示'
   },
+  '3:4': {
+    aspectRatio: '3:4',
+    label: '3:4 商业海报',
+    sublabel: '2100 × 2800 px',
+    width: 2100,
+    height: 2800,
+    useCase: '电商详情主图 · 商业竖版海报'
+  },
   '1:1': {
     aspectRatio: '1:1',
     label: '1:1 经典方图',
@@ -182,14 +231,6 @@ export const IMAGE_ASPECT_SPECS: Record<string, ImageSizeSpec> = {
     width: 2048,
     height: 2048,
     useCase: '平台方形主图 · 材质精修'
-  },
-  '4:3': {
-    aspectRatio: '4:3',
-    label: '4:3 空间透视',
-    sublabel: '2560 × 1920 px',
-    width: 2560,
-    height: 1920,
-    useCase: '建筑室内经典画幅 · 杂志专刊'
   },
   '9:16': {
     aspectRatio: '9:16',
@@ -294,11 +335,88 @@ export type ComputeModelTier =
   | 'gemini-2.5-flash'
   | 'gemini-3.1-flash-image'
   | 'google/gemini-3-pro-image'
+  | 'gemini-nano-banana-2.1-preview'
   | 'openai/gpt-image-2'
   | 'openai/gpt-image-2-c'
-  | 'openai/gpt-image-2-all';
+  | 'openai/gpt-image-2-all'
+  | 'openai/gpt-image-2.5-flare-c'
+  | 'openai/gpt-image-2.5-sunburst-c';
 
 export type RenderResolution = '1K' | '2K' | '4K';
+
+export interface RenderDimensionInfo {
+  width: number;
+  height: number;
+  text: string;
+}
+
+/**
+ * 计算任意画幅比例和指定分辨率(1K/2K/4K)下的实际渲染物理尺寸
+ */
+export function calculateRenderDimensions(ratioStr: string, resolution: RenderResolution = '2K'): RenderDimensionInfo {
+  const is1K = resolution === '1K';
+  const is4K = resolution === '4K';
+
+  if (!ratioStr || ratioStr === 'Auto' || ratioStr === '1:1') {
+    const dim = is4K ? 4096 : is1K ? 1024 : 2048;
+    return { width: dim, height: dim, text: `${dim} × ${dim} px` };
+  }
+
+  const parts = String(ratioStr).trim().split(':');
+  if (parts.length === 2) {
+    const w = parseFloat(parts[0]);
+    const h = parseFloat(parts[1]);
+    if (!isNaN(w) && !isNaN(h) && w > 0 && h > 0) {
+      const ratio = w / h;
+      // 16:9
+      if (Math.abs(ratio - 16 / 9) < 0.05) {
+        const width = is4K ? 4096 : is1K ? 1792 : 2560;
+        const height = is4K ? 2304 : is1K ? 1024 : 1440;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 9:16
+      if (Math.abs(ratio - 9 / 16) < 0.05) {
+        const width = is4K ? 2304 : is1K ? 1024 : 1440;
+        const height = is4K ? 4096 : is1K ? 1792 : 2560;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 4:3
+      if (Math.abs(ratio - 4 / 3) < 0.05) {
+        const width = is4K ? 4096 : is1K ? 1472 : 2560;
+        const height = is4K ? 3072 : is1K ? 1104 : 1920;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 3:4
+      if (Math.abs(ratio - 3 / 4) < 0.05) {
+        const width = is4K ? 3072 : is1K ? 1104 : 1536;
+        const height = is4K ? 4096 : is1K ? 1472 : 2048;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 3:2
+      if (Math.abs(ratio - 1.5) < 0.05) {
+        const width = is4K ? 4096 : is1K ? 1536 : 2048;
+        const height = is4K ? 2730 : is1K ? 1024 : 1365;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 2:3
+      if (Math.abs(ratio - 2 / 3) < 0.05) {
+        const width = is4K ? 2730 : is1K ? 1024 : 1365;
+        const height = is4K ? 4096 : is1K ? 1536 : 2048;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+      // 21:9
+      if (Math.abs(ratio - 21 / 9) < 0.05 || ratio >= 2.0) {
+        const width = is4K ? 4096 : is1K ? 1792 : 2560;
+        const height = is4K ? 1728 : is1K ? 768 : 1080;
+        return { width, height, text: `${width} × ${height} px` };
+      }
+    }
+  }
+
+  const base = is4K ? 4096 : is1K ? 1024 : 2048;
+  return { width: base, height: base, text: `${base} × ${base} px` };
+}
+
 
 export type NamingPreset = 'standard' | 'detailed' | 'custom';
 
@@ -323,7 +441,8 @@ export type ShotIntentType =
   | 'SI-05' // Comfort Experience
   | 'SI-06' // Material Focus
   | 'SI-07' // Detail Focus
-  | 'SI-08'; // Lifestyle / Family Story
+  | 'SI-08' // Lifestyle / Family Story
+  | 'SI-09'; // Dining Suite / Companion Ensemble
 
 export interface ShotIntentDNA {
   intentCode: ShotIntentType;
@@ -353,6 +472,10 @@ export interface ShotTemplate {
   intent: ShotIntentDNA;
   defaultCamera: CameraDNA;
   description: string;
+  alignmentSample?: string; // 影棚实拍对齐样张编号，例如 '1021.jpg'、'0647.jpg / 0692.jpg'
+  recommendedAspectRatio?: ImageAspectRatio; // 推荐画幅，例如 A02 推荐 '3:4'
+  studioCategory?: string; // 影棚核心镜头分类
+  workflowRole?: string; // 流程图角色定位，例如 '45mm 竖版/横版核心位'
 }
 
 // 7. SHOT INSTANCE & REVISION (SHOOT)
@@ -423,6 +546,7 @@ export interface ShotInstance {
   currentRevisionId?: string;
   revisions: ShotRevision[];
   hasHumanPass: boolean;
+  aspectRatio?: ImageAspectRatio;
 }
 
 // 8. HUMAN MODEL & PASS (HUMAN)

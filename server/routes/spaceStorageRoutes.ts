@@ -4,6 +4,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { GcsAssetStorage } from '../services/storage/gcsAssetStorage';
 
 const router = Router();
@@ -172,6 +173,128 @@ router.get(['/local-file', '/download'], async (req: Request, res: Response) => 
     res.status(404).send('File not found in storage');
   } catch (error: any) {
     res.status(500).send(error.message);
+  }
+});
+
+/**
+ * GET /api/space/storage/export-image
+ * 工业级摄影画册高保真原画导出（支持 4K/2K/1K，Sharp Lanczos3 超采样，标准 JPEG 98% 4:4:4 或无损 PNG）
+ * 携带标准 Content-Disposition attachment 头，确保客户端原生下载带合法文件名和真实数兆字节体积
+ */
+router.get('/export-image', async (req: Request, res: Response) => {
+  try {
+    const key = req.query.key as string;
+    const format = (req.query.format as string) === 'png' ? 'png' : 'jpg';
+    const resolution = (req.query.resolution as string) || '4K';
+    const templateCode = (req.query.shotCode as string) || 'A00';
+    const customName = req.query.fileName as string;
+
+    if (!key || key.includes('..')) {
+      return res.status(400).send('Invalid objectKey');
+    }
+
+    let sourceBuf: Buffer | null = null;
+    const filePath = storage.getLocalFilePath(key);
+    if (filePath && fs.existsSync(filePath)) {
+      sourceBuf = fs.readFileSync(filePath);
+    } else {
+      sourceBuf = await storage.getBuffer(key);
+    }
+
+    if (!sourceBuf || sourceBuf.length === 0) {
+      return res.status(404).send('Source image not found in storage');
+    }
+
+    // 检查原图尺寸
+    const meta = await sharp(sourceBuf).metadata();
+    const origW = meta.width || 2400;
+    const origH = meta.height || 1800;
+    const ratio = origW / origH;
+
+    // 根据期望分辨率计算目标物理尺寸
+    let targetW = origW;
+    let targetH = origH;
+
+    if (resolution === '4K') {
+      if (Math.abs(ratio - 4 / 3) < 0.1) {
+        targetW = 4096;
+        targetH = 3072;
+      } else if (Math.abs(ratio - 16 / 9) < 0.1) {
+        targetW = 4096;
+        targetH = 2304;
+      } else if (Math.abs(ratio - 1) < 0.1) {
+        targetW = 4096;
+        targetH = 4096;
+      } else if (Math.abs(ratio - 3 / 4) < 0.1) {
+        targetW = 3072;
+        targetH = 4096;
+      } else if (Math.abs(ratio - 9 / 16) < 0.1) {
+        targetW = 2304;
+        targetH = 4096;
+      } else {
+        targetW = 4096;
+        targetH = Math.round(4096 / ratio);
+      }
+    } else if (resolution === '1K') {
+      if (Math.abs(ratio - 4 / 3) < 0.1) {
+        targetW = 1472;
+        targetH = 1104;
+      } else {
+        targetW = 1280;
+        targetH = Math.round(1280 / ratio);
+      }
+    } else {
+      // 2K
+      if (Math.abs(ratio - 4 / 3) < 0.1) {
+        targetW = 2400;
+        targetH = 1800;
+      } else {
+        targetW = 2560;
+        targetH = Math.round(2560 / ratio);
+      }
+    }
+
+    let pipeline = sharp(sourceBuf);
+    // 若原图小于目标尺寸或不一致，采用工业级 Lanczos3 算法进行平滑重采样
+    if (origW !== targetW || origH !== targetH) {
+      pipeline = pipeline.resize(targetW, targetH, {
+        kernel: sharp.kernel.lanczos3,
+        fit: 'fill'
+      });
+    }
+
+    let outputBuf: Buffer;
+    let contentType: string;
+    let ext: string;
+
+    if (format === 'png') {
+      outputBuf = await pipeline.png({ compressionLevel: 6 }).toBuffer();
+      contentType = 'image/png';
+      ext = 'png';
+    } else {
+      outputBuf = await pipeline
+        .jpeg({ quality: 98, chromaSubsampling: '4:4:4' })
+        .toBuffer();
+      contentType = 'image/jpeg';
+      ext = 'jpg';
+    }
+
+    const downloadFileName = customName || `MANWAH_${templateCode}_${resolution}_${targetW}x${targetH}.${ext}`;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', outputBuf.length);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(downloadFileName)}"; filename*=UTF-8''${encodeURIComponent(downloadFileName)}`
+    );
+
+    return res.end(outputBuf);
+  } catch (err: any) {
+    console.error('[spaceStorageRoutes] Export image failed:', err);
+    res.status(500).send(`Image export failed: ${err.message}`);
   }
 });
 

@@ -1,0 +1,9 @@
+node_modules
+.git
+.data
+*.log
+debug.log
+.env.local
+dist
+.tempmediaStorage
+.user_uploaded

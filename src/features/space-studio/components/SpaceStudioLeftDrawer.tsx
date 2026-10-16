@@ -28,9 +28,16 @@ import {
   Ruler,
   Cpu,
   FileCheck,
-  Info
+  Info,
+  Boxes,
+  CheckCheck,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  X
 } from 'lucide-react';
 import { SpacePreset, StylePreset, ProductAsset, ShotInstance } from '../../../types/spaceStudio';
+import { recommendStylesForProduct } from '../engine/styleRecommendationEngine';
 
 interface SpaceStudioLeftDrawerProps {
   spaces: SpacePreset[];
@@ -45,6 +52,7 @@ interface SpaceStudioLeftDrawerProps {
   onSyncFromCanvas?: () => void;
   onOpenUploadModal?: (productToEdit?: ProductAsset | null) => void;
   onAddProduct?: (product: ProductAsset) => void;
+  onBatchAddProducts?: (products: ProductAsset[]) => void;
   onUpdateProduct?: (product: ProductAsset) => void;
   onRemoveProduct?: (productId: string) => void;
   onSetPrimaryProduct?: (productId: string) => void;
@@ -76,6 +84,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   onSyncFromCanvas,
   onOpenUploadModal,
   onAddProduct,
+  onBatchAddProducts,
   onUpdateProduct,
   onRemoveProduct,
   onSetPrimaryProduct,
@@ -100,7 +109,35 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   const [isReadoutsCollapsed, setIsReadoutsCollapsed] = useState<boolean>(true);
   const [isFeaturesCollapsed, setIsFeaturesCollapsed] = useState<boolean>(true);
   const [isRulesCollapsed, setIsRulesCollapsed] = useState<boolean>(true);
+  const [isEnsembleBreakdownCollapsed, setIsEnsembleBreakdownCollapsed] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 产品大图高保真放大预览 Lightbox 状态
+  const [zoomedProduct, setZoomedProduct] = useState<{
+    imageUrl: string;
+    name: string;
+    sku?: string;
+    dimensions?: { width: number; depth: number; height?: number };
+    materials?: string[];
+    colors?: string[];
+    roleTitle?: string;
+  } | null>(null);
+  const [lightboxScale, setLightboxScale] = useState<number>(1);
+
+  // 风格库大类筛选状态 (全部 / 欧美住宅 / 国际现代 / 东方住宅)
+  const [styleCategoryFilter, setStyleCategoryFilter] = useState<string>('all');
+
+  // 支持键盘 Esc 键退出大图预览
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && zoomedProduct) {
+        setZoomedProduct(null);
+        setLightboxScale(1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomedProduct]);
 
   const isLight = theme === 'light';
 
@@ -112,6 +149,80 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   ];
 
   const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
+
+  // 一键将主品总图解构出的全部单品导入并展开到搭配库
+  const handleDeployEnsembleToLibrary = () => {
+    if (!primaryProduct?.detectedProducts || primaryProduct.detectedProducts.length <= 1) return;
+    const ensembleId = primaryProduct.ensembleId || `ens-${Date.now().toString(36)}`;
+    const masterImg = primaryProduct.sourceMasterImageUrl || primaryProduct.referenceImages?.[0]?.publicUrl || '';
+
+    const newAssets: ProductAsset[] = primaryProduct.detectedProducts.map((dp, idx) => {
+      const isFirst = idx === 0;
+      const prodId = dp.id.startsWith('item-') ? `prod-ens-${dp.id}` : dp.id;
+      const cropUrl = dp.cropBase64 || dp.cropImageUrl;
+
+      const isArmlessOrNonFunc =
+        dp.role === 'lounge_chair' ||
+        dp.functionCapable === false ||
+        (dp.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(dp.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(dp.name));
+      const resolvedRole = isArmlessOrNonFunc && dp.role === 'recliner_1seat' ? 'lounge_chair' : dp.role;
+
+      return {
+        id: isFirst ? primaryProduct.id : prodId,
+        name: dp.name,
+        sku: dp.sku || `MW-CH-${Math.floor(1000 + Math.random() * 9000)}-${idx + 1}`,
+        role: resolvedRole as any,
+        priority: isFirst ? ('primary' as const) : ('secondary' as const),
+        identityLock: 'strict' as const,
+        dimensions: dp.dimensions,
+        materials: dp.materials,
+        colors: dp.colors,
+        adaptiveStyles: dp.adaptiveStyles || primaryProduct.adaptiveStyles,
+        surfaceTexture: dp.surfaceTexture || primaryProduct.surfaceTexture,
+        functionCapable: typeof dp.functionCapable === 'boolean'
+          ? dp.functionCapable
+          : isArmlessOrNonFunc
+          ? false
+          : (resolvedRole === 'sofa_3seat' || resolvedRole === 'sofa_2seat' || resolvedRole === 'recliner_1seat'),
+        isEnsembleIncluded: true,
+        referenceImages: cropUrl
+          ? [
+              {
+                id: `ref-crop-${idx + 1}`,
+                type: 'front' as const,
+                objectKey: `projects/manwah/products/${prodId}/refs/crop/original.webp`,
+                publicUrl: cropUrl,
+                verified: true
+              }
+            ]
+          : primaryProduct.referenceImages || [],
+        cropBase64: dp.cropBase64,
+        cropImageUrl: dp.cropImageUrl,
+        sourceMasterImageUrl: masterImg,
+        sourceBoundingBox: dp.boundingBox,
+        ensembleId,
+        ensembleRoleTitle: dp.roleTitle || dp.name,
+        structuralFeatures: primaryProduct.structuralFeatures,
+        lockedRules: dp.lockedRules || primaryProduct.lockedRules,
+        readoutConfidence: primaryProduct.readoutConfidence || 96,
+        dossierSummary: dp.dossierSummary || `${dp.name} · 索引来自主品总图切片`,
+        dossierGeneratedAt: new Date().toISOString(),
+        provenance: 'MANUAL_CONFIRMED' as const,
+        productionTruth: true,
+        sourceType: 'upload' as const
+      };
+    });
+
+    if (onBatchAddProducts) {
+      onBatchAddProducts(newAssets);
+    } else if (onAddProduct) {
+      newAssets.forEach((p) => {
+        if (p.id !== primaryProduct.id) {
+          onAddProduct(p);
+        }
+      });
+    }
+  };
 
   // Quick upload handler directly from left drawer
   const handleQuickUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -438,10 +549,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                         ? 'bg-amber-600 hover:bg-amber-700 text-white'
                         : 'bg-amber-600 hover:bg-amber-500 text-white'
                     }`}
-                    title="上传本地产品白底图或实拍图，生成高精档案与读数"
+                    title="录入产品资产与多模态读数 (支持本地上传、拖拽或直接按 Ctrl+V 粘贴截图)"
                   >
                     <Upload className="w-3.5 h-3.5" />
-                    <span>上传产品图</span>
+                    <span>录入产品图</span>
                   </button>
 
                   {onSyncFromCanvas && (
@@ -645,30 +756,149 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                     </div>
 
                     {/* Image Preview */}
-                    {primaryProduct.referenceImages?.[0]?.publicUrl ? (
-                      <div
-                        className={`w-full h-36 rounded-xl border overflow-hidden flex items-center justify-center relative group ${
-                          isLight ? 'bg-white border-stone-200' : 'bg-stone-900/90 border-stone-800'
-                        }`}
-                      >
-                        <img
-                          src={primaryProduct.referenceImages[0].publicUrl}
-                          alt={primaryProduct.name}
-                          className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute bottom-1.5 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-mono text-white">
-                          原图比例 1:1 锁定
+                    {(() => {
+                      const mainImgSrc =
+                        primaryProduct.referenceImages?.[0]?.publicUrl ||
+                        primaryProduct.cropBase64 ||
+                        primaryProduct.cropImageUrl ||
+                        primaryProduct.sourceMasterImageUrl ||
+                        (primaryProduct.referenceImages?.[0]?.objectKey
+                          ? `/api/space/storage/local-file?key=${encodeURIComponent(primaryProduct.referenceImages[0].objectKey)}`
+                          : undefined);
+
+                      return mainImgSrc ? (
+                        <div
+                          onClick={() => {
+                            setZoomedProduct({
+                              imageUrl: mainImgSrc,
+                              name: primaryProduct.name,
+                              sku: primaryProduct.sku,
+                              dimensions: primaryProduct.dimensions,
+                              materials: primaryProduct.materials,
+                              colors: primaryProduct.colors,
+                              roleTitle: '核心主品'
+                            });
+                            setLightboxScale(1);
+                          }}
+                          className={`w-full h-36 rounded-xl border overflow-hidden flex items-center justify-center relative group cursor-zoom-in transition-all ${
+                            isLight
+                              ? 'bg-white border-stone-200 hover:border-amber-400 hover:shadow-xs'
+                              : 'bg-stone-900/90 border-stone-800 hover:border-amber-500/60 hover:shadow-xs'
+                          }`}
+                          title="点击放大查看高保真大图与细节"
+                        >
+                          <img
+                            src={mainImgSrc}
+                            alt={primaryProduct.name}
+                            className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+                            referrerPolicy="no-referrer"
+                          />
+                          {/* 悬停放大镜遮罩 */}
+                          <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-bold pointer-events-none">
+                            <ZoomIn className="w-4 h-4 text-amber-400" />
+                            <span>点击放大查看高保真图</span>
+                          </div>
+                          <div className="absolute bottom-1.5 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-mono text-white pointer-events-none flex items-center gap-1">
+                            <ZoomIn className="w-2.5 h-2.5 text-amber-400" />
+                            <span>原图比例 1:1 锁定</span>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
+                      ) : (
+                        <div
+                          className={`w-full h-24 rounded-xl border flex flex-col items-center justify-center text-[11px] gap-1 ${
+                            isLight ? 'bg-white border-stone-200 text-stone-400' : 'bg-stone-900/60 border-stone-800 text-stone-500'
+                          }`}
+                        >
+                          <Box className="w-5 h-5 text-stone-400" />
+                          <span>已锁定物理真值特征</span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 2.1 来源总图多产品解构与参数分配看板 (Ensemble Disaggregation Panel) */}
+                    {primaryProduct.detectedProducts && primaryProduct.detectedProducts.length > 1 && (
                       <div
-                        className={`w-full h-24 rounded-xl border flex flex-col items-center justify-center text-[11px] gap-1 ${
-                          isLight ? 'bg-white border-stone-200 text-stone-400' : 'bg-stone-900/60 border-stone-800 text-stone-500'
+                        className={`p-2.5 rounded-xl border space-y-2.5 transition-all ${
+                          isLight
+                            ? 'bg-amber-50/90 border-amber-300 text-stone-900 shadow-2xs'
+                            : 'bg-stone-900/90 border-amber-500/50 text-stone-100 shadow-2xs'
                         }`}
                       >
-                        <Box className="w-5 h-5 text-stone-400" />
-                        <span>已锁定物理真值特征</span>
+                        <div
+                          onClick={() => setIsEnsembleBreakdownCollapsed(!isEnsembleBreakdownCollapsed)}
+                          className="flex items-center justify-between cursor-pointer select-none"
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs text-amber-700 dark:text-amber-400">
+                            <Boxes className="w-3.5 h-3.5" />
+                            <span>总图智能解构套组 ({primaryProduct.detectedProducts.length} 款)</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-400/30">
+                              物理切片就绪
+                            </span>
+                            <ChevronDown
+                              className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${
+                                isEnsembleBreakdownCollapsed ? '-rotate-90' : ''
+                              }`}
+                            />
+                          </div>
+                        </div>
+
+                        {!isEnsembleBreakdownCollapsed && (
+                          <div className="space-y-2 animate-in fade-in duration-150">
+                            <div className="text-[10px] text-stone-500 dark:text-stone-400 leading-normal">
+                              已从识别总图中智能解构各家具空间角色、毫米级读数与聚焦切片：
+                            </div>
+
+                            {/* 解构出的家具单品列表 */}
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {primaryProduct.detectedProducts.map((dp, dIdx) => {
+                                const imgSrc = dp.cropBase64 || dp.cropImageUrl;
+                                return (
+                                  <div
+                                    key={dp.id || dIdx}
+                                    className={`p-1.5 rounded-lg border flex items-center gap-1.5 ${
+                                      isLight
+                                        ? 'bg-white border-stone-200 text-stone-800'
+                                        : 'bg-stone-950 border-stone-800 text-stone-200'
+                                    }`}
+                                  >
+                                    <div className="w-8 h-8 rounded border border-amber-400/30 overflow-hidden shrink-0 bg-stone-900 flex items-center justify-center">
+                                      {imgSrc ? (
+                                        <img
+                                          src={imgSrc}
+                                          alt={dp.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <Box className="w-4 h-4 text-stone-500" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-bold text-[10px] truncate leading-tight">
+                                        {dp.name.split(' (')[0]}
+                                      </div>
+                                      <div className="text-[9px] font-mono text-stone-400 truncate mt-0.5">
+                                        {dp.dimensions.width}×{dp.dimensions.depth}mm
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* 一键全套展开至搭配产品库按钮 */}
+                            <button
+                              type="button"
+                              onClick={handleDeployEnsembleToLibrary}
+                              className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition active:scale-98"
+                              title="将总图解构出的全部家具（三人位、单椅、奢石茶几、电视柜等）一键展开至搭配库并协同入镜"
+                            >
+                              <CheckCheck className="w-3.5 h-3.5" />
+                              <span>一键全套展开至搭配产品库</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1004,25 +1234,62 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
 
                               {/* 中间图片与产品核心标记 */}
                               <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <div
-                                  className={`w-10 h-10 rounded-lg border overflow-hidden shrink-0 flex items-center justify-center ${
-                                    isLight ? 'bg-white border-stone-200' : 'bg-stone-900 border-stone-800'
-                                  }`}
-                                >
-                                  {ref?.publicUrl ? (
-                                    <img
-                                      src={ref.publicUrl}
-                                      alt={p.name}
-                                      className="w-full h-full object-contain"
-                                    />
-                                  ) : (
-                                    <Box className="w-4 h-4 text-stone-400" />
-                                  )}
-                                </div>
+                                {(() => {
+                                  const thumbSrc =
+                                    p.cropBase64 ||
+                                    p.cropImageUrl ||
+                                    (ref?.publicUrl && !ref.publicUrl.includes('projects/default/') ? ref.publicUrl : undefined) ||
+                                    (ref?.objectKey ? `/api/space/storage/local-file?key=${encodeURIComponent(ref.objectKey)}` : undefined) ||
+                                    p.sourceMasterImageUrl;
+
+                                  return (
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (thumbSrc) {
+                                          setZoomedProduct({
+                                            imageUrl: thumbSrc,
+                                            name: p.name,
+                                            sku: p.sku,
+                                            dimensions: p.dimensions,
+                                            materials: p.materials,
+                                            colors: p.colors,
+                                            roleTitle: '搭配产品'
+                                          });
+                                          setLightboxScale(1);
+                                        }
+                                      }}
+                                      className={`w-12 h-12 rounded-lg border overflow-hidden shrink-0 flex items-center justify-center relative group cursor-zoom-in transition-all ${
+                                        isLight ? 'bg-white border-stone-200 hover:border-amber-400' : 'bg-stone-900 border-stone-800 hover:border-amber-500'
+                                      }`}
+                                      title="点击放大查看产品大图细节"
+                                    >
+                                      {thumbSrc ? (
+                                        <>
+                                          <img
+                                            src={thumbSrc}
+                                            alt={p.name}
+                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
+                                            referrerPolicy="no-referrer"
+                                            onError={(e) => {
+                                              (e.currentTarget as HTMLElement).style.display = 'none';
+                                            }}
+                                          />
+                                          {/* 悬停放大镜遮罩 */}
+                                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <ZoomIn className="w-3.5 h-3.5 text-amber-300 drop-shadow-sm" />
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <Box className="w-4 h-4 text-stone-400" />
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-semibold text-xs truncate max-w-[140px]">{p.name}</span>
+                                    <span className="font-semibold text-xs truncate max-w-[130px]">{p.name}</span>
                                     <span
                                       className={`text-[9px] px-1 py-0.2 rounded font-mono ${
                                         isIncluded
@@ -1034,6 +1301,20 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                     >
                                       {isIncluded ? '已关联场景' : '仅存库'}
                                     </span>
+                                    {(p.sourceBoundingBox || p.cropBase64 || p.cropImageUrl) && (
+                                      <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/30">
+                                        总图切片
+                                      </span>
+                                    )}
+                                    {(p.role === 'lounge_chair' || p.functionCapable === false || (p.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(p.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(p.name))) ? (
+                                      <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-stone-500/15 text-stone-600 dark:text-stone-300 border border-stone-400/30">
+                                        无功能单椅
+                                      </span>
+                                    ) : (p.role === 'recliner_1seat' || p.functionCapable) ? (
+                                      <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/30">
+                                        电动功能位
+                                      </span>
+                                    ) : null}
                                   </div>
 
                                   {/* 核心标记流：尺寸、主色、适配风格 */}
@@ -1107,69 +1388,190 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
             )}
 
             {/* TAB 3: 美学硬装 */}
-            {activeTab === 'style' && (
-              <div className="space-y-2.5">
-                <div className={`text-[11px] font-medium px-1 flex items-center justify-between ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
-                  <span>精选国际美学室内设计调性</span>
-                  <span className={`text-[10px] font-mono ${isLight ? 'text-amber-700' : 'text-amber-400/80'}`}>
-                    {selectedStyle.name}
-                  </span>
-                </div>
+            {activeTab === 'style' && (() => {
+              const topRecommendations = primaryProduct ? recommendStylesForProduct(primaryProduct, styles, 3) : [];
+              const recMap = new Map(topRecommendations.map((r, rank) => [r.style.id, { rank: rank + 1, score: r.score, traits: r.matchedTraits }]));
 
-                {styles.map((st) => {
-                  const isSelected = st.id === selectedStyle.id;
-                  return (
+              const filteredStyles = styles.filter((st) => {
+                if (styleCategoryFilter === 'all') return true;
+                return st.category === styleCategoryFilter;
+              });
+
+              return (
+                <div className="space-y-3">
+                  {/* AI 风格推荐浮层（当主品存在时自动计算） */}
+                  {primaryProduct && topRecommendations.length > 0 && (
                     <div
-                      key={st.id}
-                      onClick={() => onSelectStyle(st)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? isLight
-                            ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-400/30'
-                            : 'bg-amber-950/30 border-amber-500/80 shadow-md ring-1 ring-amber-500/30'
-                          : isLight
-                          ? 'bg-[#FAF8F5] border-stone-200 hover:border-stone-300 hover:bg-white text-stone-700'
-                          : 'bg-stone-950/60 border-stone-800 hover:border-stone-700 hover:bg-stone-800/40 text-stone-300'
+                      className={`p-2.5 rounded-xl border space-y-2 shadow-xs ${
+                        isLight
+                          ? 'bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent border-amber-300'
+                          : 'bg-gradient-to-br from-amber-950/40 via-stone-900/60 to-transparent border-amber-600/40'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`font-semibold text-xs ${
-                              isSelected ? (isLight ? 'text-amber-950 font-bold' : 'text-amber-200') : isLight ? 'text-stone-800' : 'text-stone-200'
-                            }`}
-                          >
-                            {st.name}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="text-[11px] font-bold text-amber-800 dark:text-amber-400">
+                            AI 风格推荐适配
                           </span>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
+                        <span className="text-[9px] font-mono text-stone-500">
+                          基于「{primaryProduct.name}」
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 my-2 flex-wrap">
-                        {st.colorPalette.slice(0, 4).map((c, i) => (
-                          <div
-                            key={i}
-                            className={`flex items-center gap-1.5 text-[9px] px-2 py-0.5 rounded-md border font-mono shadow-2xs transition-all ${
-                              isLight ? 'bg-white text-stone-700 border-stone-200' : 'bg-stone-900 text-stone-300 border-stone-800'
-                            }`}
-                          >
-                            <span
-                              className="w-2.5 h-2.5 rounded-full border border-black/20 shadow-2xs shrink-0"
-                              style={{ backgroundColor: c }}
-                            />
-                            <span>{c}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className={`text-[10px] pl-0.5 ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
-                        {st.lifestyleTags.slice(0, 3).join(' · ')}
+                      <div className="space-y-1.5">
+                        {topRecommendations.map((rec, rIdx) => {
+                          const isRecSelected = rec.style.id === selectedStyle.id;
+                          return (
+                            <div
+                              key={rec.style.id}
+                              onClick={() => onSelectStyle(rec.style)}
+                              className={`p-1.5 rounded-lg border flex items-center justify-between gap-2 cursor-pointer transition text-[11px] ${
+                                isRecSelected
+                                  ? 'bg-amber-500 text-stone-950 font-bold border-amber-500'
+                                  : isLight
+                                  ? 'bg-white hover:bg-amber-100/60 text-stone-800 border-amber-200/60'
+                                  : 'bg-stone-900 hover:bg-stone-800 text-stone-200 border-stone-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className={`text-[10px] font-mono px-1 py-0.2 rounded font-bold ${
+                                  isRecSelected ? 'bg-stone-950 text-amber-400' : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                                }`}>
+                                  #{rIdx + 1} {rec.style.code}
+                                </span>
+                                <span className="truncate">{rec.style.name.split('(')[0]}</span>
+                              </div>
+                              <span className={`text-[10px] font-mono font-bold shrink-0 ${
+                                isRecSelected ? 'text-stone-950' : 'text-amber-700 dark:text-amber-400'
+                              }`}>
+                                {rec.score}%
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+
+                  {/* 风格分类过滤筛选按钮组 */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+                    {[
+                      { key: 'all', label: '全部' },
+                      { key: '欧美住宅', label: '欧美住宅' },
+                      { key: '国际现代', label: '国际现代' },
+                      { key: '东方住宅', label: '东方住宅' }
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setStyleCategoryFilter(tab.key)}
+                        className={`text-[10px] px-2.5 py-1 rounded-lg border font-medium whitespace-nowrap transition cursor-pointer ${
+                          styleCategoryFilter === tab.key
+                            ? 'bg-amber-500 text-stone-950 font-bold border-amber-500 shadow-2xs'
+                            : isLight
+                            ? 'bg-white hover:bg-stone-100 text-stone-600 border-stone-200'
+                            : 'bg-stone-900 hover:bg-stone-800 text-stone-400 border-stone-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 风格列表 */}
+                  <div className="space-y-2">
+                    {filteredStyles.map((st) => {
+                      const isSelected = st.id === selectedStyle.id;
+                      const recInfo = recMap.get(st.id);
+
+                      return (
+                        <div
+                          key={st.id}
+                          onClick={() => onSelectStyle(st)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
+                            isSelected
+                              ? isLight
+                                ? 'bg-amber-50 border-amber-500 shadow-xs ring-1 ring-amber-400/30'
+                                : 'bg-amber-950/30 border-amber-500/80 shadow-md ring-1 ring-amber-500/30'
+                              : isLight
+                              ? 'bg-[#FAF8F5] border-stone-200 hover:border-stone-300 hover:bg-white text-stone-700'
+                              : 'bg-stone-950/60 border-stone-800 hover:border-stone-700 hover:bg-stone-800/40 text-stone-300'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-1 mb-1">
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-[9px] font-mono px-1 py-0.2 rounded border font-bold ${
+                                  isLight ? 'bg-stone-100 border-stone-200 text-stone-700' : 'bg-stone-900 border-stone-800 text-stone-300'
+                                }`}>
+                                  {st.code}
+                                </span>
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-medium">
+                                  {st.category}
+                                </span>
+                                {recInfo && (
+                                  <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/30">
+                                    推荐 {recInfo.score}%
+                                  </span>
+                                )}
+                              </div>
+                              <h4
+                                className={`font-semibold text-xs mt-1 leading-snug ${
+                                  isSelected ? (isLight ? 'text-amber-950 font-bold' : 'text-amber-200') : isLight ? 'text-stone-800' : 'text-stone-200'
+                                }`}
+                              >
+                                {st.name}
+                              </h4>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
+                          </div>
+
+                          {/* 城市/空间联想与典型户型 */}
+                          {(st.cityCharacter || st.typicalLayout) && (
+                            <div className="text-[9px] space-y-0.5 my-1.5">
+                              {st.cityCharacter && (
+                                <div className={`truncate ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
+                                  📍 {st.cityCharacter}
+                                </div>
+                              )}
+                              {st.typicalLayout && (
+                                <div className={`truncate font-mono ${isLight ? 'text-amber-800/80' : 'text-amber-400/80'}`}>
+                                  🏠 户型: {st.typicalLayout}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 调色板 */}
+                          <div className="flex items-center gap-1 my-1.5 flex-wrap">
+                            {st.colorPalette.slice(0, 5).map((c, i) => (
+                              <div
+                                key={i}
+                                className={`flex items-center gap-1 text-[8px] px-1.5 py-0.2 rounded border font-mono shadow-2xs ${
+                                  isLight ? 'bg-white text-stone-700 border-stone-200' : 'bg-stone-900 text-stone-300 border-stone-800'
+                                }`}
+                              >
+                                <span
+                                  className="w-2 h-2 rounded-full border border-black/20 shrink-0"
+                                  style={{ backgroundColor: c }}
+                                />
+                                <span>{c}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className={`text-[10px] pl-0.5 ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
+                            {st.lifestyleTags.slice(0, 3).join(' · ')}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* TAB 4: 摄影机位 */}
             {activeTab === 'camera' && (
@@ -1232,6 +1634,151 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
           </div>
         </div>
       )}
+
+      {/* ===================== 产品高保真大图放大品鉴灯箱 (Lightbox Modal) ===================== */}
+      <AnimatePresence>
+        {zoomedProduct && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              setZoomedProduct(null);
+              setLightboxScale(1);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 10 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-4xl max-h-[90vh] w-full bg-stone-950/95 border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white"
+            >
+              {/* 顶栏控制条 */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/40">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <span className="font-bold text-sm text-stone-100 truncate">
+                    {zoomedProduct.name}
+                  </span>
+                  {zoomedProduct.sku && (
+                    <span className="text-[10px] font-mono text-stone-400 bg-white/5 px-2 py-0.5 rounded border border-white/10 shrink-0">
+                      SKU: {zoomedProduct.sku}
+                    </span>
+                  )}
+                  {zoomedProduct.roleTitle && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30 shrink-0">
+                      {zoomedProduct.roleTitle}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* 缩放操作 */}
+                  <div className="flex items-center gap-1 bg-white/10 rounded-lg p-0.5 border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setLightboxScale((prev) => Math.max(0.5, prev - 0.25))}
+                      className="p-1 rounded hover:bg-white/10 text-stone-300 hover:text-white transition cursor-pointer"
+                      title="缩小 (-25%)"
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-mono text-xs px-1.5 text-amber-400 min-w-[42px] text-center">
+                      {Math.round(lightboxScale * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLightboxScale((prev) => Math.min(3, prev + 0.25))}
+                      className="p-1 rounded hover:bg-white/10 text-stone-300 hover:text-white transition cursor-pointer"
+                      title="放大 (+25%)"
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLightboxScale(1)}
+                      className="p-1 rounded hover:bg-white/10 text-stone-300 hover:text-white transition cursor-pointer"
+                      title="复位 1:1"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* 关闭按钮 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoomedProduct(null);
+                      setLightboxScale(1);
+                    }}
+                    className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-500/80 text-stone-300 hover:text-white transition cursor-pointer"
+                    title="关闭 (ESC)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* 核心大图展示区 (支持滚轮缩放) */}
+              <div
+                onWheel={(e) => {
+                  e.preventDefault();
+                  if (e.deltaY < 0) {
+                    setLightboxScale((prev) => Math.min(3, prev + 0.15));
+                  } else {
+                    setLightboxScale((prev) => Math.max(0.5, prev - 0.15));
+                  }
+                }}
+                className="flex-1 min-h-[360px] max-h-[65vh] flex items-center justify-center p-4 bg-stone-900/60 overflow-hidden relative cursor-grab active:cursor-grabbing"
+              >
+                <div
+                  style={{
+                    transform: `scale(${lightboxScale})`,
+                    transition: 'transform 0.12s ease-out'
+                  }}
+                  className="max-w-full max-h-full flex items-center justify-center"
+                >
+                  <img
+                    src={zoomedProduct.imageUrl}
+                    alt={zoomedProduct.name}
+                    className="max-h-[58vh] max-w-full object-contain rounded-lg shadow-2xl pointer-events-none select-none"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
+
+              {/* 底部参数读数栏 */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-black/60 border-t border-white/10 text-xs flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap text-stone-300 text-[11px] font-mono">
+                  {zoomedProduct.dimensions && (
+                    <span className="bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                      尺寸: {zoomedProduct.dimensions.width}×{zoomedProduct.dimensions.depth}{zoomedProduct.dimensions.height ? `×${zoomedProduct.dimensions.height}` : ''}mm
+                    </span>
+                  )}
+                  {zoomedProduct.materials?.[0] && (
+                    <span className="bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                      材质: {zoomedProduct.materials[0]}
+                    </span>
+                  )}
+                  {zoomedProduct.colors?.[0] && (
+                    <span className="bg-white/5 px-2 py-0.5 rounded border border-white/10 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                      <span>{zoomedProduct.colors[0]}</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-stone-400">
+                  支持滚轮无级缩放 · 拖拽平移 · 按 ESC 或点击遮罩关闭
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

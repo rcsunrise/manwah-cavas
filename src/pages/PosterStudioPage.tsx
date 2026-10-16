@@ -565,7 +565,7 @@ export const PosterStudioPage: React.FC = () => {
                 isLight ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-stone-800 text-stone-300 border-stone-700'
               }`}
             >
-              {(studioMode as string) === 'space' ? '2100 × 2800 px · 3:4 · 摄影母版' : '2100 × 2800 px · 3:4 · JPEG'}
+              {(studioMode as string) === 'space' ? '空间摄影画册 · 1K~4K 超清 · 连续视角' : '2100 × 2800 px · 3:4 · 全案印刷级'}
             </span>
           </div>
         </div>

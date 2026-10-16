@@ -70,6 +70,54 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
     description: '严格注入多张产品参考原图，最大化锁死敏华沙发结构外观'
   },
   {
+    id: 'gpt-image-2.5-flare-c',
+    name: 'GPT 2.5 Flare (高保真原画)',
+    badge: '原画重绘',
+    provider: 'openai',
+    tier: 'standard',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '支持文生图、图生图与局部 Mask 重绘，高保真还原真实家具原画'
+  },
+  {
+    id: 'gpt-image-2.5-sunburst-c',
+    name: 'GPT 2.5 Sunburst (高光细节旗舰)',
+    badge: '高光细节',
+    provider: 'openai',
+    tier: 'flagship',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '旗舰级高光细节与皮革质感，全幅光影深度与精工缝线呈现'
+  },
+  {
+    id: 'gemini-nano-banana-2.1-preview',
+    name: 'Nano Banana 2.1 (极速多图融合)',
+    badge: '极速融合',
+    provider: 'gemini',
+    tier: 'speed',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '极速响应、轻量计算与多图融合，支持 1K/2K/4K 快速渲染'
+  },
+  {
     id: 'gemini-3.1-flash-image-preview',
     name: '标准空间生图 (Gemini 3.1 Flash)',
     badge: '标准精度',

@@ -1,5 +1,5 @@
 // src/features/space-studio/shell/SpaceStudioShell.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SpaceProject,
   SpaceWorkflowStep,
@@ -16,8 +16,11 @@ import {
   ImageAspectRatio,
   IMAGE_ASPECT_SPECS,
   RenderComputeConfig,
-  UIThemeMode
+  RenderResolution,
+  UIThemeMode,
+  DisaggregatedProductItem
 } from '../../../types/spaceStudio';
+import { SAMPLE_SUITE_ANNOTATIONS_14 } from '../data/sceneAnnotationPresets';
 import { dbService } from '../../../services/dbService';
 import {
   Box,
@@ -55,9 +58,10 @@ import {
   Download,
   Image as ImageIcon
 } from 'lucide-react';
-import { ProductUploadModal } from '../components/ProductUploadModal';
+import { ProductUploadModal, UploadedImageItem } from '../components/ProductUploadModal';
 import { SpaceStudioLeftDrawer } from '../components/SpaceStudioLeftDrawer';
 import { SpaceStudioCanvas } from '../components/SpaceStudioCanvas';
+import { OutpaintParams } from '../components/CanvasOutpaintOverlay';
 import { SpaceStudioShotNavigator } from '../components/SpaceStudioShotNavigator';
 import { SpaceStudioRightPanel } from '../components/SpaceStudioRightPanel';
 import {
@@ -71,14 +75,15 @@ import {
 } from '../../../types/spaceAssetLibrary';
 import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
 import { BuildPhasePanel } from '../components/BuildPhasePanel';
-import { INITIAL_MANWAH_PRODUCTS } from '../data/productAssets';
+import { INITIAL_MANWAH_PRODUCTS, isInitialDemoProduct, isOnlyDemoProducts } from '../data/productAssets';
 import { SPACE_PROTOTYPES } from '../data/spacePresets';
 import { STYLE_PRESETS } from '../data/stylePresets';
+import { recommendStylesForProduct } from '../engine/styleRecommendationEngine';
 import { PlacementEngine } from '../engine/placementEngine';
 import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
-import { STANDARD_SHOT_TEMPLATES } from '../data/shotTemplates';
+import { STANDARD_SHOT_TEMPLATES, getShotTemplateByCode } from '../data/shotTemplates';
 import { ShootCompiler } from '../engine/shootCompiler';
 import { ValidationEngine } from '../engine/validationEngine';
 import { RevisionGraphModal } from '../components/RevisionGraphModal';
@@ -104,16 +109,17 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     id: 'shot-a00',
     templateCode: 'A00',
     name: '空间母版 (Scene Master)',
+    aspectRatio: '4:3',
     camera: {
       lensMm: 35,
-      heightCm: 130,
+      heightCm: 135,
       yawDeg: 0,
-      pitchDeg: -2,
+      pitchDeg: -1,
       rollDeg: 0,
       target: { type: 'product', id: 'p1' },
       framing: 'wide',
-      mustInclude: ['sofa_3seat', 'coffee_table', 'window_view'],
-      mustExclude: ['human']
+      mustInclude: ['hero_sofa', 'coffee_table', 'ceiling_architecture', 'balanced_living_ensemble'],
+      mustExclude: ['human', 'drifting_isolated_chair', 'excessive_empty_rug']
     },
     intent: {
       intentCode: 'SI-01',
@@ -130,25 +136,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a01',
     templateCode: 'A01',
-    name: '空间主大全景',
+    name: '空间主大全景 (Grand Frontal Architectural Panorama)',
+    aspectRatio: '16:9',
     camera: {
-      lensMm: 28,
-      heightCm: 140,
+      lensMm: 24,
+      heightCm: 118,
       yawDeg: 0,
-      pitchDeg: -3,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'zone', id: 'living_room' },
       framing: 'wide',
-      mustInclude: ['all_living_zone'],
-      mustExclude: ['kitchen_clutter']
+      mustInclude: ['breathtakingly_expansive_open_plan_grand_horizon', 'strictly_straight_on_frontal_view', 'centered_living_axis', 'panoramic_floor_to_ceiling_window_wall', 'soaring_cove_ceiling_architecture', 'generous_area_rug_anchoring_foreground', 'retracted_closed_showroom_footrests', 'complete_furniture_suite'],
+      mustExclude: ['angled_side_perspective', 'diagonal_camera_view', 'tilted_off_center', 'cramped_framing', 'excessive_empty_wooden_floor_in_foreground', 'vast_barren_foreground_floor_void', 'deployed_footrest_without_people', 'blank_featureless_white_ceiling']
     },
     intent: {
       intentCode: 'SI-01',
-      name: '全案通透视野',
-      productDominancePct: 45,
+      name: '空间与产品平衡 (Space/Product Balance)',
+      productDominancePct: 40,
       backgroundSuppression: 'low',
       maxOcclusionPct: 5,
-      description: '展现大平层/别墅核心会客大厅的大气尺度'
+      description: '大平层客餐通透一体化大开间全貌 + 超广阔通透视野 + 全套客厅主沙发、单椅、茶几与远端配套餐厅全案入镜，交代大宅空间全局与开敞尺度'
     },
     status: 'draft',
     revisions: [],
@@ -157,25 +164,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a02',
     templateCode: 'A02',
-    name: '产品 45° 黄金视角',
+    name: '45° 3+1 成套组合全景 (45° 3+1 Living Ensemble View)',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 45,
-      heightCm: 125,
-      yawDeg: 42,
-      pitchDeg: -4,
+      lensMm: 38,
+      heightCm: 115,
+      yawDeg: 40,
+      pitchDeg: -3,
       rollDeg: 0,
-      target: { type: 'product', id: 'p1' },
-      framing: 'product',
-      mustInclude: ['sofa_armrest', 'seat_leather'],
-      mustExclude: ['back_wall_excess']
+      target: { type: 'product', id: 'living_ensemble' },
+      framing: 'wide',
+      mustInclude: ['three_seater_sofa', 'matching_side_chair', 'center_coffee_table', 'ensemble_spatial_depth', 'stone_backdrop'],
+      mustExclude: ['flat_frontal_mugshot', 'tight_single_product_crop', 'cropping_out_side_chair', 'cropping_out_main_sofa']
     },
     intent: {
       intentCode: 'SI-02',
-      name: 'Hero Product Focus',
-      productDominancePct: 68,
-      backgroundSuppression: 'high',
+      name: '45° 组群成套聚焦 (3+1 Ensemble Living Focus)',
+      productDominancePct: 65,
+      backgroundSuppression: 'medium',
       maxOcclusionPct: 8,
-      description: '敏华核心主沙发 45° 黄金视角，彰显头层牛皮与饱满轮廓'
+      description: '35°~45° 侧前方大透视，同框展现 3 人位主沙发 + 单人椅 + 中岛茶几成套围合生活方式景，体现家庭组群空间的进深感与高级感'
     },
     status: 'draft',
     revisions: [],
@@ -184,25 +192,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a03',
     templateCode: 'A03',
-    name: '单椅功能位 (Recliner Focus)',
+    name: '3人位主沙发组合焦点景 (Hero 3-Seater Living Focus)',
+    aspectRatio: '4:3',
     camera: {
       lensMm: 50,
       heightCm: 110,
-      yawDeg: -25,
+      yawDeg: 12,
       pitchDeg: -2,
       rollDeg: 0,
-      target: { type: 'product', id: 'recliner_1' },
+      target: { type: 'product', id: 'primary_sofa' },
       framing: 'product',
-      mustInclude: ['footrest_open', 'headrest_angle'],
-      mustExclude: []
+      mustInclude: ['three_seater_sofa', 'foreground_coffee_table', 'hero_leather_seating_silhouette'],
+      mustExclude: ['separate_accent_single_chair', 'side_armchair', 'lounge_chair', '3+1_ensemble', 'camera_centered_on_single_chair', 'wide_empty_room_panorama']
     },
     intent: {
-      intentCode: 'SI-04',
-      name: 'Function Focus',
-      productDominancePct: 70,
+      intentCode: 'SI-03',
+      name: '3人位主沙发核心聚焦 (Hero 3-Seater Focus)',
+      productDominancePct: 75,
       backgroundSuppression: 'high',
       maxOcclusionPct: 5,
-      description: '电动功能单椅展开状态，展示 110°-160° 超静音开合姿态'
+      description: '50mm 标准人眼透视聚焦 3人位主沙发与茶几前景，自然裁切排除独立单椅，凸显主沙发奢华感与生活方式'
     },
     status: 'draft',
     revisions: [],
@@ -211,25 +220,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a04',
     templateCode: 'A04',
-    name: '皮质特写 (Material Focus)',
+    name: '2/3主沙发亲子陪伴景 (2/3 Hero Sofa Companion View)',
+    aspectRatio: '2:3',
     camera: {
-      lensMm: 85,
-      heightCm: 90,
-      yawDeg: 15,
-      pitchDeg: -10,
+      lensMm: 45,
+      heightCm: 110,
+      yawDeg: -28,
+      pitchDeg: -2,
       rollDeg: 0,
-      target: { type: 'detail', id: 'leather_pore' },
-      framing: 'detail',
-      mustInclude: ['leather_stitching', 'grain_texture'],
-      mustExclude: []
+      target: { type: 'product', id: 'primary_sofa_left_two_thirds' },
+      framing: 'lifestyle',
+      mustInclude: ['two_thirds_main_sofa_left', 'deployed_outer_motion_seat', 'sofa_armrest_contour', 'companion_lifestyle_warmth', 'indoor_foliage_backdrop'],
+      mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'stiff_emotionless_posing']
     },
     intent: {
-      intentCode: 'SI-06',
-      name: 'Material Focus',
-      productDominancePct: 85,
-      backgroundSuppression: 'high',
-      maxOcclusionPct: 0,
-      description: '微距级呈现头层半苯胺真皮毛孔、双针车线工艺'
+      intentCode: 'SI-04',
+      name: '2/3主沙发亲子陪伴 (Companion Lifestyle Focus)',
+      productDominancePct: 70,
+      backgroundSuppression: 'medium',
+      maxOcclusionPct: 15,
+      description: '画幅比例 2:3 纵向，45mm 侧前约 28° 透视取景主沙发左侧 2/3。外侧功能位顺滑展开，呈现母女依偎自拍/陪伴的温情生活方式，背景为木饰面大理石与室内绿植'
     },
     status: 'draft',
     revisions: [],
@@ -238,25 +248,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a05',
     templateCode: 'A05',
-    name: '低角度仰拍 (Majestic Angle)',
+    name: '2/3主沙发私享休闲景 (2/3 Hero Sofa Private Lounge View)',
+    aspectRatio: '2:3',
     camera: {
-      lensMm: 35,
-      heightCm: 60,
-      yawDeg: 10,
-      pitchDeg: 6,
+      lensMm: 45,
+      heightCm: 110,
+      yawDeg: 28,
+      pitchDeg: -2,
       rollDeg: 0,
-      target: { type: 'product', id: 'p1' },
-      framing: 'product',
-      mustInclude: ['sofa_structure', 'ceiling_height'],
-      mustExclude: []
+      target: { type: 'product', id: 'primary_sofa_right_two_thirds' },
+      framing: 'lifestyle',
+      mustInclude: ['two_thirds_main_sofa_right', 'deployed_outer_motion_seat', 'diamond_quilted_armrest_craftsmanship', 'elegant_wine_lounge_relaxation', 'marble_shelf_ambient_light'],
+      mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'casual_messy_elements']
     },
     intent: {
-      intentCode: 'SI-03',
-      name: 'Product Structure',
-      productDominancePct: 65,
+      intentCode: 'SI-05',
+      name: '2/3主沙发私享微醺 (Private Luxury Lounge Focus)',
+      productDominancePct: 70,
       backgroundSuppression: 'medium',
-      maxOcclusionPct: 5,
-      description: '低机位仰拍展现家具与挑高空间的宏大巍峨气度'
+      maxOcclusionPct: 12,
+      description: '画幅比例 2:3 纵向，45mm 侧前约 28° 透视取景主沙发右侧 2/3。外侧功能位展开，优雅女主手持红酒杯微醺私享，突出绗缝扶手工艺与轻奢背景氛围层板'
     },
     status: 'draft',
     revisions: [],
@@ -265,25 +276,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a06',
     templateCode: 'A06',
-    name: '沙发+茶几近景',
+    name: '零靠墙功能展开景 (Zero-Wall Clearance Profile View)',
+    aspectRatio: '16:9',
     camera: {
-      lensMm: 40,
-      heightCm: 115,
-      yawDeg: -15,
-      pitchDeg: -5,
+      lensMm: 35,
+      heightCm: 105,
+      yawDeg: 75,
+      pitchDeg: -2,
       rollDeg: 0,
-      target: { type: 'product', id: 'living_ensemble' },
-      framing: 'product',
-      mustInclude: ['sofa_front', 'coffee_table_marble'],
-      mustExclude: []
+      target: { type: 'product', id: 'zero_wall_mechanism' },
+      framing: 'lifestyle',
+      mustInclude: ['zero_wall_clearance_feature', 'lateral_profile_sofa_extension', 'diamond_quilted_side_armrest', 'deployed_footrest_and_reclined_backrest', 'panoramic_window_backdrop'],
+      mustExclude: ['flat_frontal_mugshot', 'three_quarters_generic_angle', 'missing_motion_extension', 'crowded_foreground']
     },
     intent: {
-      intentCode: 'SI-01',
-      name: 'Ensemble Balance',
+      intentCode: 'SI-07',
+      name: '零靠墙前滑展开结构 (Zero-Wall Clearance Function)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
-      maxOcclusionPct: 8,
-      description: '沙发与潘多拉奢石茶几的经典围合'
+      maxOcclusionPct: 15,
+      description: '画幅比例 16:9 宽屏，侧向 75°~90° 大透视，直观呈现贴墙零距离前滑与侧面展开线条，女主戴耳机仰躺放松，背景为通透落地大窗'
     },
     status: 'draft',
     revisions: [],
@@ -292,25 +304,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a07',
     templateCode: 'A07',
-    name: '生活方式全家福',
+    name: '沙发茶几组群中景 (Ensemble Living Composition)',
+    aspectRatio: '16:9',
     camera: {
-      lensMm: 35,
-      heightCm: 130,
-      yawDeg: 0,
-      pitchDeg: -2,
+      lensMm: 40,
+      heightCm: 115,
+      yawDeg: -15,
+      pitchDeg: -4,
       rollDeg: 0,
-      target: { type: 'zone', id: 'living_human' },
-      framing: 'wide',
-      mustInclude: ['family_interaction', 'all_seats'],
-      mustExclude: []
+      target: { type: 'product', id: 'living_ensemble' },
+      framing: 'product',
+      mustInclude: ['hero_motion_sofa', 'dual_island_marble_coffee_tables', 'accent_side_table', 'styled_lifestyle_props_tray', 'layered_conversation_circle'],
+      mustExclude: ['messy_foreground', 'extreme_close_up', 'isolated_single_furniture_item', 'empty_room_void']
     },
     intent: {
-      intentCode: 'SI-08',
-      name: 'Lifestyle Story',
-      productDominancePct: 55,
+      intentCode: 'SI-06',
+      name: '客厅核心围合生活方式 (Conversation Circle Focus)',
+      productDominancePct: 75,
       backgroundSuppression: 'medium',
-      maxOcclusionPct: 20,
-      description: '家庭成员多坐区分布交互，情感共鸣'
+      maxOcclusionPct: 10,
+      description: '画幅比例 16:9 宽屏，40mm 中景呈现主沙发+奢石中岛双茶几+边几围合。茶几摆放精致托盘、艺术香薰与杂志，突显多层次起居生活质感'
     },
     status: 'draft',
     revisions: [],
@@ -319,25 +332,54 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a08',
     templateCode: 'A08',
-    name: '空间特色建筑立面',
+    name: '单椅五档功能状态景 (Single Recliner 5-Mode Function Matrix)',
+    aspectRatio: '16:9',
     camera: {
-      lensMm: 24,
-      heightCm: 150,
-      yawDeg: 10,
-      pitchDeg: 0,
+      lensMm: 45,
+      heightCm: 100,
+      yawDeg: 35,
+      pitchDeg: -3,
       rollDeg: 0,
-      target: { type: 'zone', id: 'architecture' },
-      framing: 'wide',
-      mustInclude: ['floor_to_ceiling_window', 'ceiling_beam'],
-      mustExclude: []
+      target: { type: 'product', id: 'power_recliner_modes' },
+      framing: 'product',
+      mustInclude: ['manwah_power_recliner_chair', 'fixed_35_degree_three_quarters_angle', 'motion_function_modes', 'diamond_quilted_leather_armrest', 'accent_side_table_coffee'],
+      mustExclude: ['camera_angle_drift', 'three_seater_sofa_dominant', 'flat_frontal_view', 'distorted_vanishing_lines']
     },
     intent: {
-      intentCode: 'SI-01',
-      name: 'Architecture Balance',
-      productDominancePct: 40,
+      intentCode: 'SI-08',
+      name: '单椅五档多功能状态矩阵 (5-Mode Ergonomic Matrix)',
+      productDominancePct: 80,
+      backgroundSuppression: 'high',
+      maxOcclusionPct: 15,
+      description: '画幅比例 16:9 宽屏，机位固定 35° 侧斜视角。展示单椅 5 档功能状态（160°小憩沉睡盖毯、140°听歌仰躺、120°追剧遥控、110°阅览书刊、110°智能冲浪），结合人物动态编排生动呈现'
+    },
+    status: 'draft',
+    revisions: [],
+    hasHumanPass: false
+  },
+  {
+    id: 'shot-a09',
+    templateCode: 'A09',
+    name: '餐桌配套展示景 (Dining Suite Ensemble View)',
+    aspectRatio: '16:9',
+    camera: {
+      lensMm: 35,
+      heightCm: 125,
+      yawDeg: -10,
+      pitchDeg: -3,
+      rollDeg: 0,
+      target: { type: 'zone', id: 'dining_room' },
+      framing: 'wide',
+      mustInclude: ['luxury_stone_dining_table', 'matching_dining_chairs_set', 'architectural_credenza_sideboard', 'champagne_bar_cart', 'bright_window_daylight'],
+      mustExclude: ['cramped_table_crop', 'living_room_sofa_dominant', 'cluttered_dirty_dishes', 'harsh_shadows']
+    },
+    intent: {
+      intentCode: 'SI-09',
+      name: '餐客一体配套全景 (Dining Suite Harmony)',
+      productDominancePct: 65,
       backgroundSuppression: 'low',
-      maxOcclusionPct: 5,
-      description: '全景落地窗外景与挑高横梁的光影交织'
+      maxOcclusionPct: 8,
+      description: '画幅比例 16:9 宽屏，35mm 餐客一体全景，展示天然奢石大餐桌+6张餐椅+艺术餐边柜+移动酒水餐车，与客厅风格呼应，交代大宅用餐仪式感'
     },
     status: 'draft',
     revisions: [],
@@ -355,6 +397,17 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [currentStep, setCurrentStep] = useState<SpaceWorkflowStep>('build');
   const [shots, setShots] = useState<ShotInstance[]>(DEFAULT_SHOTS);
   const [activeShotId, setActiveShotId] = useState<string>('shot-a00');
+
+  // BUILD 阶段核心工程状态 (必须置于顶部，防止 TDZ 初始化前访问报错)
+  const [products, setProducts] = useState<ProductAsset[]>(INITIAL_MANWAH_PRODUCTS);
+  const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(SPACE_PROTOTYPES[0]);
+  const [selectedStyle, setSelectedStyle] = useState<StylePreset>(STYLE_PRESETS[0]);
+  const [blueprint, setBlueprint] = useState<PlacementBlueprint>(() =>
+    PlacementEngine.generateStandardBlueprint({
+      spacePreset: SPACE_PROTOTYPES[0],
+      products: INITIAL_MANWAH_PRODUCTS
+    })
+  );
 
   // 视窗两翼折叠与自由宽度状态
   const [leftDrawerWidth, setLeftDrawerWidth] = useState<number>(() => {
@@ -374,6 +427,125 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [isLeftCollapsed, setIsLeftCollapsed] = useState<boolean>(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState<boolean>(false);
   const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
+
+  // 空间母版 1~14 多产品交互打标状态 (支持真实产品动态映射与大平层拓扑锁定)
+  const [sceneAnnotations, setSceneAnnotations] = useState<DisaggregatedProductItem[]>(SAMPLE_SUITE_ANNOTATIONS_14);
+  const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+
+  // 动态同步画布打标与当前场景关联的真实产品套组 (告别静态假数据坐标偏离)
+  useEffect(() => {
+    if (!products || products.length === 0) return;
+
+    // 若当前仍是系统内置 4 款 Demo，保留全景演示 14 点预设
+    if (isOnlyDemoProducts(products)) {
+      setSceneAnnotations(SAMPLE_SUITE_ANNOTATIONS_14);
+      return;
+    }
+
+    // 提取当前场景已关联的产品 (主品 + 搭配单品)
+    const activeEnsemble = products.filter(
+      (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+    );
+
+    if (activeEnsemble.length === 0) {
+      setSceneAnnotations([]);
+      return;
+    }
+
+    // 根据当前大平层实景摄影拓扑，为真实产品分配高精度空间锚点
+    const dynamicItems: DisaggregatedProductItem[] = activeEnsemble.map((p, idx) => {
+      let box = (p as any).sourceBoundingBox || (p as any).boundingBox;
+      const isTable = p.role === 'coffee_table' || /(茶几|几组|方几|圆几|大理石|岩板)/.test(p.name || '');
+      const isSideTable = p.role === 'side_table' || /(边几|角几)/.test(p.name || '');
+      const isRecliner = p.role === 'recliner_1seat' || /(功能|电动|头等舱|太空舱)/.test(p.name || '');
+      const isLoungeChair = p.role === 'lounge_chair' || /(单椅|休闲)/.test(p.name || '');
+      const isMainSofa = p.priority === 'primary' || p.role === 'sofa_2seat' || p.role === 'sofa_3seat' || /(三人|主沙发)/.test(p.name || '');
+
+      let resolvedRole = p.role;
+      if (isTable) resolvedRole = 'coffee_table';
+      else if (isSideTable) resolvedRole = 'side_table';
+      else if (isRecliner && !isMainSofa) resolvedRole = 'recliner_1seat';
+      else if (isLoungeChair && !isMainSofa) resolvedRole = 'lounge_chair';
+
+      if (!box) {
+        if (isTable) {
+          // 中岛茶几：位于画面中央下部核心区
+          box = { ymin: 62, xmin: 33, ymax: 78, xmax: 67 };
+        } else if (isSideTable) {
+          // 边几：单椅侧翼
+          box = { ymin: 58, xmin: 78, ymax: 72, xmax: 88 };
+        } else if (isRecliner) {
+          // 单人功能位/躺椅：位于画面左翼或右侧
+          box = idx === 1 ? { ymin: 48, xmin: 4, ymax: 76, xmax: 27 } : { ymin: 52, xmin: 74, ymax: 76, xmax: 95 };
+        } else if (isLoungeChair) {
+          // 独立单椅：画面右侧偏中
+          box = { ymin: 52, xmin: 74, ymax: 76, xmax: 95 };
+        } else if (isMainSofa) {
+          // 核心主沙发：画面中心基线
+          box = { ymin: 46, xmin: 24, ymax: 66, xmax: 75 };
+        } else {
+          const xStart = Math.min(75, 20 + idx * 18);
+          box = { ymin: 54, xmin: xStart, ymax: 70, xmax: xStart + 16 };
+        }
+      }
+
+      return {
+        id: `ann-prod-${p.id}`,
+        name: p.name,
+        sku: p.sku || `MW-${resolvedRole.toUpperCase()}-${idx + 1}`,
+        role: resolvedRole,
+        priority: p.priority,
+        dimensions: p.dimensions || { width: 2100, depth: 1050, height: 960 },
+        materials: p.materials || ['科技超纤布'],
+        colors: p.colors || ['极地奶白'],
+        surfaceTexture: p.materials?.[0] || '科技面料',
+        functionCapable: p.functionCapable ?? true,
+        boundingBox: box,
+        roleTitle: p.priority === 'primary' ? '核心主位' : '搭配副品',
+        dossierSummary: `已关联场景真实产品，规格: ${p.dimensions?.width || 2100}×${p.dimensions?.depth || 1050}mm`
+      };
+    });
+
+    setSceneAnnotations(dynamicItems);
+  }, [products]);
+
+  // 标点自由拖拽校准与隐藏处理
+  const handleUpdateAnnotationPosition = (
+    id: string,
+    newBoundingBox: { ymin: number; xmin: number; ymax: number; xmax: number }
+  ) => {
+    setSceneAnnotations((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, boundingBox: newBoundingBox } : item))
+    );
+  };
+
+  const handleHideAnnotation = (id: string) => {
+    setSceneAnnotations((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  // 自动将当前镜头列表对齐至最新的实拍标准校对名称与推荐画幅
+  useEffect(() => {
+    setShots((prevShots) => {
+      let changed = false;
+      const updated = prevShots.map((s) => {
+        const tpl = getShotTemplateByCode(s.templateCode);
+        if (!tpl) return s;
+        const needsNameUpdate = Boolean(tpl.name && s.name !== tpl.name);
+        const needsA02AspectUpdate = s.templateCode === 'A02' && (s.aspectRatio === '3:4' || s.aspectRatio === '16:9');
+        if (needsNameUpdate || needsA02AspectUpdate) {
+          changed = true;
+          return {
+            ...s,
+            name: tpl.name,
+            aspectRatio: needsA02AspectUpdate ? '4:3' : s.aspectRatio
+          };
+        }
+        return s;
+      });
+      return changed ? updated : prevShots;
+    });
+  }, []);
 
   const isDraggingLeftRef = React.useRef(false);
   const startXLeftRef = React.useRef(0);
@@ -438,17 +610,6 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
   };
-
-  // BUILD 阶段核心工程状态
-  const [products, setProducts] = useState<ProductAsset[]>(INITIAL_MANWAH_PRODUCTS);
-  const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(SPACE_PROTOTYPES[0]);
-  const [selectedStyle, setSelectedStyle] = useState<StylePreset>(STYLE_PRESETS[0]);
-  const [blueprint, setBlueprint] = useState<PlacementBlueprint>(() =>
-    PlacementEngine.generateStandardBlueprint({
-      spacePreset: SPACE_PROTOTYPES[0],
-      products: INITIAL_MANWAH_PRODUCTS
-    })
-  );
 
   const handleSyncFromCanvas = async () => {
     try {
@@ -743,19 +904,251 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     });
   };
   const [sceneMaster, setSceneMaster] = useState<SceneMaster | null>(null);
+  const sceneMasterRef = useRef<SceneMaster | null>(null);
+  useEffect(() => {
+    sceneMasterRef.current = sceneMaster;
+  }, [sceneMaster]);
   const [isGeneratingMaster, setIsGeneratingMaster] = useState<boolean>(false);
-  const [isRenderingShot, setIsRenderingShot] = useState<boolean>(false);
+  const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
+  const [isOutpainting, setIsOutpainting] = useState<boolean>(false);
+
+  // 多机位并发渲染调度状态引擎 (Multi-Shot Concurrent Generation Pool)
+  const [renderingShotIds, setRenderingShotIds] = useState<string[]>([]);
+  const abortControllersRef = useRef<Map<string, AbortController>>(new Map());
+  const renderTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [isGraphModalOpen, setIsGraphModalOpen] = useState<boolean>(false);
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
+
+  // 兼容旧属性，保障现有子组件无缝工作
+  const isRenderingShot = renderingShotIds.length > 0;
+  const renderingShotId = renderingShotIds[0] || null;
+  const renderingShot = shots.find((s) => s.id === renderingShotId) || null;
+  const renderingShotCode = renderingShot?.templateCode || (isGeneratingMaster ? 'A00' : undefined);
+
+  // 挂载初次检查：如果本地草稿或上次异常残留了 generating 状态（如刷新前挂起），自动纠偏复位，防止永久死锁
+  useEffect(() => {
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.status === 'generating') {
+          return {
+            ...s,
+            status: s.revisions && s.revisions.length > 0 ? 'passed' : 'draft'
+          };
+        }
+        return s;
+      })
+    );
+  }, []);
+
+  // 主动打断/取消渲染任务 (支持按镜头单独精准取消，互不影响)
+  const handleCancelRendering = (targetShotId?: string) => {
+    // 优先取消指定的镜头；未指定则取消当前激活镜头；若当前激活镜头未在渲染则全量安全复位
+    const shotIdToCancel = targetShotId || (activeShotId && renderingShotIds.includes(activeShotId) ? activeShotId : undefined);
+
+    if (shotIdToCancel) {
+      console.log('[SpaceStudioShell] 收到单镜头打断指令, shotId:', shotIdToCancel);
+      const timer = renderTimeoutsRef.current.get(shotIdToCancel);
+      if (timer) {
+        clearTimeout(timer);
+        renderTimeoutsRef.current.delete(shotIdToCancel);
+      }
+      const controller = abortControllersRef.current.get(shotIdToCancel);
+      if (controller) {
+        try {
+          controller.abort('User cancelled rendering');
+        } catch (e) {
+          console.warn('Abort error:', e);
+        }
+        abortControllersRef.current.delete(shotIdToCancel);
+      }
+      setRenderingShotIds((prev) => prev.filter((id) => id !== shotIdToCancel));
+
+      const targetShot = shots.find((s) => s.id === shotIdToCancel);
+      if (targetShot?.templateCode === 'A00') {
+        setIsGeneratingMaster(false);
+      }
+      if (renderingShotIds.length <= 1) {
+        setCurrentJob(null);
+      }
+
+      setShots((prev) =>
+        prev.map((s) => {
+          if (s.id === shotIdToCancel) {
+            return {
+              ...s,
+              status: s.revisions && s.revisions.length > 0 ? 'passed' : 'draft'
+            };
+          }
+          return s;
+        })
+      );
+    } else {
+      console.log('[SpaceStudioShell] 收到全量打断指令');
+      renderTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      renderTimeoutsRef.current.clear();
+      abortControllersRef.current.forEach((c) => {
+        try { c.abort('User cancelled rendering'); } catch (e) {}
+      });
+      abortControllersRef.current.clear();
+      setRenderingShotIds([]);
+      setIsGeneratingMaster(false);
+      setIsRenderingHuman(false);
+      setIsOutpainting(false);
+      setIsGeneratingAll(false);
+      setCurrentJob(null);
+
+      setShots((prev) =>
+        prev.map((s) => ({
+          ...s,
+          status: s.status === 'generating' ? (s.revisions && s.revisions.length > 0 ? 'passed' : 'draft') : s.status
+        }))
+      );
+    }
+  };
 
   // 摄影画册工作台全新交互状态 (主次分明、折叠抽屉、画幅选择与智能护航)
   const [activeRailTab, setActiveRailTab] = useState<'space' | 'product' | 'style' | 'camera' | 'human'>('space');
   const [isLeftDrawerOpen, setIsLeftDrawerOpen] = useState<boolean>(true);
   const [isProductUploadModalOpen, setIsProductUploadModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<ProductAsset | null>(null);
+  const [initialUploadImages, setInitialUploadImages] = useState<UploadedImageItem[]>([]);
   const [isAdvancedAccordionOpen, setIsAdvancedAccordionOpen] = useState<boolean>(false);
   const [isRefiningPrompt, setIsRefiningPrompt] = useState<boolean>(false);
-  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>('4:3');
+  const [aspectRatio, setAspectRatio] = useState<ImageAspectRatio>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
+      if (saved && ['4:3', '16:9', '3:4', '1:1', '9:16', '2:3'].includes(saved)) {
+        return saved;
+      }
+    }
+    return '4:3';
+  });
+
+  // 全局剪贴板粘贴监听：支持系统截图、富文本 HTML 多图提取、网络图片 URL 及产品规格文案直接入库
+  useEffect(() => {
+    const handleGlobalPaste = async (e: ClipboardEvent) => {
+      if (isProductUploadModalOpen) return;
+
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true');
+
+      if (isInput) return;
+
+      const items = e.clipboardData?.items;
+      const loadedItems: UploadedImageItem[] = [];
+
+      // 1. 优先提取文件流中的图片 (截图 / 复制的文件)
+      if (items && items.length > 0) {
+        const imageFiles: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) {
+              const ext = item.type.split('/')[1] || 'png';
+              imageFiles.push(
+                new File(
+                  [blob],
+                  `工作台截图-${Date.now().toString().slice(-4)}.${ext}`,
+                  { type: item.type }
+                )
+              );
+            }
+          }
+        }
+
+        if (imageFiles.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          let count = 0;
+          imageFiles.forEach((file) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const base64 = ev.target?.result as string;
+              if (base64) {
+                loadedItems.push({
+                  id: `img-clip-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  file,
+                  base64,
+                  type: loadedItems.length === 0 ? 'front' : loadedItems.length === 1 ? '45_deg' : 'detail',
+                  name: file.name
+                });
+              }
+              count++;
+              if (count === imageFiles.length && loadedItems.length > 0) {
+                setInitialUploadImages(loadedItems);
+                setEditingProduct(null);
+                setIsProductUploadModalOpen(true);
+              }
+            };
+            reader.readAsDataURL(file);
+          });
+          return;
+        }
+      }
+
+      // 2. 富文本 HTML 提取 (支持从网页、飞书、微信等复制的多图)
+      const htmlText = e.clipboardData?.getData('text/html');
+      if (htmlText) {
+        const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
+        let match;
+        const htmlImgUrls: string[] = [];
+        while ((match = imgRegex.exec(htmlText)) !== null) {
+          const src = match[1];
+          if (src && !htmlImgUrls.includes(src)) {
+            htmlImgUrls.push(src);
+          }
+        }
+
+        if (htmlImgUrls.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const htmlItems: UploadedImageItem[] = htmlImgUrls.map((url, idx) => ({
+            id: `html-img-${Date.now()}-${idx}`,
+            base64: url,
+            type: idx === 0 ? 'front' : idx === 1 ? '45_deg' : 'detail',
+            name: `富文本图-${idx + 1}`
+          }));
+          setInitialUploadImages(htmlItems);
+          setEditingProduct(null);
+          setIsProductUploadModalOpen(true);
+          return;
+        }
+      }
+
+      // 3. 纯文本检查 (网络图片链接或尺寸规格)
+      const rawText = e.clipboardData?.getData('text')?.trim();
+      if (rawText) {
+        const isUrl = /^https?:\/\/.+\.(png|jpe?g|webp|gif|bmp)(\?.*)?$/i.test(rawText) || rawText.startsWith('data:image/');
+        const isSpecText = /(\d{3,4})\s*[*xX×/]\s*(\d{3,4})/.test(rawText) || /(沙发|茶几|单椅|真皮|面料|尺寸|宽|深|高)/.test(rawText);
+
+        if (isUrl || isSpecText) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (isUrl) {
+            setInitialUploadImages([
+              {
+                id: `url-img-${Date.now()}`,
+                base64: rawText,
+                type: 'front',
+                name: '剪贴板网络图片'
+              }
+            ]);
+          }
+          setEditingProduct(null);
+          setIsProductUploadModalOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [isProductUploadModalOpen]);
 
   // UI Theme Mode: dark / light
   const [internalTheme, setInternalTheme] = useState<'dark' | 'light'>(() => {
@@ -782,30 +1175,72 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染引擎配置选项 (默认使用 GPT 图像生成模型与单张模板生成)
-  const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>({
-    model: 'gpt-image-2',
-    resolution: '2K',
-    aspectRatio: '4:3',
-    customAspectRatio: '',
-    seed: undefined,
-    namingPreset: 'detailed',
-    customPrefix: '',
-    candidateCount: 1
+  // 渲染引擎配置选项 (默认使用 GPT 图像生成模型与单张模板生成，默认 4:3 空间透视画幅)
+  const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>(() => {
+    let initialAspect: ImageAspectRatio = '4:3';
+    let initialModel = 'gpt-image-2';
+    let initialRes: RenderResolution = '2K';
+    if (typeof window !== 'undefined') {
+      const savedAspect = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
+      if (savedAspect && ['4:3', '16:9', '3:4', '1:1', '9:16', '2:3'].includes(savedAspect)) {
+        initialAspect = savedAspect;
+      }
+      const savedModel = localStorage.getItem('space_studio_model');
+      if (savedModel) {
+        initialModel = savedModel;
+      }
+      const savedRes = localStorage.getItem('space_studio_resolution') as RenderResolution;
+      if (savedRes && ['1K', '2K', '4K'].includes(savedRes)) {
+        initialRes = savedRes;
+      }
+    }
+    return {
+      model: initialModel,
+      resolution: initialRes,
+      aspectRatio: initialAspect,
+      customAspectRatio: '',
+      seed: undefined,
+      namingPreset: 'detailed',
+      customPrefix: '',
+      candidateCount: 1
+    };
   });
 
-  const handleUpdateComputeConfig = (updater: Partial<RenderComputeConfig>) => {
+  const handleUpdateComputeConfig = (updater: Partial<RenderComputeConfig & { candidateCount?: number }>) => {
     setComputeConfig((prev) => {
       const next = { ...prev, ...updater };
-      if (updater.aspectRatio && updater.aspectRatio !== aspectRatio) {
-        setAspectRatio(updater.aspectRatio);
+      if (typeof window !== 'undefined' && updater.model) {
+        localStorage.setItem('space_studio_model', updater.model);
+      }
+      if (typeof window !== 'undefined' && updater.resolution) {
+        localStorage.setItem('space_studio_resolution', updater.resolution);
+      }
+      if (updater.aspectRatio) {
+        if (updater.aspectRatio !== aspectRatio) {
+          setAspectRatio(updater.aspectRatio);
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('space_studio_aspect_ratio', updater.aspectRatio);
+        }
+        setShots((prevShots) =>
+          prevShots.map((s) => (s.id === activeShotId ? { ...s, aspectRatio: updater.aspectRatio } : s))
+        );
       }
       return next;
     });
   };
 
+  const handleShotAspectRatioChange = (newRatio: ImageAspectRatio) => {
+    setAspectRatio(newRatio);
+    handleUpdateComputeConfig({ aspectRatio: newRatio });
+    setShots((prevShots) =>
+      prevShots.map((s) => (s.id === activeShotId ? { ...s, aspectRatio: newRatio } : s))
+    );
+  };
+
   const handleOpenUploadModal = (prod?: ProductAsset | null) => {
     setEditingProduct(prod || null);
+    setInitialUploadImages([]);
     setIsProductUploadModalOpen(true);
   };
 
@@ -813,13 +1248,155 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     if (editingProduct) {
       handleUpdateProduct(savedProd);
     } else {
-      handleAddProduct(savedProd);
+      setProducts((prev) => {
+        // 1. 如果当前库中全都是系统初始 Demo 产品，且新保存的是主品：
+        if (isOnlyDemoProducts(prev)) {
+          const updated = [{ ...savedProd, priority: 'primary' as const, isEnsembleIncluded: true }];
+          try {
+            const newBp = PlacementEngine.generateStandardBlueprint({
+              spacePreset: selectedSpace,
+              products: updated
+            });
+            setBlueprint(newBp);
+          } catch (e) {
+            console.warn('Blueprint update on single save error:', e);
+          }
+          return updated;
+        }
+
+        // 2. 过滤掉 Demo 示例产品
+        const userProducts = prev.filter((p) => !isInitialDemoProduct(p) && p.id !== savedProd.id);
+
+        // 如果新保存的是主品，自动将旧主品降级并不再默认勾选（避免 2 款主沙发冲突）
+        const updated = savedProd.priority === 'primary'
+          ? [
+              savedProd,
+              ...userProducts.map((p) =>
+                p.priority === 'primary'
+                  ? { ...p, priority: 'secondary' as const, isEnsembleIncluded: false }
+                  : p
+              )
+            ]
+          : [...userProducts, savedProd];
+
+        const activeEnsemble = updated.filter(
+          (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+        );
+
+        try {
+          const newBp = PlacementEngine.generateStandardBlueprint({
+            spacePreset: selectedSpace,
+            products: activeEnsemble
+          });
+          setBlueprint(newBp);
+        } catch (e) {
+          console.warn('Blueprint update on single save error:', e);
+        }
+        return updated;
+      });
+
+      // 如果更新或保存的是核心主品，联动推荐 Top 1 风格
+      if (savedProd.priority === 'primary') {
+        const topRec = recommendStylesForProduct(savedProd, STYLE_PRESETS, 1);
+        if (topRec.length > 0 && topRec[0].style) {
+          setSelectedStyle(topRec[0].style);
+        }
+      }
     }
     setIsProductUploadModalOpen(false);
     setEditingProduct(null);
+    setInitialUploadImages([]);
+  };
+
+  const handleBatchSaveProductsFromModal = (savedProds: ProductAsset[]) => {
+    if (!savedProds || savedProds.length === 0) return;
+
+    setProducts((prev) => {
+      // 1. 如果当前库里全都是系统内置 Demo 产品：直接完整替换为用户切片入库的新套组！
+      if (isOnlyDemoProducts(prev)) {
+        const cleanSuite = savedProds.map((p, idx) => ({
+          ...p,
+          priority: (idx === 0 ? 'primary' : 'secondary') as 'primary' | 'secondary',
+          isEnsembleIncluded: true
+        }));
+
+        try {
+          const newBp = PlacementEngine.generateStandardBlueprint({
+            spacePreset: selectedSpace,
+            products: cleanSuite
+          });
+          setBlueprint(newBp);
+        } catch (e) {
+          console.warn('Blueprint update on clean suite error:', e);
+        }
+        return cleanSuite;
+      }
+
+      // 2. 如果用户之前已上传录入过真实产品：
+      // 过滤掉所有内置 Demo 产品，保留用户的旧真实产品
+      const existingUserProducts = prev.filter((p) => !isInitialDemoProduct(p));
+
+      // 新切片入库的整套产品作为当前场景聚焦套组（isEnsembleIncluded: true）
+      // 旧产品保留在搭配库中作为历史资产，但将它们的当前场景关联取消（isEnsembleIncluded: false），
+      // 彻底消除“关联 6 款产品”以及“2款主沙发冲突”的误导性提示！
+      const deactivatedOldProducts = existingUserProducts.map((p) => ({
+        ...p,
+        priority: 'secondary' as const,
+        isEnsembleIncluded: false
+      }));
+
+      const newPrimary = savedProds.find((p) => p.priority === 'primary') || savedProds[0];
+      const newSecondary = savedProds.filter((p) => p.id !== newPrimary.id);
+
+      const updated = [
+        { ...newPrimary, priority: 'primary' as const, isEnsembleIncluded: true },
+        ...newSecondary.map((p) => ({ ...p, isEnsembleIncluded: true })),
+        ...deactivatedOldProducts.filter((p) => !savedProds.some((np) => np.id === p.id))
+      ];
+
+      const activeEnsemble = updated.filter(
+        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
+      );
+
+      try {
+        const newBp = PlacementEngine.generateStandardBlueprint({
+          spacePreset: selectedSpace,
+          products: activeEnsemble
+        });
+        setBlueprint(newBp);
+      } catch (e) {
+        console.warn('Blueprint update on batch suite error:', e);
+      }
+      return updated;
+    });
+
+    // 智能联动：录入新产品套组后，自动将最匹配的 Top 1 风格设为默认选中风格
+    const primaryProd = savedProds.find((p) => p.priority === 'primary') || savedProds[0];
+    if (primaryProd) {
+      const topRec = recommendStylesForProduct(primaryProd, STYLE_PRESETS, 1);
+      if (topRec.length > 0 && topRec[0].style) {
+        setSelectedStyle(topRec[0].style);
+        console.log(`[SpaceStudio] 录入产品「${primaryProd.name}」自动匹配选中风格: ${topRec[0].style.code} ${topRec[0].style.name} (${topRec[0].percentageLabel})`);
+      }
+    }
+
+    setIsProductUploadModalOpen(false);
+    setEditingProduct(null);
+    setInitialUploadImages([]);
   };
 
   const activeShot = shots.find((s) => s.id === activeShotId) || shots[0];
+
+  // 当前活跃镜头是否处于生成渲染状态
+  const isGeneratingCurrentShot = Boolean(
+    renderingShotIds.includes(activeShot.id) ||
+    (activeShot.templateCode === 'A00' && isGeneratingMaster)
+  );
+
+  // 后台正在并发渲染的其他机位（排除当前视口激活的机位）
+  const backgroundRenderingShots = shots.filter(
+    (s) => renderingShotIds.includes(s.id) && s.id !== activeShot.id
+  );
 
   // 视觉资产驱动工作台状态 (Style, Model, Pose, Lighting)
   const [activeAssets, setActiveAssets] = useState<ActivePhotographyAssets>(() => {
@@ -880,8 +1457,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     spaceAssetLibraryService.saveStandardHumanLayout(next);
   };
 
-  // 4 候选方案字典
+  // 4 候选方案字典 (按镜头 ID 与按历史版本 ID 双向索引，确保切换纯空间与人物版时底栏抽屉和画布方案精准对应)
   const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
+  const [revisionCandidateBatches, setRevisionCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -989,13 +1567,30 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       );
     }
 
+    const isHuman = Boolean(
+      activeShot.hasHumanPass ||
+      candidate.summaryTag?.includes('人物') ||
+      candidate.summaryTag?.includes('模特') ||
+      candidate.id?.includes('human')
+    );
+    const newRevId = `rev-${activeShot.templateCode.toLowerCase()}-${Date.now().toString(36)}`;
+
+    // 绑定该定稿版本与当前候选批次
+    const currentActiveBatch = candidateBatches[activeShot.id];
+    if (currentActiveBatch) {
+      setRevisionCandidateBatches(prev => ({ ...prev, [newRevId]: currentActiveBatch }));
+    }
+
     setShots(prev =>
       prev.map(s => {
         if (s.id !== activeShot.id) return s;
+        const nextRevNum = (s.revisions.length || 0) + 1;
         const newRev: ShotRevision = {
-          id: `rev-${s.templateCode.toLowerCase()}-${Date.now().toString(36)}`,
+          id: newRevId,
           shotId: s.id,
-          revisionNumber: (s.revisions.length || 0) + 1,
+          revisionNumber: nextRevNum,
+          revisionType: isHuman ? 'human' : 'scene',
+          label: isHuman ? `v${nextRevNum} · 人物入座方案` : `纯空间 (v${nextRevNum})`,
           objectKey: candidate.objectKey || `shots/${candidate.id}.webp`,
           imageUrl: candidate.imageUrl,
           thumbnailUrl: candidate.imageUrl,
@@ -1064,25 +1659,40 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   // 渲染单个镜头候选方案 (SHOOT + 继承 A00 空间与家具世界 + 单变量 Camera DNA 驱动)
-  const handleRenderShot = async (targetShot: ShotInstance, customSettings?: GenerationSettings & { candidateCount?: number }) => {
-    // 渲染中防重入拦截，彻底杜绝重复点击造成重复调用 API
-    if (isRenderingShot) {
-      console.warn('[SpaceStudioShell] 镜头渲染正在执行中，拦截重复触发');
-      return;
+  const handleRenderShot = async (
+    targetShot: ShotInstance,
+    customSettings?: GenerationSettings & { candidateCount?: number },
+    overrideSceneMaster?: SceneMaster
+  ): Promise<{ success: boolean; sceneMaster?: SceneMaster | null; revision?: ShotRevision; error?: string }> => {
+    // 渲染中防重入拦截：若同一镜头正在执行，拦截重复点击
+    if (renderingShotIds.includes(targetShot.id)) {
+      console.warn('[SpaceStudioShell] 该镜头正在渲染执行中，拦截重复触发:', targetShot.templateCode);
+      return { success: false, error: 'ALREADY_RENDERING' };
     }
 
-    // 门禁：A00 没有真实生成结果并由用户执行 LOCK 时，自动先触发生成并锁定 A00 空间母版真值以保证物理不变量
-    if (targetShot.templateCode !== 'A00' && (!sceneMaster || !sceneMaster.isLocked)) {
-      console.log('正在优先生成并锁定 A00 空间母版真值...');
-      await handleGenerateSceneMaster();
+    // 为每个镜头分配独立的 AbortController，支持独立精准取消
+    const controller = new AbortController();
+    abortControllersRef.current.set(targetShot.id, controller);
+
+    const timeout = setTimeout(() => {
+      console.warn(`[SpaceStudioShell] 镜头 ${targetShot.templateCode} 渲染 300s 超时，触发主动超时打断`);
+      controller.abort('Render timeout after 300s');
+    }, 300000);
+    renderTimeoutsRef.current.set(targetShot.id, timeout);
+
+    // 将镜头加入并发队列，支持用户切换查看其他镜头
+    setRenderingShotIds((prev) => Array.from(new Set([...prev, targetShot.id])));
+    if (targetShot.templateCode === 'A00') {
+      setIsGeneratingMaster(true);
     }
 
-    setIsRenderingShot(true);
     const jobId = `job-shoot-${targetShot.templateCode.toLowerCase()}-${Date.now()}`;
     const activeSettings: GenerationSettings = {
       model: customSettings?.model || computeConfig.model,
-      aspectRatio: (customSettings as any)?.aspectRatio || computeConfig.aspectRatio,
+      resolution: (customSettings as any)?.resolution || computeConfig.resolution || '2K',
+      aspectRatio: (customSettings as any)?.aspectRatio || targetShot.aspectRatio || computeConfig.aspectRatio,
       ...(computeConfig.seed !== undefined ? { seed: computeConfig.seed } : {}),
+      useRandomSeed: computeConfig.seed === undefined,
       ...customSettings
     };
 
@@ -1108,9 +1718,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
       );
 
+      const effectiveSceneMaster = overrideSceneMaster || sceneMasterRef.current || sceneMaster;
+
       const compiled = ShootCompiler.compileShotPrompt({
         shot: targetShot,
-        sceneMaster: sceneMaster || {
+        sceneMaster: effectiveSceneMaster || {
           id: 'temp-master',
           projectId: 'manwah-noble-space-01',
           objectKey: '',
@@ -1131,28 +1743,87 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         products: activeEnsemble,
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
-        blueprint
+        blueprint,
+        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
       });
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: compiled } : null));
 
-      const primaryProd =
-        activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0];
+      // 核心工业逻辑：针对专属镜头 (A03 主焦点景, A04 2/3亲子景, A05 2/3私享景, A06 零靠墙侧景, A08 单椅五档景)，
+      // 必须精准锁定关联的单独产品资产（如三人位.png、单人位.png），优先提取其独立切片/原图，绝不允许拿错单椅或大图
+      const targetShotCode = targetShot.templateCode;
+      const isHeroSofaDedicatedShot = ['A03', 'A04', 'A05', 'A06'].includes(targetShotCode);
+      const isReclinerDedicatedShot = ['A08'].includes(targetShotCode);
+
+      const hero3SeatSofa = activeEnsemble.find(
+        (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
+      );
+      const reclinerChair = activeEnsemble.find(
+        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
+      );
+
+      const primaryProd = (isHeroSofaDedicatedShot && hero3SeatSofa)
+        ? hero3SeatSofa
+        : (isReclinerDedicatedShot && reclinerChair)
+        ? reclinerChair
+        : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]);
+
+      // 提取该核心单品的独立真值资产：优先使用独立切片原图 (如 cropBase64, cropImageUrl)
+      const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
       const primaryRef =
+        primaryProd?.cropImageUrl ||
+        primaryProd?.cropBase64 ||
+        bestPrimaryView.reference?.publicUrl ||
+        bestPrimaryView.reference?.objectKey ||
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
         (primaryProd as any)?.uploadedImageUrl;
+
+      // 搭配品精准过滤：
+      // 1. A04 / A05 / A06 (主沙发特写/侧剖) 以及 A08 (单椅功能特写)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
+      // 2. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
+      const filteredEnsemble = activeEnsemble.filter((p) => {
+        if (['A04', 'A05', 'A06', 'A08'].includes(targetShotCode)) {
+          return p.id === primaryProd.id;
+        }
+        if (targetShotCode === 'A03') {
+          return p.id === primaryProd.id || p.role === 'coffee_table';
+        }
+        return true;
+      });
 
       // 调用后端 4 候选方案生成接口 (严格继承 A00 空间与家具世界，单变量改变 Camera DNA)
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
           shotId: targetShot.id,
           shotCode: targetShot.templateCode,
           revisionNumber: (targetShot.revisions.length || 0) + 1,
           candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
+          resolution: activeSettings.resolution,
+          roomName: selectedSpace.name.split(' (')[0],
+          spaceCode: selectedSpace.code,
+          styleName: selectedStyle.name.split(' (')[0],
+          styleCode: selectedStyle.code,
+          spacePreset: {
+            id: selectedSpace.id,
+            code: selectedSpace.code,
+            name: selectedSpace.name,
+            ceilingHeight: selectedSpace.ceilingHeight,
+            signatureFeatures: selectedSpace.signatureFeatures,
+            promptFragments: selectedSpace.promptFragments
+          },
+          stylePreset: {
+            id: selectedStyle.id,
+            code: selectedStyle.code,
+            name: selectedStyle.name,
+            colorPalette: selectedStyle.colorPalette,
+            materialSystem: selectedStyle.materialSystem,
+            promptFragments: selectedStyle.promptFragments
+          },
           camera: compiled.cameraSpec,
           intent: targetShot.intent,
           productDNA: {
@@ -1162,13 +1833,50 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             colorCode: primaryProd?.colors?.[0] || '标准色',
             referenceImage: primaryRef
           },
-          sceneMasterReference: sceneMaster
+          sceneMasterReference: effectiveSceneMaster
             ? {
-                objectKey: sceneMaster.objectKey,
-                imageUrl: sceneMaster.imageUrl
+                objectKey: effectiveSceneMaster.objectKey,
+                imageUrl: effectiveSceneMaster.imageUrl
               }
             : undefined,
           productReferenceImage: primaryRef,
+          ensembleProducts: filteredEnsemble.map((p) => {
+            const bestView = ShootCompiler.selectBestProductReferenceForShot(p, targetShot.templateCode);
+            const refImg =
+              p.cropImageUrl ||
+              p.cropBase64 ||
+              bestView.reference?.publicUrl ||
+              bestView.reference?.objectKey ||
+              p.referenceImages?.[0]?.publicUrl ||
+              p.referenceImages?.[0]?.objectKey ||
+              (p as any)?.uploadedImageUrl;
+
+            return {
+              id: p.id,
+              sku: p.sku,
+              role: p.role,
+              priority: p.priority,
+              name: p.name,
+              color: p.colors?.[0] || '标准色',
+              colors: p.colors || [],
+              material: p.materials?.[0] || '真皮',
+              materials: p.materials || [],
+              referenceImage: refImg,
+              views: {
+                front: p.referenceImages?.find(r => r.type === 'front')?.publicUrl || p.referenceImages?.find(r => r.type === 'front')?.objectKey,
+                '45_deg': p.referenceImages?.find(r => r.type === '45_deg')?.publicUrl || p.referenceImages?.find(r => r.type === '45_deg')?.objectKey,
+                side: p.referenceImages?.find(r => r.type === 'side')?.publicUrl || p.referenceImages?.find(r => r.type === 'side')?.objectKey,
+                function_open: p.referenceImages?.find(r => r.type === 'function_open')?.publicUrl || p.referenceImages?.find(r => r.type === 'function_open')?.objectKey,
+                detail: p.referenceImages?.find(r => r.type === 'detail')?.publicUrl || p.referenceImages?.find(r => r.type === 'detail')?.objectKey,
+              },
+              matchedViewType: bestView.viewType,
+              sourceMasterImageUrl: p.sourceMasterImageUrl,
+              sourceBoundingBox: p.sourceBoundingBox,
+              cropImageUrl: p.cropImageUrl,
+              dimensions: p.dimensions,
+              functionCapable: p.functionCapable
+            };
+          }),
           generationSettings: activeSettings,
           promptSnapshot: compiled
         })
@@ -1184,6 +1892,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const batchData: ShotCandidateBatch = data.data;
       const initialCandidate = batchData.candidates[0];
 
+      // 若触发了自愈降级，控制台输出清晰提示
+      if ((batchData as any).warningNotice) {
+        console.warn('[SpaceStudioShell] 候选方案包含服务端自愈保障标记:', (batchData as any).warningNotice);
+      }
+
       // 保存完整的 4 候选方案字典并默认激活候选 1
       setCandidateBatches((prev) => ({
         ...prev,
@@ -1196,10 +1909,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       // 以候选 1 建立首发 Revision，确保视口与导航缩略图即刻展示
       const parentRevId = targetShot.currentRevisionId || (targetShot.revisions.length > 0 ? targetShot.revisions[0].id : undefined);
+      const nextRevNum = (targetShot.revisions.length || 0) + 1;
       const newRevision: ShotRevision = {
         id: `rev-${targetShot.templateCode.toLowerCase()}-${Date.now().toString(36)}`,
         shotId: targetShot.id,
-        revisionNumber: (targetShot.revisions.length || 0) + 1,
+        revisionNumber: nextRevNum,
+        revisionType: 'scene',
+        label: `纯空间 (v${nextRevNum})`,
+        metaSummary: '空间架构与家具基准 · 纯场景母版图',
         parentRevisionId: parentRevId,
         objectKey: initialCandidate.objectKey || `shots/${initialCandidate.id}.webp`,
         imageUrl: initialCandidate.imageUrl,
@@ -1218,6 +1935,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         createdAt: new Date().toISOString()
       };
 
+      setRevisionCandidateBatches((prev) => ({ ...prev, [newRevision.id]: batchData }));
+
       setShots((prev) =>
         prev.map((s) => {
           if (s.id !== targetShot.id) return s;
@@ -1230,6 +1949,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       );
 
+      let createdSceneMaster: SceneMaster | null = null;
       // 若当前渲染的是 A00 空间母版，自动初始化并锁定 SceneMaster 全局物理基准
       if (targetShot.templateCode === 'A00') {
         const sm: SceneMaster = {
@@ -1251,29 +1971,60 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           },
           promptSnapshotId: initialCandidate.id
         };
+        sceneMasterRef.current = sm;
         setSceneMaster(sm);
+        createdSceneMaster = sm;
       }
 
       setCurrentJob((j) => (j ? { ...j, status: 'completed', progress: 100, finishedAt: new Date().toISOString() } : null));
+      return { success: true, sceneMaster: createdSceneMaster || effectiveSceneMaster, revision: newRevision };
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'PROVIDER UNAVAILABLE / FAILED';
-      console.error('Failed to render shot:', err);
-      setCurrentJob((j) =>
-        j
-          ? {
-              ...j,
-              status: 'failed',
-              error: errorMessage,
-              progress: 100,
-              finishedAt: new Date().toISOString()
-            }
-          : null
-      );
-      setShots((prev) =>
-        prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'failed' } : s))
-      );
+      const isAborted =
+        (err as any)?.name === 'AbortError' ||
+        (err as any)?.message?.includes('aborted') ||
+        controller.signal.aborted;
+
+      if (isAborted) {
+        console.log('[SpaceStudioShell] 镜头渲染已被打断或超时中止');
+        setCurrentJob(null);
+        setShots((prev) =>
+          prev.map((s) =>
+            s.id === targetShot.id
+              ? { ...s, status: s.revisions && s.revisions.length > 0 ? 'passed' : 'draft' }
+              : s
+          )
+        );
+        return { success: false, error: 'ABORTED' };
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'PROVIDER UNAVAILABLE / FAILED';
+        console.error('Failed to render shot:', err);
+        setCurrentJob((j) =>
+          j
+            ? {
+                ...j,
+                status: 'failed',
+                error: errorMessage,
+                progress: 100,
+                finishedAt: new Date().toISOString()
+              }
+            : null
+        );
+        setShots((prev) =>
+          prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'failed' } : s))
+        );
+        return { success: false, error: errorMessage };
+      }
     } finally {
-      setIsRenderingShot(false);
+      const timer = renderTimeoutsRef.current.get(targetShot.id);
+      if (timer) {
+        clearTimeout(timer);
+        renderTimeoutsRef.current.delete(targetShot.id);
+      }
+      abortControllersRef.current.delete(targetShot.id);
+      setRenderingShotIds((prev) => prev.filter((id) => id !== targetShot.id));
+      if (targetShot.templateCode === 'A00') {
+        setIsGeneratingMaster(false);
+      }
     }
   };
 
@@ -1284,11 +2035,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     );
   };
 
-  // 重置摄影机为当前镜头的推荐工业设定
+  // 重置摄影机为当前镜头的推荐工业设定（并联动恢复推荐画幅）
   const handleResetCamera = (shotId: string) => {
     const defaultTemplate = STANDARD_SHOT_TEMPLATES.find((t) => t.code === activeShot.templateCode);
     if (defaultTemplate) {
       handleUpdateCamera(shotId, defaultTemplate.defaultCamera);
+      if (defaultTemplate.recommendedAspectRatio) {
+        handleShotAspectRatioChange(defaultTemplate.recommendedAspectRatio as ImageAspectRatio);
+      }
     }
   };
 
@@ -1365,14 +2119,70 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 批量渲染全部镜头 (A01~A08)
+  // 批量渲染全部镜头 (空间母版约束流水线：A00母版优先 -> 锁定基准 -> A01~A09并发池调度)
   const handleBatchRenderAll = async () => {
-    if (!sceneMaster || !sceneMaster.isLocked) {
-      await handleGenerateSceneMaster();
+    if (isGeneratingAll) {
+      console.warn('[SpaceStudioShell] 批量渲染全量镜头正在执行中，拦截重复触发');
+      return;
     }
-    const candidateShots = shots.filter((s) => s.templateCode !== 'A00');
-    for (const s of candidateShots) {
-      await handleRenderShot(s);
+    setIsGeneratingAll(true);
+
+    try {
+      const a00Shot = shots.find((s) => s.templateCode === 'A00') || shots[0];
+      let currentMaster = sceneMasterRef.current || sceneMaster;
+      const a00HasPassed = a00Shot && a00Shot.revisions && a00Shot.revisions.length > 0;
+
+      // 1. 母版前置约束门禁：若当前未生成空间母版，必须第一阶段强制优先生成 A00 空间母版！
+      if (!currentMaster || !a00HasPassed) {
+        console.log('[SpaceStudioShell] 空间母版未就绪，一键生成流水线优先启动 A00 空间母版渲染...');
+        if (!a00Shot) {
+          console.error('[SpaceStudioShell] 未找到 A00 镜头配置，无法生成空间母版');
+          return;
+        }
+        // 自动将视窗聚焦于 A00 母版
+        setActiveShotId(a00Shot.id);
+        const renderRes = await handleRenderShot(a00Shot);
+        if (!renderRes || !renderRes.success) {
+          console.error('[SpaceStudioShell] A00 空间母版渲染失败，已安全终止后续批量流程');
+          return;
+        }
+        currentMaster = renderRes.sceneMaster || sceneMasterRef.current;
+      }
+
+      if (!currentMaster) {
+        console.error('[SpaceStudioShell] 无法获取有效的空间母版基准，终止批量衍生镜头生成');
+        return;
+      }
+
+      // 2. 母版已确立并锁定，继续调度后续衍生镜头 (A01~A09)
+      // 筛选所有未出图或非生成态的衍生镜头
+      const candidateShots = shots.filter(
+        (s) => s.templateCode !== 'A00' && s.status !== 'generating' && (!s.revisions || s.revisions.length === 0)
+      );
+      if (candidateShots.length === 0) {
+        console.log('[SpaceStudioShell] 所有衍生镜头均已有方案或正在渲染，无需重复生成');
+        return;
+      }
+
+      const concurrency = 3;
+      const queue = [...candidateShots];
+      const executing: Promise<any>[] = [];
+
+      for (const shot of queue) {
+        const p = handleRenderShot(shot, undefined, currentMaster).then(() => {
+          const idx = executing.indexOf(p);
+          if (idx !== -1) executing.splice(idx, 1);
+        });
+        executing.push(p);
+        if (executing.length >= concurrency) {
+          await Promise.race(executing);
+        }
+      }
+      await Promise.all(executing);
+    } catch (err) {
+      console.error('[SpaceStudioShell] 批量生成全部分镜失败:', err);
+    } finally {
+      setIsGeneratingAll(false);
     }
   };
 
@@ -1412,13 +2222,23 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setActiveShotId(newShot.id);
   };
 
-    // 03 HUMAN 阶段：基于当前镜头生成人物版 (锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物)
+  // 03 HUMAN 阶段：基于当前镜头生成人物版 (锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物)
   const handleRenderHumanPass = async (targetShot: ShotInstance = activeShot) => {
     if (isRenderingHuman) {
       console.warn('[SpaceStudioShell] 人物合成正在执行中，拦截重复触发');
       return;
     }
     setIsRenderingHuman(true);
+    const controller = new AbortController();
+    abortControllersRef.current.set(targetShot.id, controller);
+
+    const timeout = setTimeout(() => {
+      console.warn(`[SpaceStudioShell] 镜头 ${targetShot.templateCode} 人物渲染 300s 超时，触发主动超时打断`);
+      controller.abort('Human pass timeout after 300s');
+    }, 300000);
+    renderTimeoutsRef.current.set(targetShot.id, timeout);
+    setRenderingShotIds((prev) => Array.from(new Set([...prev, targetShot.id])));
+
     const jobId = `job-human-${Date.now()}`;
     const activeSettings: GenerationSettings = {
       model: computeConfig.model,
@@ -1472,7 +2292,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         products: activeEnsemble,
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
-        blueprint
+        blueprint,
+        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
       });
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40 } : null));
@@ -1496,14 +2317,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const activeSettings = {
         model: computeConfig.model,
         resolution: computeConfig.resolution,
-        aspectRatio: aspectRatio,
+        aspectRatio: (targetShot.aspectRatio || aspectRatio || '4:3') as ImageAspectRatio,
         seed: computeConfig.seed
       };
 
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(180000), // 180秒充足算力超时，杜绝多图复杂融合生图时抢先抛出 signal timed out
+        signal: controller.signal,
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
           shotId: targetShot.id,
@@ -1511,6 +2332,26 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionNumber: (targetShot.revisions.length || 0) + 1,
           candidateCount: 1,
           isHumanPass: true,
+          roomName: selectedSpace.name.split(' (')[0],
+          spaceCode: selectedSpace.code,
+          styleName: selectedStyle.name.split(' (')[0],
+          styleCode: selectedStyle.code,
+          spacePreset: {
+            id: selectedSpace.id,
+            code: selectedSpace.code,
+            name: selectedSpace.name,
+            ceilingHeight: selectedSpace.ceilingHeight,
+            signatureFeatures: selectedSpace.signatureFeatures,
+            promptFragments: selectedSpace.promptFragments
+          },
+          stylePreset: {
+            id: selectedStyle.id,
+            code: selectedStyle.code,
+            name: selectedStyle.name,
+            colorPalette: selectedStyle.colorPalette,
+            materialSystem: selectedStyle.materialSystem,
+            promptFragments: selectedStyle.promptFragments
+          },
           baseShotReferenceImage: baseShotImage,
           currentShotReferenceImage: baseShotImage,
           humanLayout,
@@ -1548,6 +2389,20 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
               }
             : undefined,
           productReferenceImage: primaryRef,
+          ensembleProducts: activeEnsemble.map((p) => ({
+            id: p.id,
+            sku: p.sku,
+            role: p.role,
+            priority: p.priority,
+            name: p.name,
+            color: p.colors?.[0] || '标准色',
+            colors: p.colors || [],
+            material: p.materials?.[0] || '真皮',
+            materials: p.materials || [],
+            referenceImage: p.referenceImages?.[0]?.publicUrl || p.referenceImages?.[0]?.objectKey || (p as any)?.uploadedImageUrl,
+            dimensions: p.dimensions,
+            functionCapable: p.functionCapable
+          })),
           generationSettings: activeSettings,
           promptSnapshot: {
             ...baseCompiled,
@@ -1634,6 +2489,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         createdAt: new Date().toISOString()
       };
 
+      setRevisionCandidateBatches((prev) => ({ ...prev, [newRevision.id]: batchData }));
+
       setShots((prev) =>
         prev.map((s) => {
           if (s.id !== targetShot.id) return s;
@@ -1650,22 +2507,206 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       setCurrentJob((j) => (j ? { ...j, status: 'completed', progress: 100, finishedAt: new Date().toISOString() } : null));
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'FAILED';
-      console.error('Failed to render human pass candidates:', err);
-      alert(`生成人物版方案提示: ${errorMessage}`);
-      setCurrentJob((j) =>
-        j
-          ? {
-              ...j,
-              status: 'failed',
-              error: errorMessage,
-              progress: 100,
-              finishedAt: new Date().toISOString()
-            }
-          : null
-      );
+      const isAborted =
+        (err as any)?.name === 'AbortError' ||
+        (err as any)?.message?.includes('aborted') ||
+        controller.signal.aborted;
+
+      if (isAborted) {
+        console.log('[SpaceStudioShell] 人物版合成任务已被打断或超时中止');
+        setCurrentJob(null);
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'FAILED';
+        console.error('Failed to render human pass candidates:', err);
+        alert(`生成人物版方案提示: ${errorMessage}`);
+        setCurrentJob((j) =>
+          j
+            ? {
+                ...j,
+                status: 'failed',
+                error: errorMessage,
+                progress: 100,
+                finishedAt: new Date().toISOString()
+              }
+            : null
+        );
+      }
     } finally {
+      const timer = renderTimeoutsRef.current.get(targetShot.id);
+      if (timer) {
+        clearTimeout(timer);
+        renderTimeoutsRef.current.delete(targetShot.id);
+      }
+      abortControllersRef.current.delete(targetShot.id);
+      setRenderingShotIds((prev) => prev.filter((id) => id !== targetShot.id));
       setIsRenderingHuman(false);
+    }
+  };
+
+  // 智能扩图处理管线：四周外扩、左右延展、上下拉高，生成新全景 Revision
+  const handleOutpaintShot = async (params: OutpaintParams) => {
+    const targetShot = activeShot;
+    if (isOutpainting || isRenderingShot) {
+      console.warn('[SpaceStudioShell] 扩图或生图任务正在执行中，拦截重复触发');
+      return;
+    }
+
+    setIsOutpainting(true);
+    const controller = new AbortController();
+    abortControllersRef.current.set(targetShot.id, controller);
+
+    const timeout = setTimeout(() => {
+      console.warn('[SpaceStudioShell] 扩图 180s 超时，触发主动超时打断');
+      controller.abort('Outpaint timeout after 180s');
+    }, 180000);
+    renderTimeoutsRef.current.set(targetShot.id, timeout);
+    setRenderingShotIds((prev) => Array.from(new Set([...prev, targetShot.id])));
+
+    const jobId = `job-outpaint-${targetShot.templateCode.toLowerCase()}-${Date.now()}`;
+    const initialJob: GenerationJob = {
+      jobId,
+      phase: 'shoot',
+      targetCode: targetShot.templateCode,
+      status: 'generating',
+      progress: 30,
+      provider: computeConfig.model || 'gpt-image-2',
+      settings: {
+        model: computeConfig.model,
+        resolution: computeConfig.resolution,
+        aspectRatio: params.targetAspectRatio,
+        useRandomSeed: true
+      },
+      createdAt: new Date().toISOString()
+    };
+    setCurrentJob(initialJob);
+
+    try {
+      const res = await fetch('/api/space/shoot/outpaint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          projectId: 'manwah-noble-space-01',
+          shotId: targetShot.id,
+          shotCode: targetShot.templateCode,
+          baseRevisionId: targetShot.currentRevisionId,
+          paddedImage: params.paddedImageDataUrl,
+          maskImage: params.maskDataUrl,
+          outpaintMode: params.mode,
+          scale: params.scale,
+          promptSupplement: params.promptSupplement,
+          roomName: selectedSpace.name.split(' (')[0],
+          styleName: selectedStyle.name.split(' (')[0],
+          preferredModel: computeConfig.model || 'gpt-image-2',
+          aspectRatio: params.targetAspectRatio,
+          resolution: computeConfig.resolution || '2K'
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorMsg =
+          data.error?.message ||
+          (typeof data.error === 'string' ? data.error : '') ||
+          data.message ||
+          '智能扩图生成失败';
+        throw new Error(errorMsg);
+      }
+
+      const nextRevNum = (targetShot.revisions.length || 0) + 1;
+      const newRevision: ShotRevision = {
+        id: data.data.revisionId,
+        shotId: targetShot.id,
+        revisionNumber: nextRevNum,
+        revisionType: 'scene',
+        label: data.data.label || `扩图 (${params.scale}x) v${nextRevNum}`,
+        metaSummary: data.data.metaSummary || `视野向四周延展 ${params.scale}x · 保留主沙发与摆位`,
+        parentRevisionId: targetShot.currentRevisionId,
+        objectKey: data.data.objectKey,
+        imageUrl: data.data.imageUrl,
+        thumbnailUrl: data.data.imageUrl,
+        promptSnapshotId: `outpaint-${data.data.revisionId}`,
+        status: 'approved',
+        score: {
+          productIdentity: 96,
+          placement: 96,
+          sceneContinuity: 95,
+          shotIntent: 96,
+          overall: 96
+        },
+        provenance: 'SOLVER_RESOLVED',
+        productionTruth: false,
+        createdAt: new Date().toISOString()
+      };
+
+      setShots((prev) =>
+        prev.map((s) => {
+          if (s.id !== targetShot.id) return s;
+          return {
+            ...s,
+            status: 'passed',
+            currentRevisionId: newRevision.id,
+            revisions: [newRevision, ...s.revisions.filter((r) => r.id !== newRevision.id)]
+          };
+        })
+      );
+
+      // 若扩图的是 A00 空间母版，同步更新母版图
+      if (targetShot.templateCode === 'A00') {
+        setSceneMaster((prev) =>
+          prev
+            ? {
+                ...prev,
+                imageUrl: data.data.imageUrl,
+                objectKey: data.data.objectKey
+              }
+            : null
+        );
+      }
+
+      setCurrentJob((j) => (j ? { ...j, status: 'completed', progress: 100, finishedAt: new Date().toISOString() } : null));
+    } catch (err: unknown) {
+      const isAborted =
+        (err as any)?.name === 'AbortError' ||
+        (err as any)?.name === 'TimeoutError' ||
+        (err as any)?.message?.includes('aborted') ||
+        controller.signal.aborted;
+
+      if (isAborted) {
+        console.log('[SpaceStudioShell] 扩图任务已被打断或超时中止');
+        setCurrentJob(null);
+      } else {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'object' && err !== null && 'message' in err
+            ? (err as any).message
+            : typeof err === 'string'
+            ? err
+            : '智能扩图生成失败，请重试';
+        console.error('Failed to outpaint shot:', err);
+        alert(`智能扩图提示: ${errorMessage}`);
+        setCurrentJob((j) =>
+          j
+            ? {
+                ...j,
+                status: 'failed',
+                error: errorMessage,
+                progress: 100,
+                finishedAt: new Date().toISOString()
+              }
+            : null
+        );
+      }
+    } finally {
+      const timer = renderTimeoutsRef.current.get(targetShot.id);
+      if (timer) {
+        clearTimeout(timer);
+        renderTimeoutsRef.current.delete(targetShot.id);
+      }
+      abortControllersRef.current.delete(targetShot.id);
+      setRenderingShotIds((prev) => prev.filter((id) => id !== targetShot.id));
+      setIsOutpainting(false);
     }
   };
 
@@ -1676,7 +2717,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         if (s.id !== shotId) return s;
         const targetRev = s.revisions.find((r) => r.id === revisionId);
         if (!targetRev) return s;
-        const isHuman = targetRev.revisionType === 'human' || targetRev.id.includes('human');
+        const isHuman = Boolean(
+          targetRev.revisionType === 'human' ||
+          targetRev.id.includes('human') ||
+          targetRev.label?.includes('模特') ||
+          targetRev.label?.includes('人物')
+        );
         return {
           ...s,
           currentRevisionId: revisionId,
@@ -1684,6 +2730,53 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         };
       })
     );
+
+    // 同步切换选中的候选 ID：若该版本有专属匹配批次，优先匹配该批次首选项；若无专属批次，清空候选选中态，使画布强制展示定稿大图！
+    if (revisionCandidateBatches[revisionId]?.candidates?.[0]) {
+      setSelectedCandidateIds((prev) => ({
+        ...prev,
+        [shotId]: revisionCandidateBatches[revisionId].candidates[0].id
+      }));
+    } else {
+      setSelectedCandidateIds((prev) => {
+        const next = { ...prev };
+        delete next[shotId];
+        return next;
+      });
+    }
+
+    // 若切换的是 A00 空间母版的版本，同步更新全局 SceneMaster 物理基准，确保后续镜头继承选中的特定母版
+    const targetShot = shots.find((s) => s.id === shotId);
+    if (targetShot?.templateCode === 'A00') {
+      const selectedRev = targetShot.revisions.find((r) => r.id === revisionId);
+      if (selectedRev) {
+        setSceneMaster((prev) => {
+          const updated: SceneMaster = prev
+            ? { ...prev, imageUrl: selectedRev.imageUrl || prev.imageUrl, objectKey: selectedRev.objectKey || prev.objectKey }
+            : {
+                id: `master-${selectedSpace.code.toLowerCase()}`,
+                projectId: 'manwah-noble-space-01',
+                objectKey: selectedRev.objectKey || `scene-masters/master-${selectedSpace.code.toLowerCase()}/master.webp`,
+                imageUrl: selectedRev.imageUrl,
+                isLocked: true,
+                lockedAt: new Date().toISOString(),
+                locks: {
+                  productIdentity: true,
+                  placement: true,
+                  architecture: true,
+                  style: true,
+                  material: true,
+                  lighting: true,
+                  camera: true,
+                  human: false
+                },
+                promptSnapshotId: selectedRev.id
+              };
+          sceneMasterRef.current = updated;
+          return updated;
+        });
+      }
+    }
   };
 
   // 删除指定的镜头历史生成版本
@@ -1759,7 +2852,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       imageUrl: masterImageUrl,
       isLocked: true,
       lockedAt: new Date().toISOString(),
-      aspectRatio: (computeConfig.aspectRatio || '16:9') as any,
+      aspectRatio: (computeConfig.aspectRatio || '4:3') as any,
       locks: {
         productIdentity: true,
         placement: true,
@@ -1870,6 +2963,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           products={products}
           onSyncFromCanvas={handleSyncFromCanvas}
           onOpenUploadModal={handleOpenUploadModal}
+          onAddProduct={handleAddProduct}
+          onBatchAddProducts={handleBatchSaveProductsFromModal}
           onUpdateProduct={handleUpdateProduct}
           onRemoveProduct={handleRemoveProduct}
           onSetPrimaryProduct={handleSetPrimaryProduct}
@@ -1920,18 +3015,68 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           activeShot={activeShot}
           sceneMaster={sceneMaster}
           aspectRatio={aspectRatio}
-          onChangeAspectRatio={(r) => {
-            setAspectRatio(r);
-            handleUpdateComputeConfig({ aspectRatio: r });
-          }}
-          isGenerating={isGeneratingMaster || isRenderingShot || isRenderingHuman}
+          onChangeAspectRatio={handleShotAspectRatioChange}
+          resolution={computeConfig.resolution || '2K'}
+          onChangeResolution={(res) => handleUpdateComputeConfig({ resolution: res })}
+          isGenerating={isGeneratingCurrentShot || (isRenderingHuman && renderingShotIds.includes(activeShot.id)) || isOutpainting}
+          onCancelRendering={() => handleCancelRendering(activeShot.id)}
+          renderingShotCode={renderingShotCode}
+          onOutpaint={handleOutpaintShot}
+          isOutpainting={isOutpainting}
           onGenerateCurrent={
             activeShot.templateCode === "A00"
               ? handleGenerateSceneMaster
               : () => handleRenderShot(activeShot)
           }
           onOpenCompareModal={() => setIsGraphModalOpen(true)}
-          candidateBatch={candidateBatches[activeShot.id] || null}
+          candidateBatch={(() => {
+            const currentRev = activeShot.revisions.find((r) => r.id === activeShot.currentRevisionId) || activeShot.revisions[0];
+            const currentRevId = currentRev?.id;
+            const isHumanRev = Boolean(
+              currentRev?.revisionType === 'human' ||
+              currentRev?.id?.includes('human') ||
+              currentRev?.label?.includes('模特') ||
+              currentRev?.label?.includes('人物')
+            );
+
+            // 1. 若当前选中的历史版本有明确绑定的专属候选批次，进行同构校验后返回
+            if (currentRevId && revisionCandidateBatches[currentRevId]) {
+              const revBatch = revisionCandidateBatches[currentRevId];
+              const isBatchHuman = Boolean(
+                revBatch.candidates?.some((c) =>
+                  c.summaryTag?.includes('人物') ||
+                  c.summaryTag?.includes('模特') ||
+                  c.summaryTag?.toLowerCase().includes('human') ||
+                  c.id?.includes('human') ||
+                  (c as any)?.isHumanPass
+                )
+              );
+              if (isHumanRev === isBatchHuman) {
+                return revBatch;
+              }
+            }
+
+            // 2. 校验镜头当前活跃的通用候选批次
+            const rawBatch = candidateBatches[activeShot.id];
+            if (!rawBatch || !currentRev) return null;
+
+            const isRawBatchHuman = Boolean(
+              rawBatch.candidates?.some((c) =>
+                c.summaryTag?.includes('人物') ||
+                c.summaryTag?.includes('模特') ||
+                c.summaryTag?.toLowerCase().includes('human') ||
+                c.id?.includes('human') ||
+                (c as any)?.isHumanPass
+              )
+            );
+
+            // 严格同构校验：若当前查看纯空间而通用批次为人物版（或反之），绝对不传递，杜绝“查看纯空间依然显示人物卡片”
+            if (isHumanRev !== isRawBatchHuman) {
+              return null;
+            }
+
+            return rawBatch;
+          })()}
           selectedCandidateId={selectedCandidateIds[activeShot.id]}
           onSelectCandidate={(cand) => setSelectedCandidateIds(prev => ({ ...prev, [activeShot.id]: cand.id }))}
           onApplyCandidateAsFinal={handleApplyCandidateAsFinal}
@@ -1949,6 +3094,58 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onRenderHumanPass={() => handleRenderHumanPass(activeShot)}
           onSelectRevision={handleSelectRevision}
           onDeleteRevision={handleDeleteRevision}
+          annotations={sceneAnnotations}
+          showAnnotations={showAnnotations}
+          onToggleShowAnnotations={() => setShowAnnotations(!showAnnotations)}
+          selectedAnnotationId={selectedAnnotationId}
+          onSelectAnnotation={(item) => setSelectedAnnotationId(item ? item.id : null)}
+          onUpdateAnnotationPosition={handleUpdateAnnotationPosition}
+          onHideAnnotation={handleHideAnnotation}
+          onLocateInDrawer={(annotationId) => {
+            setIsLeftCollapsed(false);
+            // 1. 优先按产品 ID 直接匹配
+            let targetProd = products.find(
+              (p) => p.id === annotationId || `ann-prod-${p.id}` === annotationId
+            );
+
+            // 2. 容错匹配：通过当前标注项的 SKU / 名称 / 角色查找匹配真实资产
+            const matchedAnn = sceneAnnotations.find((a) => a.id === annotationId);
+            if (!targetProd && matchedAnn) {
+              targetProd = products.find(
+                (p) =>
+                  (p.sku && matchedAnn.sku && p.sku === matchedAnn.sku) ||
+                  (p.name && matchedAnn.name && p.name === matchedAnn.name) ||
+                  p.role === matchedAnn.role
+              );
+            }
+
+            if (targetProd) {
+              // 关键突破：真正弹出该产品的编辑/定位弹窗，允许用户立即修改规格、材质并保存！
+              handleOpenUploadModal(targetProd);
+            } else if (matchedAnn) {
+              // 若为解构预设标注品，自动转换为标准 ProductAsset 并打开编辑入库
+              const fallbackProd: ProductAsset = {
+                id: `prod-ann-${Date.now()}`,
+                sku: matchedAnn.sku || `MW-${matchedAnn.role.toUpperCase()}`,
+                name: matchedAnn.name,
+                role: matchedAnn.role as any,
+                priority: matchedAnn.priority || 'secondary',
+                identityLock: 'strict',
+                dimensions: matchedAnn.dimensions || { width: 900, depth: 950, height: 900 },
+                materials: matchedAnn.materials || ['半苯胺头层牛皮'],
+                colors: matchedAnn.colors || ['极地米白'],
+                surfaceTexture: '精致皮革纹理',
+                functionCapable: matchedAnn.functionCapable ?? false,
+                referenceImages: [],
+                structuralFeatures: [],
+                lockedRules: [],
+                readoutConfidence: 95,
+                provenance: 'AI_ESTIMATED',
+                productionTruth: false
+              };
+              handleOpenUploadModal(fallbackProd);
+            }
+          }}
           theme={theme}
         />
 
@@ -1989,14 +3186,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           totalShots={shots.length}
           sceneMaster={sceneMaster}
           aspectRatio={aspectRatio}
-          onChangeAspectRatio={(r) => {
-            setAspectRatio(r);
-            handleUpdateComputeConfig({ aspectRatio: r });
-          }}
+          onChangeAspectRatio={handleShotAspectRatioChange}
           computeConfig={computeConfig}
           onChangeComputeConfig={handleUpdateComputeConfig}
-          isGeneratingCurrent={isGeneratingMaster || isRenderingShot}
-          isGeneratingAll={false}
+          isGeneratingCurrent={isGeneratingCurrentShot}
+          onCancelRendering={() => handleCancelRendering(activeShot.id)}
+          renderingShotCode={renderingShotCode}
+          backgroundRenderingShotCodes={backgroundRenderingShots.map((s) => s.templateCode)}
+          isGeneratingAll={isGeneratingAll}
+          onGenerateSceneMaster={handleGenerateSceneMaster}
           onGenerateCurrentShot={
             activeShot.templateCode === "A00"
               ? handleGenerateSceneMaster
@@ -2010,6 +3208,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           availableModels={availableModels}
           onOptimizeLightingAndPrompt={handleAiRefinePrompt}
           onUpdateCamera={handleUpdateCamera}
+          onResetCamera={handleResetCamera}
           activeAssets={activeAssets}
           onUpdateActiveAssets={(updater) => setActiveAssets(prev => ({ ...prev, ...updater }))}
           onApplyStyleAndGenerateMaster={handleApplyStyleAndGenerateMaster}
@@ -2046,11 +3245,25 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         shots={shots}
         sceneMaster={sceneMaster}
         activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
-        onSelectShot={(idx) => setActiveShotId(shots[idx].id)}
+        onCancelRendering={handleCancelRendering}
+        onSelectShot={(idx) => {
+          const target = shots[idx];
+          if (!target) return;
+          setActiveShotId(target.id);
+          // 影棚实拍商业对齐：全量镜头（A00~A08）按画面规划与商业构图意图自动自适应长宽比例
+          const tpl = getShotTemplateByCode(target.templateCode);
+          const plannedRatio: ImageAspectRatio =
+            target.aspectRatio || (tpl?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
+
+          if (aspectRatio !== plannedRatio) {
+            setAspectRatio(plannedRatio);
+            handleUpdateComputeConfig({ aspectRatio: plannedRatio });
+          }
+        }}
         onSelectRevision={handleSelectRevision}
         onDeleteRevision={handleDeleteRevision}
         onBatchRenderAll={handleBatchRenderAll}
-        isGeneratingAll={false}
+        isGeneratingAll={isGeneratingAll}
         theme={theme}
       />
 
@@ -2061,9 +3274,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onClose={() => {
             setIsProductUploadModalOpen(false);
             setEditingProduct(null);
+            setInitialUploadImages([]);
           }}
           onSaveProduct={handleSaveProductFromModal}
+          onBatchSaveProducts={handleBatchSaveProductsFromModal}
           initialProduct={editingProduct}
+          initialImages={initialUploadImages}
         />
       )}
 

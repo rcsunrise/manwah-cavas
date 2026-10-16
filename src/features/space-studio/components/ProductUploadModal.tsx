@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ProductAsset,
   ProductRole,
-  ProductReference
+  ProductReference,
+  DisaggregatedProductItem
 } from '../../../types/spaceStudio';
 import { dbService } from '../../../services/dbService';
 import {
@@ -25,13 +26,18 @@ import {
   Check,
   DownloadCloud,
   FileCheck,
-  Palette
+  Palette,
+  Clipboard,
+  FileText,
+  Boxes,
+  Crosshair,
+  CheckCheck
 } from 'lucide-react';
 
 const PRESET_STYLES = ['意式轻奢', '现代极简', '奶油原木', '法式复古', '侘寂原力', '轻奢高定', '新中式', '原木风'];
 const PRESET_COLORS = ['云雾暖灰', '极地奶白', '干邑暖橙', '鞍褐焦糖', '曜石深灰', '复古深栗', '珍珠米金'];
 
-interface UploadedImageItem {
+export interface UploadedImageItem {
   id: string;
   file?: File;
   base64: string;
@@ -43,18 +49,25 @@ interface ProductUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveProduct: (product: ProductAsset) => void;
+  onBatchSaveProducts?: (products: ProductAsset[]) => void;
   initialProduct?: ProductAsset | null;
   projectId?: string;
+  initialImages?: UploadedImageItem[];
 }
 
 export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   isOpen,
   onClose,
   onSaveProduct,
+  onBatchSaveProducts,
   initialProduct = null,
-  projectId = 'manwah-noble-space-01'
+  projectId = 'manwah-noble-space-01',
+  initialImages = []
 }) => {
   const [uploadedImages, setUploadedImages] = useState<UploadedImageItem[]>(() => {
+    if (initialImages && initialImages.length > 0) {
+      return initialImages;
+    }
     if (initialProduct?.referenceImages && initialProduct.referenceImages.length > 0) {
       return initialProduct.referenceImages.map((ref, idx) => ({
         id: ref.id || `ref-init-${idx}`,
@@ -131,6 +144,16 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
     initialProduct?.dossierGeneratedAt || ''
   );
 
+  // 多产品识别解构状态与识别总图索引
+  const [detectedProducts, setDetectedProducts] = useState<DisaggregatedProductItem[]>(
+    initialProduct?.detectedProducts || []
+  );
+  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(0);
+  const [sourceMasterImageUrl, setSourceMasterImageUrl] = useState<string>(
+    initialProduct?.sourceMasterImageUrl || ''
+  );
+  const [hoveredBoxIndex, setHoveredBoxIndex] = useState<number | null>(null);
+
   // AI 识别计时与多阶段实时反馈状态
   const [elapsedMs, setElapsedMs] = useState<number>(0);
   const [analysisStage, setAnalysisStage] = useState<string>('正在准备多模态识别...');
@@ -202,18 +225,42 @@ interface CanvasDraftPayload {
   useEffect(() => {
     if (!isOpen) return;
     if (initialProduct) {
+      const initialImagesList: UploadedImageItem[] = [];
       if (initialProduct.referenceImages && initialProduct.referenceImages.length > 0) {
-        setUploadedImages(
-          initialProduct.referenceImages.map((ref, idx) => ({
-            id: ref.id || `ref-init-${idx}`,
-            base64: ref.publicUrl || '',
-            type: ref.type,
-            name: `参考图 ${idx + 1}`
-          }))
-        );
-      } else {
-        setUploadedImages([]);
+        initialProduct.referenceImages.forEach((ref, idx) => {
+          const imgUrl =
+            ref.publicUrl && !ref.publicUrl.includes('projects/default/')
+              ? ref.publicUrl
+              : ref.objectKey
+              ? `/api/space/storage/local-file?key=${encodeURIComponent(ref.objectKey)}`
+              : '';
+          if (imgUrl) {
+            initialImagesList.push({
+              id: ref.id || `ref-init-${idx}`,
+              base64: imgUrl,
+              type: ref.type,
+              name: `参考图 ${idx + 1}`
+            });
+          }
+        });
       }
+
+      // 若原有引用图为空或打不开，回退到切片特写图或来源总图
+      if (initialImagesList.length === 0) {
+        const fallbackImg =
+          initialProduct.cropBase64 ||
+          initialProduct.cropImageUrl ||
+          initialProduct.sourceMasterImageUrl;
+        if (fallbackImg) {
+          initialImagesList.push({
+            id: `crop-${initialProduct.id}`,
+            base64: fallbackImg,
+            type: 'front',
+            name: `${initialProduct.name} (切片特写)`
+          });
+        }
+      }
+      setUploadedImages(initialImagesList);
       setName(initialProduct.name || '');
       setSku(initialProduct.sku || '');
       setRole(initialProduct.role || 'sofa_3seat');
@@ -240,10 +287,24 @@ interface CanvasDraftPayload {
       setDossierSummary(initialProduct.dossierSummary || '');
       setDossierGeneratedAt(initialProduct.dossierGeneratedAt || '');
       setCloudReferences(initialProduct.referenceImages || []);
+      setDetectedProducts(initialProduct.detectedProducts || []);
+      setSelectedProductIndex(0);
+      setSourceMasterImageUrl(initialProduct.sourceMasterImageUrl || '');
       setActiveImageIndex(0);
       setAnalysisError(null);
     } else {
-      setUploadedImages([]);
+      if (initialImages && initialImages.length > 0) {
+        setUploadedImages(initialImages);
+        setActiveImageIndex(0);
+        setTimeout(() => {
+          handleExtractProductDna(initialImages);
+        }, 100);
+      } else {
+        setUploadedImages([]);
+      }
+      setDetectedProducts([]);
+      setSelectedProductIndex(0);
+      setSourceMasterImageUrl('');
       setName('');
       setSku('');
       setRole('sofa_3seat');
@@ -273,10 +334,354 @@ interface CanvasDraftPayload {
       setActiveImageIndex(0);
       setAnalysisError(null);
     }
-  }, [isOpen, initialProduct]);
+  }, [isOpen, initialProduct, initialImages]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 切换多产品解构中当前编辑的单品，并动态将规格参数分配填入右侧仪表盘
+  const handleSelectDetectedProduct = (idx: number) => {
+    if (!detectedProducts || idx < 0 || idx >= detectedProducts.length) return;
+    setSelectedProductIndex(idx);
+    const item = detectedProducts[idx];
+    if (item.name) setName(item.name);
+    if (item.sku) setSku(item.sku);
+
+    // 智能纠偏：防止茶几被误标为单椅
+    let resolvedItemRole = item.role;
+    const itemName = item.name || '';
+    const itemH = item.dimensions?.height || 0;
+    const itemW = item.dimensions?.width || 0;
+    if (/(茶几|岩板|大理石|几组|方几|圆几|中岛几|coffee.*table)/i.test(itemName) || (itemH > 0 && itemH <= 550 && itemW >= 700)) {
+      resolvedItemRole = 'coffee_table';
+    } else if (/(边几|角几|side.*table)/i.test(itemName) || (itemH > 0 && itemH <= 600 && itemW < 700 && /(几|台)/.test(itemName))) {
+      resolvedItemRole = 'side_table';
+    } else if (/(单人.*功能|电动.*单人|太空舱|零重力|头等舱.*单椅|recliner)/i.test(itemName)) {
+      resolvedItemRole = 'recliner_1seat';
+    } else if (/(休闲单椅|旋转单椅|单椅|无扶手.*椅|lounge.*chair)/i.test(itemName)) {
+      resolvedItemRole = 'lounge_chair';
+    }
+
+    if (resolvedItemRole) setRole(resolvedItemRole);
+    if (item.priority) setPriority(item.priority);
+    if (item.dimensions) {
+      setWidth(item.dimensions.width);
+      setDepth(item.dimensions.depth);
+      setHeight(item.dimensions.height);
+    }
+    if (Array.isArray(item.colors) && item.colors.length > 0) setColors(item.colors);
+    if (Array.isArray(item.materials) && item.materials.length > 0) setMaterials(item.materials);
+    if (Array.isArray(item.adaptiveStyles) && item.adaptiveStyles.length > 0) setAdaptiveStyles(item.adaptiveStyles);
+    if (typeof item.functionCapable === 'boolean') {
+      setFunctionCapable(item.functionCapable);
+    } else if (resolvedItemRole === 'coffee_table' || resolvedItemRole === 'side_table' || resolvedItemRole === 'lounge_chair' || (item.name && /(休闲|无扶手|矮椅|旋转|单椅)/.test(item.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(item.name))) {
+      setFunctionCapable(false);
+    }
+    if (item.dossierSummary) setDossierSummary(item.dossierSummary);
+    setPasteFeedback(`已将【${item.name}】参数分配至仪表盘，来源索引总图已关联`);
+  };
+
+  // 剪贴板粘贴与智能提取状态
+  const [pasteFeedback, setPasteFeedback] = useState<string | null>(null);
+  const [isTextPasteModalOpen, setIsTextPasteModalOpen] = useState<boolean>(false);
+  const [rawPastedText, setRawPastedText] = useState<string>('');
+
+  useEffect(() => {
+    if (!pasteFeedback) return;
+    const timer = setTimeout(() => setPasteFeedback(null), 3500);
+    return () => clearTimeout(timer);
+  }, [pasteFeedback]);
+
+  // 校验文本是否含有产品规格、尺寸或家具关键词
+  const isProductTextPayload = (text: string): boolean => {
+    if (!text || text.length < 4) return false;
+    const hasDimensions =
+      /(\d{3,4})\s*[*xX×/]\s*(\d{3,4})\s*[*xX×/]\s*(\d{3,4})/.test(text) ||
+      /(宽|长|深|高|W|D|H)\s*[:：=]?\s*\d{3,4}/i.test(text);
+    const hasFurnitureKeywords =
+      /(沙发|单椅|茶几|电视柜|餐桌|餐椅|床|床垫|真皮|牛皮|面料|尺寸|规格|货号|SKU|型号|功能)/i.test(text);
+    return hasDimensions || hasFurnitureKeywords;
+  };
+
+  // 智能解析规格文本并一键填入右侧仪表盘
+  const applyParsedProductText = (text: string): boolean => {
+    if (!text) return false;
+    let matchedSomething = false;
+    const updates: string[] = [];
+
+    // 1. 尝试 JSON 格式解析
+    if (text.trim().startsWith('{') && text.trim().endsWith('}')) {
+      try {
+        const data = JSON.parse(text);
+        if (data.name) { setName(data.name); updates.push('产品名称'); }
+        if (data.sku) { setSku(data.sku); updates.push('SKU编码'); }
+        if (data.dimensions) {
+          if (data.dimensions.width) setWidth(Number(data.dimensions.width));
+          if (data.dimensions.depth) setDepth(Number(data.dimensions.depth));
+          if (data.dimensions.height) setHeight(Number(data.dimensions.height));
+          updates.push('三维尺寸');
+        }
+        if (Array.isArray(data.materials)) { setMaterials(data.materials); updates.push('面料材质'); }
+        if (Array.isArray(data.colors)) { setColors(data.colors); updates.push('色彩体系'); }
+        if (Array.isArray(data.adaptiveStyles)) { setAdaptiveStyles(data.adaptiveStyles); updates.push('适配风格'); }
+        if (updates.length > 0) {
+          setPasteFeedback(`已通过剪贴板 JSON 解析并填入：${updates.join('、')}`);
+          return true;
+        }
+      } catch {
+        // 降级为文本正则解析
+      }
+    }
+
+    // 2. 正则提取三维尺寸 (宽 x 深 x 高)
+    // 2.1 乘号分隔: 3100*1080*950 / 3100×1080×950 / 3100 x 1080 x 950
+    const dimMatch = text.match(/(\d{3,4})\s*[*xX×/]\s*(\d{3,4})\s*[*xX×/]\s*(\d{3,4})/);
+    // 2.2 汉字前缀连续组合: 长3250宽1120高980 或 宽3100深1080高950
+    const dimMatchZh = text.match(/(?:长|宽|总宽|W)\s*[:：=]?\s*(\d{3,4})\s*[,，\s]*?(?:宽|深|总深|D)\s*[:：=]?\s*(\d{3,4})\s*[,，\s]*?(?:高|总高|H)\s*[:：=]?\s*(\d{3,4})/i);
+    if (dimMatch) {
+      const w = parseInt(dimMatch[1], 10);
+      const d = parseInt(dimMatch[2], 10);
+      const h = parseInt(dimMatch[3], 10);
+      if (w >= 400 && w <= 6000) setWidth(w);
+      if (d >= 400 && d <= 3000) setDepth(d);
+      if (h >= 300 && h <= 2500) setHeight(h);
+      updates.push(`尺寸(${w}×${d}×${h}mm)`);
+      matchedSomething = true;
+    } else if (dimMatchZh) {
+      const w = parseInt(dimMatchZh[1], 10);
+      const d = parseInt(dimMatchZh[2], 10);
+      const h = parseInt(dimMatchZh[3], 10);
+      if (w >= 400 && w <= 6000) setWidth(w);
+      if (d >= 400 && d <= 3000) setDepth(d);
+      if (h >= 300 && h <= 2500) setHeight(h);
+      updates.push(`尺寸(${w}×${d}×${h}mm)`);
+      matchedSomething = true;
+    } else {
+      const wMatch = text.match(/(?:总宽|长|宽|Width|W)\s*[:：=]?\s*(\d{3,4})/i);
+      const dMatch = text.match(/(?:总深|深|Depth|D)\s*[:：=]?\s*(\d{3,4})/i);
+      const hMatch = text.match(/(?:总高|高|Height|H)\s*[:：=]?\s*(\d{3,4})/i);
+      if (wMatch) { setWidth(parseInt(wMatch[1], 10)); updates.push('宽度'); matchedSomething = true; }
+      if (dMatch) { setDepth(parseInt(dMatch[1], 10)); updates.push('深度'); matchedSomething = true; }
+      if (hMatch) { setHeight(parseInt(hMatch[1], 10)); updates.push('高度'); matchedSomething = true; }
+    }
+
+    // 3. 正则提取产品名
+    const nameMatch = text.match(/(?:产品名称|规范全称|产品全称|品名|名称|产品)\s*[:：]\s*([^\r\n,，；;]+)/);
+    if (nameMatch && nameMatch[1].trim()) {
+      setName(nameMatch[1].trim());
+      updates.push('产品名称');
+      matchedSomething = true;
+    } else if (!name) {
+      const firstLine = text.split(/[\r\n]+/).map(s => s.trim()).find(Boolean);
+      if (firstLine && /(沙发|单椅|茶几|餐椅|功能椅|贵妃榻|软床)/.test(firstLine) && firstLine.length <= 40) {
+        setName(firstLine);
+        updates.push('产品名称');
+        matchedSomething = true;
+      }
+    }
+
+    // 4. 正则提取 SKU / 货号
+    const skuMatch = text.match(/(?:SKU|货号|型号|编码|商品编码)\s*[:：=]?\s*([A-Za-z0-9_#-]+)/i);
+    if (skuMatch && skuMatch[1].trim()) {
+      setSku(skuMatch[1].trim().toUpperCase());
+      updates.push('SKU编码');
+      matchedSomething = true;
+    }
+
+    // 5. 颜色匹配
+    const matchedColors: string[] = [];
+    PRESET_COLORS.forEach((c) => {
+      const base = c.split(' ')[0];
+      if (text.includes(base) || (base.includes('灰') && text.includes('灰色')) || (base.includes('白') && text.includes('白色'))) {
+        if (!matchedColors.includes(c)) matchedColors.push(c);
+      }
+    });
+    if (matchedColors.length > 0) {
+      setColors((prev) => Array.from(new Set([...prev, ...matchedColors])));
+      updates.push(`色彩(${matchedColors.join(',')})`);
+      matchedSomething = true;
+    }
+
+    // 6. 适配风格匹配
+    const matchedStyles: string[] = [];
+    PRESET_STYLES.forEach((s) => {
+      if (text.includes(s) || (s.includes('轻奢') && text.includes('轻奢')) || (s.includes('极简') && text.includes('极简'))) {
+        if (!matchedStyles.includes(s)) matchedStyles.push(s);
+      }
+    });
+    if (matchedStyles.length > 0) {
+      setAdaptiveStyles((prev) => Array.from(new Set([...prev, ...matchedStyles])));
+      updates.push(`风格(${matchedStyles.join(',')})`);
+      matchedSomething = true;
+    }
+
+    // 7. 材质识别
+    const potentialMaterials: string[] = [];
+    if (text.includes('头层牛皮') || text.includes('半苯胺') || text.includes('真皮')) {
+      potentialMaterials.push('南美进口头层牛皮 (半苯胺)');
+    }
+    if (text.includes('双电机') || text.includes('德国电机') || text.includes('电机')) {
+      potentialMaterials.push('德国超静音低压双电机');
+    }
+    if (text.includes('高碳钢') || text.includes('五金') || text.includes('伸缩架') || text.includes('合金架')) {
+      potentialMaterials.push('高碳钢五金伸缩架');
+    }
+    if (potentialMaterials.length > 0) {
+      setMaterials((prev) => Array.from(new Set([...prev, ...potentialMaterials])));
+      updates.push('材质');
+      matchedSomething = true;
+    }
+
+    if (matchedSomething) {
+      setPasteFeedback(`已从剪贴板文本智能解析：${updates.join('、')}`);
+      return true;
+    } else {
+      setPasteFeedback('未匹配到标准产品规格，已将文本添加至用户特别备注');
+      setUserNotes((prev) => (prev ? `${prev}\n${text}` : text));
+      return false;
+    }
+  };
+
+  // 全局剪贴板粘贴监听 (Ctrl+V / Cmd+V)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.getAttribute('contenteditable') === 'true');
+
+      // 1. 优先提取剪贴板中的图片
+      const items = e.clipboardData?.items;
+      if (items && items.length > 0) {
+        const imageFiles: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            if (blob) {
+              const ext = item.type.split('/')[1] || 'png';
+              imageFiles.push(
+                new File(
+                  [blob],
+                  `剪贴板截图-${Date.now().toString().slice(-4)}.${ext}`,
+                  { type: item.type }
+                )
+              );
+            }
+          }
+        }
+
+        if (imageFiles.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleFiles(imageFiles);
+          return;
+        }
+      }
+
+      // 焦点如果在输入框且没有图片，放行原生的文本输入
+      if (isInput) return;
+
+      // 2. 检查纯文本 (网络图片 URL 或 产品规格文案)
+      const text = e.clipboardData?.getData('text')?.trim();
+      if (!text) return;
+
+      if (
+        text.startsWith('data:image/') ||
+        /^https?:\/\/.+\.(png|jpe?g|webp|gif|bmp)(\?.*)?$/i.test(text)
+      ) {
+        e.preventDefault();
+        if (text.startsWith('data:image/')) {
+          const currentTotal = uploadedImages.length;
+          const defaultType =
+            currentTotal === 0 ? 'front' : currentTotal === 1 ? '45_deg' : 'detail';
+          const newItem: UploadedImageItem = {
+            id: `img-clip-${Date.now()}`,
+            base64: text,
+            type: defaultType,
+            name: `剪贴板图片-${Date.now().toString().slice(-4)}`
+          };
+          setUploadedImages((prev) => {
+            const merged = [...prev, newItem];
+            if (!confidenceScore) {
+              setTimeout(() => handleExtractProductDna(merged), 100);
+            }
+            return merged;
+          });
+          setPasteFeedback('已从剪贴板 URL 载入产品图片');
+        } else {
+          try {
+            setPasteFeedback('正在从网络链接载入图片...');
+            const res = await fetch(text);
+            const blob = await res.blob();
+            const file = new File([blob], `网络产品图-${Date.now().toString().slice(-4)}.png`, {
+              type: blob.type || 'image/png'
+            });
+            handleFiles([file]);
+          } catch {
+            setPasteFeedback('无法从网络链接加载图片，建议直接右键复制图片后按 Ctrl+V 粘贴');
+          }
+        }
+        return;
+      }
+
+      // 2.2 若为产品规格说明文本
+      if (isProductTextPayload(text)) {
+        e.preventDefault();
+        applyParsedProductText(text);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isOpen, uploadedImages.length, confidenceScore]);
+
+  // 点击“从剪贴板粘贴”交互按钮
+  const handlePasteFromClipboardClick = async () => {
+    try {
+      if (navigator.clipboard?.read) {
+        const items = await navigator.clipboard.read();
+        const files: File[] = [];
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const ext = type.split('/')[1] || 'png';
+              files.push(
+                new File(
+                  [blob],
+                  `剪贴板截图-${Date.now().toString().slice(-4)}.${ext}`,
+                  { type }
+                )
+              );
+            }
+          }
+        }
+        if (files.length > 0) {
+          handleFiles(files);
+          setPasteFeedback(`已成功从剪贴板粘贴 ${files.length} 张图片`);
+          return;
+        }
+      }
+
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          const applied = applyParsedProductText(text);
+          if (applied) return;
+        }
+      }
+
+      setPasteFeedback('剪贴板中未读取到图片，请直接按下键盘 Ctrl+V 粘贴');
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      setPasteFeedback('请直接按下键盘上的 Ctrl+V (或 ⌘+V) 粘贴剪贴板图片');
+    }
+  };
 
   // 一键从创意画布载入已解析产品图与视觉 DNA
   const handleImportFromCanvas = () => {
@@ -333,17 +738,19 @@ interface CanvasDraftPayload {
 
   if (!isOpen) return null;
 
-  // 处理文件选择与拖拽
-  const handleFiles = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  // 处理文件选择、拖拽与剪贴板文件输入
+  const handleFiles = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
 
-    const validFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    const validFiles = fileArray.filter((file) => file.type.startsWith('image/'));
     if (validFiles.length === 0) return;
 
     let processedCount = 0;
     const newItems: UploadedImageItem[] = [];
 
-    validFiles.forEach((file, index) => {
+    validFiles.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64 = e.target?.result as string;
@@ -362,7 +769,7 @@ interface CanvasDraftPayload {
             file,
             base64,
             type: defaultType,
-            name: file.name
+            name: file.name || `剪贴板图片-${Date.now().toString().slice(-4)}`
           });
         }
         processedCount++;
@@ -377,6 +784,7 @@ interface CanvasDraftPayload {
             }
             return merged;
           });
+          setPasteFeedback(`已成功导入 ${newItems.length} 张图片并加入产品参考图`);
         }
       };
       reader.readAsDataURL(file);
@@ -410,6 +818,26 @@ interface CanvasDraftPayload {
     );
   };
 
+  // 辅助函数：将 URL 形式的图片无缝转为真实的 Base64 格式
+  const convertUrlToBase64 = async (url: string): Promise<string> => {
+    if (!url) return '';
+    if (url.startsWith('data:image/')) return url;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => resolve(url);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.warn('[ProductUploadModal] convertUrlToBase64 failed, keeping original URL:', e);
+      return url;
+    }
+  };
+
   // 触发 AI 多模态读数
   const handleExtractProductDna = async (customImages?: UploadedImageItem[]) => {
     const targetImages = customImages && customImages.length > 0 ? customImages : uploadedImages;
@@ -425,10 +853,12 @@ interface CanvasDraftPayload {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
+    // 关键：立即重置旧置信度与状态，确保无论是第一次还是第二次点击识别，均能即时呈现“深度解析中”动态反馈！
     setIsAnalyzing(true);
+    setConfidenceScore(null);
     setAnalysisError(null);
     setElapsedMs(0);
-    setAnalysisStage('阶段 1/4: 解析多角度视差与产品轮廓特征...');
+    setAnalysisStage('阶段 1/4: 解析多视角图像视差与产品轮廓特征...');
     const startTime = Date.now();
 
     if (timerRef.current) {
@@ -441,7 +871,7 @@ interface CanvasDraftPayload {
       if (diff < 2200) {
         setAnalysisStage('阶段 1/4: 解析多视角图像视差与产品轮廓特征...');
       } else if (diff < 5200) {
-        setAnalysisStage('阶段 2/4: Gemini 3.1 视觉大模型测算真值长宽高与面料...');
+        setAnalysisStage('阶段 2/4: Gemini 视觉大模型测算真值长宽高与面料...');
       } else if (diff < 8200) {
         setAnalysisStage('阶段 3/4: 校验机械伸展机构与工程几何不变量...');
       } else {
@@ -450,9 +880,23 @@ interface CanvasDraftPayload {
     }, 100);
 
     try {
+      // 预处理图片：若包含非 Base64 的 URL，异步转换为真实 Base64，杜绝后端解析崩溃
+      const preparedImages = await Promise.all(
+        targetImages.map(async (img) => {
+          if (img.base64 && !img.base64.startsWith('data:image/')) {
+            const b64 = await convertUrlToBase64(img.base64);
+            return { ...img, base64: b64 };
+          }
+          return img;
+        })
+      );
+
+      // 同步更新前端 uploadedImages 中的缓存，后续使用无需重复转换
+      setUploadedImages(preparedImages);
+
       const payload = {
         projectId,
-        images: targetImages.map((img) => ({
+        images: preparedImages.map((img) => ({
           base64: img.base64,
           type: img.type,
           fileName: img.name
@@ -529,6 +973,20 @@ interface CanvasDraftPayload {
       if (Array.isArray(data.referenceImages) && data.referenceImages.length > 0) {
         setCloudReferences(data.referenceImages);
       }
+
+      if (data.sourceMasterImageUrl) {
+        setSourceMasterImageUrl(data.sourceMasterImageUrl);
+      } else if (targetImages[0]?.base64) {
+        setSourceMasterImageUrl(targetImages[0].base64);
+      }
+
+      if (Array.isArray(data.detectedProducts) && data.detectedProducts.length > 0) {
+        setDetectedProducts(data.detectedProducts);
+        setSelectedProductIndex(0);
+        if (data.detectedProducts.length > 1) {
+          setPasteFeedback(`已从总图解构出 ${data.detectedProducts.length} 款独立家具，并已建立总图来源索引！`);
+        }
+      }
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') {
         return;
@@ -593,9 +1051,82 @@ interface CanvasDraftPayload {
     setLockedRules((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /**
+   * 客户端 Canvas 局部 ROI 快速裁切：
+   * 当解构品缺少独立的 cropImageUrl 时，根据 boundingBox 快速切出单品独立特写并限制长边在 1024px 内
+   * 杜绝将全景总图重复复制给每个搭配品，避免多模态 Payload 膨胀与 400 报错
+   */
+  const cropImageClientSide = async (
+    sourceImageUrl: string,
+    box?: { ymin: number; xmin: number; ymax: number; xmax: number }
+  ): Promise<string | null> => {
+    if (!sourceImageUrl || !box) return null;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const natW = img.naturalWidth || img.width;
+          const natH = img.naturalHeight || img.height;
+          if (!natW || !natH) return resolve(null);
+
+          const xmin = Math.max(0, Math.min(100, Number(box.xmin) || 0));
+          const ymin = Math.max(0, Math.min(100, Number(box.ymin) || 0));
+          const xmax = Math.max(0, Math.min(100, Number(box.xmax) || 100));
+          const ymax = Math.max(0, Math.min(100, Number(box.ymax) || 100));
+
+          const left = Math.floor((xmin / 100) * natW);
+          const top = Math.floor((ymin / 100) * natH);
+          const width = Math.min(natW - left, Math.max(20, Math.ceil(((xmax - xmin) / 100) * natW)));
+          const height = Math.min(natH - top, Math.max(20, Math.ceil(((ymax - ymin) / 100) * natH)));
+
+          if (width <= 10 || height <= 10) return resolve(null);
+
+          // 限制输出长边在 1024px 内，杜绝巨额 Payload 爆炸
+          const maxEdge = 1024;
+          let destW = width;
+          let destH = height;
+          if (Math.max(destW, destH) > maxEdge) {
+            if (destW >= destH) {
+              destH = Math.round((destH * maxEdge) / destW);
+              destW = maxEdge;
+            } else {
+              destW = Math.round((destW * maxEdge) / destH);
+              destH = maxEdge;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = destW;
+          canvas.height = destH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+
+          ctx.drawImage(img, left, top, width, height, 0, 0, destW, destH);
+          const croppedBase64 = canvas.toDataURL('image/webp', 0.88);
+          resolve(croppedBase64);
+        } catch (err) {
+          console.warn('[cropImageClientSide] Canvas crop notice:', err);
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = sourceImageUrl;
+    });
+  };
+
   // 保存并加入资产库
-  const handleConfirmSave = () => {
+  const handleConfirmSave = async () => {
     const finalProductId = initialProduct?.id || `prod-custom-${Date.now().toString(36)}`;
+    const currentDetected = detectedProducts && detectedProducts[selectedProductIndex];
+    let cropImg = currentDetected?.cropImageUrl;
+    const masterImg = sourceMasterImageUrl || (uploadedImages[0]?.base64 || '');
+
+    // 若无现成切片但有 boundingBox 与母图，立即执行前端 Canvas 快速精准局部裁切
+    if (!cropImg && currentDetected?.boundingBox && masterImg) {
+      cropImg = (await cropImageClientSide(masterImg, currentDetected.boundingBox)) || undefined;
+    }
+
     const finalReferences: ProductReference[] =
       cloudReferences.length > 0
         ? cloudReferences
@@ -606,6 +1137,21 @@ interface CanvasDraftPayload {
             publicUrl: img.base64,
             verified: true
           }));
+
+    const finalReferencesWithCrop: ProductReference[] = [
+      ...(cropImg
+        ? [
+            {
+              id: `ref-crop-${finalProductId}`,
+              type: 'front' as const,
+              objectKey: `projects/${projectId}/products/${finalProductId}/refs/crop/original.webp`,
+              publicUrl: cropImg,
+              verified: true
+            }
+          ]
+        : []),
+      ...finalReferences
+    ];
 
     const finalProduct: ProductAsset = {
       id: finalProductId,
@@ -625,7 +1171,14 @@ interface CanvasDraftPayload {
       isEnsembleIncluded,
       surfaceTexture,
       functionCapable,
-      referenceImages: finalReferences,
+      referenceImages: finalReferencesWithCrop,
+      sourceMasterImageUrl: masterImg,
+      sourceBoundingBox: currentDetected?.boundingBox,
+      cropImageUrl: cropImg,
+      cropBase64: cropImg,
+      ensembleId: currentDetected?.ensembleId || (detectedProducts.length > 1 ? `ens-${projectId}-${Date.now().toString(36)}` : undefined),
+      ensembleRoleTitle: currentDetected?.roleTitle || name.trim(),
+      detectedProducts: detectedProducts.length > 0 ? detectedProducts : undefined,
       structuralFeatures,
       lockedRules,
       readoutConfidence: confidenceScore || 96,
@@ -639,6 +1192,119 @@ interface CanvasDraftPayload {
     };
 
     onSaveProduct(finalProduct);
+    onClose();
+  };
+
+  // 一键全套批量入库所有解构产品（支持自动局部裁切，严禁将全景整图重复放入搭配品）
+  const handleBatchSaveAllDetected = async () => {
+    if (!detectedProducts || detectedProducts.length === 0) return;
+    const commonEnsembleId = `ens-${projectId}-${Date.now().toString(36)}`;
+    const masterImg = sourceMasterImageUrl || (uploadedImages[0]?.base64 || '');
+
+    const allProducts: ProductAsset[] = [];
+
+    for (let idx = 0; idx < detectedProducts.length; idx++) {
+      const item = detectedProducts[idx];
+      const prodId = `prod-ens-${Date.now().toString(36)}-${idx + 1}`;
+      let itemCrop = item.cropImageUrl;
+
+      // 若未提供后端切片，客户端自动 Canvas 裁切
+      if (!itemCrop && item.boundingBox && masterImg) {
+        itemCrop = (await cropImageClientSide(masterImg, item.boundingBox)) || undefined;
+      }
+
+      // 搭配品严禁将全景大图直接重复塞入，有切片优先放切片
+      const itemReferences: ProductReference[] = [
+        ...(itemCrop
+          ? [
+              {
+                id: `ref-crop-${prodId}`,
+                type: 'front' as const,
+                objectKey: `projects/${projectId}/products/${prodId}/refs/crop/original.webp`,
+                publicUrl: itemCrop,
+                verified: true
+              }
+            ]
+          : cloudReferences.length > 0
+          ? cloudReferences
+          : uploadedImages.map((img, rIdx) => ({
+              id: `${img.id}-${idx}`,
+              type: img.type,
+              objectKey: `projects/${projectId}/products/${prodId}/refs/ref-${rIdx + 1}/original.webp`,
+              publicUrl: img.base64,
+              verified: true
+            })))
+      ];
+
+      const isCurrent = idx === selectedProductIndex;
+      let finalItemRole = isCurrent ? role : (item.role || (idx === 0 ? 'sofa_3seat' : 'coffee_table'));
+      const itemName = isCurrent ? name : (item.name || '');
+      const itemH = isCurrent ? Number(height) : (Number(item.dimensions?.height) || 0);
+      const itemW = isCurrent ? Number(width) : (Number(item.dimensions?.width) || 0);
+
+      if (/(茶几|岩板|大理石|几组|方几|圆几|中岛几|coffee.*table)/i.test(itemName) || (itemH > 0 && itemH <= 550 && itemW >= 700)) {
+        finalItemRole = 'coffee_table';
+      } else if (/(边几|角几|side.*table)/i.test(itemName) || (itemH > 0 && itemH <= 600 && itemW < 700 && /(几|台)/.test(itemName))) {
+        finalItemRole = 'side_table';
+      } else if (/(单人.*功能|电动.*单人|太空舱|零重力|头等舱.*单椅|recliner)/i.test(itemName)) {
+        finalItemRole = 'recliner_1seat';
+      }
+
+      const isArmlessOrNonFunc =
+        finalItemRole === 'lounge_chair' ||
+        (itemName && /(休闲|无扶手|矮椅|旋转|单椅)/.test(itemName) && !/(功能|电动|头等舱|展开|太空舱)/.test(itemName));
+      const resolvedRole = isArmlessOrNonFunc && finalItemRole === 'recliner_1seat' ? 'lounge_chair' : finalItemRole;
+      const finalItemFunctionCapable = isCurrent
+        ? functionCapable
+        : typeof item.functionCapable === 'boolean'
+        ? item.functionCapable
+        : isArmlessOrNonFunc || resolvedRole === 'coffee_table' || resolvedRole === 'side_table'
+        ? false
+        : (resolvedRole === 'sofa_3seat' || resolvedRole === 'sofa_2seat' || resolvedRole === 'recliner_1seat');
+
+      allProducts.push({
+        id: prodId,
+        sku: isCurrent ? sku : (item.sku || `MW-ENS-${Math.floor(1000 + Math.random() * 9000)}-${idx + 1}`),
+        name: isCurrent ? name : (item.name || `解构产品 ${idx + 1}`),
+        role: resolvedRole,
+        priority: isCurrent ? priority : (item.priority || (idx === 0 ? 'primary' : 'secondary')),
+        identityLock: 'strict' as const,
+        dimensions: {
+          width: isCurrent ? Number(width) : (Number(item.dimensions?.width) || 1200),
+          depth: isCurrent ? Number(depth) : (Number(item.dimensions?.depth) || 800),
+          height: isCurrent ? Number(height) : (Number(item.dimensions?.height) || 850)
+        },
+        materials: isCurrent ? materials : (Array.isArray(item.materials) && item.materials.length > 0 ? item.materials : materials),
+        colors: isCurrent ? colors : (Array.isArray(item.colors) && item.colors.length > 0 ? item.colors : colors),
+        adaptiveStyles: isCurrent ? adaptiveStyles : (Array.isArray(item.adaptiveStyles) && item.adaptiveStyles.length > 0 ? item.adaptiveStyles : adaptiveStyles),
+        isEnsembleIncluded: true,
+        surfaceTexture: isCurrent ? surfaceTexture : (item.surfaceTexture || surfaceTexture),
+        functionCapable: finalItemFunctionCapable,
+        referenceImages: itemReferences,
+        cropImageUrl: itemCrop,
+        cropBase64: itemCrop,
+        sourceMasterImageUrl: masterImg,
+        sourceBoundingBox: item.boundingBox,
+        ensembleId: commonEnsembleId,
+        ensembleRoleTitle: item.roleTitle || item.name,
+        structuralFeatures: structuralFeatures,
+        lockedRules: Array.isArray(item.lockedRules) && item.lockedRules.length > 0 ? item.lockedRules : lockedRules,
+        readoutConfidence: confidenceScore || 96,
+        dossierSummary:
+          item.dossierSummary ||
+          `${item.name} · 索引来自识别总图 · 尺寸 ${item.dimensions?.width}×${item.dimensions?.depth}×${item.dimensions?.height}mm`,
+        dossierGeneratedAt: new Date().toISOString(),
+        provenance: 'AI_ESTIMATED' as const,
+        productionTruth: false,
+        sourceType: 'upload' as const
+      });
+    }
+
+    if (onBatchSaveProducts) {
+      onBatchSaveProducts(allProducts);
+    } else {
+      allProducts.forEach((p) => onSaveProduct(p));
+    }
     onClose();
   };
 
@@ -682,13 +1348,27 @@ interface CanvasDraftPayload {
                 <ImageIcon className="w-3.5 h-3.5 text-amber-600" />
                 多角度参考图 ({uploadedImages.length})
               </span>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] text-amber-700 hover:text-amber-800 font-medium flex items-center gap-1 hover:underline"
-              >
-                <Plus className="w-3 h-3" />
-                添加图片
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboardClick}
+                  className="text-[11px] text-amber-700 hover:text-amber-800 font-medium flex items-center gap-1 hover:underline cursor-pointer"
+                  title="直接按 Ctrl+V 或点击粘贴剪贴板中的图片/截图"
+                >
+                  <Clipboard className="w-3.5 h-3.5 text-amber-600" />
+                  <span>粘贴图片</span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-100 border border-amber-300 text-amber-900 font-mono font-bold">
+                    Ctrl+V
+                  </span>
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[11px] text-stone-600 hover:text-stone-800 font-medium flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  本地上传
+                </button>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -698,6 +1378,23 @@ interface CanvasDraftPayload {
                 onChange={(e) => handleFiles(e.target.files)}
               />
             </div>
+
+            {/* 剪贴板粘贴操作即时反馈条 */}
+            {pasteFeedback && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] flex items-center justify-between shadow-2xs animate-in fade-in duration-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-medium">{pasteFeedback}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPasteFeedback(null)}
+                  className="text-emerald-700 hover:text-emerald-950 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* 一键导入创意画布已解析产品条幅 */}
             {detectedCanvasDraft && (
@@ -729,7 +1426,7 @@ interface CanvasDraftPayload {
               </div>
             )}
 
-            {/* 主预览区 / 拖拽上传区 */}
+            {/* 主预览区 / 拖拽与剪贴板上传区 */}
             {uploadedImages.length === 0 ? (
               <div
                 onDrop={handleDrop}
@@ -741,10 +1438,33 @@ interface CanvasDraftPayload {
                   <Upload className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="font-bold text-stone-800 text-xs">点击或拖拽产品图片至此</div>
-                  <div className="text-[10px] text-stone-400 mt-1">
-                    支持 JPEG、PNG、WebP（支持多张多视角）
+                  <div className="font-bold text-stone-800 text-xs flex items-center justify-center gap-1.5 flex-wrap">
+                    <span>点击或拖拽产品图片至此，亦可按</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-mono text-[10px] font-bold shadow-2xs">
+                      Ctrl + V
+                    </kbd>
+                    <span>直接粘贴</span>
                   </div>
+                  <div className="text-[10px] text-stone-400 mt-1">
+                    支持直接粘贴微信/网页/系统截图 · 支持 JPEG、PNG、WebP（多图多视角）
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePasteFromClipboardClick();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 text-[11px] font-bold shadow-2xs flex items-center gap-1.5 transition active:scale-95"
+                    title="从剪贴板粘贴截图或图片"
+                  >
+                    <Clipboard className="w-3.5 h-3.5 text-amber-600" />
+                    <span>粘贴剪贴板图片</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-200/80 font-mono">
+                      Ctrl+V
+                    </span>
+                  </button>
                 </div>
                 <span className="text-[10px] px-2.5 py-1 rounded-full bg-white border border-stone-200 text-stone-600 font-medium">
                   推荐：正视图 + 45°黄金视角 + 伸展功能态
@@ -827,6 +1547,77 @@ interface CanvasDraftPayload {
                     </select>
                   </div>
 
+                  {/* 多产品边界框 (Bounding Box HUD) - 针对总图视角 (Front 视角或第一张参考图) */}
+                  {!isAnalyzing && detectedProducts && detectedProducts.length > 0 && activeImageIndex === 0 && (
+                    <div className="absolute inset-0 pointer-events-none z-15">
+                      {detectedProducts.map((item, idx) => {
+                        const isSelected = selectedProductIndex === idx;
+                        const isHovered = hoveredBoxIndex === idx;
+                        const box = item.boundingBox || { ymin: 10, xmin: 10, ymax: 90, xmax: 90 };
+                        const top = `${box.ymin}%`;
+                        const left = `${box.xmin}%`;
+                        const width = `${Math.max(4, box.xmax - box.xmin)}%`;
+                        const height = `${Math.max(4, box.ymax - box.ymin)}%`;
+
+                        return (
+                          <div
+                            key={item.id || idx}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectDetectedProduct(idx);
+                            }}
+                            onMouseEnter={() => setHoveredBoxIndex(idx)}
+                            onMouseLeave={() => setHoveredBoxIndex(null)}
+                            style={{ top, left, width, height }}
+                            className={`absolute pointer-events-auto border-2 rounded transition-all cursor-pointer flex flex-col justify-between p-1.5 ${
+                              isSelected
+                                ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.6)] ring-2 ring-amber-300/80 z-20'
+                                : isHovered
+                                ? 'border-cyan-400 bg-cyan-500/15 shadow-[0_0_10px_rgba(34,211,238,0.5)] z-20'
+                                : 'border-rose-500/80 hover:border-amber-400 bg-rose-500/10 hover:bg-amber-500/10 z-10'
+                            }`}
+                          >
+                            {/* 顶部标签 */}
+                            <div className="flex items-center gap-1 self-start">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono tracking-tight flex items-center gap-1 shadow-sm ${
+                                  isSelected
+                                    ? 'bg-amber-500 text-stone-950 font-black'
+                                    : 'bg-black/80 text-white border border-white/20 backdrop-blur-xs'
+                                }`}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                <span>#{idx + 1}</span>
+                                <span className="truncate max-w-[100px]">{item.name}</span>
+                              </span>
+                            </div>
+
+                            {/* 底部尺寸读数小标 */}
+                            <div className="self-end">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[8px] font-mono shadow-sm ${
+                                  isSelected
+                                    ? 'bg-stone-950 text-amber-300 font-bold border border-amber-400/40'
+                                    : 'bg-black/80 text-stone-300'
+                                }`}
+                              >
+                                {item.dimensions?.width}×{item.dimensions?.depth}×{item.dimensions?.height}mm
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* 总图检测提示角标 */}
+                  {!isAnalyzing && detectedProducts && detectedProducts.length > 1 && activeImageIndex === 0 && (
+                    <div className="absolute top-2 right-10 px-2 py-0.5 rounded bg-black/75 backdrop-blur-xs text-amber-300 text-[10px] font-mono flex items-center gap-1 z-20 border border-amber-500/40">
+                      <Crosshair className="w-3 h-3 text-amber-400" />
+                      <span>已框选 {detectedProducts.length} 款产品 (点击框选分配)</span>
+                    </div>
+                  )}
+
                   {!isAnalyzing && (
                     <button
                       onClick={() => handleRemoveImage(activeImageIndex)}
@@ -858,13 +1649,94 @@ interface CanvasDraftPayload {
                   ))}
 
                   <button
+                    type="button"
+                    onClick={handlePasteFromClipboardClick}
+                    className="w-14 h-14 rounded-lg border-2 border-dashed border-amber-300 hover:border-amber-500 bg-amber-50/50 hover:bg-amber-100/60 flex flex-col items-center justify-center text-amber-800 transition shrink-0 cursor-pointer"
+                    title="粘贴剪贴板图片 (快捷键 Ctrl+V)"
+                  >
+                    <Clipboard className="w-4 h-4 text-amber-600" />
+                    <span className="text-[9px] font-bold">粘贴</span>
+                  </button>
+
+                  <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-14 h-14 rounded-lg border-2 border-dashed border-stone-300 hover:border-amber-500 flex flex-col items-center justify-center text-stone-400 hover:text-amber-600 transition shrink-0"
+                    className="w-14 h-14 rounded-lg border-2 border-dashed border-stone-300 hover:border-amber-500 flex flex-col items-center justify-center text-stone-400 hover:text-amber-600 transition shrink-0 cursor-pointer"
+                    title="从本地选择文件上传"
                   >
                     <Plus className="w-4 h-4" />
                     <span className="text-[9px]">加图</span>
                   </button>
                 </div>
+
+                {/* 识别总图多产品解构栏 (Ensemble Disaggregation Bar) */}
+                {detectedProducts && detectedProducts.length > 1 && (
+                  <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/80 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
+                        <Boxes className="w-4 h-4 text-amber-600" />
+                        <span>总图已解构 {detectedProducts.length} 款独立家具</span>
+                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-200/80 text-amber-900 font-mono font-medium">
+                          点击分配入参
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-stone-500 font-mono">
+                        来源索引总图已关联
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {detectedProducts.map((prod, idx) => {
+                        const isSelected = selectedProductIndex === idx;
+                        return (
+                          <div
+                            key={prod.id || idx}
+                            onClick={() => handleSelectDetectedProduct(idx)}
+                            onMouseEnter={() => setHoveredBoxIndex(idx)}
+                            onMouseLeave={() => setHoveredBoxIndex(null)}
+                            className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 relative ${
+                              isSelected
+                                ? 'bg-amber-500/15 border-amber-500 ring-2 ring-amber-400/60 shadow-xs'
+                                : 'bg-white hover:bg-stone-50 border-stone-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.2 rounded font-mono ${
+                                  isSelected
+                                    ? 'bg-amber-600 text-white'
+                                    : 'bg-stone-200 text-stone-700'
+                                }`}
+                              >
+                                #{idx + 1}
+                              </span>
+                              <span className="text-[9px] text-stone-500 font-medium truncate max-w-[80px]">
+                                {prod.roleTitle || prod.role}
+                              </span>
+                            </div>
+
+                            {/* 单品局部裁切图或缩略图预览 */}
+                            {prod.cropImageUrl && (
+                              <div className="w-full h-12 rounded bg-stone-900/10 overflow-hidden my-0.5">
+                                <img
+                                  src={prod.cropImageUrl}
+                                  alt={prod.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+
+                            <div className="text-[11px] font-bold text-stone-900 truncate">
+                              {prod.name}
+                            </div>
+                            <div className="text-[9px] font-mono text-stone-500">
+                              {prod.dimensions?.width}×{prod.dimensions?.depth}×{prod.dimensions?.height}mm
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -894,26 +1766,28 @@ interface CanvasDraftPayload {
                 type="button"
                 onClick={() => handleExtractProductDna()}
                 disabled={isAnalyzing || uploadedImages.length === 0}
-                className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all ${
+                className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all select-none ${
                   isAnalyzing
-                    ? 'bg-amber-100 text-amber-900 border border-amber-300 ring-2 ring-amber-400/40 cursor-wait'
+                    ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-stone-950 font-black shadow-lg shadow-amber-500/30 ring-2 ring-amber-400 animate-pulse cursor-wait'
                     : uploadedImages.length === 0
                     ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-amber-600 via-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-amber-900/15 ring-2 ring-amber-400/30'
+                    : 'bg-gradient-to-r from-amber-600 via-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-amber-900/15 ring-2 ring-amber-400/40 cursor-pointer active:scale-[0.99]'
                 }`}
               >
                 {isAnalyzing ? (
                   <>
-                    <RotateCw className="w-4 h-4 animate-spin text-amber-700 shrink-0" />
-                    <span className="font-mono font-bold">AI 深度识别中 · {(elapsedMs / 1000).toFixed(1)}s</span>
-                    <span className="text-[10px] opacity-75 truncate hidden sm:inline">
-                      ({analysisStage.slice(0, 16)}...)
+                    <RotateCw className="w-4 h-4 animate-spin text-stone-950 shrink-0" />
+                    <span className="font-mono font-black text-stone-950">
+                      AI 深度识别中 · {(elapsedMs / 1000).toFixed(1)}s
+                    </span>
+                    <span className="text-[10px] text-stone-900 opacity-90 truncate hidden sm:inline font-sans">
+                      ({analysisStage.slice(0, 18)}...)
                     </span>
                   </>
-                ) : confidenceScore !== null ? (
+                ) : confidenceScore !== null || dossierSummary ? (
                   <>
-                    <Sparkles className="w-4 h-4 text-amber-200" />
-                    <span>重新 AI 识别并刷新产品档案</span>
+                    <RotateCw className="w-4 h-4 text-amber-200" />
+                    <span>🔄 重新 AI 识别并刷新产品档案</span>
                   </>
                 ) : (
                   <>
@@ -974,9 +1848,20 @@ interface CanvasDraftPayload {
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 <span>产品真值读数仪表盘 (Physical Truth Readout)</span>
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
-                规格与几何不变量
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTextPasteModalOpen(true)}
+                  className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-medium flex items-center gap-1 transition shadow-2xs cursor-pointer active:scale-95"
+                  title="粘贴包含尺寸/型号/面料/颜色的规格文案，智能解析并自动填入表单"
+                >
+                  <FileText className="w-3 h-3 text-amber-700" />
+                  <span>粘贴文本规格</span>
+                </button>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
+                  规格与几何不变量
+                </span>
+              </div>
             </div>
 
             {/* 2. AI 产品档案状态看板 */}
@@ -1027,23 +1912,28 @@ interface CanvasDraftPayload {
                     type="button"
                     onClick={() => handleExtractProductDna()}
                     disabled={isAnalyzing}
-                    className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition shadow-2xs shrink-0 cursor-pointer ${
+                    className={`text-[11px] font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition shadow-2xs shrink-0 select-none ${
                       isAnalyzing
-                        ? 'bg-amber-500 text-stone-950 font-mono ring-2 ring-amber-400 font-bold animate-pulse'
-                        : confidenceScore
-                        ? 'text-stone-700 bg-stone-100 hover:bg-stone-200 border border-stone-300'
-                        : 'text-white bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 shadow-sm ring-1 ring-amber-400/30'
+                        ? 'bg-amber-400 text-stone-950 font-mono ring-2 ring-amber-500 font-black shadow-md shadow-amber-400/40 animate-pulse cursor-wait'
+                        : confidenceScore !== null || dossierSummary
+                        ? 'text-stone-800 bg-white hover:bg-amber-50 border border-stone-300 hover:border-amber-400 cursor-pointer shadow-2xs'
+                        : 'text-stone-950 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-400 shadow-sm ring-1 ring-amber-400/80 font-black cursor-pointer active:scale-95'
                     }`}
                   >
                     {isAnalyzing ? (
                       <>
                         <RotateCw className="w-3.5 h-3.5 animate-spin text-stone-950 shrink-0" />
-                        <span>AI 计算中...</span>
+                        <span>AI 识别中 · {(elapsedMs / 1000).toFixed(1)}s</span>
+                      </>
+                    ) : confidenceScore !== null || dossierSummary ? (
+                      <>
+                        <RotateCw className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>重新识别档案</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-amber-200" />
-                        <span>{confidenceScore ? '重新识别档案' : '立即 AI 识别'}</span>
+                        <Sparkles className="w-3.5 h-3.5 text-stone-950 shrink-0" />
+                        <span>✨ 立即 AI 识别</span>
                       </>
                     )}
                   </button>
@@ -1091,9 +1981,55 @@ interface CanvasDraftPayload {
                 </div>
               </div>
             )}
+            {/* 多产品解构分配入参指示器 */}
+            {detectedProducts && detectedProducts.length > 1 && (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300 flex items-center justify-between text-xs shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-900 border border-amber-300 flex items-center justify-center font-black text-xs font-mono shrink-0">
+                    #{selectedProductIndex + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-stone-900 text-xs flex items-center gap-2 truncate">
+                      <span>已分配参数至单品:</span>
+                      <span className="text-amber-800 font-bold underline underline-offset-2 truncate">
+                        {detectedProducts[selectedProductIndex]?.name || name}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-stone-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-mono text-[9px] font-bold">
+                        第 {selectedProductIndex + 1}/{detectedProducts.length} 款
+                      </span>
+                      <span>来源索引总图: 主视图已锚定</span>
+                      <span>·</span>
+                      <span className="font-mono text-stone-600">
+                        切片坐标 [{Math.round(detectedProducts[selectedProductIndex]?.boundingBox?.xmin || 0)}%, {Math.round(detectedProducts[selectedProductIndex]?.boundingBox?.ymin || 0)}%, {Math.round(detectedProducts[selectedProductIndex]?.boundingBox?.xmax || 100)}%, {Math.round(detectedProducts[selectedProductIndex]?.boundingBox?.ymax || 100)}%]
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  {detectedProducts.map((p, idx) => (
+                    <button
+                      key={p.id || idx}
+                      type="button"
+                      onClick={() => handleSelectDetectedProduct(idx)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                        selectedProductIndex === idx
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white hover:bg-stone-100 border border-stone-200 text-stone-700'
+                      }`}
+                      title={`切换分配单品: ${p.name}`}
+                    >
+                      <span>#{idx + 1}</span>
+                      <span className="hidden sm:inline max-w-[60px] truncate">{p.name.slice(0, 4)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-            {/* 1. 核心标记 ①: 产品商业名称与编码 */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* 1. 核心标记 ①: 产品商业名称、空间角色与编码 */}
+            <div className="grid grid-cols-4 gap-2.5">
               <div className="col-span-2 space-y-1">
                 <label className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
                   <Tag className="w-3.5 h-3.5 text-amber-600" />
@@ -1107,6 +2043,34 @@ interface CanvasDraftPayload {
                   placeholder="如：敏华芝华仕头等舱·意式极简电动功能真皮主沙发"
                   className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden font-semibold shadow-2xs"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-stone-800">空间角色 (Role)</label>
+                <select
+                  value={role}
+                  onChange={(e) => {
+                    const newRole = e.target.value as ProductRole;
+                    setRole(newRole);
+                    if (newRole === 'lounge_chair') {
+                      setFunctionCapable(false);
+                    } else if (newRole === 'recliner_1seat' || newRole === 'sofa_3seat' || newRole === 'sofa_2seat') {
+                      setFunctionCapable(true);
+                    }
+                  }}
+                  className="w-full text-xs p-2.5 rounded-xl border border-stone-300 bg-white text-stone-900 font-semibold focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-hidden shadow-2xs cursor-pointer"
+                >
+                  <option value="sofa_3seat">三人位主功能沙发</option>
+                  <option value="sofa_2seat">双人位功能沙发</option>
+                  <option value="recliner_1seat">单人电动功能躺椅</option>
+                  <option value="lounge_chair">无功能休闲矮单椅</option>
+                  <option value="coffee_table">茶几组合</option>
+                  <option value="dining_table">餐桌</option>
+                  <option value="dining_chair">餐椅</option>
+                  <option value="tv_console">电视地柜</option>
+                  <option value="side_table">边几</option>
+                  <option value="decor">家居陈设品</option>
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -1360,6 +2324,7 @@ interface CanvasDraftPayload {
                     <option value="sofa_3seat">3人位主功能沙发 (sofa_3seat)</option>
                     <option value="sofa_2seat">2人位功能沙发 (sofa_2seat)</option>
                     <option value="recliner_1seat">单人电动功能躺椅 (recliner_1seat)</option>
+                    <option value="lounge_chair">单人休闲单椅/无扶手椅 (lounge_chair)</option>
                     <option value="coffee_table">主次茶几组合 (coffee_table)</option>
                     <option value="side_table">边几 (side_table)</option>
                     <option value="dining_table">餐桌 (dining_table)</option>
@@ -1543,28 +2508,118 @@ interface CanvasDraftPayload {
 
         {/* 底部 Footer 控制条 */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-stone-200 bg-[#FAF8F5] shrink-0">
-          <div className="text-[11px] text-stone-500">
-            {uploadedImages.length > 0
-              ? `已准备好 ${uploadedImages.length} 视角真值数据`
-              : '请先上传产品图片'}
+          <div className="text-[11px] text-stone-500 flex items-center gap-2">
+            <span>
+              {uploadedImages.length > 0
+                ? `已准备好 ${uploadedImages.length} 视角真值数据`
+                : '请先上传产品图片'}
+            </span>
+            {detectedProducts && detectedProducts.length > 1 && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold">
+                已解构出 {detectedProducts.length} 款组合单品
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-stone-600 hover:bg-stone-200/60 transition"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-stone-600 hover:bg-stone-200/60 transition cursor-pointer"
             >
               取消
             </button>
+            {detectedProducts && detectedProducts.length > 1 && (
+              <button
+                type="button"
+                onClick={handleBatchSaveAllDetected}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-md transition flex items-center gap-1.5 ring-2 ring-amber-400/40 cursor-pointer"
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>一键全套入库 (共 {detectedProducts.length} 款)</span>
+              </button>
+            )}
             <button
               onClick={handleConfirmSave}
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center gap-1.5"
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>保存并加入空间产品库</span>
+              <span>
+                {detectedProducts && detectedProducts.length > 1
+                  ? `保存当前单品 (#${selectedProductIndex + 1})`
+                  : '保存并加入空间产品库'}
+              </span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* 智能粘贴规格文案识别模态弹层 */}
+      {isTextPasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-2xl border border-stone-200 flex flex-col gap-3 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-xs text-stone-900">
+                <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+                <span>粘贴产品规格文案 · 智能填表</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTextPasteModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-stone-500 leading-relaxed">
+              将 ERP、Excel 或业务沟通中的产品文案直接粘贴至下方，系统将自动提取长宽高毫米读数、SKU/货号、面料材质与色彩风格：
+            </p>
+            <textarea
+              value={rawPastedText}
+              onChange={(e) => setRawPastedText(e.target.value)}
+              placeholder={`例如：\n敏华芝华仕头等舱电动真皮功能沙发\n型号：MW-S9821\n尺寸：3100*1080*950mm\n材质：南美半苯胺头层牛皮、德国双电机\n颜色：云雾暖灰、曜石深灰\n风格：意式轻奢、现代极简`}
+              rows={6}
+              className="w-full text-xs p-3 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden font-mono bg-stone-50 resize-none leading-relaxed"
+            />
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[10px] text-stone-400 font-mono">
+                {rawPastedText ? `已输入 ${rawPastedText.length} 字` : '可直接按 Ctrl+V 粘贴'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRawPastedText('');
+                    setIsTextPasteModalOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-600 hover:bg-stone-100 cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rawPastedText.trim()) {
+                      applyParsedProductText(rawPastedText.trim());
+                      setRawPastedText('');
+                      setIsTextPasteModalOpen(false);
+                    }
+                  }}
+                  disabled={!rawPastedText.trim()}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                    rawPastedText.trim()
+                      ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                      : 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                  <span>立即解析填表</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

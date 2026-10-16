@@ -19,7 +19,8 @@ import {
   Users,
   Home
 } from 'lucide-react';
-import { ShotInstance, SceneMaster } from '../../../types/spaceStudio';
+import { ShotInstance, SceneMaster, ImageAspectRatio, IMAGE_ASPECT_SPECS } from '../../../types/spaceStudio';
+import { getShotTemplateByCode } from '../data/shotTemplates';
 
 interface SpaceStudioShotNavigatorProps {
   shots: ShotInstance[];
@@ -30,6 +31,7 @@ interface SpaceStudioShotNavigatorProps {
   onDeleteRevision?: (shotId: string, revisionId: string) => void;
   onBatchRenderAll?: () => void;
   isGeneratingAll?: boolean;
+  onCancelRendering?: (shotId?: string) => void;
   theme?: 'dark' | 'light';
 }
 
@@ -49,6 +51,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   onDeleteRevision,
   onBatchRenderAll,
   isGeneratingAll,
+  onCancelRendering,
   theme = 'dark'
 }) => {
   const isLight = theme === 'light';
@@ -217,8 +220,22 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
 
               if (shot.status === 'generating') {
                 statusBadge = (
-                  <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded animate-pulse font-mono">
-                    <RefreshCw className="w-2 h-2 animate-spin" /> 生成中
+                  <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded font-mono">
+                    <RefreshCw className="w-2 h-2 animate-spin" />
+                    <span>生成中</span>
+                    {onCancelRendering && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCancelRendering(shot.id);
+                        }}
+                        className="ml-0.5 text-rose-500 hover:text-rose-400 font-bold hover:scale-125 transition cursor-pointer"
+                        title="打断此镜头渲染"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </span>
                 );
               } else if (previewImage && shot.hasHumanPass) {
@@ -234,6 +251,11 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                   </span>
                 );
               }
+
+              const template = getShotTemplateByCode(shot.templateCode);
+              const calibratedName = template?.name || shot.name;
+              const shotRatio: ImageAspectRatio =
+                shot.aspectRatio || (template?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
 
               return (
                 <motion.div
@@ -345,6 +367,10 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                                   <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-purple-600 text-white">
                                     模特
                                   </span>
+                                ) : (rev.id.includes('outpaint') || rev.label?.includes('扩图')) ? (
+                                  <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-cyan-600 text-white">
+                                    扩图
+                                  </span>
                                 ) : (
                                   <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-emerald-600 text-white">
                                     空间
@@ -425,11 +451,27 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                     >
                       {shot.templateCode || `0${idx + 1}`}
                     </div>
-                    {previewImage && !shot.hasHumanPass && (
-                      <div className="absolute top-1 right-1 px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-purple-600/90 text-white shadow-xs">
-                        +模特
-                      </div>
-                    )}
+
+                    {/* Top Right Badges: +模特 and 画面规划长宽比例微标 */}
+                    <div className="absolute top-1 right-1 flex items-center gap-1 z-10 pointer-events-none">
+                      {previewImage && !shot.hasHumanPass && (
+                        <span className="px-1 py-0.2 rounded text-[7.5px] font-mono font-bold bg-purple-600/90 text-white shadow-xs">
+                          +模特
+                        </span>
+                      )}
+                      <span
+                        className={`px-1 py-0.2 rounded text-[7.5px] font-mono font-bold transition-all shadow-2xs ${
+                          isActive
+                            ? 'bg-amber-500 text-stone-950 ring-1 ring-amber-400'
+                            : isLight
+                            ? 'bg-white/90 text-stone-600 border border-stone-200'
+                            : 'bg-stone-950/80 text-stone-300 border border-stone-800'
+                        }`}
+                        title={`画面规划画幅: ${shotRatio} (${IMAGE_ASPECT_SPECS[shotRatio]?.label || ''} · ${IMAGE_ASPECT_SPECS[shotRatio]?.sublabel || ''})`}
+                      >
+                        {shotRatio}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Title & Status */}
@@ -437,8 +479,11 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                     className={`w-full flex items-center justify-between text-[10px] truncate font-medium ${
                       isLight ? 'text-stone-800' : 'text-stone-300'
                     }`}
+                    title={calibratedName}
                   >
-                    <span className="truncate">{shot.name.split(' ')[0]}</span>
+                    <span className="truncate font-semibold">
+                      {calibratedName.replace(/\s*\([^)]*\)/g, '').trim()}
+                    </span>
                   </div>
 
                   <div className="w-full mt-1 flex justify-start">
@@ -456,6 +501,11 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
             <button
               onClick={onBatchRenderAll}
               disabled={isGeneratingAll}
+              title={
+                !sceneMaster
+                  ? '优先自动生成 A00 空间母版，锁定空间与硬装基准后并发推进全部分镜'
+                  : '基于已锁定的空间母版，并发生成全部未出图镜头'
+              }
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-50 text-white font-bold text-xs shadow-md transition active:scale-98 cursor-pointer whitespace-nowrap"
             >
               {isGeneratingAll ? (
@@ -463,7 +513,11 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
               ) : (
                 <Sparkles className="w-3.5 h-3.5 text-amber-200" />
               )}
-              <span>一键生成全部</span>
+              <span>
+                {isGeneratingAll
+                  ? (!sceneMaster ? '正在确立母版与全量机位...' : '正在全量渲染中...')
+                  : (!sceneMaster ? '一键生成全部 (母版优先)' : '一键生成全部')}
+              </span>
             </button>
           </div>
         )}

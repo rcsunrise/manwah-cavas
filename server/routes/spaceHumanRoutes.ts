@@ -251,7 +251,7 @@ router.post('/generate-human-revision', async (req: Request, res: Response) => {
       })),
       positivePrompt,
       negativePrompt: 'blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark',
-      aspectRatio: '3:4',
+      aspectRatio: req.body.aspectRatio || '4:3',
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,

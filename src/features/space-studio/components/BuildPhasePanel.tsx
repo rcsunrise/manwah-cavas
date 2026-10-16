@@ -46,6 +46,7 @@ interface BuildPhasePanelProps {
   onGenerateSceneMaster: () => void;
   isGeneratingMaster: boolean;
   onAddProduct?: (product: ProductAsset) => void;
+  onBatchAddProducts?: (products: ProductAsset[]) => void;
   onUpdateProduct?: (product: ProductAsset) => void;
   onRemoveProduct?: (productId: string) => void;
   onSetPrimaryProduct?: (productId: string) => void;
@@ -66,6 +67,7 @@ export const BuildPhasePanel: React.FC<BuildPhasePanelProps> = ({
   onGenerateSceneMaster,
   isGeneratingMaster,
   onAddProduct,
+  onBatchAddProducts,
   onUpdateProduct,
   onRemoveProduct,
   onSetPrimaryProduct,
@@ -131,6 +133,15 @@ export const BuildPhasePanel: React.FC<BuildPhasePanelProps> = ({
         onAddProduct(savedProduct);
       }
     }
+  };
+
+  const handleBatchSaveProductsFromModal = (savedProducts: ProductAsset[]) => {
+    if (onBatchAddProducts) {
+      onBatchAddProducts(savedProducts);
+    } else if (onAddProduct) {
+      savedProducts.forEach((p) => onAddProduct(p));
+    }
+    setIsUploadModalOpen(false);
   };
 
   return (
@@ -656,6 +667,7 @@ export const BuildPhasePanel: React.FC<BuildPhasePanelProps> = ({
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSaveProduct={handleSaveProductFromModal}
+        onBatchSaveProducts={handleBatchSaveProductsFromModal}
         initialProduct={editingProduct}
       />
     </div>

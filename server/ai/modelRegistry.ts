@@ -72,6 +72,27 @@ export const IMAGE_MODEL_REGISTRY: readonly ImageModelDefinition[] = [
     capabilities: geminiCapabilities
   },
   {
+    id: 'gemini-nano-banana-2.1-preview',
+    aliases: ['google/gemini-nano-banana-2.1-preview', 'nano-banana-2.1', 'gemini-nano-banana'],
+    transport: 'gemini_native',
+    supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
+    capabilities: geminiCapabilities
+  },
+  {
+    id: 'gpt-image-2.5-flare-c',
+    aliases: ['openai/gpt-image-2.5-flare-c', 'gpt-2.5-flare', 'gpt-image-2.5-flare'],
+    transport: 'openai_images',
+    supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
+    capabilities: openAiCapabilities
+  },
+  {
+    id: 'gpt-image-2.5-sunburst-c',
+    aliases: ['openai/gpt-image-2.5-sunburst-c', 'gpt-2.5-sunburst', 'gpt-image-2.5-sunburst'],
+    transport: 'openai_images',
+    supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
+    capabilities: openAiCapabilities
+  },
+  {
     id: 'gpt-image-2',
     aliases: ['openai/gpt-image-2'],
     transport: 'openai_images',

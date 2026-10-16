@@ -49,7 +49,7 @@ export type SupportedAspectRatio = '1:1' | '1:4' | '1:8' | '2:3' | '3:2' | '3:4'
 export type UIAspRatioOption = SupportedAspectRatio | 'Auto' | 'Custom'; 
 
 export type Resolution = '1K' | '2K' | '4K' | '512px';
-export type ModelType = 'gemini-3-pro' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-flash' | 'gemini-3.1-flash-lite-preview' | 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview' | 'google/gemini-3-pro-image-preview' | 'gemini-3.1-flash-image' | 'gemini-3-pro-image' | 'google/gemini-3-pro-image' | 'gemini-2.5-flash-image' | 'gpt-image-2' | 'gpt-image-2-c' | 'gpt-image-2-all' | 'openai/gpt-image-1' | 'openai/gpt-image-1.5' | 'openai/gpt-image-2' | 'openai/gpt-image-2-c' | 'openai/gpt-image-2-all' | 'routerhub/flux' | 'routerhub/midjourney';
+export type ModelType = 'gemini-3-pro' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-3-flash' | 'gemini-3.1-flash-lite-preview' | 'gemini-3.1-flash-image-preview' | 'gemini-3-pro-image-preview' | 'google/gemini-3-pro-image-preview' | 'gemini-3.1-flash-image' | 'gemini-3-pro-image' | 'google/gemini-3-pro-image' | 'gemini-2.5-flash-image' | 'gemini-nano-banana-2.1-preview' | 'google/gemini-nano-banana-2.1-preview' | 'gpt-image-2.5-flare-c' | 'openai/gpt-image-2.5-flare-c' | 'gpt-image-2.5-sunburst-c' | 'openai/gpt-image-2.5-sunburst-c' | 'gpt-image-2' | 'gpt-image-2-c' | 'gpt-image-2-all' | 'openai/gpt-image-1' | 'openai/gpt-image-1.5' | 'openai/gpt-image-2' | 'openai/gpt-image-2-c' | 'openai/gpt-image-2-all' | 'routerhub/flux' | 'routerhub/midjourney';
 
 export interface GenerationConfig {
   prompt: string;
