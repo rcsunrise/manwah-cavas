@@ -1,6 +1,5 @@
 import './server/loadEnv';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
@@ -2000,6 +1999,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   const isProduction = process.env.NODE_ENV === 'production' || (hasDist && process.env.NODE_ENV !== 'development');
 
   if (!isProduction && process.env.DISABLE_VITE !== 'true') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
