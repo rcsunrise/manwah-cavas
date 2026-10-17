@@ -123,7 +123,7 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '呈现主沙发 2/3 产品形态与侧前角度（展示左侧外扶手、功能位与中间位），母女依偎放松/自拍温情互动，传递头等舱舒适包裹与家庭温度'
+      description: '呈现主沙发 2/3 产品形态与侧前角度（展示左侧外扶手、材质坐深与靠背线条），纯净空间展示家具结构与高端质感（模特为后续独立添加）'
     },
     defaultCamera: {
       lensMm: 45,
@@ -133,10 +133,10 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa', 'outer_armrest_contour', 'deployed_footrest_with_occupants', 'luxury_architectural_backdrop', 'indoor_foliage_plant'],
+      mustInclude: ['two_thirds_hero_sofa', 'outer_armrest_contour', 'luxury_architectural_backdrop', 'indoor_foliage_plant'],
       mustExclude: ['separate_accent_single_chair', 'isolated_armchair', 'full_sofa_100_percent_wide', 'flat_frontal_view', 'rigid_stiff_models']
     },
-    description: '焦段 45mm 人文中焦，机位高度 110cm，侧前方 28° 透视，精细呈现主沙发 2/3 产品角度与侧翼线条，有模特时外侧功能位舒展依偎，无模特时脚托完全收起'
+    description: '焦段 45mm 人文中焦，机位高度 110cm，侧前方 28° 透视，精细呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
   },
   {
     id: 'tpl-a05',
@@ -152,7 +152,7 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '呈现主沙发 2/3 产品形态与右侧前角度（展示右侧绗缝扶手、展开功能位与中间位），优雅女主手持红酒杯倚靠放松，传递头等舱私享惬意'
+      description: '呈现主沙发 2/3 产品形态与右侧前角度（展示右侧绗缝扶手、坐垫肌理与空间层深），纯净空间展示家具结构与高端质感（模特为后续独立添加）'
     },
     defaultCamera: {
       lensMm: 45,
@@ -162,10 +162,10 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'deployed_footrest_with_occupants', 'luxury_architectural_backdrop', 'wall_shelves_ambient_light'],
+      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'luxury_architectural_backdrop', 'wall_shelves_ambient_light'],
       mustExclude: ['separate_accent_single_chair', 'isolated_armchair', 'full_sofa_100_percent_wide', 'flat_frontal_view', 'rigid_stiff_models']
     },
-    description: '焦段 45mm 人文中焦，机位高度 110cm，右侧前方 28° 透视，呈现主沙发 2/3 产品角度与侧翼线条，有模特时女主持红酒杯惬意倚靠，无模特时脚托完全收起'
+    description: '焦段 45mm 人文中焦，机位高度 110cm，右侧前方 28° 透视，呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
   },
   {
     id: 'tpl-a06',
@@ -249,10 +249,10 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'recliner' },
       framing: 'lifestyle',
-      mustInclude: ['manwah_power_recliner_chair', 'open_spacious_living_room_placement', 'motion_mechanism_ergonomics', 'lifestyle_posture_interaction', 'ambient_living_rug'],
+      mustInclude: ['manwah_power_recliner_chair', 'open_spacious_living_room_placement', 'motion_mechanism_ergonomics', 'ergonomic_recliner_contour', 'ambient_living_rug'],
       mustExclude: ['distant_room_clutter', 'crooked_camera_shifts', 'three_seater_sofa_centered']
     },
-    description: '焦段 45mm，机位高度 100cm（参考图示5中景眼平），固定 35° 侧斜角，单椅独立置于空旷开阔的客厅中央，展示单椅 5 种功能角度与舒展生活方式（沉睡/听歌/追剧/阅读/冲浪）'
+    description: '焦段 45mm，机位高度 100cm（参考图示5中景眼平），固定 35° 侧斜角，单椅独立置于空旷开阔的客厅中央，展示单椅 5 种功能角度与舒展外观（默认无模特，模特为单独添加）'
   },
   {
     id: 'tpl-a09',

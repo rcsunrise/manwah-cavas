@@ -438,20 +438,26 @@ Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 
     } else if (shot.templateCode === 'A04') {
       const footrestMandate = isHumanPassActive
         ? 'with outer motion seat motorized footrest fully deployed supporting mother and daughter relaxing in heartwarming companion posture taking selfie or reading'
-        : 'with all motorized footrests completely retracted and closed flush in pristine showroom condition';
+        : 'with all motorized footrests completely retracted and closed flush in pristine showroom condition (strictly unoccupied, empty room, zero human presence)';
+
+      const lifestyleMoment = isHumanPassActive
+        ? 'and intimate parent-child companion lifestyle moment with mother and daughter'
+        : 'and pristine architectural interior harmony (strictly unoccupied showroom posture, zero humans, empty living room)';
+
+      const footrestAction = isHumanPassActive ? 'deployed footrest' : 'retracted flush footrest';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (outer wide armrest, deep leather seating cushion, fully deployed motorized footrest). DO NOT clone or stretch distant low-res master sofa pixels.
+- HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (outer wide armrest, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
 - SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (left floor-to-ceiling sheer daylight window, tall indoor fiddle-leaf fig plant, warm wood fluting and marble paneling) and placement orientation from the spatial scene master.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree oblique three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deep seating cushion, and intimate parent-child lifestyle moment against luxury architectural backdrop and indoor foliage. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree oblique three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deep seating cushion, ${lifestyleMoment} against luxury architectural backdrop and indoor foliage. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deployed footrest, deep seating cushion, and intimate parent-child lifestyle moment against luxury architectural backdrop (left sheer window daylight, wood paneling, marble wall, and tall indoor foliage/rubber plant). ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, ${footrestAction}, deep seating cushion, ${lifestyleMoment} against luxury architectural backdrop (left sheer window daylight, wood paneling, marble wall, and tall indoor foliage/rubber plant). ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -467,20 +473,26 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
     } else if (shot.templateCode === 'A05') {
       const footrestMandate = isHumanPassActive
         ? 'with the right motion seat motorized footrest smoothly deployed supporting an elegant lady in light dress holding a red wine glass in private lounge relaxation posture'
-        : 'with all motorized footrests completely retracted and closed flush in pristine showroom condition';
+        : 'with all motorized footrests completely retracted and closed flush in pristine showroom condition (strictly unoccupied, empty room, zero human presence)';
+
+      const lifestyleMoment = isHumanPassActive
+        ? 'and private luxury lounge moment with elegant lady'
+        : 'and sophisticated architectural living ambiance (strictly unoccupied showroom posture, zero humans, empty living room)';
+
+      const footrestAction = isHumanPassActive ? 'deployed footrest' : 'retracted flush footrest';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (right outer armrest featuring diamond-quilted leather craftsmanship with flush circular metal motion buttons, deep leather seating cushion, fully deployed motorized footrest). DO NOT clone or stretch distant low-res master sofa pixels.
+- HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (right outer armrest featuring diamond-quilted leather craftsmanship with flush circular metal motion buttons, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
 - SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (dark grey marble feature wall with illuminated double-arched ambient shelves, warm cove lighting, and tailored carpet) and placement grid from the spatial scene master.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and flush metal buttons, deep seating cushion, and private luxury lounge moment against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and flush metal buttons, deep seating cushion, ${lifestyleMoment} against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and circular metal motion buttons, deployed footrest, deep seating cushion, and private luxury lounge moment against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and circular metal motion buttons, ${footrestAction}, deep seating cushion, ${lifestyleMoment} against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -496,7 +508,7 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
     } else if (shot.templateCode === 'A06') {
       const reclineMandate = isHumanPassActive
         ? 'with backrest deeply reclined (140-160 degrees) and motorized footrest smoothly deployed forward supporting relaxed lady wearing white over-ear headphones listening to music with arms naturally raised in effortless groove'
-        : 'with backrest deeply reclined demonstrating seamless sliding forward mechanism';
+        : 'with backrest deeply reclined demonstrating seamless sliding forward mechanism in pristine showroom condition (strictly unoccupied, empty room, zero humans)';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO MOTION MECHANISM ASSET (WALL-MOUNTED): Strictly construct the hero sofa from the isolated 3-seater product asset ground truth. Showcase MANWAH signature ZERO-WALL CLEARANCE mechanism IN WALL-MOUNTED LIVING ROOM DISPLAY: the sofa is positioned flush against a solid architectural backdrop wall (wood fluting paneling and shelves). When reclined, the seating unit glides smoothly FORWARD on internal motion tracks, keeping virtually ZERO gap (<5cm flush alignment) against the wall without requiring distance or leaving awkward wall gaps! Full side profile highlights the exterior armrest covered in diamond-quilted leather craftsmanship with circular metal buttons and bottom precision motion tracks. DO NOT clone low-res master sofa pixels.
@@ -532,7 +544,11 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4
     } else if (shot.templateCode === 'A08') {
       const postureMandate = isHumanPassActive
         ? 'with motorized footrest fully deployed supporting lady comfortably browsing a tablet/iPad in 110-120 degree ergonomic reading posture'
-        : 'with motorized footrest fully deployed showcasing ergonomic 5-mode contour';
+        : 'with motorized footrest fully deployed showcasing ergonomic 5-mode contour in pristine unoccupied showroom condition (strictly empty room, zero human presence)';
+
+      const lifestyleMomentA08 = isHumanPassActive
+        ? 'and personal sanctuary lifestyle'
+        : 'and personal luxury sanctuary in an unoccupied living space (strictly zero humans)';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT RECLINER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO RECLINER CHAIR ASSET: Strictly construct the power recliner chair from the isolated product asset ground truth (deep brown genuine leather, diamond-quilted exterior armrest panels, circular metallic control buttons, high-resilience ergonomic headrest and fully deployed motorized footrest). DO NOT clone or stretch distant low-res master pixels.
@@ -541,11 +557,11 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, and personal sanctuary lifestyle.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08}.`;
       } else {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Studio Sample Recliner 5 Postures - Reference 5)]:
 ${linkageDirective}
-Camera: 45mm environmental portrait lens at 100cm eye-level seated height (reference sample 5) with fixed 35-degree three-quarters perspective in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, and personal sanctuary lifestyle against panoramic window daylight and architectural finishes.`;
+Camera: 45mm environmental portrait lens at 100cm eye-level seated height (reference sample 5) with fixed 35-degree three-quarters perspective in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08} against panoramic window daylight and architectural finishes.`;
       }
       negativeFramingConstraints.push(
         'shifting camera angle',
@@ -590,9 +606,16 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       `background treatment: ${intent.backgroundSuppression} background suppression`
     ];
 
-    // 5. 必须包含与材质真值
+    // 5. 必须包含与材质真值 (若未激活模特通道，严格过滤掉涉及人员/乘坐者的词条)
+    const filteredMustInclude = (camera.mustInclude || []).filter((item) => {
+      if (!isHumanPassActive) {
+        return !/(occupants|occupant|people|person|human|lifestyle_posture)/i.test(item);
+      }
+      return true;
+    });
+
     const mustIncludeClauses: string[] = [
-      ...(camera.mustInclude || []),
+      ...filteredMustInclude,
       primaryColorEn,
       primaryMaterialEn
     ];
@@ -722,10 +745,18 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       ...mustIncludeClauses,
       ...secondaryClauses,
       ...sceneMasterHeritage,
+      !isHumanPassActive ? 'pure unoccupied architectural space, pristine showroom furniture presentation, zero human presence' : '',
       'commercial furniture catalog masterpiece, authentic luxury materiality, razor sharp optical clarity, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
     ].filter(Boolean).join(', ');
 
+    const humanExclusionNegative = !isHumanPassActive
+      ? [
+          'people, human, person, man, woman, lady, girl, boy, child, children, baby, human model, models, occupants, crowd, face, hands, human body, human silhouette, distorted limbs'
+        ]
+      : [];
+
     const negativePrompt = [
+      ...humanExclusionNegative,
       ...negativeFramingConstraints,
       'physically moved furniture positions, shifted sofa coordinates',
       'deformed sofa structure, distorted perspective distortion, warped straight lines',
