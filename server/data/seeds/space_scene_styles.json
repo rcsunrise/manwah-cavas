@@ -1,0 +1,208 @@
+[
+  {
+    "id": "style-italian-luxury",
+    "type": "scene_style",
+    "name": "都会收藏家 · 意式轻奢",
+    "code": "STYLE-IT01",
+    "category": "轻奢",
+    "tags": [
+      "意式轻奢",
+      "都会收藏家",
+      "高定质感",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "metropolitan luxury art collector interior aesthetic, warm greige and smoked oak panelling, brushed champagne brass accents, diffused natural daylight",
+    "lightingTone": "天然通透漫射光",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 88,
+    "createdAt": "2026-10-07T01:43:56.300Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-modern-minimal",
+    "type": "scene_style",
+    "name": "意式极简 · 雕塑静奢",
+    "code": "STYLE-IT02",
+    "category": "极简",
+    "tags": [
+      "意式极简",
+      "雕塑感",
+      "低调奢华",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600566753376-12c8ab7fb75b?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "italian architectural quiet luxury aesthetic, honed porous travertine stone accents, sculptural negative space, soft ambient illumination",
+    "lightingTone": "清晨4500K柔白天光",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 75,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-oriental-zen",
+    "type": "scene_style",
+    "name": "东方禅意 · 雅致大宅",
+    "code": "STYLE-ZH01",
+    "category": "中式",
+    "tags": [
+      "新中式",
+      "东方禅意",
+      "品茗雅集",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "contemporary oriental zen sanctuary, dark ebony timber louvers, translucent alabaster stone background, serene courtyard natural shadow play",
+    "lightingTone": "微醺暖夜射灯",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 62,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-french-vintage",
+    "type": "scene_style",
+    "name": "巴黎经典 · 法式新古典",
+    "code": "STYLE-FR01",
+    "category": "法式",
+    "tags": [
+      "法式复古",
+      "巴黎沙龙",
+      "石膏线雕花",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "parisian modern luxury residence, refined classic wall mouldings, herringbone parquet timber flooring, graceful romantic morning Parisian sunlight",
+    "lightingTone": "柔和漫射天光",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": false,
+    "favorite": false,
+    "refCount": 45,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-creamy-nordic",
+    "type": "scene_style",
+    "name": "北欧治愈 · 温暖原木",
+    "code": "STYLE-NO01",
+    "category": "自然",
+    "tags": [
+      "治愈系",
+      "奶油风",
+      "原木质感",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1598928506311-c55ded91a20c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "warm creamy nordic sanctuary, soothing pale oak surfaces, curved sculptural ceiling cove, pure high CRI warm 3200k afternoon sun glow",
+    "lightingTone": "午后3200K暖阳",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 92,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-wabisabi-zen",
+    "type": "scene_style",
+    "name": "侘寂素雅 · 静谧老木",
+    "code": "STYLE-WA01",
+    "category": "侘寂",
+    "tags": [
+      "侘寂风",
+      "粗陶肌理",
+      "枯山水",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1616046229478-9901c5536a45?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "wabi sabi tranquil living space, handcrafted microcement textured wall, reclaimed timber furniture, soft dappled natural window light",
+    "lightingTone": "午后斜阳暖光",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": false,
+    "favorite": false,
+    "refCount": 38,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  },
+  {
+    "id": "style-pure-empty-room",
+    "type": "scene_style",
+    "name": "纯净空场景 · 自由工程母版",
+    "code": "STYLE-EM01",
+    "category": "纯净空场景",
+    "tags": [
+      "纯净空场景",
+      "无家具基准",
+      "自由摆位",
+      "官方标准库"
+    ],
+    "coverImage": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+    "thumbnail": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=800&q=80",
+    "referenceImages": [
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
+    ],
+    "promptFragment": "pristine luxury architectural empty living room pavilion, architectural glass wall, zero furniture, clean wide oak flooring, neutral soft daylight",
+    "lightingTone": "天然通透漫射光",
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 120,
+    "createdAt": "2026-10-07T01:43:56.301Z",
+    "updatedAt": "2026-10-07T01:43:56.301Z"
+  }
+]

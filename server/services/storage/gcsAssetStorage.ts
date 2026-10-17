@@ -17,6 +17,7 @@ import {
 } from './assetObjectStorage';
 
 const LOCAL_STORAGE_DIR = path.join(process.cwd(), '.data', 'space-storage');
+const SEED_STORAGE_DIR = path.join(process.cwd(), 'server', 'data', 'seeds', 'storage');
 
 export class GcsAssetStorage implements AssetObjectStorage {
   private static instance: GcsAssetStorage;
@@ -284,12 +285,22 @@ export class GcsAssetStorage implements AssetObjectStorage {
       }
     }
 
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, '/'));
+    const sanitizedKey = objectKey.replace(/\\/g, '/');
+    const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
     if (fs.existsSync(localFilePath)) {
       try {
         return fs.readFileSync(localFilePath);
       } catch (err: any) {
         console.warn(`[GcsAssetStorage.getBuffer] Local read failed for ${localFilePath}:`, err.message);
+      }
+    }
+
+    const seedFilePath = path.join(SEED_STORAGE_DIR, sanitizedKey);
+    if (fs.existsSync(seedFilePath)) {
+      try {
+        return fs.readFileSync(seedFilePath);
+      } catch (err: any) {
+        console.warn(`[GcsAssetStorage.getBuffer] Seed read failed for ${seedFilePath}:`, err.message);
       }
     }
 
@@ -480,7 +491,21 @@ export class GcsAssetStorage implements AssetObjectStorage {
    * 本地开发文件直通 (供 Express 静态或安全流式中继)
    */
   public getLocalFilePath(objectKey: string): string | null {
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, '/'));
-    return fs.existsSync(localFilePath) ? localFilePath : null;
+    const sanitizedKey = objectKey.replace(/\\/g, '/');
+    const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
+    if (fs.existsSync(localFilePath)) return localFilePath;
+
+    const seedFilePath = path.join(SEED_STORAGE_DIR, sanitizedKey);
+    if (fs.existsSync(seedFilePath)) {
+      // 顺便回写一份到本地热缓存，加速下次读取
+      try {
+        const parent = path.dirname(localFilePath);
+        if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true });
+        fs.copyFileSync(seedFilePath, localFilePath);
+      } catch {}
+      return seedFilePath;
+    }
+
+    return null;
   }
 }

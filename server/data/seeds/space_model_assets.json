@@ -1,0 +1,826 @@
+[
+  {
+    "id": "model-custom-muwfyvxy",
+    "type": "model",
+    "code": "ROLE-CUST-363",
+    "name": "定制角色 · 睿智儒雅爷爷",
+    "nameZh": "定制角色 · 睿智儒雅爷爷",
+    "nameEn": "Custom / Wise Grandfather",
+    "roleType": "grandfather",
+    "gender": "male",
+    "ageGroup": "68-72岁 银发颐养期",
+    "height": "175cm 儒雅挺拔",
+    "positioning": "家庭精神传承者 / 智慧长者 / 退休企业家",
+    "temperamentKeywords": [
+      "儒雅睿智",
+      "从容淡定",
+      "热爱阅读",
+      "生活品味"
+    ],
+    "bio": "曾是企业掌舵者，阅历丰富，思想深远，注重家庭教育与文化传承，享受悠闲而充实的退休生活。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "定制角色 · 睿智儒雅爷爷"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_portrait_1791276795292.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_side_1791276794698.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_side_1791276794698.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_portrait_1791276795292.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_wardrobe_1791276795834.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_wardrobe_1791276795834.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_side_1791276794698.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_side_1791276794698.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_portrait_1791276795292.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_portrait_1791276795292.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_wardrobe_1791276795834.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_wardrobe_1791276795834.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Foriginal_1791276793016.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_portrait_1791276795292.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_wardrobe_1791276795834.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfybau-c8c5b1%2Fslice_front_1791276794149.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 968309,
+      "roleType": "grandfather",
+      "gender": "male",
+      "ageRange": "68-72岁 银发颐养期",
+      "ageGroup": "68-72岁 银发颐养期",
+      "ethnicity": "东亚",
+      "height": "175cm 儒雅挺拔",
+      "heightCm": 175,
+      "bodyBuild": "slender_balanced",
+      "positioning": "家庭精神传承者 / 智慧长者 / 退休企业家",
+      "temperamentKeywords": [
+        "儒雅睿智",
+        "从容淡定",
+        "热爱阅读",
+        "生活品味"
+      ],
+      "bio": "曾是企业掌舵者，阅历丰富，思想深远，注重家庭教育与文化传承，享受悠闲而充实的退休生活。",
+      "appearanceDesc": "五官端正，银发整洁，佩戴金属细框眼镜，目光温和深邃",
+      "appearanceSummary": "五官端正，银发整洁，佩戴金属细框眼镜，目光温和深邃",
+      "facialFeatures": "东亚长者骨相，鼻梁高挺，岁月沉淀的温和笑意",
+      "skinTone": "健康温润肤色",
+      "hairDesc": "富有质感的银灰色短发，梳理得一丝不苟",
+      "clothingDesc": "浅灰色羊绒开衫内搭白衬衫，配卡其色休闲裤与棕色皮鞋",
+      "materialsColorsDesc": "高级羊绒、纯棉与精纺呢料，低饱和度的灰白色系与大地色搭配",
+      "identityDesc": "家庭精神传承者 / 智慧长者 / 退休企业家",
+      "behaviorTags": [
+        "专注阅读",
+        "品茗香茶",
+        "与孙子共度"
+      ],
+      "sceneTags": [
+        "大平层客厅",
+        "独立书房",
+        "温馨茶室"
+      ],
+      "poseTags": [
+        "沙发端坐",
+        "功能位半躺",
+        "自然站立"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁穿着过度夸张服饰"
+      ]
+    },
+    "promptFragment": "定制角色 · 睿智儒雅爷爷, Custom / Wise Grandfather",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:53:39.766Z",
+    "updatedAt": "2026-10-06T08:53:39.767Z"
+  },
+  {
+    "id": "model-custom-muwfztva",
+    "type": "model",
+    "code": "ROLE-CUST-600",
+    "name": "定制角色 · 优雅慈祥奶奶长辈",
+    "nameZh": "定制角色 · 优雅慈祥奶奶长辈",
+    "nameEn": "Custom / Elegant Grandmother",
+    "roleType": "grandmother",
+    "gender": "female",
+    "ageGroup": "62-68岁 银发颐养期",
+    "height": "162cm 优雅温婉",
+    "positioning": "优雅人生收藏家 / 家庭温暖中心 / 品质生活践行者",
+    "temperamentKeywords": [
+      "优雅从容",
+      "精致知性",
+      "热爱艺术",
+      "善解人意"
+    ],
+    "bio": "优雅的退休女性，热爱艺术、旅行与茶道。注重生活美学，关心家人，是家庭温暖的中心与精神支柱。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "定制角色 · 优雅慈祥奶奶长辈"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_portrait_1791276843254.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_side_1791276842571.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_side_1791276842571.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_portrait_1791276843254.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_wardrobe_1791276843741.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_wardrobe_1791276843741.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_side_1791276842571.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_side_1791276842571.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_portrait_1791276843254.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_portrait_1791276843254.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_wardrobe_1791276843741.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_wardrobe_1791276843741.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Foriginal_1791276840877.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_portrait_1791276843254.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_wardrobe_1791276843741.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwfzc8c-8a5e5b%2Fslice_front_1791276841867.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 267646,
+      "roleType": "grandmother",
+      "gender": "female",
+      "ageRange": "62-68岁 银发颐养期",
+      "ageGroup": "62-68岁 银发颐养期",
+      "ethnicity": "东亚",
+      "height": "162cm 优雅温婉",
+      "heightCm": 162,
+      "bodyBuild": "slender_elegant",
+      "positioning": "优雅人生收藏家 / 家庭温暖中心 / 品质生活践行者",
+      "temperamentKeywords": [
+        "优雅从容",
+        "精致知性",
+        "热爱艺术",
+        "善解人意"
+      ],
+      "bio": "优雅的退休女性，热爱艺术、旅行与茶道。注重生活美学，关心家人，是家庭温暖的中心与精神支柱。",
+      "appearanceDesc": "温和慈祥的东方女性面容，银灰色短发整洁利落，眼角带有岁月沉淀的优雅纹理，目光清澈温润",
+      "appearanceSummary": "温和慈祥的东方女性面容，银灰色短发整洁利落，眼角带有岁月沉淀的优雅纹理，目光清澈温润",
+      "facialFeatures": "流畅温和的脸部轮廓，自然亲切的微笑，高贵而柔和的五官比例",
+      "skinTone": "健康温润的自然肤色",
+      "hairDesc": "富有光泽的精致银灰色微卷短发",
+      "clothingDesc": "卡其色针织开衫搭配浅米色直筒休闲长裤，颈间系有精致印花丝巾，佩戴珍珠耳饰",
+      "materialsColorsDesc": "针织羊毛与真丝印花面料，低饱和度的卡其色、米色与大地色系组合",
+      "identityDesc": "优雅人生收藏家 / 家庭温暖中心 / 品质生活践行者",
+      "behaviorTags": [
+        "阅读书籍",
+        "品茶清心",
+        "陪伴孙女",
+        "享受生活"
+      ],
+      "sceneTags": [
+        "高定温馨客厅",
+        "静谧茶室"
+      ],
+      "poseTags": [
+        "沙发端坐",
+        "功能位微躺",
+        "温和回眸"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁衣着风格突变"
+      ]
+    },
+    "promptFragment": "定制角色 · 优雅慈祥奶奶长辈, Custom / Elegant Grandmother",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:54:23.734Z",
+    "updatedAt": "2026-10-06T08:54:23.734Z"
+  },
+  {
+    "id": "model-custom-muwg0kpu",
+    "type": "model",
+    "code": "ROLE-CUST-945",
+    "name": "定制角色 · 沉稳儒雅男主人",
+    "nameZh": "定制角色 · 沉稳儒雅男主人",
+    "nameEn": "Custom / Refined Father",
+    "roleType": "father",
+    "gender": "male",
+    "ageGroup": "40-45岁 精英成熟期",
+    "height": "180cm 挺拔匀称",
+    "positioning": "家庭品质决策者 / 城市精英 / 企业管理者",
+    "temperamentKeywords": [
+      "沉稳自信",
+      "责任担当",
+      "松弛从容",
+      "成熟魅力"
+    ],
+    "bio": "成功企业管理者，注重家庭与生活品质的平衡。理性、可靠，热爱阅读与艺术，享受高质量的家庭时光。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "定制角色 · 沉稳儒雅男主人"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_portrait_1791276880630.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_side_1791276880040.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_side_1791276880040.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_portrait_1791276880630.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_wardrobe_1791276881357.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_wardrobe_1791276881357.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_side_1791276880040.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_side_1791276880040.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_portrait_1791276880630.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_portrait_1791276880630.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_wardrobe_1791276881357.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_wardrobe_1791276881357.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Foriginal_1791276878638.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_portrait_1791276880630.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_wardrobe_1791276881357.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg05d7-6090fc%2Fslice_front_1791276879433.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 832572,
+      "roleType": "father",
+      "gender": "male",
+      "ageRange": "40-45岁 精英成熟期",
+      "ageGroup": "40-45岁 精英成熟期",
+      "ethnicity": "东亚",
+      "height": "180cm 挺拔匀称",
+      "heightCm": 180,
+      "bodyBuild": "athletic_slender",
+      "positioning": "家庭品质决策者 / 城市精英 / 企业管理者",
+      "temperamentKeywords": [
+        "沉稳自信",
+        "责任担当",
+        "松弛从容",
+        "成熟魅力"
+      ],
+      "bio": "成功企业管理者，注重家庭与生活品质的平衡。理性、可靠，热爱阅读与艺术，享受高质量的家庭时光。",
+      "appearanceDesc": "五官立体清爽，下颌线清晰，目光温和且具有穿透力",
+      "appearanceSummary": "五官立体清爽，下颌线清晰，目光温和且具有穿透力",
+      "facialFeatures": "东亚端正骨相，高挺鼻梁，自然得体的成熟男性面容",
+      "skinTone": "健康自然肤色",
+      "hairDesc": "利落黑色短发，发型整洁有型",
+      "clothingDesc": "白色翻领衬衫搭配深色修身西装裤与棕色皮鞋",
+      "materialsColorsDesc": "纯棉面料衬衫与羊毛混纺西裤，经典黑白灰与大地色系",
+      "identityDesc": "家庭品质决策者 / 城市精英 / 企业管理者",
+      "behaviorTags": [
+        "专注阅读",
+        "使用平板",
+        "陪伴家人"
+      ],
+      "sceneTags": [
+        "大平层客厅",
+        "高定家居空间"
+      ],
+      "poseTags": [
+        "正面站立",
+        "侧面展示",
+        "背面展示",
+        "沙发阅读位微躺"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁穿着过度夸张服饰"
+      ]
+    },
+    "promptFragment": "定制角色 · 沉稳儒雅男主人, Custom / Refined Father",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:54:58.530Z",
+    "updatedAt": "2026-10-06T08:54:58.530Z"
+  },
+  {
+    "id": "model-custom-muwg18ry",
+    "type": "model",
+    "code": "ROLE-CUST-510",
+    "name": "定制角色 · 优雅知性女主人",
+    "nameZh": "定制角色 · 优雅知性女主人",
+    "nameEn": "Custom / Elegant Mother",
+    "roleType": "mother",
+    "gender": "female",
+    "ageGroup": "36-42岁 优雅成熟期",
+    "height": "170cm 优雅高挑",
+    "positioning": "家庭美学创造者 / 优雅知性女主人",
+    "temperamentKeywords": [
+      "优雅知性",
+      "温柔自信",
+      "高品质生活",
+      "品味出众"
+    ],
+    "bio": "来自欧洲的精英知性女性，是家庭的美学核心与生活品质来源，热爱阅读、艺术与旅行，享受高品质的家庭时光。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "定制角色 · 优雅知性女主人"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_portrait_1791276911938.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_side_1791276911442.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_side_1791276911442.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_portrait_1791276911938.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_wardrobe_1791276912555.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_wardrobe_1791276912555.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_side_1791276911442.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_side_1791276911442.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_portrait_1791276911938.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_portrait_1791276911938.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_wardrobe_1791276912555.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_wardrobe_1791276912555.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Foriginal_1791276910150.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_portrait_1791276911938.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_wardrobe_1791276912555.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg0tok-c33f3f%2Fslice_front_1791276910845.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 743446,
+      "roleType": "mother",
+      "gender": "female",
+      "ageRange": "36-42岁 优雅成熟期",
+      "ageGroup": "36-42岁 优雅成熟期",
+      "ethnicity": "欧洲裔",
+      "height": "170cm 优雅高挑",
+      "heightCm": 170,
+      "bodyBuild": "slender_elegant",
+      "positioning": "家庭美学创造者 / 优雅知性女主人",
+      "temperamentKeywords": [
+        "优雅知性",
+        "温柔自信",
+        "高品质生活",
+        "品味出众"
+      ],
+      "bio": "来自欧洲的精英知性女性，是家庭的美学核心与生活品质来源，热爱阅读、艺术与旅行，享受高品质的家庭时光。",
+      "appearanceDesc": "五官精致立体，温和自信的眼神，流露从容高贵的气质",
+      "appearanceSummary": "五官精致立体，温和自信的眼神，流露从容高贵的气质",
+      "facialFeatures": "立体深邃骨相，自然亲切的微笑与温润面部线条",
+      "skinTone": "白皙细腻健康光泽",
+      "hairDesc": "及肩微卷栗色优雅中长发",
+      "clothingDesc": "真丝衬衫搭配羊绒开衫与高腰阔腿长裤",
+      "materialsColorsDesc": "真丝、羊绒与精纺面料，米白、卡其色与大地色系",
+      "identityDesc": "家庭美学创造者 / 优雅知性女主人",
+      "behaviorTags": [
+        "专注阅读",
+        "品味咖啡",
+        "使用平板",
+        "陪伴家人"
+      ],
+      "sceneTags": [
+        "大平层客厅",
+        "高定家居空间"
+      ],
+      "poseTags": [
+        "站立姿态",
+        "端坐沙发",
+        "阅读微倾"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁穿着过度夸张服饰"
+      ]
+    },
+    "promptFragment": "定制角色 · 优雅知性女主人, Custom / Elegant Mother",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:55:29.710Z",
+    "updatedAt": "2026-10-06T08:55:29.710Z"
+  },
+  {
+    "id": "model-custom-muwg4es8",
+    "type": "model",
+    "code": "ROLE-CUST-392",
+    "name": "定制角色 · 灵动混血儿子",
+    "nameZh": "定制角色 · 灵动混血儿子",
+    "nameEn": "Custom / Mixed-Race Young Son",
+    "roleType": "son",
+    "gender": "male",
+    "ageGroup": "8-10岁 国际成长少年",
+    "height": "135cm 灵动挺拔",
+    "positioning": "国际成长少年 / 中外混血男孩 / 活力家庭成员",
+    "temperamentKeywords": [
+      "聪明阳光",
+      "礼貌",
+      "好奇心强",
+      "自信",
+      "国际学校气质"
+    ],
+    "bio": "中英混血，聪明好学，热爱阅读与科技，在国际学校就读，性格开朗但温和，与家人关系亲密。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "定制角色 · 灵动混血儿子"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_portrait_1791276950822.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_side_1791276950204.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_side_1791276950204.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_portrait_1791276950822.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_wardrobe_1791276951584.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_wardrobe_1791276951584.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_side_1791276950204.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_side_1791276950204.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_portrait_1791276950822.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_portrait_1791276950822.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_wardrobe_1791276951584.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_wardrobe_1791276951584.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Foriginal_1791276948731.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_portrait_1791276950822.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_wardrobe_1791276951584.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg1ng9-156c77%2Fslice_front_1791276949607.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 544789,
+      "roleType": "son",
+      "gender": "male",
+      "ageRange": "8-10岁 国际成长少年",
+      "ageGroup": "8-10岁 国际成长少年",
+      "ethnicity": "中外混血",
+      "height": "135cm 灵动挺拔",
+      "heightCm": 135,
+      "bodyBuild": "slender_active",
+      "positioning": "国际成长少年 / 中外混血男孩 / 活力家庭成员",
+      "temperamentKeywords": [
+        "聪明阳光",
+        "礼貌",
+        "好奇心强",
+        "自信",
+        "国际学校气质"
+      ],
+      "bio": "中英混血，聪明好学，热爱阅读与科技，在国际学校就读，性格开朗但温和，与家人关系亲密。",
+      "appearanceDesc": "五官立体清秀，深邃大眼，拥有混血特有的精致骨相与阳光笑容",
+      "appearanceSummary": "五官立体清秀，深邃大眼，拥有混血特有的精致骨相与阳光笑容",
+      "facialFeatures": "深邃眼窝，高挺鼻梁，灵动而温和的眼神",
+      "skinTone": "健康自然白皙",
+      "hairDesc": "微卷蓬松棕色短发，充满少年感",
+      "clothingDesc": "米白色麻花纹针织毛衣内搭白色衬衫领，配卡其色休闲长裤与白色运动鞋",
+      "materialsColorsDesc": "纯棉针织与混纺面料，米白色、卡其色与纯白色系，温润自然",
+      "identityDesc": "国际成长少年 / 中外混血男孩 / 活力家庭成员",
+      "behaviorTags": [
+        "专注阅读",
+        "使用平板",
+        "学习中",
+        "与爷爷互动"
+      ],
+      "sceneTags": [
+        "大平层客厅",
+        "家庭书房",
+        "温馨家居环境"
+      ],
+      "poseTags": [
+        "站立插兜",
+        "侧面展示",
+        "沙发坐姿阅读"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁穿着过度夸张服饰"
+      ]
+    },
+    "promptFragment": "定制角色 · 灵动混血儿子, Custom / Mixed-Race Young Son",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:57:57.464Z",
+    "updatedAt": "2026-10-06T08:57:57.464Z"
+  },
+  {
+    "id": "model-custom-muwg53vs",
+    "type": "model",
+    "code": "ROLE-CUST-448",
+    "name": "高定角色 · 灵动活泼混血女儿",
+    "nameZh": "高定角色 · 灵动活泼混血女儿",
+    "nameEn": "Custom / Lively Mixed-Race Daughter",
+    "roleType": "daughter",
+    "gender": "female",
+    "ageGroup": "6-8岁 纯真成长期",
+    "height": "120cm 灵动可爱",
+    "positioning": "家庭温暖连接者 / 灵动混血女孩",
+    "temperamentKeywords": [
+      "温柔",
+      "乖巧",
+      "聪慧",
+      "善解人意",
+      "亲和力强",
+      "热爱生活"
+    ],
+    "bio": "中外混血，心地善良，喜欢绘本与音乐，活泼又乖巧，是家庭的开心果，与家人情感深厚。",
+    "tags": [
+      "系统资产",
+      "官方留存",
+      "高定角色 · 灵动活泼混血女儿"
+    ],
+    "coverImage": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+    "thumbnail": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+    "views": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_portrait_1791277089815.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_side_1791277089142.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_side_1791277089142.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_portrait_1791277089815.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_wardrobe_1791277090330.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_wardrobe_1791277090330.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp"
+    },
+    "multiViews": {
+      "front": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "frontFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "side": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_side_1791277089142.webp",
+      "sideFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_side_1791277089142.webp",
+      "back": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "backFullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "portrait": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_portrait_1791277089815.webp",
+      "portraitCloseUp": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_portrait_1791277089815.webp",
+      "angle45": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "threeQuarter": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp",
+      "fullBody": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp",
+      "wardrobeRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_wardrobe_1791277090330.webp",
+      "outfitRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_wardrobe_1791277090330.webp",
+      "accessoryRef": "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Foriginal_1791277087754.webp"
+    },
+    "expressionRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_portrait_1791277089815.webp",
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp"
+    ],
+    "wardrobeRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp"
+    ],
+    "accessoryRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp"
+    ],
+    "detailRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_wardrobe_1791277090330.webp"
+    ],
+    "lifestyleRefs": [
+      "/api/space/storage/local-file?key=projects%2Fmanwah-space-default%2Fmodels%2Fmodel-muwg4mpz-02a93e%2Fslice_front_1791277088526.webp"
+    ],
+    "modelDna": {
+      "identitySeed": 126940,
+      "roleType": "daughter",
+      "gender": "female",
+      "ageRange": "6-8岁 纯真成长期",
+      "ageGroup": "6-8岁 纯真成长期",
+      "ethnicity": "中外混血",
+      "height": "120cm 灵动可爱",
+      "heightCm": 120,
+      "bodyBuild": "slender_child",
+      "positioning": "家庭温暖连接者 / 灵动混血女孩",
+      "temperamentKeywords": [
+        "温柔",
+        "乖巧",
+        "聪慧",
+        "善解人意",
+        "亲和力强",
+        "热爱生活"
+      ],
+      "bio": "中外混血，心地善良，喜欢绘本与音乐，活泼又乖巧，是家庭的开心果，与家人情感深厚。",
+      "appearanceDesc": "精致的中外混血立体五官，大而明亮的双眸，面部轮廓柔和甜美",
+      "appearanceSummary": "精致的中外混血立体五官，大而明亮的双眸，面部轮廓柔和甜美",
+      "facialFeatures": "深邃灵动大眼，高挺微翘的鼻梁，甜美自然的微笑",
+      "skinTone": "健康细腻的白皙肤色",
+      "hairDesc": "齐肩微卷棕色中长发，配有精致发卡",
+      "clothingDesc": "米白色连衣裙外搭大地色针织开衫，搭配白色袜子与浅色玛丽珍鞋",
+      "materialsColorsDesc": "纯棉与精纺羊毛混纺，米白色与燕麦色等低饱和温馨色系",
+      "identityDesc": "家庭温暖连接者 / 灵动混血女孩",
+      "behaviorTags": [
+        "阅读绘本",
+        "与奶奶相伴",
+        "玩耍时光",
+        "亲子互动"
+      ],
+      "sceneTags": [
+        "温馨客厅",
+        "儿童房",
+        "家庭活动区"
+      ],
+      "poseTags": [
+        "站立展示",
+        "坐姿阅读",
+        "席地玩耍"
+      ],
+      "negativeConstraints": [
+        "严禁面部变形",
+        "严禁年龄漂移",
+        "严禁发型与发色改变",
+        "严禁穿着过度夸张服饰"
+      ]
+    },
+    "promptFragment": "高定角色 · 灵动活泼混血女儿, Custom / Lively Mixed-Race Daughter",
+    "negativeConstraints": [
+      "face distortion",
+      "deformed limbs"
+    ],
+    "isSystem": true,
+    "scope": "system",
+    "authorRole": "敏华首席工程设计师",
+    "isFavorite": true,
+    "favorite": true,
+    "refCount": 1,
+    "createdAt": "2026-10-06T08:58:29.992Z",
+    "updatedAt": "2026-10-06T08:58:29.992Z"
+  }
+]

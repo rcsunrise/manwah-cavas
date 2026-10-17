@@ -328,11 +328,22 @@ router.put('/local-upload', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════════════════
 // 核心资产长期存储与服务端磁盘双向同步 (跨设备/跨浏览器/防清理数据)
 // ════════════════════════════════════════════════════════════════════════
+// 核心资产长期存储与云端 GCS / 本地磁盘 / 静态种子三层全员持久化
+// ════════════════════════════════════════════════════════════════════════
 const DATA_DIR = path.join(process.cwd(), '.data');
 const MODELS_FILE = path.join(DATA_DIR, 'space_model_assets.json');
 const MODELS_BACKUP_FILE = path.join(DATA_DIR, 'space_model_assets.backup.json');
 const STYLES_FILE = path.join(DATA_DIR, 'space_scene_styles.json');
 const STYLES_BACKUP_FILE = path.join(DATA_DIR, 'space_scene_styles.backup.json');
+
+// 静态内置种子资产（受 Git 版本控制，部署后永不丢失，开箱即用）
+const SEEDS_DIR = path.join(process.cwd(), 'server', 'data', 'seeds');
+const SEED_MODELS_FILE = path.join(SEEDS_DIR, 'space_model_assets.json');
+const SEED_STYLES_FILE = path.join(SEEDS_DIR, 'space_scene_styles.json');
+
+// GCS 云端统一持久化存储 Key
+const GCS_MODELS_KEY = 'assets/space_model_assets.json';
+const GCS_STYLES_KEY = 'assets/space_scene_styles.json';
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -341,18 +352,126 @@ function ensureDataDir() {
 }
 
 /**
+ * 递归提取对象中引用的存储 key，例如 key=projects%2Fmanwah-space-default%2Fmodels%2F...
+ */
+function extractObjectKeysFromData(obj: any, keys: Set<string> = new Set()): Set<string> {
+  if (!obj) return keys;
+  if (typeof obj === 'string') {
+    const m = obj.match(/key=([^&#]+)/);
+    if (m) keys.add(decodeURIComponent(m[1]));
+  } else if (Array.isArray(obj)) {
+    obj.forEach((item) => extractObjectKeysFromData(item, keys));
+  } else if (typeof obj === 'object') {
+    Object.values(obj).forEach((val) => extractObjectKeysFromData(val, keys));
+  }
+  return keys;
+}
+
+/**
+ * 后台异步将资产引用的关键切片图同步持久化至 GCS 存储桶
+ */
+async function syncReferencedImagesToGcs(data: any): Promise<number> {
+  const keys = extractObjectKeysFromData(data);
+  if (keys.size === 0) return 0;
+
+  let synced = 0;
+  for (const key of keys) {
+    try {
+      // 检查 GCS 是否已存在该文件
+      const meta = await storage.getMetadata(key, 'source').catch(() => null);
+      if (meta && meta.exists) continue;
+
+      // 从本地热缓存或静态种子读取二进制数据写入 GCS
+      const buf = await storage.getBuffer(key, 'source');
+      if (buf && buf.length > 0) {
+        await storage.put({
+          bucketType: 'source',
+          objectKey: key,
+          buffer: buf,
+          contentType: key.endsWith('.webp') ? 'image/webp' : key.endsWith('.png') ? 'image/png' : 'image/jpeg',
+          metadata: {
+            isSeedAsset: 'true',
+            uploadedAt: new Date().toISOString()
+          }
+        });
+        synced++;
+      }
+    } catch (err: any) {
+      console.warn(`[spaceStorageRoutes] sync image to GCS notice for ${key}:`, err.message);
+    }
+  }
+  return synced;
+}
+
+/**
  * GET /api/space/storage/models
  * 获取服务端持久化保存的模特资产列表
+ * 读取顺序：① GCS 云端存储桶 ➔ ② 本地磁盘缓存 ➔ ③ 静态种子资产 (保证部署绝无空状态)
  */
-router.get('/models', (_req: Request, res: Response) => {
+router.get('/models', async (_req: Request, res: Response) => {
   try {
     ensureDataDir();
-    if (!fs.existsSync(MODELS_FILE)) {
-      return res.json({ success: true, data: [] });
+
+    // 1. 优先尝试从 GCS 云端存储读取最权威全员资产
+    try {
+      const gcsBuf = await storage.getBuffer(GCS_MODELS_KEY, 'generated');
+      if (gcsBuf && gcsBuf.length > 2) {
+        const parsed = JSON.parse(gcsBuf.toString('utf-8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // 写入本地热缓存加速后续访问
+          fs.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+          return res.json({ success: true, data: parsed, source: 'gcs' });
+        }
+      }
+    } catch (gcsErr: any) {
+      console.warn('[spaceStorageRoutes] GCS read models notice:', gcsErr.message);
     }
-    const content = fs.readFileSync(MODELS_FILE, 'utf-8');
-    const parsed = JSON.parse(content);
-    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+
+    // 2. 次选本地磁盘缓存 (.data/space_model_assets.json)
+    if (fs.existsSync(MODELS_FILE)) {
+      try {
+        const content = fs.readFileSync(MODELS_FILE, 'utf-8');
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return res.json({ success: true, data: parsed, source: 'local_disk' });
+        }
+      } catch (e) {}
+    }
+
+    // 3. 终极兜底：加载内置受版本控制的静态种子资产 (保证部署上线开箱即用，绝无空状态)
+    if (fs.existsSync(SEED_MODELS_FILE)) {
+      try {
+        const seedContent = fs.readFileSync(SEED_MODELS_FILE, 'utf-8');
+        const seedModels = JSON.parse(seedContent);
+        if (Array.isArray(seedModels) && seedModels.length > 0) {
+          console.log(`[spaceStorageRoutes] Loaded ${seedModels.length} seed model assets (built-in fallback)`);
+          // 回写本地热缓存
+          fs.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), 'utf-8');
+          // 异步自动同步到 GCS 存储桶，实现首次启动的无感云端持久化
+          (async () => {
+            try {
+              await storage.put({
+                bucketType: 'generated',
+                objectKey: GCS_MODELS_KEY,
+                buffer: Buffer.from(JSON.stringify(seedModels, null, 2), 'utf-8'),
+                contentType: 'application/json',
+                metadata: { isSeed: 'true', seededAt: new Date().toISOString() }
+              });
+              await syncReferencedImagesToGcs(seedModels);
+              console.log(`[spaceStorageRoutes] ✓ Auto initialized GCS with ${seedModels.length} seed models`);
+            } catch (err: any) {
+              console.warn('[spaceStorageRoutes] Auto seed models GCS sync notice:', err.message);
+            }
+          })();
+
+          return res.json({ success: true, data: seedModels, source: 'seed_builtin' });
+        }
+      } catch (seedErr: any) {
+        console.error('[spaceStorageRoutes] Read seed models error:', seedErr);
+      }
+    }
+
+    return res.json({ success: true, data: [], source: 'empty' });
   } catch (err: any) {
     console.error('[spaceStorageRoutes] read models error:', err);
     return res.status(500).json({ success: false, error: err.message, data: [] });
@@ -361,9 +480,9 @@ router.get('/models', (_req: Request, res: Response) => {
 
 /**
  * POST /api/space/storage/models/sync
- * 客户端将录入好的模特资产同步并固化到服务端磁盘
+ * 客户端将录入好的模特资产同步固化到服务端：同步写本地磁盘缓存 + GCS 统一存储桶 + 异步同步关键切片图
  */
-router.post('/models/sync', (req: Request, res: Response) => {
+router.post('/models/sync', async (req: Request, res: Response) => {
   try {
     ensureDataDir();
     const models = req.body?.models;
@@ -371,7 +490,7 @@ router.post('/models/sync', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Models payload must be an array' });
     }
 
-    // 若旧文件存在，自动生成轮转备份，确保任何情况下历史录入永不损坏
+    // 1. 本地磁盘热缓存与历史轮转备份
     if (fs.existsSync(MODELS_FILE)) {
       try {
         fs.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
@@ -383,9 +502,35 @@ router.post('/models/sync', (req: Request, res: Response) => {
     fs.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), 'utf-8');
     console.log(`[spaceStorageRoutes] Successfully persisted ${models.length} model assets to disk at ${MODELS_FILE}`);
 
+    // 2. 长期统一架构：同步写入 GCS 存储桶，实现跨容器实例共享与永久云端持久化
+    let gcsSynced = false;
+    try {
+      const jsonBuf = Buffer.from(JSON.stringify(models, null, 2), 'utf-8');
+      await storage.put({
+        bucketType: 'generated',
+        objectKey: GCS_MODELS_KEY,
+        buffer: jsonBuf,
+        contentType: 'application/json',
+        metadata: {
+          updatedAt: new Date().toISOString(),
+          modelCount: String(models.length)
+        }
+      });
+      gcsSynced = true;
+      console.log(`[spaceStorageRoutes] ✓ Persisted ${models.length} model assets to GCS at ${GCS_MODELS_KEY}`);
+    } catch (gcsErr: any) {
+      console.warn('[spaceStorageRoutes] Persist models to GCS notice:', gcsErr.message);
+    }
+
+    // 3. 异步确保所有引用的切片图片全部持久化至 GCS
+    syncReferencedImagesToGcs(models).catch((imgErr) => {
+      console.warn('[spaceStorageRoutes] Background sync model slice images notice:', imgErr.message);
+    });
+
     return res.json({
       success: true,
       count: models.length,
+      gcsSynced,
       timestamp: new Date().toISOString()
     });
   } catch (err: any) {
@@ -397,16 +542,65 @@ router.post('/models/sync', (req: Request, res: Response) => {
 /**
  * GET /api/space/storage/styles
  * 获取服务端持久化保存的场景风格资产列表
+ * 读取顺序：① GCS 云端存储桶 ➔ ② 本地磁盘缓存 ➔ ③ 静态种子风格 (7款经典风格兜底)
  */
-router.get('/styles', (_req: Request, res: Response) => {
+router.get('/styles', async (_req: Request, res: Response) => {
   try {
     ensureDataDir();
-    if (!fs.existsSync(STYLES_FILE)) {
-      return res.json({ success: true, data: [] });
+
+    // 1. 优先尝试从 GCS 云端读取
+    try {
+      const gcsBuf = await storage.getBuffer(GCS_STYLES_KEY, 'generated');
+      if (gcsBuf && gcsBuf.length > 2) {
+        const parsed = JSON.parse(gcsBuf.toString('utf-8'));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          fs.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+          return res.json({ success: true, data: parsed, source: 'gcs' });
+        }
+      }
+    } catch (gcsErr: any) {
+      console.warn('[spaceStorageRoutes] GCS read styles notice:', gcsErr.message);
     }
-    const content = fs.readFileSync(STYLES_FILE, 'utf-8');
-    const parsed = JSON.parse(content);
-    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+
+    // 2. 本地磁盘缓存
+    if (fs.existsSync(STYLES_FILE)) {
+      try {
+        const content = fs.readFileSync(STYLES_FILE, 'utf-8');
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return res.json({ success: true, data: parsed, source: 'local_disk' });
+        }
+      } catch (e) {}
+    }
+
+    // 3. 静态种子风格资产 (从 server/data/seeds/space_scene_styles.json 读取 7 款预设风格)
+    if (fs.existsSync(SEED_STYLES_FILE)) {
+      try {
+        const seedContent = fs.readFileSync(SEED_STYLES_FILE, 'utf-8');
+        const seedStyles = JSON.parse(seedContent);
+        if (Array.isArray(seedStyles) && seedStyles.length > 0) {
+          console.log(`[spaceStorageRoutes] Loaded ${seedStyles.length} seed scene styles (built-in fallback)`);
+          fs.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), 'utf-8');
+          (async () => {
+            try {
+              await storage.put({
+                bucketType: 'generated',
+                objectKey: GCS_STYLES_KEY,
+                buffer: Buffer.from(JSON.stringify(seedStyles, null, 2), 'utf-8'),
+                contentType: 'application/json',
+                metadata: { isSeed: 'true', seededAt: new Date().toISOString() }
+              });
+              await syncReferencedImagesToGcs(seedStyles);
+            } catch {}
+          })();
+          return res.json({ success: true, data: seedStyles, source: 'seed_builtin' });
+        }
+      } catch (seedErr: any) {
+        console.error('[spaceStorageRoutes] Read seed styles error:', seedErr);
+      }
+    }
+
+    return res.json({ success: true, data: [], source: 'empty' });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message, data: [] });
   }
@@ -414,9 +608,9 @@ router.get('/styles', (_req: Request, res: Response) => {
 
 /**
  * POST /api/space/storage/styles/sync
- * 客户端将场景风格资产同步并固化到服务端磁盘
+ * 客户端将场景风格资产同步并固化到服务端磁盘与 GCS
  */
-router.post('/styles/sync', (req: Request, res: Response) => {
+router.post('/styles/sync', async (req: Request, res: Response) => {
   try {
     ensureDataDir();
     const styles = req.body?.styles;
@@ -431,10 +625,34 @@ router.post('/styles/sync', (req: Request, res: Response) => {
     }
 
     fs.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), 'utf-8');
-    console.log(`[spaceStorageRoutes] ✓ 成功将 ${styles.length} 个场景风格资产持久化保存至服务端磁盘:`, styles.map((s: any) => s.name || s.id));
+    console.log(`[spaceStorageRoutes] ✓ 成功将 ${styles.length} 个场景风格资产持久化保存至服务端磁盘`);
+
+    // 同步到 GCS
+    let gcsSynced = false;
+    try {
+      const jsonBuf = Buffer.from(JSON.stringify(styles, null, 2), 'utf-8');
+      await storage.put({
+        bucketType: 'generated',
+        objectKey: GCS_STYLES_KEY,
+        buffer: jsonBuf,
+        contentType: 'application/json',
+        metadata: {
+          updatedAt: new Date().toISOString(),
+          styleCount: String(styles.length)
+        }
+      });
+      gcsSynced = true;
+      console.log(`[spaceStorageRoutes] ✓ Persisted ${styles.length} styles to GCS at ${GCS_STYLES_KEY}`);
+    } catch (gcsErr: any) {
+      console.warn('[spaceStorageRoutes] Persist styles to GCS notice:', gcsErr.message);
+    }
+
+    syncReferencedImagesToGcs(styles).catch(() => {});
+
     return res.json({
       success: true,
       count: styles.length,
+      gcsSynced,
       timestamp: new Date().toISOString()
     });
   } catch (err: any) {

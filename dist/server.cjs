@@ -16497,6 +16497,7 @@ var import_path18 = __toESM(require("path"), 1);
 var import_crypto15 = __toESM(require("crypto"), 1);
 var import_storage = require("@google-cloud/storage");
 var LOCAL_STORAGE_DIR = import_path18.default.join(process.cwd(), ".data", "space-storage");
+var SEED_STORAGE_DIR = import_path18.default.join(process.cwd(), "server", "data", "seeds", "storage");
 var GcsAssetStorage = class _GcsAssetStorage {
   constructor() {
     this.gcsStorage = null;
@@ -16721,12 +16722,21 @@ var GcsAssetStorage = class _GcsAssetStorage {
         console.warn(`[GcsAssetStorage.getBuffer] GCS download failed for ${objectKey}:`, err.message);
       }
     }
-    const localFilePath = import_path18.default.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, "/"));
+    const sanitizedKey = objectKey.replace(/\\/g, "/");
+    const localFilePath = import_path18.default.join(LOCAL_STORAGE_DIR, sanitizedKey);
     if (import_fs18.default.existsSync(localFilePath)) {
       try {
         return import_fs18.default.readFileSync(localFilePath);
       } catch (err) {
         console.warn(`[GcsAssetStorage.getBuffer] Local read failed for ${localFilePath}:`, err.message);
+      }
+    }
+    const seedFilePath = import_path18.default.join(SEED_STORAGE_DIR, sanitizedKey);
+    if (import_fs18.default.existsSync(seedFilePath)) {
+      try {
+        return import_fs18.default.readFileSync(seedFilePath);
+      } catch (err) {
+        console.warn(`[GcsAssetStorage.getBuffer] Seed read failed for ${seedFilePath}:`, err.message);
       }
     }
     return null;
@@ -16883,8 +16893,20 @@ var GcsAssetStorage = class _GcsAssetStorage {
    * 本地开发文件直通 (供 Express 静态或安全流式中继)
    */
   getLocalFilePath(objectKey) {
-    const localFilePath = import_path18.default.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, "/"));
-    return import_fs18.default.existsSync(localFilePath) ? localFilePath : null;
+    const sanitizedKey = objectKey.replace(/\\/g, "/");
+    const localFilePath = import_path18.default.join(LOCAL_STORAGE_DIR, sanitizedKey);
+    if (import_fs18.default.existsSync(localFilePath)) return localFilePath;
+    const seedFilePath = import_path18.default.join(SEED_STORAGE_DIR, sanitizedKey);
+    if (import_fs18.default.existsSync(seedFilePath)) {
+      try {
+        const parent = import_path18.default.dirname(localFilePath);
+        if (!import_fs18.default.existsSync(parent)) import_fs18.default.mkdirSync(parent, { recursive: true });
+        import_fs18.default.copyFileSync(seedFilePath, localFilePath);
+      } catch {
+      }
+      return seedFilePath;
+    }
+    return null;
   }
 };
 
@@ -20863,26 +20885,116 @@ var MODELS_FILE = import_path23.default.join(DATA_DIR5, "space_model_assets.json
 var MODELS_BACKUP_FILE = import_path23.default.join(DATA_DIR5, "space_model_assets.backup.json");
 var STYLES_FILE = import_path23.default.join(DATA_DIR5, "space_scene_styles.json");
 var STYLES_BACKUP_FILE = import_path23.default.join(DATA_DIR5, "space_scene_styles.backup.json");
+var SEEDS_DIR = import_path23.default.join(process.cwd(), "server", "data", "seeds");
+var SEED_MODELS_FILE = import_path23.default.join(SEEDS_DIR, "space_model_assets.json");
+var SEED_STYLES_FILE = import_path23.default.join(SEEDS_DIR, "space_scene_styles.json");
+var GCS_MODELS_KEY = "assets/space_model_assets.json";
+var GCS_STYLES_KEY = "assets/space_scene_styles.json";
 function ensureDataDir2() {
   if (!import_fs26.default.existsSync(DATA_DIR5)) {
     import_fs26.default.mkdirSync(DATA_DIR5, { recursive: true });
   }
 }
-router16.get("/models", (_req, res) => {
+function extractObjectKeysFromData(obj, keys = /* @__PURE__ */ new Set()) {
+  if (!obj) return keys;
+  if (typeof obj === "string") {
+    const m = obj.match(/key=([^&#]+)/);
+    if (m) keys.add(decodeURIComponent(m[1]));
+  } else if (Array.isArray(obj)) {
+    obj.forEach((item) => extractObjectKeysFromData(item, keys));
+  } else if (typeof obj === "object") {
+    Object.values(obj).forEach((val) => extractObjectKeysFromData(val, keys));
+  }
+  return keys;
+}
+async function syncReferencedImagesToGcs(data) {
+  const keys = extractObjectKeysFromData(data);
+  if (keys.size === 0) return 0;
+  let synced = 0;
+  for (const key of keys) {
+    try {
+      const meta = await storage.getMetadata(key, "source").catch(() => null);
+      if (meta && meta.exists) continue;
+      const buf = await storage.getBuffer(key, "source");
+      if (buf && buf.length > 0) {
+        await storage.put({
+          bucketType: "source",
+          objectKey: key,
+          buffer: buf,
+          contentType: key.endsWith(".webp") ? "image/webp" : key.endsWith(".png") ? "image/png" : "image/jpeg",
+          metadata: {
+            isSeedAsset: "true",
+            uploadedAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        });
+        synced++;
+      }
+    } catch (err) {
+      console.warn(`[spaceStorageRoutes] sync image to GCS notice for ${key}:`, err.message);
+    }
+  }
+  return synced;
+}
+router16.get("/models", async (_req, res) => {
   try {
     ensureDataDir2();
-    if (!import_fs26.default.existsSync(MODELS_FILE)) {
-      return res.json({ success: true, data: [] });
+    try {
+      const gcsBuf = await storage.getBuffer(GCS_MODELS_KEY, "generated");
+      if (gcsBuf && gcsBuf.length > 2) {
+        const parsed = JSON.parse(gcsBuf.toString("utf-8"));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          return res.json({ success: true, data: parsed, source: "gcs" });
+        }
+      }
+    } catch (gcsErr) {
+      console.warn("[spaceStorageRoutes] GCS read models notice:", gcsErr.message);
     }
-    const content = import_fs26.default.readFileSync(MODELS_FILE, "utf-8");
-    const parsed = JSON.parse(content);
-    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+    if (import_fs26.default.existsSync(MODELS_FILE)) {
+      try {
+        const content = import_fs26.default.readFileSync(MODELS_FILE, "utf-8");
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return res.json({ success: true, data: parsed, source: "local_disk" });
+        }
+      } catch (e) {
+      }
+    }
+    if (import_fs26.default.existsSync(SEED_MODELS_FILE)) {
+      try {
+        const seedContent = import_fs26.default.readFileSync(SEED_MODELS_FILE, "utf-8");
+        const seedModels = JSON.parse(seedContent);
+        if (Array.isArray(seedModels) && seedModels.length > 0) {
+          console.log(`[spaceStorageRoutes] Loaded ${seedModels.length} seed model assets (built-in fallback)`);
+          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), "utf-8");
+          (async () => {
+            try {
+              await storage.put({
+                bucketType: "generated",
+                objectKey: GCS_MODELS_KEY,
+                buffer: Buffer.from(JSON.stringify(seedModels, null, 2), "utf-8"),
+                contentType: "application/json",
+                metadata: { isSeed: "true", seededAt: (/* @__PURE__ */ new Date()).toISOString() }
+              });
+              await syncReferencedImagesToGcs(seedModels);
+              console.log(`[spaceStorageRoutes] \u2713 Auto initialized GCS with ${seedModels.length} seed models`);
+            } catch (err) {
+              console.warn("[spaceStorageRoutes] Auto seed models GCS sync notice:", err.message);
+            }
+          })();
+          return res.json({ success: true, data: seedModels, source: "seed_builtin" });
+        }
+      } catch (seedErr) {
+        console.error("[spaceStorageRoutes] Read seed models error:", seedErr);
+      }
+    }
+    return res.json({ success: true, data: [], source: "empty" });
   } catch (err) {
     console.error("[spaceStorageRoutes] read models error:", err);
     return res.status(500).json({ success: false, error: err.message, data: [] });
   }
 });
-router16.post("/models/sync", (req, res) => {
+router16.post("/models/sync", async (req, res) => {
   try {
     ensureDataDir2();
     const models = req.body?.models;
@@ -20898,9 +21010,31 @@ router16.post("/models/sync", (req, res) => {
     }
     import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), "utf-8");
     console.log(`[spaceStorageRoutes] Successfully persisted ${models.length} model assets to disk at ${MODELS_FILE}`);
+    let gcsSynced = false;
+    try {
+      const jsonBuf = Buffer.from(JSON.stringify(models, null, 2), "utf-8");
+      await storage.put({
+        bucketType: "generated",
+        objectKey: GCS_MODELS_KEY,
+        buffer: jsonBuf,
+        contentType: "application/json",
+        metadata: {
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          modelCount: String(models.length)
+        }
+      });
+      gcsSynced = true;
+      console.log(`[spaceStorageRoutes] \u2713 Persisted ${models.length} model assets to GCS at ${GCS_MODELS_KEY}`);
+    } catch (gcsErr) {
+      console.warn("[spaceStorageRoutes] Persist models to GCS notice:", gcsErr.message);
+    }
+    syncReferencedImagesToGcs(models).catch((imgErr) => {
+      console.warn("[spaceStorageRoutes] Background sync model slice images notice:", imgErr.message);
+    });
     return res.json({
       success: true,
       count: models.length,
+      gcsSynced,
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
   } catch (err) {
@@ -20908,20 +21042,63 @@ router16.post("/models/sync", (req, res) => {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
-router16.get("/styles", (_req, res) => {
+router16.get("/styles", async (_req, res) => {
   try {
     ensureDataDir2();
-    if (!import_fs26.default.existsSync(STYLES_FILE)) {
-      return res.json({ success: true, data: [] });
+    try {
+      const gcsBuf = await storage.getBuffer(GCS_STYLES_KEY, "generated");
+      if (gcsBuf && gcsBuf.length > 2) {
+        const parsed = JSON.parse(gcsBuf.toString("utf-8"));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          return res.json({ success: true, data: parsed, source: "gcs" });
+        }
+      }
+    } catch (gcsErr) {
+      console.warn("[spaceStorageRoutes] GCS read styles notice:", gcsErr.message);
     }
-    const content = import_fs26.default.readFileSync(STYLES_FILE, "utf-8");
-    const parsed = JSON.parse(content);
-    return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
+    if (import_fs26.default.existsSync(STYLES_FILE)) {
+      try {
+        const content = import_fs26.default.readFileSync(STYLES_FILE, "utf-8");
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return res.json({ success: true, data: parsed, source: "local_disk" });
+        }
+      } catch (e) {
+      }
+    }
+    if (import_fs26.default.existsSync(SEED_STYLES_FILE)) {
+      try {
+        const seedContent = import_fs26.default.readFileSync(SEED_STYLES_FILE, "utf-8");
+        const seedStyles = JSON.parse(seedContent);
+        if (Array.isArray(seedStyles) && seedStyles.length > 0) {
+          console.log(`[spaceStorageRoutes] Loaded ${seedStyles.length} seed scene styles (built-in fallback)`);
+          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), "utf-8");
+          (async () => {
+            try {
+              await storage.put({
+                bucketType: "generated",
+                objectKey: GCS_STYLES_KEY,
+                buffer: Buffer.from(JSON.stringify(seedStyles, null, 2), "utf-8"),
+                contentType: "application/json",
+                metadata: { isSeed: "true", seededAt: (/* @__PURE__ */ new Date()).toISOString() }
+              });
+              await syncReferencedImagesToGcs(seedStyles);
+            } catch {
+            }
+          })();
+          return res.json({ success: true, data: seedStyles, source: "seed_builtin" });
+        }
+      } catch (seedErr) {
+        console.error("[spaceStorageRoutes] Read seed styles error:", seedErr);
+      }
+    }
+    return res.json({ success: true, data: [], source: "empty" });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, data: [] });
   }
 });
-router16.post("/styles/sync", (req, res) => {
+router16.post("/styles/sync", async (req, res) => {
   try {
     ensureDataDir2();
     const styles = req.body?.styles;
@@ -20935,10 +21112,31 @@ router16.post("/styles/sync", (req, res) => {
       }
     }
     import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), "utf-8");
-    console.log(`[spaceStorageRoutes] \u2713 \u6210\u529F\u5C06 ${styles.length} \u4E2A\u573A\u666F\u98CE\u683C\u8D44\u4EA7\u6301\u4E45\u5316\u4FDD\u5B58\u81F3\u670D\u52A1\u7AEF\u78C1\u76D8:`, styles.map((s) => s.name || s.id));
+    console.log(`[spaceStorageRoutes] \u2713 \u6210\u529F\u5C06 ${styles.length} \u4E2A\u573A\u666F\u98CE\u683C\u8D44\u4EA7\u6301\u4E45\u5316\u4FDD\u5B58\u81F3\u670D\u52A1\u7AEF\u78C1\u76D8`);
+    let gcsSynced = false;
+    try {
+      const jsonBuf = Buffer.from(JSON.stringify(styles, null, 2), "utf-8");
+      await storage.put({
+        bucketType: "generated",
+        objectKey: GCS_STYLES_KEY,
+        buffer: jsonBuf,
+        contentType: "application/json",
+        metadata: {
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          styleCount: String(styles.length)
+        }
+      });
+      gcsSynced = true;
+      console.log(`[spaceStorageRoutes] \u2713 Persisted ${styles.length} styles to GCS at ${GCS_STYLES_KEY}`);
+    } catch (gcsErr) {
+      console.warn("[spaceStorageRoutes] Persist styles to GCS notice:", gcsErr.message);
+    }
+    syncReferencedImagesToGcs(styles).catch(() => {
+    });
     return res.json({
       success: true,
       count: styles.length,
+      gcsSynced,
       timestamp: (/* @__PURE__ */ new Date()).toISOString()
     });
   } catch (err) {
