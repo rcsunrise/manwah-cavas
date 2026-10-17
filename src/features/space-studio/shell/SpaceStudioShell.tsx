@@ -1,5 +1,4 @@
-// src/features/space-studio/shell/SpaceStudioShell.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   SpaceProject,
   SpaceWorkflowStep,
@@ -1400,7 +1399,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
   // 核心产品资产与当前机位正向提示词实时编译 (供画板扩图、局部重绘等下游深度使用)
   const primaryProductForCanvas = useMemo(() => {
-    const activeEnsemble = products.filter((p) => p.included !== false);
+    const activeEnsemble = products.filter((p: any) => p.included !== false);
     return (
       activeEnsemble.find((p) => p.priority === 'primary') ||
       activeEnsemble.find((p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')) ||
@@ -1412,7 +1411,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const currentPositivePrompt = useMemo(() => {
     if (!activeShot) return '';
     try {
-      const activeEnsemble = products.filter((p) => p.included !== false);
+      const activeEnsemble = products.filter((p: any) => p.included !== false);
       const effectiveSceneMaster = sceneMasterRef.current || sceneMaster;
       const compiled = ShootCompiler.compileShotPrompt({
         shot: activeShot,
@@ -2651,8 +2650,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           resolution: computeConfig.resolution || '2K',
           originalScenePrompt: currentPositivePrompt,
           productName: primaryProductForCanvas?.name,
-          productMaterial: primaryProductForCanvas?.materials?.[0] || primaryProductForCanvas?.materialDescription,
-          productColor: primaryProductForCanvas?.color
+          productMaterial: primaryProductForCanvas?.materials?.[0] || (primaryProductForCanvas as any)?.materialDescription,
+          productColor: (primaryProductForCanvas as any)?.color || primaryProductForCanvas?.colors?.[0]
         })
       });
 
@@ -3081,7 +3080,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           styleName={selectedStyle.name.split(' (')[0]}
           roomName={selectedSpace.name.split(' (')[0]}
           productName={primaryProductForCanvas?.name}
-          productMaterial={primaryProductForCanvas?.materials?.[0] || primaryProductForCanvas?.materialDescription}
+          productMaterial={primaryProductForCanvas?.materials?.[0] || (primaryProductForCanvas as any)?.materialDescription}
           currentPositivePrompt={currentPositivePrompt}
           onGenerateCurrent={
             activeShot.templateCode === "A00"

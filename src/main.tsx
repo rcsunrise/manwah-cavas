@@ -141,19 +141,119 @@ if (typeof window !== 'undefined') {
   }
 }
 
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import React, { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
 import './index.css';
+
+interface RootErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, RootErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): RootErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[RootErrorBoundary] Uncaught application error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.clear();
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
+    } catch (_) {}
+    window.location.href = '/login';
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#FBFAF8',
+          fontFamily: 'Inter, sans-serif',
+          padding: '24px'
+        }}>
+          <div style={{
+            maxWidth: '460px',
+            width: '100%',
+            backgroundColor: '#ffffff',
+            borderRadius: '24px',
+            padding: '36px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.06)',
+            textAlign: 'center',
+            border: '1px solid #EBE7E0'
+          }}>
+            <div style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '28px',
+              backgroundColor: '#FEF3C7',
+              color: '#D97706',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '24px',
+              margin: '0 auto 16px',
+              fontWeight: 'bold'
+            }}>!</div>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#1C1917', marginBottom: '8px' }}>
+              系统已发布最新升级
+            </h2>
+            <p style={{ fontSize: '13px', color: '#78716C', lineHeight: '1.6', marginBottom: '24px' }}>
+              检测到本地静态脚本与云端最新版本存在更新差异。请点击下方按钮完成一键刷新，即可正常进入工作台。
+            </p>
+            <button
+              onClick={this.handleReset}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                borderRadius: '12px',
+                backgroundColor: '#B9935A',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              一键刷新并进入工作台
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <RootErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </RootErrorBoundary>
   </StrictMode>,
 );
+
 

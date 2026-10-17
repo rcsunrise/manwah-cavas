@@ -23,6 +23,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
+import { bridgeRelayHub } from '../services/bridgeRelayHub';
 
 const router = Router();
 
@@ -646,6 +647,34 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
   let streamFailed = false;
   let errorCode: AgentErrorCode = 'UNKNOWN_AGENT_ERROR';
   let providerResponseId: string | null = null;
+  let localCardData: any = null;
+
+  // Agent G Tool Dispatch: Check if message requests local asset inspection
+  const trimmedMsg = message.trim();
+  const isLocalAssetIntent = /(本地|电脑|硬盘|文件夹).*(找|搜|查|素材|图|资料|pdf|2650)/i.test(trimmedMsg) ||
+    /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf)/i.test(trimmedMsg);
+
+  if (isLocalAssetIntent && bridgeRelayHub.isUserDeviceOnline(userId)) {
+    try {
+      let kw = trimmedMsg.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件)/gi, '').trim();
+      if (!kw) kw = '2650';
+
+      const results = await bridgeRelayHub.callUserDevice(userId, 'search_local_assets', { query: kw, category: 'all', limit: 8 }, 5000);
+      localCardData = {
+        query: kw,
+        matchedCount: Array.isArray(results) ? results.length : 0,
+        assets: Array.isArray(results) ? results : []
+      };
+
+      sendEvent('tool.execution', {
+        tool: 'search_local_assets',
+        status: 'completed',
+        data: localCardData
+      });
+    } catch (e: any) {
+      console.warn('[AgentConversation] Bridge search failed:', e);
+    }
+  }
 
   if (isAgentChatTestMode()) {
     incrementAgentMetric('mockTextProviderCalls');
@@ -732,7 +761,10 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     conversation_id: conversationId,
     user_id: userId,
     role: 'assistant',
-    content: { text: accumulatedText },
+    content: {
+      text: accumulatedText,
+      localAssetCard: localCardData || undefined
+    },
     status: isClientClosed ? 'failed' : streamFailed ? 'failed' : 'completed',
     provider_response_id: providerResponseId,
     parent_message_id: userMessageId,

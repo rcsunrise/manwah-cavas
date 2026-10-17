@@ -7,6 +7,30 @@
     <meta name="description" content="MANWAH AI 国内商品企划中心与九屏电商详情海报工作台，固定 2100×2800 3:4 独立高保真排版与合成引擎。" />
     <meta property="og:title" content="manwah" />
     <meta property="og:description" content="MANWAH AI 国内商品企划中心与九屏电商详情海报工作台，固定 2100×2800 3:4 独立高保真排版与合成引擎。" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <script>
+      // 生产环境版本热更新自愈与防白屏守护器
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) || '';
+        var src = (e && e.target && (e.target.src || e.target.href)) || '';
+        if (
+          msg.indexOf("Unexpected token '<'") !== -1 ||
+          msg.indexOf("Failed to fetch dynamically imported module") !== -1 ||
+          src.indexOf('/assets/') !== -1
+        ) {
+          console.warn('[Cache Buster] Detected stale version mismatch or missing chunk, performing clean reload...');
+          var reloadKey = '__manwah_last_cache_bust';
+          var now = Date.now();
+          var lastReload = Number(sessionStorage.getItem(reloadKey) || 0);
+          if (now - lastReload > 8000) {
+            sessionStorage.setItem(reloadKey, String(now));
+            window.location.reload(true);
+          }
+        }
+      }, true);
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
     <script>

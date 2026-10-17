@@ -44,7 +44,9 @@ import {
   IMAGE_ASPECT_SPECS,
   RenderResolution,
   calculateRenderDimensions,
-  DisaggregatedProductItem
+  DisaggregatedProductItem,
+  StylePreset,
+  SpacePreset
 } from '../../../types/spaceStudio';
 import { CandidateItem, ShotCandidateBatch } from '../../../types/spaceAssetLibrary';
 import { SceneProductAnnotationOverlay } from './SceneProductAnnotationOverlay';
@@ -116,6 +118,8 @@ interface SpaceStudioCanvasProps {
   productName?: string;
   productMaterial?: string;
   currentPositivePrompt?: string;
+  selectedAnnotationId?: string | null;
+  onLocateInDrawer?: (id: string) => void;
 
   theme?: 'dark' | 'light';
 }

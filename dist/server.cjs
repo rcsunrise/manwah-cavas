@@ -70,7 +70,7 @@ function loadEnvFiles() {
 loadEnvFiles();
 
 // server.ts
-var import_express21 = __toESM(require("express"), 1);
+var import_express22 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_multer3 = __toESM(require("multer"), 1);
 var import_path24 = __toESM(require("path"), 1);
@@ -6548,7 +6548,239 @@ function resetAgentRuntimeMetrics() {
 // server/routes/agentConversationRoutes.ts
 var import_fs8 = __toESM(require("fs"), 1);
 var import_path8 = __toESM(require("path"), 1);
+var import_crypto7 = __toESM(require("crypto"), 1);
+
+// server/services/bridgeRelayHub.ts
+var import_ws = require("ws");
 var import_crypto6 = __toESM(require("crypto"), 1);
+var memoryPairCodes = /* @__PURE__ */ new Map();
+var memoryDevices = /* @__PURE__ */ new Map();
+var BridgeRelayHub = class _BridgeRelayHub {
+  constructor() {
+    this.wss = null;
+    this.connectedDevices = /* @__PURE__ */ new Map();
+    // deviceId -> ConnectedDevice
+    this.pendingRequests = /* @__PURE__ */ new Map();
+  }
+  static {
+    this.instance = null;
+  }
+  static getInstance() {
+    if (!_BridgeRelayHub.instance) {
+      _BridgeRelayHub.instance = new _BridgeRelayHub();
+    }
+    return _BridgeRelayHub.instance;
+  }
+  /**
+   * Attach WebSocket server to existing HTTP/Express server
+   */
+  attachServer(server) {
+    if (this.wss) return;
+    this.wss = new import_ws.WebSocketServer({ noServer: true });
+    server.on("upgrade", (request, socket, head) => {
+      const url = new URL(request.url || "", `http://${request.headers.host || "localhost"}`);
+      if (url.pathname === "/ws/bridge-hub") {
+        this.wss?.handleUpgrade(request, socket, head, (ws) => {
+          this.wss?.emit("connection", ws, request);
+        });
+      }
+    });
+    this.wss.on("connection", (ws, req) => {
+      this.handleConnection(ws, req);
+    });
+    console.log("[BridgeRelayHub] WebSocket Relay Server attached at /ws/bridge-hub");
+  }
+  /**
+   * Handle incoming WebSocket client from Local Asset Bridge (Tauri / Native)
+   */
+  handleConnection(ws, req) {
+    let currentDeviceId = null;
+    ws.on("message", async (data) => {
+      try {
+        const messageStr = typeof data === "string" ? data : data.toString("utf8");
+        const packet = JSON.parse(messageStr);
+        if (packet.type === "auth") {
+          const { deviceId, deviceToken } = packet;
+          const authResult = await this.verifyDevice(deviceId, deviceToken);
+          if (!authResult.valid || !authResult.device) {
+            ws.send(JSON.stringify({ type: "auth_response", success: false, error: "Device authentication failed" }));
+            ws.close(4001, "Unauthorized device");
+            return;
+          }
+          currentDeviceId = deviceId;
+          const device = {
+            deviceId,
+            userId: authResult.device.userId,
+            deviceName: authResult.device.deviceName,
+            authorizedDirs: packet.authorizedDirs || authResult.device.authorizedDirs || [],
+            ws,
+            connectedAt: /* @__PURE__ */ new Date(),
+            lastPingAt: /* @__PURE__ */ new Date()
+          };
+          this.connectedDevices.set(deviceId, device);
+          console.log(`[BridgeRelayHub] Device authenticated: ${device.deviceName} (User: ${device.userId})`);
+          ws.send(JSON.stringify({
+            type: "auth_response",
+            success: true,
+            deviceId,
+            userId: device.userId,
+            message: "Bridge Relay Connected"
+          }));
+          return;
+        }
+        if (packet.type === "rpc_response" && packet.requestId) {
+          const pending = this.pendingRequests.get(packet.requestId);
+          if (pending) {
+            clearTimeout(pending.timeout);
+            this.pendingRequests.delete(packet.requestId);
+            if (packet.success) {
+              pending.resolve(packet.data);
+            } else {
+              pending.reject(new Error(packet.error || "Local Bridge RPC execution failed"));
+            }
+          }
+          return;
+        }
+        if (packet.type === "pong" && currentDeviceId) {
+          const dev = this.connectedDevices.get(currentDeviceId);
+          if (dev) dev.lastPingAt = /* @__PURE__ */ new Date();
+        }
+      } catch (err) {
+        console.warn("[BridgeRelayHub] Malformed packet received:", err);
+      }
+    });
+    ws.on("close", () => {
+      if (currentDeviceId) {
+        this.connectedDevices.delete(currentDeviceId);
+        console.log(`[BridgeRelayHub] Device disconnected: ${currentDeviceId}`);
+      }
+    });
+  }
+  /**
+   * Verify device existence and user ownership
+   */
+  async verifyDevice(deviceId, deviceToken) {
+    try {
+      const { data, error } = await supabaseAdmin.from("user_devices").select("user_id, device_name, authorized_directories, device_token").eq("id", deviceId).eq("device_token", deviceToken).maybeSingle();
+      if (!error && data) {
+        return {
+          valid: true,
+          device: {
+            userId: data.user_id,
+            deviceName: data.device_name,
+            authorizedDirs: data.authorized_directories || []
+          }
+        };
+      }
+    } catch (e) {
+    }
+    const memDev = memoryDevices.get(deviceId);
+    if (memDev && memDev.deviceToken === deviceToken) {
+      return {
+        valid: true,
+        device: {
+          userId: memDev.userId,
+          deviceName: memDev.deviceName,
+          authorizedDirs: memDev.authorizedDirs
+        }
+      };
+    }
+    return { valid: false };
+  }
+  /**
+   * Check if a specific user has an online Local Asset Bridge
+   */
+  isUserDeviceOnline(userId) {
+    for (const dev of this.connectedDevices.values()) {
+      if (dev.userId === userId && dev.ws.readyState === import_ws.WebSocket.OPEN) {
+        return true;
+      }
+    }
+    return false;
+  }
+  /**
+   * Get active connected device for user
+   */
+  getUserDevice(userId) {
+    for (const dev of this.connectedDevices.values()) {
+      if (dev.userId === userId && dev.ws.readyState === import_ws.WebSocket.OPEN) {
+        return dev;
+      }
+    }
+    return null;
+  }
+  /**
+   * Invoke RPC command on user's local Bridge
+   */
+  async callUserDevice(userId, action, payload = {}, timeoutMs = 15e3) {
+    const device = this.getUserDevice(userId);
+    if (!device) {
+      throw new Error(`\u8BBE\u8BA1\u5E08\u672A\u8FD0\u884C\u6216\u672A\u8FDE\u63A5 Local Asset Bridge \u672C\u5730\u52A9\u624B (User: ${userId})`);
+    }
+    const requestId = `req_${Date.now()}_${import_crypto6.default.randomBytes(4).toString("hex")}`;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error(`Local Asset Bridge RPC \u8D85\u65F6 (action: ${action}, timeout: ${timeoutMs}ms)`));
+      }, timeoutMs);
+      this.pendingRequests.set(requestId, { resolve, reject, timeout });
+      const requestPacket = {
+        type: "rpc_request",
+        requestId,
+        action,
+        payload
+      };
+      try {
+        device.ws.send(JSON.stringify(requestPacket));
+      } catch (err) {
+        clearTimeout(timeout);
+        this.pendingRequests.delete(requestId);
+        reject(err);
+      }
+    });
+  }
+  // === Pairing Helpers ===
+  createPairCode(userId) {
+    const code = Math.floor(1e5 + Math.random() * 9e5).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1e3;
+    memoryPairCodes.set(code, { userId, expiresAt });
+    return code;
+  }
+  async completePairing(pairCode, deviceName, deviceFingerprint) {
+    const pairRecord = memoryPairCodes.get(pairCode);
+    if (!pairRecord || pairRecord.expiresAt < Date.now()) {
+      throw new Error("\u914D\u5BF9\u7801\u65E0\u6548\u6216\u5DF2\u8FC7\u671F\uFF0C\u8BF7\u5728\u7F51\u9875\u7AEF\u91CD\u65B0\u751F\u6210");
+    }
+    const { userId } = pairRecord;
+    memoryPairCodes.delete(pairCode);
+    const deviceId = import_crypto6.default.randomUUID();
+    const deviceToken = `dtk_${import_crypto6.default.randomBytes(24).toString("hex")}`;
+    memoryDevices.set(deviceId, {
+      id: deviceId,
+      userId,
+      deviceName,
+      deviceToken,
+      authorizedDirs: []
+    });
+    try {
+      await supabaseAdmin.from("user_devices").insert({
+        id: deviceId,
+        user_id: userId,
+        device_name: deviceName,
+        device_fingerprint: deviceFingerprint,
+        device_token: deviceToken,
+        status: "offline",
+        authorized_directories: []
+      });
+    } catch (e) {
+      console.warn("[BridgeRelayHub] Failed to persist device to Supabase, retained in memory:", e);
+    }
+    return { deviceId, deviceToken, userId };
+  }
+};
+var bridgeRelayHub = BridgeRelayHub.getInstance();
+
+// server/routes/agentConversationRoutes.ts
 var router5 = (0, import_express5.Router)();
 var DATA_DIR3 = process.env.AGENT_CHAT_DATA_DIR ? import_path8.default.resolve(process.env.AGENT_CHAT_DATA_DIR) : import_path8.default.join(process.cwd(), ".data", "agent_chat_runtime_test");
 function ensureDataDir() {
@@ -6753,7 +6985,7 @@ router5.post("/conversations", async (req, res) => {
         error: { message: "Project or canvas does not belong to the authenticated user", code: "INVALID_AGENT_CONTEXT" }
       });
     }
-    const conversationId = import_crypto6.default.randomUUID();
+    const conversationId = import_crypto7.default.randomUUID();
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const record = {
       id: conversationId,
@@ -6973,7 +7205,7 @@ router5.post("/conversations/:conversationId/messages", async (req, res) => {
       error: { message: ctxCheck.reason || "Invalid context snapshot", code: "INVALID_AGENT_CONTEXT" }
     });
   }
-  const userMessageId = import_crypto6.default.randomUUID();
+  const userMessageId = import_crypto7.default.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const userMsgRecord = {
     id: userMessageId,
@@ -6994,7 +7226,7 @@ router5.post("/conversations/:conversationId/messages", async (req, res) => {
       error: { message: "User message could not be persisted", code: "MESSAGE_PERSISTENCE_ERROR" }
     });
   }
-  const assistantMessageId = import_crypto6.default.randomUUID();
+  const assistantMessageId = import_crypto7.default.randomUUID();
   let accumulatedText = "";
   let isClientClosed = false;
   const assistantCreatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -7047,6 +7279,28 @@ data: ${JSON.stringify(payload)}
   let streamFailed = false;
   let errorCode = "UNKNOWN_AGENT_ERROR";
   let providerResponseId = null;
+  let localCardData = null;
+  const trimmedMsg = message.trim();
+  const isLocalAssetIntent = /(本地|电脑|硬盘|文件夹).*(找|搜|查|素材|图|资料|pdf|2650)/i.test(trimmedMsg) || /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf)/i.test(trimmedMsg);
+  if (isLocalAssetIntent && bridgeRelayHub.isUserDeviceOnline(userId)) {
+    try {
+      let kw = trimmedMsg.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件)/gi, "").trim();
+      if (!kw) kw = "2650";
+      const results = await bridgeRelayHub.callUserDevice(userId, "search_local_assets", { query: kw, category: "all", limit: 8 }, 5e3);
+      localCardData = {
+        query: kw,
+        matchedCount: Array.isArray(results) ? results.length : 0,
+        assets: Array.isArray(results) ? results : []
+      };
+      sendEvent("tool.execution", {
+        tool: "search_local_assets",
+        status: "completed",
+        data: localCardData
+      });
+    } catch (e) {
+      console.warn("[AgentConversation] Bridge search failed:", e);
+    }
+  }
   if (isAgentChatTestMode()) {
     incrementAgentMetric("mockTextProviderCalls");
     const scenario = getAgentTestScenario(req);
@@ -7067,7 +7321,7 @@ data: ${JSON.stringify(payload)}
         });
         await new Promise((resolve) => setTimeout(resolve, scenario === "slow" ? 80 : 5));
       }
-      providerResponseId = `mock_${import_crypto6.default.randomBytes(8).toString("hex")}`;
+      providerResponseId = `mock_${import_crypto7.default.randomBytes(8).toString("hex")}`;
     }
   } else {
     incrementAgentMetric("textProviderCalls");
@@ -7130,7 +7384,10 @@ data: ${JSON.stringify(payload)}
     conversation_id: conversationId,
     user_id: userId,
     role: "assistant",
-    content: { text: accumulatedText },
+    content: {
+      text: accumulatedText,
+      localAssetCard: localCardData || void 0
+    },
     status: isClientClosed ? "failed" : streamFailed ? "failed" : "completed",
     provider_response_id: providerResponseId,
     parent_message_id: userMessageId,
@@ -7225,7 +7482,7 @@ router5.post("/conversations/:conversationId/retry", async (req, res) => {
       error: { message: "Failed response has no valid parent user message", code: "MESSAGE_PERSISTENCE_ERROR" }
     });
   }
-  const assistantMessageId = import_crypto6.default.randomUUID();
+  const assistantMessageId = import_crypto7.default.randomUUID();
   let accumulatedText = "";
   let isClientClosed = false;
   let streamFailed = false;
@@ -7285,7 +7542,7 @@ data: ${JSON.stringify(payload)}
       sendEvent("response.delta", { type: "response.delta", conversationId, messageId: assistantMessageId, delta: chunk });
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
-    providerResponseId = `mock_${import_crypto6.default.randomBytes(8).toString("hex")}`;
+    providerResponseId = `mock_${import_crypto7.default.randomBytes(8).toString("hex")}`;
   } else {
     incrementAgentMetric("textProviderCalls");
     try {
@@ -7444,7 +7701,7 @@ var import_multer = __toESM(require("multer"), 1);
 
 // server/routes/productDnaRoutes.ts
 var import_express6 = require("express");
-var import_crypto7 = __toESM(require("crypto"), 1);
+var import_crypto8 = __toESM(require("crypto"), 1);
 var import_fs9 = __toESM(require("fs"), 1);
 var import_path9 = __toESM(require("path"), 1);
 var router6 = (0, import_express6.Router)();
@@ -7527,7 +7784,7 @@ function validateDnaSnapshot(snapshot) {
 }
 function computeSnapshotChecksum(snapshot, referenceAssets) {
   const norm = JSON.stringify({ snapshot, referenceAssets });
-  return import_crypto7.default.createHash("sha256").update(norm).digest("hex").substring(0, 16);
+  return import_crypto8.default.createHash("sha256").update(norm).digest("hex").substring(0, 16);
 }
 function sanitizeReferenceAssets(assets, projectId, dnaCode) {
   if (!Array.isArray(assets)) return [];
@@ -7977,7 +8234,7 @@ var productDnaRoutes_default = router6;
 
 // server/routes/assetRoutes.ts
 var import_sharp = __toESM(require("sharp"), 1);
-var import_crypto8 = __toESM(require("crypto"), 1);
+var import_crypto9 = __toESM(require("crypto"), 1);
 var import_fs10 = __toESM(require("fs"), 1);
 var import_path10 = __toESM(require("path"), 1);
 var upload = (0, import_multer.default)({
@@ -8010,7 +8267,7 @@ function persistAssetToDisk2(objectKey, dataUrl, mimeType = "image/jpeg") {
   }
 }
 function computeChecksum(buffer) {
-  return import_crypto8.default.createHash("sha256").update(buffer).digest("hex").substring(0, 16);
+  return import_crypto9.default.createHash("sha256").update(buffer).digest("hex").substring(0, 16);
 }
 async function uploadToStorage(objectKey, buffer, mimeType = "image/jpeg") {
   let storageSuccess = false;
@@ -9077,7 +9334,7 @@ ${JSON.stringify(slots.map((s) => ({
 // server/routes/copyRoutes.ts
 var import_fs11 = __toESM(require("fs"), 1);
 var import_path11 = __toESM(require("path"), 1);
-var import_crypto9 = __toESM(require("crypto"), 1);
+var import_crypto10 = __toESM(require("crypto"), 1);
 var router8 = (0, import_express8.Router)();
 var skuLocks = /* @__PURE__ */ new Map();
 async function withSkuLock(skuId, task) {
@@ -9110,7 +9367,7 @@ function computeCopyContentHash(contentJson) {
   };
   const normalized = normalize(contentJson);
   const jsonStr = JSON.stringify(normalized);
-  return import_crypto9.default.createHash("sha256").update(jsonStr, "utf8").digest("hex").toLowerCase();
+  return import_crypto10.default.createHash("sha256").update(jsonStr, "utf8").digest("hex").toLowerCase();
 }
 async function requireStrictAuth2(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -11710,7 +11967,7 @@ var ConsistencyPreflightErrorCodeSchema = import_zod.z.enum([
 ]);
 
 // server/services/consistencyService.ts
-var import_crypto10 = __toESM(require("crypto"), 1);
+var import_crypto11 = __toESM(require("crypto"), 1);
 
 // server/services/consistencyPreflightService.ts
 function filterFeaturesByScreenRole(features, screenRole) {
@@ -12123,7 +12380,7 @@ async function evaluateProductConsistency(input) {
     input.consistencyPolicyId,
     CONSISTENCY_PROMPT_VERSION
   ].join("::");
-  const inputHash = import_crypto10.default.createHash("sha256").update(inputHashStr).digest("hex");
+  const inputHash = import_crypto11.default.createHash("sha256").update(inputHashStr).digest("hex");
   if (memoryReportStore.has(input.idempotencyKey)) {
     return memoryReportStore.get(input.idempotencyKey);
   }
@@ -12695,7 +12952,7 @@ var CompositionRenderJobSchema = import_zod2.z.object({
 });
 
 // server/services/compositionAssemblerService.ts
-var import_crypto11 = __toESM(require("crypto"), 1);
+var import_crypto12 = __toESM(require("crypto"), 1);
 var import_fs13 = __toESM(require("fs"), 1);
 var import_path13 = __toESM(require("path"), 1);
 var memoryCompositions = /* @__PURE__ */ new Map();
@@ -12808,7 +13065,7 @@ function calculateCompositionChecksum(comp) {
     imageLayers: comp.imageLayers,
     textLayers: comp.textLayers
   };
-  return import_crypto11.default.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return import_crypto12.default.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 function buildDefaultTypographySlotsFromCopyContent(c) {
   const slots = [];
@@ -14079,7 +14336,7 @@ var import_path17 = __toESM(require("path"), 1);
 var import_fs17 = __toESM(require("fs"), 1);
 
 // server/services/detailExportService.ts
-var import_crypto12 = __toESM(require("crypto"), 1);
+var import_crypto13 = __toESM(require("crypto"), 1);
 var import_path16 = __toESM(require("path"), 1);
 var import_fs16 = __toESM(require("fs"), 1);
 var archiverModule = __toESM(require("archiver"), 1);
@@ -14224,7 +14481,7 @@ async function exportNinePosters(params) {
         throw new Error(`RENDER_FILE_MISSING: ${task.sceneKey}`);
       }
     }
-    const checksum = `sha256_${import_crypto12.default.createHash("sha256").update(imgBuffer).digest("hex").toLowerCase()}`;
+    const checksum = `sha256_${import_crypto13.default.createHash("sha256").update(imgBuffer).digest("hex").toLowerCase()}`;
     const posterMeta = {
       sceneKey: task.sceneKey,
       posterIndex: task.posterIndex,
@@ -14311,7 +14568,7 @@ async function exportNinePosters(params) {
       width: POSTER_SPEC.width,
       height: POSTER_SPEC.height,
       file_size_bytes: zipBuffer.length,
-      checksum: `sha256_${import_crypto12.default.createHash("sha256").update(zipBuffer).digest("hex").toLowerCase()}`,
+      checksum: `sha256_${import_crypto13.default.createHash("sha256").update(zipBuffer).digest("hex").toLowerCase()}`,
       created_by: createdBy,
       updated_at: (/* @__PURE__ */ new Date()).toISOString()
     }, { onConflict: "id" });
@@ -15483,7 +15740,7 @@ var posterRoutes_default = router13;
 // server/routes/videoRoutes.ts
 var import_express14 = require("express");
 var import_fs24 = __toESM(require("fs"), 1);
-var import_crypto21 = __toESM(require("crypto"), 1);
+var import_crypto22 = __toESM(require("crypto"), 1);
 var import_multer2 = __toESM(require("multer"), 1);
 
 // server/services/video/videoCapabilityRegistry.ts
@@ -15880,7 +16137,7 @@ function validateVideoSettings(capability, settings, imageCount) {
 }
 
 // server/services/video/videoDirectorService.ts
-var import_crypto13 = __toESM(require("crypto"), 1);
+var import_crypto14 = __toESM(require("crypto"), 1);
 var VideoDirectorService = class {
   /**
    * Generates a structured director brief and shot list
@@ -15901,7 +16158,7 @@ var VideoDirectorService = class {
       productCategory,
       productDetails
     } = request;
-    const planVersionId = `plan-${Date.now()}-${import_crypto13.default.randomBytes(4).toString("hex")}`;
+    const planVersionId = `plan-${Date.now()}-${import_crypto14.default.randomBytes(4).toString("hex")}`;
     const shotCount = style === "single_take" ? 1 : 3;
     let cleanedProductTitle = (productTitle || "").trim();
     const isNodePlaceholder = cleanedProductTitle.startsWith("node-") || cleanedProductTitle.startsWith("img-node-") || cleanedProductTitle.startsWith("asset-") || cleanedProductTitle.startsWith("ref-") || cleanedProductTitle.match(/^[a-z0-9-_]{8,}$/i);
@@ -16022,7 +16279,7 @@ var VideoDirectorService = class {
           if (match) {
             const parsed = JSON.parse(match[0]);
             const shots2 = (parsed.shots || []).slice(0, shotCount).map((s, idx) => ({
-              shotId: `shot-${idx + 1}-${import_crypto13.default.randomBytes(3).toString("hex")}`,
+              shotId: `shot-${idx + 1}-${import_crypto14.default.randomBytes(3).toString("hex")}`,
               order: idx + 1,
               title: s.title || `\u955C\u5934 ${idx + 1}`,
               composition: s.composition || "\u4E2D\u5FC3\u9EC4\u91D1\u5206\u5272\u6784\u56FE",
@@ -16059,7 +16316,7 @@ var VideoDirectorService = class {
     const shots = [];
     if (shotCount === 1) {
       shots.push({
-        shotId: `shot-1-${import_crypto13.default.randomBytes(3).toString("hex")}`,
+        shotId: `shot-1-${import_crypto14.default.randomBytes(3).toString("hex")}`,
         order: 1,
         title: "\u4E00\u955C\u5230\u5E95\uFF1A\u5168\u666F\u6C1B\u56F4\u7F13\u63A8",
         composition: "45\u5EA6\u5FAE\u4EF0\u89C6\uFF0C\u9EC4\u91D1\u5206\u5272\u900F\u89C6\u5C45\u4E2D",
@@ -16073,7 +16330,7 @@ var VideoDirectorService = class {
     } else {
       shots.push(
         {
-          shotId: `shot-1-${import_crypto13.default.randomBytes(3).toString("hex")}`,
+          shotId: `shot-1-${import_crypto14.default.randomBytes(3).toString("hex")}`,
           order: 1,
           title: "\u7A7A\u95F4\u5168\u666F\u6C1B\u56F4\u4E0E\u4EA7\u54C1\u8F6E\u5ED3",
           composition: "\u5E7F\u89D2\u5FAE\u4FEF\u89C6\uFF0C\u5BBD\u9614\u5BA2\u5385\u73AF\u5883",
@@ -16085,7 +16342,7 @@ var VideoDirectorService = class {
           referenceAssetVersionIds: sourceAssetVersionId ? [sourceAssetVersionId] : []
         },
         {
-          shotId: `shot-2-${import_crypto13.default.randomBytes(3).toString("hex")}`,
+          shotId: `shot-2-${import_crypto14.default.randomBytes(3).toString("hex")}`,
           order: 2,
           title: `\u7279\u5199\u5448\u73B0\uFF1A${focusString.split("\u3001")[0] || "\u6838\u5FC3\u6750\u8D28\u5DE5\u827A"}`,
           composition: "\u5FAE\u8DDD\u666F\u6DF1\u865A\u5316\uFF0C\u805A\u7126\u6276\u624B\u4E0E\u7ED7\u7F1D",
@@ -16097,7 +16354,7 @@ var VideoDirectorService = class {
           referenceAssetVersionIds: sourceAssetVersionId ? [sourceAssetVersionId] : []
         },
         {
-          shotId: `shot-3-${import_crypto13.default.randomBytes(3).toString("hex")}`,
+          shotId: `shot-3-${import_crypto14.default.randomBytes(3).toString("hex")}`,
           order: 3,
           title: "\u5B9A\u683C\u6C89\u6DC0\u4E0E\u54C1\u724C\u5149\u5F71\u6536\u5C3E",
           composition: "\u7ECF\u5178\u6B63\u4FA7\u89C6\u6784\u56FE",
@@ -16129,20 +16386,20 @@ var VideoDirectorService = class {
 // server/services/video/videoJobService.ts
 var import_fs21 = __toESM(require("fs"), 1);
 var import_path21 = __toESM(require("path"), 1);
-var import_crypto18 = __toESM(require("crypto"), 1);
+var import_crypto19 = __toESM(require("crypto"), 1);
 
 // server/services/video/providers/vectorEngineAdapter.ts
-var import_crypto16 = __toESM(require("crypto"), 1);
+var import_crypto17 = __toESM(require("crypto"), 1);
 
 // server/services/video/videoSourceImageResolver.ts
-var import_crypto15 = __toESM(require("crypto"), 1);
+var import_crypto16 = __toESM(require("crypto"), 1);
 var import_fs19 = __toESM(require("fs"), 1);
 var import_path19 = __toESM(require("path"), 1);
 
 // server/services/storage/gcsAssetStorage.ts
 var import_fs18 = __toESM(require("fs"), 1);
 var import_path18 = __toESM(require("path"), 1);
-var import_crypto14 = __toESM(require("crypto"), 1);
+var import_crypto15 = __toESM(require("crypto"), 1);
 var import_storage = require("@google-cloud/storage");
 var LOCAL_STORAGE_DIR = import_path18.default.join(process.cwd(), ".data", "space-storage");
 var GcsAssetStorage = class _GcsAssetStorage {
@@ -16294,7 +16551,7 @@ var GcsAssetStorage = class _GcsAssetStorage {
       throw new Error("[GcsAssetStorage.put] Invalid objectKey provided");
     }
     const bucketName = this.resolveBucketName(bucketType, customBucketName);
-    const sha256 = import_crypto14.default.createHash("sha256").update(buffer).digest("hex");
+    const sha256 = import_crypto15.default.createHash("sha256").update(buffer).digest("hex");
     const sanitizedKey = objectKey.replace(/\\/g, "/");
     const localFilePath = import_path18.default.join(LOCAL_STORAGE_DIR, sanitizedKey);
     try {
@@ -16552,7 +16809,7 @@ var VideoSourceImageResolver = class {
     }
     const { buffer, mimeType } = await this.extractBufferAndMime(trimmed);
     const ext = mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
-    const objectKey = `video-sources/${Date.now()}-${import_crypto15.default.randomBytes(6).toString("hex")}.${ext}`;
+    const objectKey = `video-sources/${Date.now()}-${import_crypto16.default.randomBytes(6).toString("hex")}.${ext}`;
     try {
       const gcs = GcsAssetStorage.getInstance();
       await gcs.put({
@@ -16662,7 +16919,7 @@ var VectorEngineVideoAdapter = class {
     if (!config.apiKey) {
       if (process.env.NODE_ENV !== "production" && process.env.ALLOW_MOCK_VIDEO === "true") {
         return {
-          providerTaskId: `sim-task-${Date.now()}-${import_crypto16.default.randomBytes(4).toString("hex")}`,
+          providerTaskId: `sim-task-${Date.now()}-${import_crypto17.default.randomBytes(4).toString("hex")}`,
           provider: "vectorengine_simulated",
           exactModelId: capability.exactModelId,
           isSimulated: true
@@ -17098,7 +17355,7 @@ var VectorEngineVideoAdapter = class {
 // server/services/storage/gcsVideoStorage.ts
 var import_fs20 = __toESM(require("fs"), 1);
 var import_path20 = __toESM(require("path"), 1);
-var import_crypto17 = __toESM(require("crypto"), 1);
+var import_crypto18 = __toESM(require("crypto"), 1);
 var import_storage2 = require("@google-cloud/storage");
 var LOCAL_VIDEO_DIR = import_path20.default.join(process.cwd(), ".data", "videos");
 var GcsVideoStorage = class _GcsVideoStorage {
@@ -17211,7 +17468,7 @@ var GcsVideoStorage = class _GcsVideoStorage {
   async persistVideo(params) {
     const { workspaceId, canvasId, jobId, assetVersionId, buffer, fileName = "original.mp4", contentType = "video/mp4" } = params;
     const objectKey = `creative-canvas/videos/${workspaceId}/${canvasId}/${jobId}/${assetVersionId}/${fileName}`;
-    const sha256 = import_crypto17.default.createHash("sha256").update(buffer).digest("hex");
+    const sha256 = import_crypto18.default.createHash("sha256").update(buffer).digest("hex");
     if (this.isGcsAvailable && this.gcsStorage && this.bucketName) {
       try {
         const bucket = this.gcsStorage.bucket(this.bucketName);
@@ -17484,7 +17741,7 @@ var VideoJobService = class _VideoJobService {
    * Creates or returns existing video job with strict idempotency
    */
   async submitJob(payload, idempotencyKey, workspaceId = "ws-default") {
-    const requestHash = import_crypto18.default.createHash("sha256").update(
+    const requestHash = import_crypto19.default.createHash("sha256").update(
       JSON.stringify({
         canvasId: payload.canvasId,
         modelKey: payload.modelKey,
@@ -17505,7 +17762,7 @@ var VideoJobService = class _VideoJobService {
       }
       return { job: existing.job, isReused: true };
     }
-    const jobId = `vjob-${Date.now()}-${import_crypto18.default.randomBytes(4).toString("hex")}`;
+    const jobId = `vjob-${Date.now()}-${import_crypto19.default.randomBytes(4).toString("hex")}`;
     const newJob = {
       id: jobId,
       workspaceId,
@@ -17651,7 +17908,7 @@ var VideoJobService = class _VideoJobService {
       }
       const arrayBuf = await resp.arrayBuffer();
       const buffer = Buffer.from(arrayBuf);
-      const assetVersionId = `av-vid-${Date.now()}-${import_crypto18.default.randomBytes(3).toString("hex")}`;
+      const assetVersionId = `av-vid-${Date.now()}-${import_crypto19.default.randomBytes(3).toString("hex")}`;
       const storageResult = await GcsVideoStorage.getInstance().persistVideo({
         workspaceId: job.workspaceId,
         canvasId: job.canvasId,
@@ -17805,7 +18062,7 @@ var VideoJobService = class _VideoJobService {
 
 // server/services/spaceImageGenerationService.ts
 var import_fs22 = __toESM(require("fs"), 1);
-var import_crypto19 = __toESM(require("crypto"), 1);
+var import_crypto20 = __toESM(require("crypto"), 1);
 var import_sharp4 = __toESM(require("sharp"), 1);
 
 // src/features/space-studio/engine/materialDnaTranslator.ts
@@ -18760,7 +19017,7 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
         );
       }
     }
-    const sha256 = import_crypto19.default.createHash("sha256").update(imageBuffer).digest("hex");
+    const sha256 = import_crypto20.default.createHash("sha256").update(imageBuffer).digest("hex");
     await this.storage.put({
       bucketType: "generated",
       objectKey,
@@ -19050,12 +19307,12 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
 // scripts/gcs_diagnostic_self_check.ts
 var import_storage3 = require("@google-cloud/storage");
 var import_fs23 = __toESM(require("fs"), 1);
-var import_crypto20 = __toESM(require("crypto"), 1);
+var import_crypto21 = __toESM(require("crypto"), 1);
 async function runGcsDiagnosticCheck(customBucket, customProject) {
   const projectId = customProject || process.env.GCP_PROJECT_ID || "gen-lang-client-0557963301";
   const bucketName = customBucket || process.env.GCS_VIDEO_BUCKET || "manwah-canvas-video-0557963301";
   const targetServiceAccount = "canvas-video-storage@gen-lang-client-0557963301.iam.gserviceaccount.com";
-  const objectKey = `creative-canvas/videos/self-check/diagnostic-${Date.now()}-${import_crypto20.default.randomBytes(4).toString("hex")}.mp4`;
+  const objectKey = `creative-canvas/videos/self-check/diagnostic-${Date.now()}-${import_crypto21.default.randomBytes(4).toString("hex")}.mp4`;
   const results = {
     projectId,
     bucket: bucketName,
@@ -19225,7 +19482,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   } else {
     sampleBuffer = Buffer.from("TEST_DIAGNOSTIC_MP4_PAYLOAD_" + Date.now());
   }
-  const originalSha256 = import_crypto20.default.createHash("sha256").update(sampleBuffer).digest("hex");
+  const originalSha256 = import_crypto21.default.createHash("sha256").update(sampleBuffer).digest("hex");
   try {
     await file.save(sampleBuffer, {
       contentType: "video/mp4",
@@ -19279,7 +19536,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   }
   try {
     const [downloadedBuffer] = await file.download();
-    const downloadSha256 = import_crypto20.default.createHash("sha256").update(downloadedBuffer).digest("hex");
+    const downloadSha256 = import_crypto21.default.createHash("sha256").update(downloadedBuffer).digest("hex");
     if (originalSha256 === downloadSha256) {
       results.steps.readbackIntegrity = {
         status: "success",
@@ -19500,7 +19757,7 @@ router14.post("/api/gateway/video/upload-reference-image", upload2.single("file"
       return;
     }
     const ext = (file.originalname.split(".").pop() || "png").toLowerCase();
-    const fileName = `ref-${Date.now()}-${import_crypto21.default.randomBytes(4).toString("hex")}.${ext}`;
+    const fileName = `ref-${Date.now()}-${import_crypto22.default.randomBytes(4).toString("hex")}.${ext}`;
     const objectKey = `reference-images/${fileName}`;
     const { error: sbErr } = await supabaseAdmin.storage.from("creative-canvas-assets").upload(objectKey, file.buffer, {
       contentType: file.mimetype || "image/png",
@@ -19514,7 +19771,7 @@ router14.post("/api/gateway/video/upload-reference-image", upload2.single("file"
     }
     const { data: urlData } = supabaseAdmin.storage.from("creative-canvas-assets").getPublicUrl(objectKey);
     const publicUrl = urlData?.publicUrl || "";
-    const assetVersionId = `av-ref-${Date.now()}-${import_crypto21.default.randomBytes(3).toString("hex")}`;
+    const assetVersionId = `av-ref-${Date.now()}-${import_crypto22.default.randomBytes(3).toString("hex")}`;
     res.json({
       url: publicUrl,
       fileName: file.originalname,
@@ -20708,7 +20965,7 @@ var SpaceObjectKeyBuilder = class {
 
 // server/services/spaceProductAnalysisService.ts
 var import_fs27 = __toESM(require("fs"), 1);
-var import_crypto22 = __toESM(require("crypto"), 1);
+var import_crypto23 = __toESM(require("crypto"), 1);
 var import_sharp6 = __toESM(require("sharp"), 1);
 var import_zod4 = require("zod");
 var UploadProductImageSchema = import_zod4.z.object({
@@ -20823,7 +21080,7 @@ var SpaceProductAnalysisService = class {
    */
   static async analyzeAndExtract(input, userId = "system") {
     const { projectId, images, userNotes } = input;
-    const productId = `prod-${Date.now().toString(36)}-${import_crypto22.default.randomBytes(3).toString("hex")}`;
+    const productId = `prod-${Date.now().toString(36)}-${import_crypto23.default.randomBytes(3).toString("hex")}`;
     const storedReferences = [];
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
@@ -22788,7 +23045,7 @@ var HumanErgonomicsEngine = class {
 };
 
 // server/services/spaceHumanAnalysisService.ts
-var import_crypto23 = __toESM(require("crypto"), 1);
+var import_crypto24 = __toESM(require("crypto"), 1);
 var import_sharp9 = __toESM(require("sharp"), 1);
 var import_zod7 = require("zod");
 var AnalyzeModelCardRequestSchema = import_zod7.z.object({
@@ -22805,7 +23062,7 @@ var SpaceHumanAnalysisService = class {
    */
   static async analyzeAndExtract(input, userId = "system") {
     const { projectId, imageBase64, userNotes } = input;
-    const modelUniqueId = `model-${Date.now().toString(36)}-${import_crypto23.default.randomBytes(3).toString("hex")}`;
+    const modelUniqueId = `model-${Date.now().toString(36)}-${import_crypto24.default.randomBytes(3).toString("hex")}`;
     let cleanBase64 = imageBase64;
     let mimeType = "image/jpeg";
     const match = imageBase64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
@@ -23563,6 +23820,112 @@ router20.use(async (req, res) => {
 });
 var supabaseProxyRoutes_default = router20;
 
+// server/routes/bridgeRoutes.ts
+var import_express21 = require("express");
+var router21 = (0, import_express21.Router)();
+router21.post("/pair-code", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const pairCode = bridgeRelayHub.createPairCode(userId);
+  return res.json({
+    success: true,
+    pairCode,
+    expiresInSeconds: 300,
+    userId
+  });
+});
+router21.post("/pair", async (req, res) => {
+  const { pairCode, deviceName, deviceFingerprint } = req.body;
+  if (!pairCode || !deviceName) {
+    return res.status(400).json({ success: false, error: "\u7F3A\u5C11 pairCode \u6216 deviceName" });
+  }
+  try {
+    const result = await bridgeRelayHub.completePairing(
+      pairCode.trim(),
+      deviceName.trim(),
+      deviceFingerprint || "generic-workstation"
+    );
+    return res.json({
+      success: true,
+      deviceId: result.deviceId,
+      deviceToken: result.deviceToken,
+      userId: result.userId
+    });
+  } catch (err) {
+    return res.status(400).json({ success: false, error: err.message || "\u914D\u5BF9\u5931\u8D25" });
+  }
+});
+router21.get("/status", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const isOnline = bridgeRelayHub.isUserDeviceOnline(userId);
+  const device = bridgeRelayHub.getUserDevice(userId);
+  return res.json({
+    success: true,
+    isOnline,
+    device: device ? {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
+      authorizedDirs: device.authorizedDirs,
+      connectedAt: device.connectedAt
+    } : null
+  });
+});
+router21.post("/search", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const { query, category = "all", limit = 8 } = req.body;
+  if (!query) {
+    return res.status(400).json({ success: false, error: "Query keyword is required" });
+  }
+  try {
+    const searchData = await bridgeRelayHub.callUserDevice(userId, "search_local_assets", {
+      query,
+      category,
+      limit
+    });
+    return res.json({
+      success: true,
+      data: searchData
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "\u68C0\u7D22\u672C\u5730\u7D20\u6750\u5931\u8D25" });
+  }
+});
+router21.post("/stage-asset", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const { filePath } = req.body;
+  if (!filePath) {
+    return res.status(400).json({ success: false, error: "filePath is required" });
+  }
+  try {
+    const filePayload = await bridgeRelayHub.callUserDevice(userId, "stage_file_upload", {
+      filePath
+    });
+    return res.json({
+      success: true,
+      file: filePayload
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "\u6309\u9700\u8BFB\u53D6\u672C\u5730\u7D20\u6750\u5931\u8D25" });
+  }
+});
+router21.post("/export", authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const { exportType, deliverableData, subfolder } = req.body;
+  try {
+    const exportResult = await bridgeRelayHub.callUserDevice(userId, "export_file_to_local", {
+      exportType,
+      deliverableData,
+      subfolder
+    });
+    return res.json({
+      success: true,
+      result: exportResult
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || "\u5BFC\u51FA\u81F3\u672C\u5730\u76EE\u5F55\u5931\u8D25" });
+  }
+});
+var bridgeRoutes_default = router21;
+
 // server/ai/providerError.ts
 var ProviderError = class extends Error {
   constructor(message, category, statusCode, retryable, provider, model, upstreamStatus) {
@@ -24099,12 +24462,12 @@ var upload3 = (0, import_multer3.default)({
   limits: { files: 2, fileSize: 50 * 1024 * 1024, fields: 10 }
 });
 async function startServer() {
-  const app = (0, import_express21.default)();
+  const app = (0, import_express22.default)();
   const PORT = Number(process.env.PORT) || 3e3;
   app.use((0, import_cors.default)());
-  app.use("/api/supabase-proxy", import_express21.default.raw({ type: () => true, limit: "150mb" }), supabaseProxyRoutes_default);
-  app.use(import_express21.default.json({ limit: "150mb" }));
-  app.use(import_express21.default.urlencoded({ limit: "150mb", extended: true }));
+  app.use("/api/supabase-proxy", import_express22.default.raw({ type: () => true, limit: "150mb" }), supabaseProxyRoutes_default);
+  app.use(import_express22.default.json({ limit: "150mb" }));
+  app.use(import_express22.default.urlencoded({ limit: "150mb", extended: true }));
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", service: "manwah-ai-studio" });
   });
@@ -24221,6 +24584,7 @@ async function startServer() {
   app.use("/api/space/build", spaceBuildRoutes_default);
   app.use("/api/space/shoot", spaceShootRoutes_default);
   app.use("/api/space/human", spaceHumanRoutes_default);
+  app.use("/api/bridge", bridgeRoutes_default);
   app.post("/api/pre_process/mask", optionalAuthenticateToken, upload3.fields([{ name: "clean_image", maxCount: 1 }, { name: "mask_image", maxCount: 1 }]), async (req, res) => {
     try {
       const files = req.files;
@@ -25547,8 +25911,28 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     app.use(vite.middlewares);
   } else {
     const distPath = import_path24.default.join(process.cwd(), "dist");
-    app.use(import_express21.default.static(distPath));
+    app.use(import_express22.default.static(distPath, {
+      maxAge: "1y",
+      immutable: true,
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+        }
+      }
+    }));
+    app.use((req, res, next) => {
+      if (req.path.startsWith("/assets/") || /\.(js|mjs|cjs|css|map|ico|png|jpg|jpeg|webp|svg|woff|woff2|ttf|eot)$/i.test(req.path)) {
+        return res.status(404).type("text/plain").send(`Static asset not found: ${req.path}`);
+      }
+      next();
+    });
     app.get("*all", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(import_path24.default.join(distPath, "index.html"));
     });
   }
@@ -25571,6 +25955,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
     console.log("");
   });
+  bridgeRelayHub.attachServer(server);
   server.timeout = 36e4;
   server.headersTimeout = 365e3;
   server.keepAliveTimeout = 36e4;

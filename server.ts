@@ -27,6 +27,8 @@ import spaceBuildRoutes from './server/routes/spaceBuildRoutes';
 import spaceShootRoutes from './server/routes/spaceShootRoutes';
 import spaceHumanRoutes from './server/routes/spaceHumanRoutes';
 import supabaseProxyRoutes from './server/routes/supabaseProxyRoutes';
+import bridgeRoutes from './server/routes/bridgeRoutes';
+import { bridgeRelayHub } from './server/services/bridgeRelayHub';
 import { authenticateToken, optionalAuthenticateToken } from './server/middleware/auth';
 import {
   getFallbackConfig,
@@ -393,6 +395,7 @@ async function startServer() {
   app.use('/api/space/build', spaceBuildRoutes);
   app.use('/api/space/shoot', spaceShootRoutes);
   app.use('/api/space/human', spaceHumanRoutes);
+  app.use('/api/bridge', bridgeRoutes);
 
   // API Route for uploading mask and clean image
   app.post('/api/pre_process/mask', optionalAuthenticateToken as any, upload.fields([{ name: 'clean_image', maxCount: 1 }, { name: 'mask_image', maxCount: 1 }]), async (req, res) => {
@@ -2013,8 +2016,37 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    
+    // 1. 静态资源目录托管：对已带有 hash 的 assets 文件进行有效缓存，禁用默认 index.html 匹配
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      immutable: true,
+      index: false,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      }
+    }));
+
+    // 2. 静态资源防穿透：绝不允许将不存在的 JS/CSS/图片 fallback 到 index.html，导致浏览器报 SyntaxError: Unexpected token '<'
+    app.use((req, res, next) => {
+      if (
+        req.path.startsWith('/assets/') ||
+        /\.(js|mjs|cjs|css|map|ico|png|jpg|jpeg|webp|svg|woff|woff2|ttf|eot)$/i.test(req.path)
+      ) {
+        return res.status(404).type('text/plain').send(`Static asset not found: ${req.path}`);
+      }
+      next();
+    });
+
+    // 3. SPA 页面导航回退：仅对页面路由返回 index.html，且强制设置无缓存头
     app.get('*all', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
@@ -2037,6 +2069,9 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
     console.log('');
   });
+
+  // Attach WebSocket Relay Hub for Local Asset Bridge
+  bridgeRelayHub.attachServer(server);
   
   // Set long timeout for VectorEngine/Proxy requests
   server.timeout = 360000;
