@@ -108,8 +108,14 @@ interface SpaceStudioCanvasProps {
     newBoundingBox: { ymin: number; xmin: number; ymax: number; xmax: number }
   ) => void;
   onHideAnnotation?: (id: string) => void;
-  selectedAnnotationId?: string | null;
-  onLocateInDrawer?: (productId: string) => void;
+  // 空间场景与产品实时生图上下文 (支持智能扩图等下游工具实时继承)
+  stylePreset?: StylePreset;
+  spacePreset?: SpacePreset;
+  styleName?: string;
+  roomName?: string;
+  productName?: string;
+  productMaterial?: string;
+  currentPositivePrompt?: string;
 
   theme?: 'dark' | 'light';
 }
@@ -148,6 +154,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onHideAnnotation,
   selectedAnnotationId,
   onLocateInDrawer,
+  stylePreset,
+  spacePreset,
+  styleName,
+  roomName,
+  productName,
+  productMaterial,
+  currentPositivePrompt,
   theme = 'dark'
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -1057,8 +1070,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       currentImageUrl={currentImageUrl}
                       imageAspect={imageAspect}
                       shotCode={activeShot.templateCode}
-                      roomName={activeShot.name}
-                      styleName="都会收藏家"
+                      roomName={roomName || activeShot.name}
+                      styleName={styleName || stylePreset?.name?.split(' (')[0] || '都会收藏家'}
+                      stylePreset={stylePreset}
+                      spacePreset={spacePreset}
+                      productName={productName}
+                      productMaterial={productMaterial}
+                      currentPositivePrompt={currentPositivePrompt}
                       isGenerating={isOutpainting}
                       onConfirmOutpaint={async (params) => {
                         if (onOutpaint) {

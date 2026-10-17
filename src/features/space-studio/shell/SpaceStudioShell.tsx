@@ -1398,6 +1398,55 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     (s) => renderingShotIds.includes(s.id) && s.id !== activeShot.id
   );
 
+  // 核心产品资产与当前机位正向提示词实时编译 (供画板扩图、局部重绘等下游深度使用)
+  const primaryProductForCanvas = useMemo(() => {
+    const activeEnsemble = products.filter((p) => p.included !== false);
+    return (
+      activeEnsemble.find((p) => p.priority === 'primary') ||
+      activeEnsemble.find((p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')) ||
+      activeEnsemble[0] ||
+      products[0]
+    );
+  }, [products]);
+
+  const currentPositivePrompt = useMemo(() => {
+    if (!activeShot) return '';
+    try {
+      const activeEnsemble = products.filter((p) => p.included !== false);
+      const effectiveSceneMaster = sceneMasterRef.current || sceneMaster;
+      const compiled = ShootCompiler.compileShotPrompt({
+        shot: activeShot,
+        sceneMaster: effectiveSceneMaster || {
+          id: 'temp-master',
+          projectId: 'manwah-noble-space-01',
+          objectKey: '',
+          isLocked: true,
+          lockedAt: new Date().toISOString(),
+          locks: {
+            productIdentity: true,
+            placement: true,
+            architecture: true,
+            style: true,
+            material: true,
+            lighting: true,
+            camera: true,
+            human: false
+          },
+          promptSnapshotId: 'rev-01'
+        },
+        products: activeEnsemble,
+        spacePreset: selectedSpace,
+        stylePreset: selectedStyle,
+        blueprint,
+        aspectRatio: (activeShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
+      });
+      return compiled.positivePrompt;
+    } catch (err) {
+      console.warn('[SpaceStudioShell] 实时编译镜头正向提示词异常:', err);
+      return '';
+    }
+  }, [activeShot, products, sceneMaster, selectedSpace, selectedStyle, blueprint, computeConfig.aspectRatio]);
+
   // 视觉资产驱动工作台状态 (Style, Model, Pose, Lighting)
   const [activeAssets, setActiveAssets] = useState<ActivePhotographyAssets>(() => {
     const defaultStyles = spaceAssetLibraryService.getSceneStyles();
@@ -2599,7 +2648,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           styleName: selectedStyle.name.split(' (')[0],
           preferredModel: computeConfig.model || 'gpt-image-2',
           aspectRatio: params.targetAspectRatio,
-          resolution: computeConfig.resolution || '2K'
+          resolution: computeConfig.resolution || '2K',
+          originalScenePrompt: currentPositivePrompt,
+          productName: primaryProductForCanvas?.name,
+          productMaterial: primaryProductForCanvas?.materials?.[0] || primaryProductForCanvas?.materialDescription,
+          productColor: primaryProductForCanvas?.color
         })
       });
 
@@ -3023,6 +3076,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           renderingShotCode={renderingShotCode}
           onOutpaint={handleOutpaintShot}
           isOutpainting={isOutpainting}
+          stylePreset={selectedStyle}
+          spacePreset={selectedSpace}
+          styleName={selectedStyle.name.split(' (')[0]}
+          roomName={selectedSpace.name.split(' (')[0]}
+          productName={primaryProductForCanvas?.name}
+          productMaterial={primaryProductForCanvas?.materials?.[0] || primaryProductForCanvas?.materialDescription}
+          currentPositivePrompt={currentPositivePrompt}
           onGenerateCurrent={
             activeShot.templateCode === "A00"
               ? handleGenerateSceneMaster

@@ -15,7 +15,7 @@ import {
   Scan,
   Compass
 } from 'lucide-react';
-import { ImageAspectRatio, RenderResolution } from '../../../types/spaceStudio';
+import { ImageAspectRatio, RenderResolution, StylePreset, SpacePreset } from '../../../types/spaceStudio';
 
 export interface OutpaintParams {
   mode: 'uniform' | 'horizontal' | 'vertical' | 'custom';
@@ -36,6 +36,11 @@ interface CanvasOutpaintOverlayProps {
   shotCode: string;
   roomName?: string;
   styleName?: string;
+  stylePreset?: StylePreset;
+  spacePreset?: SpacePreset;
+  currentPositivePrompt?: string;
+  productName?: string;
+  productMaterial?: string;
   isGenerating?: boolean;
   onConfirmOutpaint: (params: OutpaintParams) => Promise<void>;
   onCancel: () => void;
@@ -49,6 +54,11 @@ export const CanvasOutpaintOverlay: React.FC<CanvasOutpaintOverlayProps> = ({
   shotCode,
   roomName = '都会收藏家大宅',
   styleName = '都会收藏家',
+  stylePreset,
+  spacePreset,
+  currentPositivePrompt,
+  productName,
+  productMaterial,
   isGenerating = false,
   onConfirmOutpaint,
   onCancel,
@@ -73,9 +83,41 @@ export const CanvasOutpaintOverlay: React.FC<CanvasOutpaintOverlayProps> = ({
   const [padRight, setPadRight] = useState<number>(0.25);
   const [activeMode, setActiveMode] = useState<'uniform' | 'horizontal' | 'vertical' | 'custom'>('uniform');
 
-  // 延展提示词
-  const defaultPrompt = `自然延展天花板石膏线条与顶面灯光、两侧大落地窗通透采光与背景墙饰面、下方完整复古羊毛地毯全貌`;
-  const [promptSupplement, setPromptSupplement] = useState<string>(defaultPrompt);
+  // 基于当前图像实时空间、风格与材质 DNA 智能生成专属延展引导词
+  const dynamicInitialPrompt = useMemo(() => {
+    const materials = stylePreset?.materialSystem || [];
+    const signatures = spacePreset?.signatureFeatures || [];
+    const fragments = stylePreset?.promptFragments || [];
+
+    // 天花/顶面延展
+    const ceilingKey =
+      signatures.find(s => /天花|吊顶|顶部|大梁|挑高/.test(s)) ||
+      fragments.find(f => /天花|吊顶|顶面|漫反射|吊灯/.test(f)) ||
+      '天花板石膏线条与顶面环境漫反射灯光';
+
+    // 墙面/两侧立面采光延展
+    const wallKey =
+      materials.find(m => /窗|墙|木饰|石材|格栅|护墙板|大理石/.test(m)) ||
+      signatures.find(s => /落地窗|采光|庭院|横厅|立面/.test(s)) ||
+      '两侧大落地窗通透采光与背景墙饰面';
+
+    // 地面/地毯延展
+    const floorKey =
+      materials.find(m => /地毯|地板|地台|地砖|石材/.test(m)) ||
+      '下方完整复古羊毛地毯全貌与地面透视';
+
+    const prodDesc = productName ? `${productName}${productMaterial ? `(${productMaterial})` : ''}` : '';
+    return `自然延展${ceilingKey}、${wallKey}、${floorKey}${prodDesc ? `，严密锁定中心${prodDesc}与既有空间陈列一致` : ''}`;
+  }, [stylePreset, spacePreset, productName, productMaterial]);
+
+  // 延展提示词输入状态
+  const [promptSupplement, setPromptSupplement] = useState<string>(dynamicInitialPrompt);
+
+  useEffect(() => {
+    if (dynamicInitialPrompt) {
+      setPromptSupplement(dynamicInitialPrompt);
+    }
+  }, [dynamicInitialPrompt]);
 
   // 拖拽手柄交互状态
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
@@ -621,28 +663,34 @@ export const CanvasOutpaintOverlay: React.FC<CanvasOutpaintOverlayProps> = ({
         isLight ? 'bg-white/95 border-stone-200 text-stone-800' : 'bg-stone-900/95 border-white/10 text-stone-100'
       }`}>
         <div className="flex items-center justify-between text-[11px]">
-          <span className="font-bold text-amber-500 flex items-center gap-1">
-            <Compass className="w-3.5 h-3.5" />
-            <span>空间延展引导词 (基于 {styleName} · {roomName}):</span>
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-bold text-amber-500 flex items-center gap-1">
+              <Compass className="w-3.5 h-3.5" />
+              <span>空间延展引导词 (基于 {styleName} · {roomName}):</span>
+            </span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium flex items-center gap-1">
+              <Check className="w-2.5 h-2.5" />
+              <span>已实时继承原图DNA与光影</span>
+            </span>
+          </div>
           <div className="flex items-center gap-1 text-[10px]">
             <button
               type="button"
-              onClick={() => setPromptSupplement((prev) => `${prev}，延展两侧落地窗大视野`)}
+              onClick={() => setPromptSupplement((prev) => `${prev}，延展两侧全景落地窗大视野采光`)}
               className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer"
             >
               + 落地窗
             </button>
             <button
               type="button"
-              onClick={() => setPromptSupplement((prev) => `${prev}，延展天花板吊顶与造型线`)}
+              onClick={() => setPromptSupplement((prev) => `${prev}，延展天花板吊顶与环境漫射灯带`)}
               className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer"
             >
-              + 天花板吊顶
+              + 天花吊顶
             </button>
             <button
               type="button"
-              onClick={() => setPromptSupplement((prev) => `${prev}，完整展现下方复古地毯全貌`)}
+              onClick={() => setPromptSupplement((prev) => `${prev}，完整展现下方高端地毯全貌与地面光影`)}
               className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer"
             >
               + 地毯全貌
@@ -654,7 +702,7 @@ export const CanvasOutpaintOverlay: React.FC<CanvasOutpaintOverlayProps> = ({
           type="text"
           value={promptSupplement}
           onChange={(e) => setPromptSupplement(e.target.value)}
-          placeholder="输入扩图补充描述，例如：延展大落地窗、吊顶灯饰或书架..."
+          placeholder="可在此微调扩图引导词，AI 将在严格继承原图家具与光影的基础上向外延展..."
           className={`w-full px-3 py-1.5 rounded-xl border text-xs outline-none transition ${
             isLight
               ? 'bg-stone-50 border-stone-300 text-stone-800 focus:border-amber-500'

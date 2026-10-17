@@ -14,6 +14,7 @@ import { dbService } from '../services/dbService';
 import { arrangeCleanTreeLayout, arrangeGrid3x3Layout, arrangeSeamlessVerticalLayout } from '../utils/creativeCanvasLayout';
 import { logCanvasDiagnostic } from '../utils/canvasDiagnostic';
 import { getAuthHeaders } from '../utils/apiUtils';
+import { localAssetService } from '../services/localAssetService';
 
 const initialNodes: Node[] = [
   {
@@ -436,6 +437,43 @@ export function useCreativeCanvasWorkspace(
       text: textText.trim(),
       timestamp: timestampStr
     };
+
+    // Agent G Tool Interceptor: Detect local asset search intention
+    const trimmed = textText.trim();
+    const isLocalSearchIntent = /(本地|电脑|硬盘|文件夹).*(找|搜|查|素材|图|资料|pdf|2650)/i.test(trimmed) ||
+      /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf)/i.test(trimmed);
+
+    if (isLocalSearchIntent) {
+      if (localAssetService.isConnected()) {
+        let kw = trimmed.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件)/gi, '').trim();
+        if (!kw) kw = '2650';
+
+        const searchRes = localAssetService.searchAssets(kw, 'all', 8);
+        const assistantMsg: AgentMessage = {
+          id: assistantMsgId,
+          sender: 'agent',
+          text: searchRes.matchedCount > 0
+            ? `收到！已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中检索到 ${searchRes.matchedCount} 项与 "${kw}" 相关的素材。\n点击下方卡片中的【导入主图】可直接将其置入左侧无限画布并提取产品 DNA：`
+            : `已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中执行检索，未找到与 "${kw}" 匹配的文件。建议尝试其他关键词或点击上方重新扫描。`,
+          timestamp: timestampStr,
+          status: 'completed',
+          localAssetCard: searchRes.matchedCount > 0 ? searchRes : undefined
+        };
+
+        setMessages(prev => [...prev, userMessage, assistantMsg]);
+        return;
+      } else {
+        const assistantMsg: AgentMessage = {
+          id: assistantMsgId,
+          sender: 'agent',
+          text: `检测到您想检索本地素材，但目前尚未授权本地文件夹。\n请点击上方【授权文件夹】选择您的设计资料文件夹（例如：D:\\设计资料），无需安装任何软件，浏览器即可安全建立索引。`,
+          timestamp: timestampStr,
+          status: 'completed'
+        };
+        setMessages(prev => [...prev, userMessage, assistantMsg]);
+        return;
+      }
+    }
 
     const pendingAssistantMsg: AgentMessage = {
       id: assistantMsgId,

@@ -22418,7 +22418,11 @@ router18.post("/outpaint", async (req, res) => {
       styleName = "\u90FD\u4F1A\u6536\u85CF\u5BB6",
       preferredModel = "gpt-image-2",
       aspectRatio = "4:3",
-      resolution = "2K"
+      resolution = "2K",
+      originalScenePrompt,
+      productName,
+      productMaterial,
+      productColor
     } = req.body;
     if (!paddedImage) {
       return res.status(400).json({ success: false, error: "\u7F3A\u5C11\u5F85\u6269\u56FE\u7684\u539F\u56FE\u6216\u5EF6\u5C55\u5E95\u56FE (paddedImage)" });
@@ -22434,21 +22438,27 @@ router18.post("/outpaint", async (req, res) => {
     const directionDescription = outpaintMode === "horizontal" ? "\u5DE6\u53F3\u4E24\u4FA7\u6A2A\u5411\u5F00\u9614\u5EF6\u5C55 (Horizontal Outpaint)" : outpaintMode === "vertical" ? "\u4E0A\u4E0B\u7EB5\u5411\u62C9\u9AD8\u5EF6\u5C55 (Vertical Outpaint)" : `\u56DB\u5468\u5168\u5411\u7B49\u6BD4\u5916\u6269 ${scale}x (360\xB0 Outward Panorama Expansion)`;
     const directivePrompt = `[CRITICAL ARCHITECTURAL OUTPAINTING & PANORAMIC EXPANSION MANDATE]
 PRIMARY TASK:
-You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) from Reference Image 1.
+You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) around the existing room scene in Reference Image 1.
+
+ORIGINAL SCENE TRUTH & INHERITED DNA:
+${originalScenePrompt ? `- Original Scene Positive Prompt: ${originalScenePrompt}` : ""}
+${productName ? `- Core Hero Furniture: ${productName}${productMaterial ? ` (Material: ${productMaterial})` : ""}${productColor ? ` (Color: ${productColor})` : ""}` : ""}
+- Spatial Archetype: ${roomName} (${styleName} Interior Architecture)
 
 MANDATORY RULES:
 1. ABSOLUTE IDENTITY & POSITION PRESERVATION:
-   - The central hero furniture (luxury sofa, coffee table, accessories, lighting, texture) and already generated living room area from Reference Image 1 MUST REMAIN 100% IDENTICAL, UNTOUCHED, AND PERSISTENT.
+   - The central hero furniture (${productName || "luxury sofa, coffee table"}), accessories, lighting, and textures from Reference Image 1 MUST REMAIN 100% IDENTICAL, UNTOUCHED, AND PERSISTENT.
    - Do NOT alter, redraw, distort, or relocate the existing furniture or room elements in the center!
-2. SEAMLESS ARCHITECTURAL CONTINUATION:
-   - Natural and seamless continuation of the architectural shell: continue the solid wood paneling, luxury stone slab feature walls, ceiling cove lighting, floor rugs, and floor tiles.
-   - If expanding horizontally: naturally extend the floor-to-ceiling panoramic windows, sheer drapery, side accent tables, or matching lounge seating into the periphery.
-   - If expanding vertically: naturally reveal the majestic ceiling coffered structure, architectural pendant chandeliers overhead, and complete the full area rug and floor perspective below.
+2. SEAMLESS ARCHITECTURAL CONTINUATION (MATCHING INHERITED DNA):
+   - Natural and seamless continuation of the architectural shell defined in the Original Scene Prompt: continue the exact solid wood paneling, luxury stone feature walls, ceiling cove lighting, floor rugs, and floor tiles.
+   - Lighting & Ambience Match: Match the exact color temperature, natural daylight, soft shadows, and reflective characteristics of the original scene.
+   - If expanding horizontally: naturally extend the floor-to-ceiling panoramic windows, sheer drapery, matching side console, or architectural greenery into the periphery while keeping identical materials.
+   - If expanding vertically: naturally reveal the ceiling structure, coffered architectural beams, recessed lighting or chandeliers overhead, and complete the floor rug borders below.
 3. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO LABELS, NO CHINESE CHARACTERS, NO WATERMARKS.
 4. FLAWLESS TRANSITION: Flawlessly blend the expanded borders with zero visible seams, pixelation, or boundary artifacts.
 
-Style Context: ${styleName} aesthetic, ${roomName}.
-${promptSupplement ? `User Focus: ${promptSupplement}` : ""}`;
+${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:
+${promptSupplement}` : ""}`;
     let modelToUse = preferredModel;
     if (!modelToUse || modelToUse === "gemini-2.5-flash-image") {
       modelToUse = "gemini-3.1-flash-image-preview";

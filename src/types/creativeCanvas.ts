@@ -15,6 +15,26 @@ export interface CanvasWorkspaceInfo {
   status: 'active' | 'archived';
 }
 
+export interface LocalAssetItem {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  formattedSize: string;
+  type: 'image' | 'document' | 'video' | 'other';
+  extension: string;
+  lastModified: number;
+  previewUrl?: string;
+  fileHandle?: any;
+  file?: File;
+}
+
+export interface LocalAssetSearchCardData {
+  query: string;
+  matchedCount: number;
+  assets: LocalAssetItem[];
+}
+
 export interface AgentMessage {
   id: string;
   sender: 'agent' | 'user';
@@ -23,6 +43,7 @@ export interface AgentMessage {
   status?: 'pending' | 'streaming' | 'completed' | 'failed';
   error_code?: string;
   conversation_id?: string;
+  localAssetCard?: LocalAssetSearchCardData;
 }
 
 export interface WelcomeNodeData extends Record<string, unknown> {

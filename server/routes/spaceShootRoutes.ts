@@ -570,7 +570,11 @@ router.post('/outpaint', async (req: Request, res: Response) => {
       styleName = '都会收藏家',
       preferredModel = 'gpt-image-2',
       aspectRatio = '4:3',
-      resolution = '2K'
+      resolution = '2K',
+      originalScenePrompt,
+      productName,
+      productMaterial,
+      productColor
     } = req.body;
 
     if (!paddedImage) {
@@ -593,21 +597,26 @@ router.post('/outpaint', async (req: Request, res: Response) => {
 
     const directivePrompt = `[CRITICAL ARCHITECTURAL OUTPAINTING & PANORAMIC EXPANSION MANDATE]
 PRIMARY TASK:
-You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) from Reference Image 1.
+You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) around the existing room scene in Reference Image 1.
+
+ORIGINAL SCENE TRUTH & INHERITED DNA:
+${originalScenePrompt ? `- Original Scene Positive Prompt: ${originalScenePrompt}` : ''}
+${productName ? `- Core Hero Furniture: ${productName}${productMaterial ? ` (Material: ${productMaterial})` : ''}${productColor ? ` (Color: ${productColor})` : ''}` : ''}
+- Spatial Archetype: ${roomName} (${styleName} Interior Architecture)
 
 MANDATORY RULES:
 1. ABSOLUTE IDENTITY & POSITION PRESERVATION:
-   - The central hero furniture (luxury sofa, coffee table, accessories, lighting, texture) and already generated living room area from Reference Image 1 MUST REMAIN 100% IDENTICAL, UNTOUCHED, AND PERSISTENT.
+   - The central hero furniture (${productName || 'luxury sofa, coffee table'}), accessories, lighting, and textures from Reference Image 1 MUST REMAIN 100% IDENTICAL, UNTOUCHED, AND PERSISTENT.
    - Do NOT alter, redraw, distort, or relocate the existing furniture or room elements in the center!
-2. SEAMLESS ARCHITECTURAL CONTINUATION:
-   - Natural and seamless continuation of the architectural shell: continue the solid wood paneling, luxury stone slab feature walls, ceiling cove lighting, floor rugs, and floor tiles.
-   - If expanding horizontally: naturally extend the floor-to-ceiling panoramic windows, sheer drapery, side accent tables, or matching lounge seating into the periphery.
-   - If expanding vertically: naturally reveal the majestic ceiling coffered structure, architectural pendant chandeliers overhead, and complete the full area rug and floor perspective below.
+2. SEAMLESS ARCHITECTURAL CONTINUATION (MATCHING INHERITED DNA):
+   - Natural and seamless continuation of the architectural shell defined in the Original Scene Prompt: continue the exact solid wood paneling, luxury stone feature walls, ceiling cove lighting, floor rugs, and floor tiles.
+   - Lighting & Ambience Match: Match the exact color temperature, natural daylight, soft shadows, and reflective characteristics of the original scene.
+   - If expanding horizontally: naturally extend the floor-to-ceiling panoramic windows, sheer drapery, matching side console, or architectural greenery into the periphery while keeping identical materials.
+   - If expanding vertically: naturally reveal the ceiling structure, coffered architectural beams, recessed lighting or chandeliers overhead, and complete the floor rug borders below.
 3. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO LABELS, NO CHINESE CHARACTERS, NO WATERMARKS.
 4. FLAWLESS TRANSITION: Flawlessly blend the expanded borders with zero visible seams, pixelation, or boundary artifacts.
 
-Style Context: ${styleName} aesthetic, ${roomName}.
-${promptSupplement ? `User Focus: ${promptSupplement}` : ''}`;
+${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}` : ''}`;
 
     let modelToUse = preferredModel;
     if (!modelToUse || modelToUse === 'gemini-2.5-flash-image') {

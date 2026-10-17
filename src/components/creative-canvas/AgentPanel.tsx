@@ -46,6 +46,8 @@ import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord 
 import { ProductVisualDNA, AgentRun } from '../../types';
 import { CopyWorkspacePanel } from './CopyWorkspacePanel';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
+import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
+import { localAssetService } from '../../services/localAssetService';
 
 interface AgentPanelProps {
   messages: AgentMessage[];
@@ -2027,11 +2029,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         </div>
       )}
 
+      {/* Local Asset Bridge Connector Panel */}
+      <LocalAssetBridgePanel
+        onImportAsMainImage={onUploadFile}
+        onAddAsStyleRef={(url) => setStyleRefImages?.(prev => [...prev, url])}
+        onImportAsRefDoc={(name, text) => {
+          setRefDocName?.(name);
+          setRefDocText?.(text);
+        }}
+      />
+
       <div className="p-3 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex items-start gap-3">
         <Info className="w-4 h-4 text-[#B28C5A] shrink-0 mt-0.5" />
         <div className="text-xs text-stone-600 leading-relaxed">
           <span className="font-bold text-[#2C2A29]">企划指南：</span>
-          {uploadState !== 'completed' && '右侧上传产品图以完成 DNA 提取。'}
+          {uploadState !== 'completed' && '右侧或上方本地库选择产品图以完成 DNA 提取。'}
           {uploadState === 'completed' && !agentRun?.plan && '点击下方【生成全案企划】开启爆款 全案方案策划。'}
           {agentRun?.plan && '点击画布中的分镜节点可在右侧实时调阅与重新策划。'}
         </div>
@@ -2088,6 +2100,56 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               <p className="whitespace-pre-wrap">
                 {msg.text || (msg.status === 'streaming' ? '思考回复中...' : '')}
               </p>
+
+              {/* Local Asset Search Results Card embedded in Message */}
+              {msg.localAssetCard && (
+                <div className="mt-2.5 p-2 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8] space-y-2 text-[#2C2A29]">
+                  <div className="flex items-center justify-between text-[11px] font-bold">
+                    <span className="flex items-center gap-1 text-[#B28C5A]">
+                      <Search className="w-3.5 h-3.5" />
+                      本地素材检索: "{msg.localAssetCard.query}"
+                    </span>
+                    <span className="text-[10px] text-stone-500 font-normal">
+                      命中 {msg.localAssetCard.matchedCount} 项
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                    {msg.localAssetCard.assets.map(asset => (
+                      <div key={asset.id} className="p-1.5 bg-white rounded-lg border border-[#E5E0D8] space-y-1">
+                        {asset.previewUrl ? (
+                          <div className="w-full h-14 bg-stone-100 rounded overflow-hidden flex items-center justify-center">
+                            <img src={asset.previewUrl} alt={asset.name} className="w-full h-full object-contain" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-14 bg-stone-100 rounded flex items-center justify-center text-stone-400">
+                            <FileText className="w-5 h-5 text-[#B28C5A]" />
+                          </div>
+                        )}
+                        <p className="text-[10px] font-bold truncate text-[#2C2A29] leading-tight" title={asset.name}>
+                          {asset.name}
+                        </p>
+                        <div className="flex items-center justify-between text-[9px] text-stone-400">
+                          <span>{asset.formattedSize}</span>
+                          {asset.type === 'image' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const file = await localAssetService.getFileForAsset(asset);
+                                if (file) onUploadFile(file);
+                              }}
+                              className="text-[#B28C5A] hover:underline font-bold"
+                            >
+                              导入主图
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {msg.status === 'streaming' && (
                 <div className="flex items-center gap-1.5 mt-2 text-[#B28C5A] font-bold text-[10px]">
                   <Loader2 className="w-3 h-3 animate-spin" />

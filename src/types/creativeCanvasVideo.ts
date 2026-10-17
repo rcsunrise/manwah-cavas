@@ -112,7 +112,7 @@ export interface VideoPlaybackInfo {
   assetVersionId: string;
   playbackUrl: string;
   expiresAt: string;
-  storageProvider: 'gcs' | 'local_fallback' | 'none';
+  storageProvider: 'gcs' | 'local_fallback' | 'none' | 'direct_stream';
   rangeSupported: boolean;
   width?: number;
   height?: number;
