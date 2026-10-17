@@ -119,7 +119,7 @@ interface SpaceStudioRightPanelProps {
 }
 
 const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
-  model: 'gpt-image-2',
+  model: 'gemini-nano-banana-2.1-preview',
   resolution: '2K',
   aspectRatio: '4:3',
   customAspectRatio: '',
@@ -511,40 +511,61 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
                 isLight ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
               }`}>
-                {cfg.model.includes('gpt') ? 'OpenAI GPT Image 2' : 'Google Gemini 3.1'}
+                {cfg.model.includes('banana')
+                  ? 'Nano Banana 2.1 (默认)'
+                  : cfg.model.includes('gpt')
+                  ? 'OpenAI GPT Image 2'
+                  : 'Google Gemini 3.1'}
               </span>
             </div>
 
-            {/* Gemini / GPT Image 2 双核心切换 Tabs */}
-            <div className={`grid grid-cols-2 gap-1.5 p-1 rounded-lg border ${
+            {/* 模型快捷切换 Tabs: Nano Banana 2.1 (系统默认) | Gemini 3.1 | GPT Image 2 */}
+            <div className={`grid grid-cols-3 gap-1 p-1 rounded-lg border ${
               isLight ? 'bg-stone-100 border-stone-200' : 'bg-black/40 border-white/5'
             }`}>
               <button
                 type="button"
-                onClick={() => onChangeComputeConfig?.({ model: 'gemini-3.1-flash-image-preview' })}
-                className={`py-1.5 px-2 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  !cfg.model.includes('gpt')
+                onClick={() => onChangeComputeConfig?.({ model: 'gemini-nano-banana-2.1-preview' })}
+                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                  cfg.model.includes('banana')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
+                title="Nano Banana 2.1 (极速响应 · 轻量多图融合 · 系统默认推荐)"
+              >
+                <Sparkles className="w-3 h-3 text-amber-950" />
+                <span>Banana</span>
+                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">2.1</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeComputeConfig?.({ model: 'gemini-3.1-flash-image-preview' })}
+                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                  cfg.model.includes('gemini-3.1')
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                    : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                }`}
+                title="Gemini 3.1 Flash Image (极速高精)"
               >
                 <Sparkles className="w-3 h-3" />
                 <span>Gemini</span>
-                <span className="text-[9px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">3.1</span>
+                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">3.1</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onChangeComputeConfig?.({ model: 'gpt-image-2' })}
-                className={`py-1.5 px-2 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                   cfg.model.includes('gpt')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
+                title="GPT Image 2 (电影级写实 · 材质保护)"
               >
                 <Cpu className="w-3 h-3" />
-                <span>GPT Image 2</span>
-                <span className="text-[9px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">v2</span>
+                <span>GPT 2</span>
+                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">v2</span>
               </button>
             </div>
 
@@ -558,18 +579,18 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-black/50 border-white/10 text-amber-300'
                 }`}
               >
-                <optgroup label="OpenAI GPT Image 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="gpt-image-2">GPT Image 2 (系统默认 · 电影级写实 · 材质保护)</option>
+                <optgroup label="Google Gemini 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (系统默认 · 极速响应 · 轻量多图融合)</option>
+                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (极速高精)</option>
+                  <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
+                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
+                </optgroup>
+                <optgroup label="OpenAI GPT Image 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="gpt-image-2">GPT Image 2 (电影级写实 · 材质保护)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
                   <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
-                </optgroup>
-                <optgroup label="Google Gemini 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (极速高精)</option>
-                  <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
-                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
-                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速响应 · 轻量多图融合)</option>
                 </optgroup>
               </select>
             </div>

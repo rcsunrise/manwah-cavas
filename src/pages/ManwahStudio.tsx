@@ -184,7 +184,7 @@ const App: React.FC = () => {
   const [customAspectRatio, setCustomAspectRatio] = useState<string>('');
   const [seed, setSeed] = useState<number | undefined>(undefined);
   const [resolution, setResolution] = useState<Resolution>('2K');
-  const [model, setModel] = useState<ModelType>('gemini-3.1-flash-image');
+  const [model, setModel] = useState<ModelType>('gemini-nano-banana-2.1-preview');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPaused, setIsPaused] = useState(false);

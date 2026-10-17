@@ -82,7 +82,7 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
   const [showMask, setShowMask] = useState<boolean>(true);
   const [prompt, setPrompt] = useState<string>('');
   const [modelToUse, setModelToUse] = useState<string>(
-    selectedModel.includes('gpt') ? selectedModel : 'gpt-image-2-c'
+    selectedModel || 'gemini-nano-banana-2.1-preview'
   );
   const [resolutionToUse, setResolutionToUse] = useState<string>(selectedResolution || '2K');
   const [preserveDna, setPreserveDna] = useState<boolean>(true);
@@ -123,10 +123,10 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
       setCanUndo(false);
       setCanRedo(false);
       setPrompt('');
-      if (selectedModel && (selectedModel.includes('gpt') || selectedModel.includes('gemini'))) {
+      if (selectedModel) {
         setModelToUse(selectedModel);
       } else {
-        setModelToUse('gpt-image-2-c');
+        setModelToUse('gemini-nano-banana-2.1-preview');
       }
     }
   }, [isOpen, selectedModel]);
@@ -878,17 +878,17 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
                 onChange={(e) => setModelToUse(e.target.value)}
                 className="w-full bg-[#181615] border border-stone-700 rounded-xl px-2.5 py-2 text-xs text-stone-200 outline-none focus:border-amber-500 font-mono"
               >
-                <optgroup label="OpenAI GPT 图像大模型 (支持极高保真重绘)">
+                <optgroup label="Google Gemini 视觉多模态模型 (默认推荐)">
+                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (系统默认 · 极速响应 · 轻量多图融合)</option>
+                  <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image (极速高精 · 多模态)</option>
+                  <option value="google/gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影旗舰)</option>
+                </optgroup>
+                <optgroup label="OpenAI GPT 图像大模型 (高保真重绘)">
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版 · 商业级重绘旗舰)</option>
                   <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
-                  <option value="gpt-image-2">GPT Image 2 (系统默认 · 电影级写实)</option>
+                  <option value="gpt-image-2">GPT Image 2 (电影级写实)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
-                </optgroup>
-                <optgroup label="Google Gemini 视觉多模态模型">
-                  <option value="gemini-3.1-flash-image">Gemini 3.1 Flash Image (极速高精 · 多模态)</option>
-                  <option value="google/gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影旗舰)</option>
-                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速响应 · 轻量多图融合)</option>
                 </optgroup>
               </select>
 

@@ -357,7 +357,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
 
       {/* Pairing Code Modal */}
       {showPairModal && (
-        <div className="p-3 bg-white border border-[#B28C5A]/40 rounded-xl space-y-2 shadow-sm animate-in fade-in duration-150">
+        <div className="p-3 bg-white border border-[#B28C5A]/40 rounded-xl space-y-2.5 shadow-sm animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-[#2C2A29] flex items-center gap-1">
               <KeyRound className="w-3.5 h-3.5 text-[#B28C5A]" />
@@ -367,15 +367,50 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <p className="text-[10px] text-stone-500">
-            在您的电脑上打开 Local Asset Bridge 桌面连接器，输入下方 6 位配对码即可建立安全连接：
-          </p>
-          <div className="py-2 bg-[#F9F5EF] rounded-lg text-center tracking-widest font-mono font-bold text-lg text-[#B28C5A] border border-[#E5E0D8]">
-            {pairCode || '------'}
+
+          <div className="py-2.5 bg-[#F9F5EF] rounded-xl text-center relative border border-[#E5E0D8] group">
+            <span className="tracking-widest font-mono font-bold text-xl text-[#B28C5A]">
+              {pairCode || '------'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (pairCode) navigator.clipboard.writeText(pairCode);
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-white hover:bg-stone-50 border border-[#E5E0D8] rounded text-[9px] text-stone-600 font-bold transition-all"
+              title="复制配对码"
+            >
+              复制
+            </button>
           </div>
-          <p className="text-[9px] text-stone-400 text-center">
-            有效期 5 分钟 · 仅对当前设计师账号有效 · 禁止跨账号借用
-          </p>
+
+          {/* Direct Guidance on Where is the Connector */}
+          <div className="p-2 bg-stone-50 rounded-lg border border-stone-200/60 space-y-1.5 text-[10px] text-stone-600">
+            <p className="font-bold text-[#2C2A29] flex items-center gap-1">
+              <Laptop className="w-3.5 h-3.5 text-blue-600" />
+              如何启动本地连接器？
+            </p>
+            <ol className="list-decimal list-inside space-y-0.5 text-stone-600 pl-0.5 leading-relaxed">
+              <li>在项目根目录下双击运行 <code className="bg-stone-200 px-1 py-0.2 rounded font-mono text-stone-800 font-bold">start-bridge.bat</code>（或在终端执行 <code className="bg-stone-200 px-1 py-0.2 rounded font-mono text-stone-800">npm run bridge</code>）</li>
+              <li>在黑色控制台窗口中输入上方 6 位配对码并回车</li>
+              <li>连接器即刻与云端握手，此处状态将自动变为绿色在线</li>
+            </ol>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 border-t border-stone-100 text-[10px]">
+            <span className="text-stone-400">不想运行桌面程序？</span>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPairModal(false);
+                handleAuthorize();
+              }}
+              className="text-[#B28C5A] hover:underline font-bold flex items-center gap-0.5"
+            >
+              <FolderOpen className="w-3 h-3" />
+              <span>使用【免安装】浏览器直接授权</span>
+            </button>
+          </div>
         </div>
       )}
 

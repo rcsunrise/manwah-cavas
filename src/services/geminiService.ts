@@ -514,7 +514,7 @@ export const generateEditedImage = async (
   images: ImageAttachment[],
   aspectRatio: UIAspRatioOption | string, // Now accepts UIAspRatioOption or a custom string
   resolution: Resolution = '1K',
-  modelType: ModelType = 'gemini-3.1-flash-image-preview',
+  modelType: ModelType = 'gemini-nano-banana-2.1-preview',
   seed: number | undefined,
   onLog: (message: string) => void
 ): Promise<{ imageUrl: string, pointsUsed: number, actualModel?: string, provider?: string, cropRetentionRate?: number, finalFitModeUsed?: string, isFallback?: boolean, fallbackError?: string }> => {

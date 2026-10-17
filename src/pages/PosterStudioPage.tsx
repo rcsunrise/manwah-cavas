@@ -233,7 +233,7 @@ export const PosterStudioPage: React.FC = () => {
         [],
         '3:4',
         '2K',
-        'gemini-3.1-flash-image-preview',
+        'gemini-nano-banana-2.1-preview',
         undefined,
         (msg) => console.log(`[ScreenGen 0${activeScreenIndex}]:`, msg)
       );
@@ -263,7 +263,7 @@ export const PosterStudioPage: React.FC = () => {
           id: `poster_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
           imageUrl: genResult.imageUrl,
           prompt: cleanPrompt,
-          model: 'gemini-3.1-flash-image-preview',
+          model: 'gemini-nano-banana-2.1-preview',
           roleUsed: `海报屏块 #${activeScreenIndex} ${activeScreen.screenTitle || ''}`,
           timestamp: Date.now()
         }).catch(e => console.warn('History save warning:', e));
@@ -308,7 +308,7 @@ export const PosterStudioPage: React.FC = () => {
           [],
           '3:4',
           '2K',
-          'gemini-3.1-flash-image-preview',
+          'gemini-nano-banana-2.1-preview',
           undefined,
           (msg) => console.log(`[ScreenGen 0${s.screenIndex}]:`, msg)
         );
@@ -338,7 +338,7 @@ export const PosterStudioPage: React.FC = () => {
             id: `poster_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
             imageUrl: genResult.imageUrl,
             prompt: cleanPrompt,
-            model: 'gemini-3.1-flash-image-preview',
+            model: 'gemini-nano-banana-2.1-preview',
             roleUsed: `海报屏块 #${s.screenIndex} ${s.screenTitle || ''}`,
             timestamp: Date.now()
           }).catch(e => console.warn('History save warning:', e));

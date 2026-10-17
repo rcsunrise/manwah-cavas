@@ -12,7 +12,8 @@
     "test": "vitest run",
     "verify:baseline-m1": "node scripts/verify_baseline_m1.cjs",
     "verify:g0-1r": "node scripts/verify_g0_1_runtime.cjs",
-    "smoke:providers": "tsx scripts/providerSmokeTest.ts"
+    "smoke:providers": "tsx scripts/providerSmokeTest.ts",
+    "bridge": "tsx scripts/localBridgeRunner.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^8.1.0",

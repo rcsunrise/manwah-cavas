@@ -1174,10 +1174,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染引擎配置选项 (默认使用 GPT 图像生成模型与单张模板生成，默认 4:3 空间透视画幅)
+  // 渲染引擎配置选项 (系统默认使用 Nano Banana 2.1 极速响应·轻量多图融合，默认 4:3 空间透视画幅)
   const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>(() => {
     let initialAspect: ImageAspectRatio = '4:3';
-    let initialModel = 'gpt-image-2';
+    let initialModel = 'gemini-nano-banana-2.1-preview';
     let initialRes: RenderResolution = '2K';
     if (typeof window !== 'undefined') {
       const savedAspect = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
@@ -1185,7 +1185,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         initialAspect = savedAspect;
       }
       const savedModel = localStorage.getItem('space_studio_model');
-      if (savedModel) {
+      if (savedModel && savedModel !== 'gpt-image-2' && savedModel !== 'gemini-3.1-flash-image-preview') {
         initialModel = savedModel;
       }
       const savedRes = localStorage.getItem('space_studio_resolution') as RenderResolution;
@@ -1750,7 +1750,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gpt-image-2',
+      provider: activeSettings.model || 'gemini-nano-banana-2.1-preview',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -2302,7 +2302,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gpt-image-2',
+      provider: activeSettings.model || 'gemini-nano-banana-2.1-preview',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -2617,7 +2617,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'generating',
       progress: 30,
-      provider: computeConfig.model || 'gpt-image-2',
+      provider: computeConfig.model || 'gemini-nano-banana-2.1-preview',
       settings: {
         model: computeConfig.model,
         resolution: computeConfig.resolution,
@@ -2645,7 +2645,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           promptSupplement: params.promptSupplement,
           roomName: selectedSpace.name.split(' (')[0],
           styleName: selectedStyle.name.split(' (')[0],
-          preferredModel: computeConfig.model || 'gpt-image-2',
+          preferredModel: computeConfig.model || 'gemini-nano-banana-2.1-preview',
           aspectRatio: params.targetAspectRatio,
           resolution: computeConfig.resolution || '2K',
           originalScenePrompt: currentPositivePrompt,

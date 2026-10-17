@@ -208,7 +208,7 @@ export function useCreativeCanvasWorkspace(
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number | null>(null);
 
   // Model & Resolution config for Image Generation
-  const [selectedModel, setSelectedModel] = useState<string>('openai/gpt-image-2-c');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-nano-banana-2.1-preview');
   const [planAgentModel, setPlanAgentModel] = useState<string>('gemini-2.5-flash');
   const [planReasoningEffort, setPlanReasoningEffort] = useState<'minimal' | 'low' | 'medium' | 'high'>('medium');
   const [planTargetAudience, setPlanTargetAudience] = useState<string>('');

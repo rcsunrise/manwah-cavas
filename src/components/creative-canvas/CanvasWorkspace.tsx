@@ -555,16 +555,16 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
                   }}
                   className="bg-[#2A2420] text-amber-100 border border-[#B28C5A]/40 rounded-lg px-2.5 py-1 text-xs font-semibold outline-none hover:border-[#D4AF37] focus:border-[#D4AF37] shrink-0 cursor-pointer shadow-inner"
                 >
+                  <optgroup label="Google Gemini 家族 (默认推荐)">
+                    <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (系统默认 · 极速融合)</option>
+                    <option value="google/gemini-3.1-flash-image">Gemini 3.1 Flash</option>
+                    <option value="google/gemini-3-pro-image-preview">Gemini 3.0 Pro</option>
+                  </optgroup>
                   <optgroup label="OpenAI GPT 家族">
-                    <option value="openai/gpt-image-2-c">GPT image-2-c (默认)</option>
+                    <option value="openai/gpt-image-2-c">GPT image-2-c</option>
                     <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画)</option>
                     <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (高光细节)</option>
                     <option value="openai/gpt-image-2">GPT image-2</option>
-                  </optgroup>
-                  <optgroup label="Google Gemini 家族">
-                    <option value="google/gemini-3.1-flash-image">Gemini 3.1 Flash</option>
-                    <option value="google/gemini-3-pro-image-preview">Gemini 3.0 Pro</option>
-                    <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速融合)</option>
                   </optgroup>
                 </select>
 

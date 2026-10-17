@@ -154,6 +154,13 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
 }) => {
   const models = [
     {
+      id: 'gemini-nano-banana-2.1-preview',
+      icon: '🍌',
+      title: 'Nano Banana 2.1',
+      subtitle: '极速响应·轻量多图融合(系统默认)',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
+    },
+    {
       id: 'openai/gpt-image-2-c',
       icon: '🪐',
       title: 'GPT 2-c',
@@ -172,13 +179,6 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
       icon: '☀️',
       title: 'GPT 2.5 Sunburst',
       subtitle: '旗舰高光·质感重绘',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
-    },
-    {
-      id: 'gemini-nano-banana-2.1-preview',
-      icon: '🍌',
-      title: 'Nano Banana 2.1',
-      subtitle: '极速响应·轻量多图融合',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
     },
     {

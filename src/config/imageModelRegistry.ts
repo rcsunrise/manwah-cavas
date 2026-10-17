@@ -22,6 +22,22 @@ export interface ClientImageModelItem {
 
 export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
   {
+    id: 'gemini-nano-banana-2.1-preview',
+    name: 'Nano Banana 2.1 (极速响应 · 轻量多图融合)',
+    badge: '系统默认',
+    provider: 'gemini',
+    tier: 'speed',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '系统默认推荐模型，极速响应、轻量计算与多图融合，支持 1K/2K/4K 快速渲染'
+  },
+  {
     id: 'gpt-image-2',
     name: 'GPT 图像生成 (gpt-image-2)',
     badge: '官方推荐',
@@ -100,22 +116,6 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
       maxReferences: 16
     },
     description: '旗舰级高光细节与皮革质感，全幅光影深度与精工缝线呈现'
-  },
-  {
-    id: 'gemini-nano-banana-2.1-preview',
-    name: 'Nano Banana 2.1 (极速多图融合)',
-    badge: '极速融合',
-    provider: 'gemini',
-    tier: 'speed',
-    capabilities: {
-      supportsImage: true,
-      supportsEdit: true,
-      supportsMultiReference: true,
-      supportsSeed: true,
-      supports4K: true,
-      maxReferences: 16
-    },
-    description: '极速响应、轻量计算与多图融合，支持 1K/2K/4K 快速渲染'
   },
   {
     id: 'gemini-3.1-flash-image-preview',
