@@ -53,16 +53,25 @@ export const MANWAH_INDUSTRIAL_COLOR_STANDARDS: Record<string, IndustrialColorSt
     hex: '#8D532E',
     rgb: [141, 83, 46],
     descriptionEn: 'rich warm saddle caramel brown, deep roasted tone',
-    promptAnchor: 'rich warm saddle caramel brown (exact color anchor #8D532E, deep natural roasted chestnut undertones)'
+    promptAnchor: 'rich warm saddle caramel brown (exact color anchor #8D532E, deep natural roasted chestnut undertones, balanced warm amber patina, strictly NOT bleached yellow)'
   },
   deep_espresso: {
     code: 'CLR-05',
-    nameZh: '深咖/浓缩咖啡',
+    nameZh: '深咖/浓缩咖啡/黑巧棕',
     nameEn: 'Deep Espresso',
     hex: '#3D261C',
     rgb: [61, 38, 28],
     descriptionEn: 'rich dark espresso coffee brown, deep roast luxury dark tone',
-    promptAnchor: 'rich dark espresso coffee brown (exact color anchor #3D261C, deep roast tone with warm micro-highlights, strictly distinct from black)'
+    promptAnchor: 'rich dark espresso coffee brown (exact color anchor #3D261C, deep roast tone with warm dark micro-highlights, strictly deep dark tone, strictly NOT light caramel, NOT tan yellow, strictly distinct from black)'
+  },
+  vintage_chestnut: {
+    code: 'CLR-15',
+    nameZh: '复古深栗棕/深棕',
+    nameEn: 'Vintage Chestnut Brown',
+    hex: '#4A2A1A',
+    rgb: [74, 42, 26],
+    descriptionEn: 'rich deep vintage chestnut brown, dark roasted chocolate tone',
+    promptAnchor: 'rich deep vintage chestnut brown (exact color anchor #4A2A1A, deep roasted dark chocolate undertones, strictly deep dark tone, strictly NOT light tan, strictly NOT yellow caramel, strictly NOT bright orange, maintaining rich dark roasted saturation)'
   },
   obsidian_dark_grey: {
     code: 'CLR-06',
@@ -232,14 +241,18 @@ export function resolveIndustrialColorDna(rawColor?: string): IndustrialColorSta
   if (/象牙灰|象牙|米灰|云雾暖灰/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.warm_greige);
   }
+  // 深色系优先判定（深栗棕/黑巧/深咖啡，防止被马鞍/焦糖截胡）
+  if (/深栗|深棕|栗棕|黑巧|黑褐|巧克力|复古棕|chestnut|vintage.*chestnut/i.test(lower)) {
+    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.vintage_chestnut);
+  }
+  if (/深咖|浓缩咖啡|浓咖啡|espresso|dark.*brown/i.test(lower)) {
+    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.deep_espresso);
+  }
   if (/干邑|暖橙|爱马仕橙|琥珀|橙|cognac|amber|orange/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.cognac_amber);
   }
   if (/马鞍棕|鞍皮|鞍褐|焦糖|saddle|caramel/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.caramel_brown);
-  }
-  if (/深咖|咖|黑褐|浓缩咖啡|深栗|espresso|dark.*brown/i.test(lower)) {
-    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.deep_espresso);
   }
   if (/曜石|深灰|炭灰|碳灰|铁灰|charcoal|graphite/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.obsidian_dark_grey);

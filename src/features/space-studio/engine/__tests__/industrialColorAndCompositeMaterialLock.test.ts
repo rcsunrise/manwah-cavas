@@ -48,8 +48,32 @@ describe('Industrial Color Standard & Composite Material Lock', () => {
       expect(customResolved.promptAnchor).toContain('exact color anchor #3A4B5C');
     });
 
+    it('正确将“复古深栗棕”绑定到标准工业色卡 Hex #4A2A1A 并注入防焦糖浅化漂移约束', () => {
+      const resolved = resolveIndustrialColorDna('复古深栗棕');
+      expect(resolved.hex).toBe('#4A2A1A');
+      expect(resolved.nameZh).toContain('复古深栗棕');
+      expect(resolved.promptAnchor).toContain('#4A2A1A');
+      expect(resolved.promptAnchor).toContain('strictly NOT yellow caramel');
+      expect(resolved.promptAnchor).toContain('strictly NOT light tan');
+
+      const promptClause = translateColorToEnglish('复古深栗棕 (Vintage Chestnut)');
+      expect(promptClause).toContain('#4A2A1A');
+      expect(promptClause.toLowerCase()).not.toContain('leather');
+    });
+
+    it('确保深栗棕/深棕优先于焦糖黄被匹配，彻底防止深色皮质漂移为黄色', () => {
+      const darkChestnut = resolveIndustrialColorDna('复古深栗棕');
+      const deepEspresso = resolveIndustrialColorDna('浓缩深咖');
+      const caramel = resolveIndustrialColorDna('暖阳焦糖黄');
+
+      expect(darkChestnut.hex).toBe('#4A2A1A');
+      expect(deepEspresso.hex).toBe('#3D261C');
+      expect(caramel.hex).toBe('#8D532E');
+      expect(darkChestnut.promptAnchor).not.toContain('warm saddle caramel');
+    });
+
     it('色彩描述严格剥离皮革/材质等基质干扰，支持纯色彩视觉锚定', () => {
-      const colors = ['焦糖棕', '曜石深灰', '极地奶白', '云雾暖灰', '干邑暖橙', '深咖'];
+      const colors = ['焦糖棕', '曜石深灰', '极地奶白', '云雾暖灰', '干邑暖橙', '深咖', '复古深栗棕'];
       for (const c of colors) {
         const text = translateColorToEnglish(c);
         expect(text.toLowerCase()).not.toContain('leather');

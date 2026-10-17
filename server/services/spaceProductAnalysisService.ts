@@ -353,23 +353,41 @@ export class SpaceProductAnalysisService {
       if (storedReferences.length > 0) {
         const firstBuffer = storedReferences[0].rawBuffer;
         const { data, info } = await sharp(firstBuffer)
-          .resize(60, 60, { fit: 'inside' })
+          .resize(80, 80, { fit: 'inside' })
           .removeAlpha()
           .raw()
           .toBuffer({ resolveWithObject: true });
 
+        const width = info.width;
+        const height = info.height;
         let totalR = 0, totalG = 0, totalB = 0, count = 0;
-        for (let i = 0; i < data.length; i += 3) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          // 过滤纯白背景与纯黑背景
-          const brightness = (r + g + b) / 3;
-          if (brightness > 25 && brightness < 240) {
-            totalR += r;
-            totalG += g;
-            totalB += b;
-            count++;
+        const foregroundPixels: Array<{ r: number; g: number; b: number; lum: number }> = [];
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 3;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const lum = (r + g + b) / 3;
+
+            // 严格过滤：高亮纯白背景、浅灰近无色背景 (电商白底反光) 与纯黑噪点
+            const isNearNeutralLight = lum > 175 && Math.abs(r - g) < 18 && Math.abs(g - b) < 18 && Math.abs(r - b) < 18;
+            const isPureWhite = lum >= 238;
+            const isDeepBlack = lum <= 18;
+
+            if (!isPureWhite && !isDeepBlack && !isNearNeutralLight) {
+              // 针对中心 70% 区域（家具主体核心受光区）赋予双倍采样权重
+              const isCenter = x >= width * 0.15 && x <= width * 0.85 && y >= height * 0.15 && y <= height * 0.85;
+              const weight = isCenter ? 2 : 1;
+              for (let w = 0; w < weight; w++) {
+                totalR += r;
+                totalG += g;
+                totalB += b;
+                count++;
+                foregroundPixels.push({ r, g, b, lum });
+              }
+            }
           }
         }
 
@@ -377,21 +395,39 @@ export class SpaceProductAnalysisService {
           const avgR = totalR / count;
           const avgG = totalG / count;
           const avgB = totalB / count;
+          const avgLum = (avgR + avgG + avgB) / 3;
 
-          // 橙色 / 焦糖暖棕判定 (R 较高, G 居中, B 偏低)
-          if (avgR > 130 && avgG > 70 && avgB < 85 && avgR > avgB * 1.6) {
-            detectedDominantColorName = '干邑暖橙 (Cognac Amber)';
-            detectedSecondaryColor = '意式焦糖棕与哑光黑钛金属';
-          } else if (avgR > 120 && avgG > 100 && avgB < 80) {
-            detectedDominantColorName = '暖阳焦糖黄 (Warm Caramel)';
-            detectedSecondaryColor = '沉稳哑光深灰金属';
-          } else if (avgR > 160 && avgG > 160 && avgB > 150) {
+          // 核心色系严谨分级：区分深栗棕/黑巧 (低明度) vs 焦糖/驼黄 (中高明度) vs 干邑暖橙
+          const isWarmBrownHue = avgR > avgG && avgG >= avgB && avgR > avgB * 1.25;
+
+          if (isWarmBrownHue) {
+            // 深浓黑巧 / 复古深栗棕：明度低 (avgLum <= 88 或 avgR < 115 且 avgG < 75)，沉稳暗调
+            if (avgLum <= 88 || (avgR < 115 && avgG < 80)) {
+              detectedDominantColorName = '复古深栗棕 (Vintage Chestnut)';
+              detectedSecondaryColor = '暗夜拉丝黑钛五金';
+            }
+            // 干邑暖橙：高饱和度鲜艳红橙 (R 显著高于 G，且红调极浓)
+            else if (avgR > 140 && (avgR - avgG) > 42 && avgB < 85) {
+              detectedDominantColorName = '干邑暖橙 (Cognac Amber)';
+              detectedSecondaryColor = '意式焦糖棕与哑光黑钛金属';
+            }
+            // 暖阳焦糖黄 / 驼黄：中高明度暖黄焦糖 (avgLum > 95, avgG 较高)
+            else if (avgR > 125 && avgG > 95 && avgB < 90) {
+              detectedDominantColorName = '暖阳焦糖黄 (Warm Caramel)';
+              detectedSecondaryColor = '沉稳哑光深灰金属';
+            }
+            // 马鞍烟草棕：中等明度
+            else {
+              detectedDominantColorName = '复古深栗棕 (Vintage Chestnut)';
+              detectedSecondaryColor = '暗夜拉丝黑五金';
+            }
+          } else if (avgR > 165 && avgG > 165 && avgB > 155) {
             detectedDominantColorName = '极地奶白 (Arctic Ivory)';
             detectedSecondaryColor = '珍珠银拉丝金属';
-          } else if (avgR < 80 && avgG < 80 && avgB < 80) {
+          } else if (avgLum < 75 && Math.abs(avgR - avgG) < 16 && Math.abs(avgG - avgB) < 16) {
             detectedDominantColorName = '曜石深灰 (Obsidian Grey)';
             detectedSecondaryColor = '香槟金金属饰条';
-          } else if (avgR > 80 && avgG < 60 && avgB < 50) {
+          } else if (avgR > 75 && avgG < 55 && avgB < 45) {
             detectedDominantColorName = '复古深栗棕 (Vintage Chestnut)';
             detectedSecondaryColor = '暗夜拉丝黑五金';
           }
@@ -439,8 +475,15 @@ export class SpaceProductAnalysisService {
 3. 材质、皮质与五金机构识别 (materials):
    - 细致识别面料种类（头层牛皮/半苯胺皮/特级Nappa皮/科技超纤布/磨砂皮）、电机机构（德国低压双电机/零重力无级伸展五金架/高碳钢合金骨架）、海绵填充（高回弹象皮海绵/天然乳胶/云感羽绒）。
 
-4. 色彩与表面肌理 (colors, surfaceTexture):
-   - 提取主色调及高级辅助配色（如“云雾暖灰”、“鞍褐焦糖”、“曜石深灰”、“极地奶白”等）。
+4. 色彩与表面肌理 (colors, surfaceTexture) 【高精度色阶与明度标定，严禁色彩漂移】:
+   - 必须基于画面中家具皮革的【真实明度 (Luminance) 与色相】进行工业级精准打标，切忌盲目套用刻板印象！
+   - 深色皮革 vs 焦糖黄色系严谨判定法则 (CRITICAL):
+     * 【复古深栗棕 / 浓缩黑巧棕】(Vintage Chestnut / Deep Espresso): 若皮革外观呈现深沉浓郁、低明度暗调、黑巧克力色、深栗褐色或深咖啡色（沉稳厚重，明度较低），必须精准打标为“复古深栗棕 (Vintage Chestnut)”或“浓缩黑巧棕 (Deep Espresso)”。【绝对严禁】将深色暗调皮革误标为“焦糖”、“驼黄”或“暖橙”！
+     * 【马鞍复古棕】(Saddle Brown): 中等明度，自然烟草褐色马鞍皮。
+     * 【暖阳焦糖黄 / 驼黄】(Warm Caramel / Tan): 仅当皮革呈现明显的明亮金黄、姜黄或高明度驼黄色时才标记。
+     * 【干邑暖橙】(Cognac Amber): 鲜艳明亮红橙皮革。
+     * 【曜石深灰 / 玄武深黑】: 冷调深灰或纯黑。
+     * 【极地奶白 / 云雾暖灰】: 浅灰米白。
    - 提取皮革纹理、手工车缝明线、包边滚边、压褶工艺细节。
 
 5. 适配空间风格推荐 (adaptiveStyles):
@@ -454,12 +497,12 @@ export class SpaceProductAnalysisService {
    - 你必须在 "detectedProducts" 数组中，将画面中出现的【每一个独立家具产品】分别拆解出来！
    - 对于每个拆解产品分别提供：
      * "id": 唯一单品 ID (如 "item-1", "item-2", "item-3")
-     * "name": 准确单品规范全称 (如 "主位三人位多功能真皮沙发 (鞍褐焦糖)", "极地奶白单人电动太空舱躺椅", "焦糖棕无扶手休闲旋转矮单椅", "极简悬浮岩板电视地柜", "极简双拼圆茶几")
+     * "name": 准确单品规范全称 (如 "主位三人位多功能真皮主沙发", "单人电动太空舱躺椅", "无扶手休闲旋转矮单椅", "极简悬浮岩板电视地柜", "极简双拼圆茶几")
      * "role": 角色分类 ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
      * "priority": 主品标 "primary"，次品/搭配单椅标 "secondary"，柜几陈设标 "decor"
      * "functionCapable": true/false (对于带电机/展开脚托的功能位设为 true；对于无电动功能、无脚托的休闲单椅 lounge_chair 严格设为 false！)
      * "dimensions": 该家具自身独立的真实毫米尺寸 (如三人位宽3150深1080高950，休闲矮单椅宽950深1000高850，单人躺椅宽980深1020高1050，电视柜宽2000深400高450，茶几宽1100深700高420)
-     * "colors": 该家具自身的真实独立色彩 (禁止混淆，主沙发写主沙发色，单椅写单椅色)
+     * "colors": 该家具自身的真实独立色彩 (禁止混淆，主沙发写主沙发色，单椅写单椅色，忠实反映原图色阶明度)
      * "materials": 该家具真实的材质列表
      * "boundingBox": 该家具在整张识别总图中的归一化百分比坐标 (0~100 整数)，格式: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}，分别对应顶部ymin、左侧xmin、底部ymax、右侧xmax。
      * "dossierSummary": 该单品的规格摘要。
@@ -489,7 +532,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   ],
   "lockedRules": [
     "严格保持原图中的扶手双包线造型与饱满弧度",
-    "皮质光泽度与原厂 Warm Greige 调色禁止漂移",
+    "皮质光泽度与原厂物理调色禁止漂移",
     "电动功能脚踏收缩态轮廓比例严格锁定"
   ],
   "dossierSummary": "高精工业级产品档案：三人位多功能真皮主沙发，配备南美半苯胺头层牛皮、德国低压静音双电机与高碳钢合金伸缩骨架，尺寸3100×1080×950mm。",
@@ -498,16 +541,16 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   "detectedProducts": [
     {
       "id": "item-1",
-      "name": "主位三人位多功能真皮主沙发 (鞍褐焦糖)",
+      "name": "主位三人位多功能真皮主沙发",
       "sku": "MW-CH-9866-3S",
       "role": "sofa_3seat",
       "priority": "primary",
       "dimensions": {"width": 3150, "depth": 1080, "height": 950},
       "materials": ["南美进口头层牛皮 (半苯胺)", "德国双电机"],
-      "colors": ["鞍褐焦糖 (Caramel Brown)"],
+      "colors": ["复古深栗棕 (Vintage Chestnut)"],
       "adaptiveStyles": ["意式轻奢", "现代极简"],
       "boundingBox": {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85},
-      "dossierSummary": "三人位多功能真皮主沙发，鞍褐焦糖色，尺寸3150×1080×950mm。"
+      "dossierSummary": "三人位多功能真皮主沙发，复古深栗棕，尺寸3150×1080×950mm。"
     },
     {
       "id": "item-2",

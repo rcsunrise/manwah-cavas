@@ -91,8 +91,14 @@ export class SceneMasterPromptCompiler {
           break;
       }
 
+      const rawColorStr = (primaryProduct.colors || []).join(' ');
+      const isDarkLeather = /深|栗|黑巧|咖啡|espresso|chestnut|dark.*brown/i.test(rawColorStr) || /chestnut|espresso|dark/i.test(mainColor);
+      const colorAntiDriftDirective = isDarkLeather
+        ? 'Visual Invariants: strictly preserve authentic deep dark roasted leather richness from reference image; strictly forbid color lightening, pale caramel shift, or washed-out yellow tones; preserve exact design lines and materials.'
+        : 'Visual Invariants: do not shift color to unintended dark red or burgundy; preserve exact design lines and materials.';
+
       productClauses.push(
-        `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} STRICT COLOR AND MATERIAL FIDELITY: Finished in exact authentic ${mainColor}, crafted in ${mainMaterial}. Surface details: ${mainTexture}. Visual Invariants: do not shift color to unintended dark red or burgundy; preserve exact design lines and materials. ${rules ? rules + '.' : ''}`
+        `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} STRICT COLOR AND MATERIAL FIDELITY: Finished in exact authentic ${mainColor}, crafted in ${mainMaterial}. Surface details: ${mainTexture}. ${colorAntiDriftDirective} ${rules ? rules + '.' : ''}`
       );
     }
 
