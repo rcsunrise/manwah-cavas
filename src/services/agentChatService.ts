@@ -247,6 +247,7 @@ export class AgentChatService {
     conversationId: string;
     message: string;
     contextSnapshot?: AgentContextSnapshot;
+    model?: string;
     onDelta?: (delta: string) => void;
     onComplete?: (assistantMessage: AgentChatMessageRecord) => void;
     onError?: (err: { code: AgentErrorCode; message: string }) => void;
@@ -256,6 +257,7 @@ export class AgentChatService {
       conversationId,
       message,
       contextSnapshot,
+      model,
       onDelta,
       onComplete,
       onError,
@@ -271,7 +273,8 @@ export class AgentChatService {
         signal: abortController?.signal,
         body: JSON.stringify({
           message,
-          context_snapshot: contextSnapshot
+          context_snapshot: contextSnapshot,
+          model
         })
       });
 

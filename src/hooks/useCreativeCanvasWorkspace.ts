@@ -711,6 +711,7 @@ export function useCreativeCanvasWorkspace(
       conversationId: conv.id,
       message: textText.trim(),
       contextSnapshot,
+      model: currentConversation?.model || conv.model,
       abortController: controller,
       onDelta: (delta) => {
         accumulatedText += delta;

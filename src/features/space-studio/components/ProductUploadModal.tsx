@@ -287,9 +287,28 @@ interface CanvasDraftPayload {
       setDossierSummary(initialProduct.dossierSummary || '');
       setDossierGeneratedAt(initialProduct.dossierGeneratedAt || '');
       setCloudReferences(initialProduct.referenceImages || []);
-      setDetectedProducts(initialProduct.detectedProducts || []);
+      const rawDPs = initialProduct.detectedProducts || [];
+      setDetectedProducts(rawDPs);
       setSelectedProductIndex(0);
-      setSourceMasterImageUrl(initialProduct.sourceMasterImageUrl || '');
+      const masterUrl = initialProduct.sourceMasterImageUrl || (initialImagesList[0]?.base64 || '');
+      setSourceMasterImageUrl(masterUrl);
+      if (rawDPs.length > 0 && masterUrl) {
+        // 后台异步补全缺失切片，保持数据一致
+        Promise.all(
+          rawDPs.map(async (dp) => {
+            let crop = dp.cropImageUrl || dp.cropBase64;
+            if (!crop && dp.boundingBox) {
+              const clientCrop = await cropImageClientSide(masterUrl, dp.boundingBox);
+              if (clientCrop) {
+                return { ...dp, cropImageUrl: clientCrop, cropBase64: clientCrop };
+              }
+            }
+            return dp;
+          })
+        ).then((reconciled) => {
+          setDetectedProducts(reconciled);
+        });
+      }
       setActiveImageIndex(0);
       setAnalysisError(null);
     } else {
@@ -838,6 +857,84 @@ interface CanvasDraftPayload {
     }
   };
 
+  /**
+   * 客户端 Canvas 局部 ROI 快速裁切：
+   * 当解构品缺少独立的 cropImageUrl 时，根据 boundingBox 快速切出单品独立特写并限制长边在 1024px 内
+   * 杜绝将全景总图重复复制给每个搭配品，避免多模态 Payload 膨胀与 400 报错
+   */
+  const cropImageClientSide = async (
+    sourceImageUrl: string,
+    box?: { ymin: number; xmin: number; ymax: number; xmax: number }
+  ): Promise<string | null> => {
+    if (!sourceImageUrl || !box) return null;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const natW = img.naturalWidth || img.width;
+          const natH = img.naturalHeight || img.height;
+          if (!natW || !natH) return resolve(null);
+
+          let xmin = Number(box.xmin) || 0;
+          let ymin = Number(box.ymin) || 0;
+          let xmax = Number(box.xmax) || 100;
+          let ymax = Number(box.ymax) || 100;
+
+          // 兼容 0~1 浮点数与 0~1000 格式
+          const maxVal = Math.max(xmin, ymin, xmax, ymax);
+          if (maxVal <= 1.05 && maxVal > 0) {
+            xmin *= 100; ymin *= 100; xmax *= 100; ymax *= 100;
+          } else if (maxVal > 100 && maxVal <= 1050) {
+            xmin = (xmin / 1000) * 100; ymin = (ymin / 1000) * 100;
+            xmax = (xmax / 1000) * 100; ymax = (ymax / 1000) * 100;
+          }
+
+          xmin = Math.max(0, Math.min(95, xmin));
+          ymin = Math.max(0, Math.min(95, ymin));
+          xmax = Math.max(xmin + 5, Math.min(100, xmax));
+          ymax = Math.max(ymin + 5, Math.min(100, ymax));
+
+          const left = Math.floor((xmin / 100) * natW);
+          const top = Math.floor((ymin / 100) * natH);
+          const width = Math.min(natW - left, Math.max(20, Math.ceil(((xmax - xmin) / 100) * natW)));
+          const height = Math.min(natH - top, Math.max(20, Math.ceil(((ymax - ymin) / 100) * natH)));
+
+          if (width <= 10 || height <= 10) return resolve(null);
+
+          // 限制输出长边在 1024px 内，杜绝巨额 Payload 爆炸
+          const maxEdge = 1024;
+          let destW = width;
+          let destH = height;
+          if (Math.max(destW, destH) > maxEdge) {
+            if (destW >= destH) {
+              destH = Math.round((destH * maxEdge) / destW);
+              destW = maxEdge;
+            } else {
+              destW = Math.round((destW * maxEdge) / destH);
+              destH = maxEdge;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = destW;
+          canvas.height = destH;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+
+          ctx.drawImage(img, left, top, width, height, 0, 0, destW, destH);
+          const croppedBase64 = canvas.toDataURL('image/webp', 0.88);
+          resolve(croppedBase64);
+        } catch (err) {
+          console.warn('[cropImageClientSide] Canvas crop notice:', err);
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = sourceImageUrl;
+    });
+  };
+
   // 触发 AI 多模态读数
   const handleExtractProductDna = async (customImages?: UploadedImageItem[]) => {
     const targetImages = customImages && customImages.length > 0 ? customImages : uploadedImages;
@@ -981,10 +1078,28 @@ interface CanvasDraftPayload {
       }
 
       if (Array.isArray(data.detectedProducts) && data.detectedProducts.length > 0) {
-        setDetectedProducts(data.detectedProducts);
+        const masterImg = data.sourceMasterImageUrl || preparedImages[0]?.base64 || '';
+        // 自动客户端自愈：如果某个单品未带切片，利用 Canvas 在客户端立即异步裁切补全
+        const enrichedDetected = await Promise.all(
+          data.detectedProducts.map(async (prod: DisaggregatedProductItem) => {
+            let crop = prod.cropImageUrl || prod.cropBase64;
+            if (!crop && prod.boundingBox && masterImg) {
+              const clientCrop = await cropImageClientSide(masterImg, prod.boundingBox);
+              if (clientCrop) {
+                return {
+                  ...prod,
+                  cropImageUrl: clientCrop,
+                  cropBase64: clientCrop
+                };
+              }
+            }
+            return prod;
+          })
+        );
+        setDetectedProducts(enrichedDetected);
         setSelectedProductIndex(0);
-        if (data.detectedProducts.length > 1) {
-          setPasteFeedback(`已从总图解构出 ${data.detectedProducts.length} 款独立家具，并已建立总图来源索引！`);
+        if (enrichedDetected.length > 1) {
+          setPasteFeedback(`已从总图解构出 ${enrichedDetected.length} 款独立家具，并已建立总图来源索引！`);
         }
       }
     } catch (err: unknown) {
@@ -1049,70 +1164,6 @@ interface CanvasDraftPayload {
 
   const handleRemoveRule = (index: number) => {
     setLockedRules((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  /**
-   * 客户端 Canvas 局部 ROI 快速裁切：
-   * 当解构品缺少独立的 cropImageUrl 时，根据 boundingBox 快速切出单品独立特写并限制长边在 1024px 内
-   * 杜绝将全景总图重复复制给每个搭配品，避免多模态 Payload 膨胀与 400 报错
-   */
-  const cropImageClientSide = async (
-    sourceImageUrl: string,
-    box?: { ymin: number; xmin: number; ymax: number; xmax: number }
-  ): Promise<string | null> => {
-    if (!sourceImageUrl || !box) return null;
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        try {
-          const natW = img.naturalWidth || img.width;
-          const natH = img.naturalHeight || img.height;
-          if (!natW || !natH) return resolve(null);
-
-          const xmin = Math.max(0, Math.min(100, Number(box.xmin) || 0));
-          const ymin = Math.max(0, Math.min(100, Number(box.ymin) || 0));
-          const xmax = Math.max(0, Math.min(100, Number(box.xmax) || 100));
-          const ymax = Math.max(0, Math.min(100, Number(box.ymax) || 100));
-
-          const left = Math.floor((xmin / 100) * natW);
-          const top = Math.floor((ymin / 100) * natH);
-          const width = Math.min(natW - left, Math.max(20, Math.ceil(((xmax - xmin) / 100) * natW)));
-          const height = Math.min(natH - top, Math.max(20, Math.ceil(((ymax - ymin) / 100) * natH)));
-
-          if (width <= 10 || height <= 10) return resolve(null);
-
-          // 限制输出长边在 1024px 内，杜绝巨额 Payload 爆炸
-          const maxEdge = 1024;
-          let destW = width;
-          let destH = height;
-          if (Math.max(destW, destH) > maxEdge) {
-            if (destW >= destH) {
-              destH = Math.round((destH * maxEdge) / destW);
-              destW = maxEdge;
-            } else {
-              destW = Math.round((destW * maxEdge) / destH);
-              destH = maxEdge;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = destW;
-          canvas.height = destH;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return resolve(null);
-
-          ctx.drawImage(img, left, top, width, height, 0, 0, destW, destH);
-          const croppedBase64 = canvas.toDataURL('image/webp', 0.88);
-          resolve(croppedBase64);
-        } catch (err) {
-          console.warn('[cropImageClientSide] Canvas crop notice:', err);
-          resolve(null);
-        }
-      };
-      img.onerror = () => resolve(null);
-      img.src = sourceImageUrl;
-    });
   };
 
   // 保存并加入资产库
@@ -1714,16 +1765,53 @@ interface CanvasDraftPayload {
                               </span>
                             </div>
 
-                            {/* 单品局部裁切图或缩略图预览 */}
-                            {prod.cropImageUrl && (
-                              <div className="w-full h-12 rounded bg-stone-900/10 overflow-hidden my-0.5">
-                                <img
-                                  src={prod.cropImageUrl}
-                                  alt={prod.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                            )}
+                            {/* 单品局部裁切图或缩略图预览（多级保障：独立切片 -> 母图ROI缩放聚焦 -> 精致图标兜底） */}
+                            {(() => {
+                              const imgSrc = prod.cropImageUrl || prod.cropBase64;
+                              const masterImg = sourceMasterImageUrl || (uploadedImages[0]?.base64 || '');
+                              const box = prod.boundingBox;
+
+                              if (imgSrc) {
+                                return (
+                                  <div className="w-full h-12 rounded bg-stone-900/10 overflow-hidden my-0.5 relative group border border-stone-200/60 shadow-2xs">
+                                    <img
+                                      src={imgSrc}
+                                      alt={prod.name}
+                                      className="w-full h-full object-cover transition duration-200 group-hover:scale-105"
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              if (masterImg && box) {
+                                const boxW = Math.max(5, (box.xmax || 100) - (box.xmin || 0));
+                                const boxH = Math.max(5, (box.ymax || 100) - (box.ymin || 0));
+                                const bgSizeX = (100 / boxW) * 100;
+                                const bgSizeY = (100 / boxH) * 100;
+                                const bgPosX = box.xmin || 0;
+                                const bgPosY = box.ymin || 0;
+                                return (
+                                  <div className="w-full h-12 rounded bg-stone-900/10 overflow-hidden my-0.5 relative border border-amber-400/40 shadow-2xs">
+                                    <div
+                                      className="w-full h-full"
+                                      style={{
+                                        backgroundImage: `url(${masterImg})`,
+                                        backgroundPosition: `${bgPosX}% ${bgPosY}%`,
+                                        backgroundSize: `${bgSizeX}% ${bgSizeY}%`,
+                                        backgroundRepeat: 'no-repeat'
+                                      }}
+                                      title={`${prod.name} (总图聚焦)`}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="w-full h-12 rounded bg-stone-100 flex items-center justify-center my-0.5 border border-stone-200 text-stone-400">
+                                  <Boxes className="w-4 h-4 text-stone-400" />
+                                </div>
+                              );
+                            })()}
 
                             <div className="text-[11px] font-bold text-stone-900 truncate">
                               {prod.name}

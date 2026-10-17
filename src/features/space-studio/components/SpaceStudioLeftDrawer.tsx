@@ -870,6 +870,17 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                           alt={dp.name}
                                           className="w-full h-full object-cover"
                                         />
+                                      ) : primaryProduct.sourceMasterImageUrl && dp.boundingBox ? (
+                                        <div
+                                          className="w-full h-full"
+                                          style={{
+                                            backgroundImage: `url(${primaryProduct.sourceMasterImageUrl})`,
+                                            backgroundPosition: `${dp.boundingBox.xmin || 0}% ${dp.boundingBox.ymin || 0}%`,
+                                            backgroundSize: `${(100 / Math.max(5, (dp.boundingBox.xmax || 100) - (dp.boundingBox.xmin || 0))) * 100}% ${(100 / Math.max(5, (dp.boundingBox.ymax || 100) - (dp.boundingBox.ymin || 0))) * 100}%`,
+                                            backgroundRepeat: 'no-repeat'
+                                          }}
+                                          title={dp.name}
+                                        />
                                       ) : (
                                         <Box className="w-4 h-4 text-stone-500" />
                                       )}

@@ -66,6 +66,85 @@ export const DisaggregatedProductItemSchema = z.object({
 
 export type DisaggregatedProductItem = z.infer<typeof DisaggregatedProductItemSchema>;
 
+/**
+ * 智能坐标归一化处理器：
+ * 兼容多模态大模型返回的各种 boundingBox 格式：
+ * 1. 0~1000 整数格式 (Gemini 官方标准检测格式，例如 ymin: 200, xmin: 300, ymax: 650, xmax: 850)
+ * 2. 0.0~1.0 归一化浮点数格式 (例如 ymin: 0.20, xmin: 0.30, ymax: 0.65, xmax: 0.85)
+ * 3. 0~100 百分比格式 (例如 ymin: 20, xmin: 30, ymax: 65, xmax: 85)
+ * 4. 绝对像素坐标格式 (例如在 1920x1080 图上返回 xmin: 400, ymin: 200...)
+ * 5. 数组格式 [ymin, xmin, ymax, xmax] 或对象格式
+ */
+export function normalizeBoundingBox(
+  rawBox: any,
+  imgWidth: number = 1000,
+  imgHeight: number = 1000
+): { ymin: number; xmin: number; ymax: number; xmax: number } {
+  if (!rawBox) {
+    return { ymin: 15, xmin: 15, ymax: 85, xmax: 85 };
+  }
+
+  let ymin = 0;
+  let xmin = 0;
+  let ymax = 100;
+  let xmax = 100;
+
+  if (Array.isArray(rawBox) && rawBox.length >= 4) {
+    ymin = Number(rawBox[0]) || 0;
+    xmin = Number(rawBox[1]) || 0;
+    ymax = Number(rawBox[2]) || 100;
+    xmax = Number(rawBox[3]) || 100;
+  } else if (typeof rawBox === 'object') {
+    ymin = Number(rawBox.ymin ?? rawBox.top ?? rawBox.y1 ?? 0);
+    xmin = Number(rawBox.xmin ?? rawBox.left ?? rawBox.x1 ?? 0);
+    ymax = Number(rawBox.ymax ?? rawBox.bottom ?? rawBox.y2 ?? 100);
+    xmax = Number(rawBox.xmax ?? rawBox.right ?? rawBox.x2 ?? 100);
+  }
+
+  const maxVal = Math.max(ymin, xmin, ymax, xmax);
+
+  if (maxVal <= 1.05 && maxVal > 0) {
+    // 0~1 浮点数 -> 转为 0~100 百分比
+    ymin *= 100;
+    xmin *= 100;
+    ymax *= 100;
+    xmax *= 100;
+  } else if (maxVal > 100 && maxVal <= 1050) {
+    // 0~1000 整数 (Gemini 标准) -> 转为 0~100 百分比
+    ymin = (ymin / 1000) * 100;
+    xmin = (xmin / 1000) * 100;
+    ymax = (ymax / 1000) * 100;
+    xmax = (xmax / 1000) * 100;
+  } else if (maxVal > 1050) {
+    // 绝对像素坐标 -> 基于原图宽高归一化
+    ymin = (ymin / Math.max(1, imgHeight)) * 100;
+    xmin = (xmin / Math.max(1, imgWidth)) * 100;
+    ymax = (ymax / Math.max(1, imgHeight)) * 100;
+    xmax = (xmax / Math.max(1, imgWidth)) * 100;
+  }
+
+  // 确保 ymin < ymax 且 xmin < xmax
+  if (ymin > ymax) {
+    const temp = ymin;
+    ymin = ymax;
+    ymax = temp;
+  }
+  if (xmin > xmax) {
+    const temp = xmin;
+    xmin = xmax;
+    xmax = temp;
+  }
+
+  // 安全边界约束
+  ymin = Math.max(0, Math.min(92, Math.round(ymin)));
+  xmin = Math.max(0, Math.min(92, Math.round(xmin)));
+  ymax = Math.max(ymin + 5, Math.min(100, Math.round(ymax)));
+  xmax = Math.max(xmin + 5, Math.min(100, Math.round(xmax)));
+
+  return { ymin, xmin, ymax, xmax };
+}
+
+
 export const ProductDnaReadoutSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -568,62 +647,59 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           itemRole = 'sofa_3seat';
         }
 
-        const box = item.boundingBox || { ymin: 15, xmin: 15, ymax: 85, xmax: 85 };
-        const safeBox = {
-          ymin: Math.max(0, Math.min(95, Number(box.ymin) || 0)),
-          xmin: Math.max(0, Math.min(95, Number(box.xmin) || 0)),
-          ymax: Math.max(5, Math.min(100, Number(box.ymax) || 100)),
-          xmax: Math.max(5, Math.min(100, Number(box.xmax) || 100))
-        };
-        if (safeBox.ymax <= safeBox.ymin + 5) safeBox.ymax = Math.min(100, safeBox.ymin + 25);
-        if (safeBox.xmax <= safeBox.xmin + 5) safeBox.xmax = Math.min(100, safeBox.xmin + 25);
+        const safeBox = normalizeBoundingBox(item.boundingBox, masterMetaWidth, masterMetaHeight);
 
         let cropBase64: string | undefined = undefined;
         let cropImageUrl: string | undefined = undefined;
 
         if (masterBuffer && masterMetaWidth > 20 && masterMetaHeight > 20) {
           try {
-            const cropLeft = Math.max(0, Math.min(masterMetaWidth - 20, Math.floor((safeBox.xmin / 100) * masterMetaWidth)));
-            const cropTop = Math.max(0, Math.min(masterMetaHeight - 20, Math.floor((safeBox.ymin / 100) * masterMetaHeight)));
-            const maxAvailW = Math.max(10, masterMetaWidth - cropLeft);
-            const maxAvailH = Math.max(10, masterMetaHeight - cropTop);
-            const targetW = Math.max(20, Math.round(((safeBox.xmax - safeBox.xmin) / 100) * masterMetaWidth));
-            const targetH = Math.max(20, Math.round(((safeBox.ymax - safeBox.ymin) / 100) * masterMetaHeight));
-            const cropWidth = Math.max(10, Math.min(maxAvailW, targetW));
-            const cropHeight = Math.max(10, Math.min(maxAvailH, targetH));
+            const cropLeft = Math.max(0, Math.floor((safeBox.xmin / 100) * masterMetaWidth));
+            const cropTop = Math.max(0, Math.floor((safeBox.ymin / 100) * masterMetaHeight));
+            const rawW = Math.ceil(((safeBox.xmax - safeBox.xmin) / 100) * masterMetaWidth);
+            const rawH = Math.ceil(((safeBox.ymax - safeBox.ymin) / 100) * masterMetaHeight);
+            const cropWidth = Math.max(20, Math.min(masterMetaWidth - cropLeft, rawW));
+            const cropHeight = Math.max(20, Math.min(masterMetaHeight - cropTop, rawH));
 
-            const croppedBuffer = await sharp(masterBuffer)
-              .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
-              .webp({ quality: 90 })
-              .toBuffer();
+            if (cropWidth > 10 && cropHeight > 10) {
+              const croppedBuffer = await sharp(masterBuffer)
+                .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
+                .resize(Math.min(1024, cropWidth), Math.min(1024, cropHeight), { fit: 'inside', withoutEnlargement: true })
+                .webp({ quality: 88 })
+                .toBuffer();
 
-            cropBase64 = `data:image/webp;base64,${croppedBuffer.toString('base64')}`;
+              cropBase64 = `data:image/webp;base64,${croppedBuffer.toString('base64')}`;
+              cropImageUrl = cropBase64; // 默认将高质量 Base64 作为即刻可渲染的图片源
 
-            const cropObjectKey = SpaceObjectKeyBuilder.productReference({
-              projectId,
-              assetId: productId,
-              referenceId: `crop-${idx + 1}`,
-              extension: 'webp'
-            });
+              try {
+                const cropObjectKey = SpaceObjectKeyBuilder.productReference({
+                  projectId,
+                  assetId: productId,
+                  referenceId: `crop-${idx + 1}`,
+                  extension: 'webp'
+                });
 
-            await this.storage.put({
-              bucketType: 'source',
-              objectKey: cropObjectKey,
-              buffer: croppedBuffer,
-              contentType: 'image/webp',
-              metadata: {
-                projectId,
-                productId,
-                isCrop: 'true',
-                itemRole
+                await this.storage.put({
+                  bucketType: 'source',
+                  objectKey: cropObjectKey,
+                  buffer: croppedBuffer,
+                  contentType: 'image/webp',
+                  metadata: {
+                    projectId,
+                    productId,
+                    isCrop: 'true',
+                    itemRole
+                  }
+                });
+
+                const cropSigned = await this.storage.getSignedReadUrl(cropObjectKey, 86400 * 7, 'source');
+                if (cropSigned && cropSigned.url && !cropSigned.url.includes('local-file')) {
+                  cropImageUrl = cropSigned.url;
+                }
+              } catch (storageErr) {
+                console.warn(`[SpaceProductAnalysisService] Crop storage save notice for item ${idx + 1}:`, storageErr);
               }
-            });
-
-            const cropSigned = await this.storage.getSignedReadUrl(cropObjectKey, 86400 * 7, 'source');
-            cropImageUrl =
-              cropSigned && cropSigned.url
-                ? cropSigned.url
-                : `/api/space/storage/download?key=${encodeURIComponent(cropObjectKey)}`;
+            }
           } catch (cropErr) {
             console.warn(`[SpaceProductAnalysisService] Crop error for item ${idx + 1}:`, cropErr);
           }
@@ -640,6 +716,8 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
             : isNonFunctionalChair
             ? false
             : (effectiveRole === 'sofa_3seat' || effectiveRole === 'sofa_2seat' || effectiveRole === 'recliner_1seat');
+
+        const finalCropUrl = cropImageUrl || cropBase64 || sourceMasterImageUrl;
 
         processedDetectedProducts.push({
           id: itemId,
@@ -658,7 +736,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           surfaceTexture: item.surfaceTexture || '原厂真值纹理质感锁定',
           functionCapable: resolvedFunctionCapable,
           boundingBox: safeBox,
-          cropImageUrl: cropBase64 || cropImageUrl || sourceMasterImageUrl,
+          cropImageUrl: finalCropUrl,
           cropBase64: cropBase64,
           sourceMasterImageUrl: sourceMasterImageUrl,
           lockedRules: Array.isArray(item.lockedRules) && item.lockedRules.length > 0 ? item.lockedRules : [

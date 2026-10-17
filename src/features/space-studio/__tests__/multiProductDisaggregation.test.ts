@@ -1,6 +1,6 @@
 // src/features/space-studio/__tests__/multiProductDisaggregation.test.ts
 import { describe, it, expect } from 'vitest';
-import { ProductDnaReadoutSchema } from '../../../../server/services/spaceProductAnalysisService';
+import { ProductDnaReadoutSchema, normalizeBoundingBox } from '../../../../server/services/spaceProductAnalysisService';
 import { DisaggregatedProductItem, ProductAsset } from '../../../types/spaceStudio';
 import { ShootCompiler, CompileShotPromptInput } from '../engine/shootCompiler';
 import { INITIAL_MANWAH_PRODUCTS, isOnlyDemoProducts } from '../data/productAssets';
@@ -366,4 +366,60 @@ describe('多产品智能解构、参数分配与总图来源索引 (Multi-Produ
     expect(chair.role).toBe('lounge_chair');
     expect(chair.functionCapable).toBe(false);
   });
+
+  describe('坐标归一化与切片图渲染稳定性保障 (BoundingBox Normalization & Crop Image Stability)', () => {
+    it('正确解析 0~1000 进制的 Gemini 官方检测框，杜绝被截断为 [95, 95, 100, 100]', () => {
+      // 模拟 Gemini 返回 0~1000 整数坐标
+      const gemini1000Box = { ymin: 200, xmin: 300, ymax: 650, xmax: 850 };
+      const normalized = normalizeBoundingBox(gemini1000Box, 1920, 1080);
+
+      expect(normalized.ymin).toBe(20);
+      expect(normalized.xmin).toBe(30);
+      expect(normalized.ymax).toBe(65);
+      expect(normalized.xmax).toBe(85);
+      expect(normalized.xmin).not.toBe(95);
+      expect(normalized.ymin).not.toBe(95);
+    });
+
+    it('正确解析 0.0~1.0 浮点数检测框', () => {
+      const floatBox = { ymin: 0.18, xmin: 0.25, ymax: 0.72, xmax: 0.88 };
+      const normalized = normalizeBoundingBox(floatBox, 1920, 1080);
+
+      expect(normalized.ymin).toBe(18);
+      expect(normalized.xmin).toBe(25);
+      expect(normalized.ymax).toBe(72);
+      expect(normalized.xmax).toBe(88);
+    });
+
+    it('正确解析数组格式 [ymin, xmin, ymax, xmax]', () => {
+      const arrayBox = [220, 150, 780, 890];
+      const normalized = normalizeBoundingBox(arrayBox, 1920, 1080);
+
+      expect(normalized.ymin).toBe(22);
+      expect(normalized.xmin).toBe(15);
+      expect(normalized.ymax).toBe(78);
+      expect(normalized.xmax).toBe(89);
+    });
+
+    it('正确解析绝对像素坐标 (>1050)', () => {
+      const pixelBox = { ymin: 216, xmin: 384, ymax: 864, xmax: 1536 };
+      const normalized = normalizeBoundingBox(pixelBox, 1920, 1080);
+
+      expect(normalized.ymin).toBe(20);
+      expect(normalized.xmin).toBe(20);
+      expect(normalized.ymax).toBe(80);
+      expect(normalized.xmax).toBe(80);
+    });
+
+    it('兜底保护：当坐标完全缺失或反序时，自愈生成合法的正序坐标', () => {
+      const reversedBox = { ymin: 80, xmin: 90, ymax: 20, xmax: 30 };
+      const normalized = normalizeBoundingBox(reversedBox, 1000, 1000);
+
+      expect(normalized.ymin).toBeLessThan(normalized.ymax);
+      expect(normalized.xmin).toBeLessThan(normalized.xmax);
+      expect(normalized.ymax - normalized.ymin).toBeGreaterThanOrEqual(5);
+      expect(normalized.xmax - normalized.xmin).toBeGreaterThanOrEqual(5);
+    });
+  });
 });
+
