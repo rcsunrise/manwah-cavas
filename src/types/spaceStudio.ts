@@ -428,6 +428,7 @@ export interface RenderComputeConfig {
   seed?: number;
   namingPreset: NamingPreset;
   customPrefix?: string;
+  functionalPositionState?: 'closed' | 'open';
 }
 
 export type UIThemeMode = 'dark' | 'light';
@@ -647,6 +648,7 @@ export interface GenerationSettings {
   aspectRatio: string;
   seed?: number;
   useRandomSeed: boolean;
+  functionalPositionState?: 'closed' | 'open';
 }
 
 export interface GenerationJob {

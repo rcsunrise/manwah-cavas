@@ -275,7 +275,7 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a06',
     templateCode: 'A06',
-    name: '零靠墙功能展开景 (Zero-Wall Clearance Profile View)',
+    name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile View)',
     aspectRatio: '16:9',
     camera: {
       lensMm: 35,
@@ -285,16 +285,16 @@ const DEFAULT_SHOTS: ShotInstance[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'zero_wall_mechanism' },
       framing: 'lifestyle',
-      mustInclude: ['zero_wall_clearance_feature', 'lateral_profile_sofa_extension', 'diamond_quilted_side_armrest', 'deployed_footrest_and_reclined_backrest', 'panoramic_window_backdrop'],
-      mustExclude: ['flat_frontal_mugshot', 'three_quarters_generic_angle', 'missing_motion_extension', 'crowded_foreground']
+      mustInclude: ['zero_wall_clearance_feature', 'lateral_profile_sofa_closed', 'diamond_quilted_side_armrest', 'flush_closed_footrest_and_upright_backrest', 'panoramic_window_backdrop'],
+      mustExclude: ['flat_frontal_mugshot', 'three_quarters_generic_angle', 'deployed_footrest', 'extended_footrest', 'reclined_backrest', 'unfolded_mechanism', 'crowded_foreground']
     },
     intent: {
       intentCode: 'SI-07',
-      name: '零靠墙前滑展开结构 (Zero-Wall Clearance Function)',
+      name: '零靠墙贴墙闭合侧向结构 (Zero-Wall Clearance Function)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '画幅比例 16:9 宽屏，侧向 75°~90° 大透视，直观呈现贴墙零距离前滑与侧面展开线条，女主戴耳机仰躺放松，背景为通透落地大窗'
+      description: '画幅比例 16:9 宽屏，侧向 75°~90° 大透视，直观呈现贴墙零距离（<5cm）与侧面优雅闭合线条，功能位置严格保持关闭，脚踏完全收拢，背景为通透落地大窗'
     },
     status: 'draft',
     revisions: [],
@@ -1179,6 +1179,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     let initialAspect: ImageAspectRatio = '4:3';
     let initialModel = 'gemini-nano-banana-2.1-preview';
     let initialRes: RenderResolution = '2K';
+    let initialFuncPos: 'closed' | 'open' = 'closed';
     if (typeof window !== 'undefined') {
       const savedAspect = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
       if (savedAspect && ['4:3', '16:9', '3:4', '1:1', '9:16', '2:3'].includes(savedAspect)) {
@@ -1192,6 +1193,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       if (savedRes && ['1K', '2K', '4K'].includes(savedRes)) {
         initialRes = savedRes;
       }
+      const savedFuncPos = localStorage.getItem('space_studio_functional_position') as 'closed' | 'open';
+      if (savedFuncPos && ['closed', 'open'].includes(savedFuncPos)) {
+        initialFuncPos = savedFuncPos;
+      }
     }
     return {
       model: initialModel,
@@ -1201,7 +1206,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       seed: undefined,
       namingPreset: 'detailed',
       customPrefix: '',
-      candidateCount: 1
+      candidateCount: 1,
+      functionalPositionState: initialFuncPos
     };
   });
 
@@ -1213,6 +1219,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       }
       if (typeof window !== 'undefined' && updater.resolution) {
         localStorage.setItem('space_studio_resolution', updater.resolution);
+      }
+      if (typeof window !== 'undefined' && updater.functionalPositionState) {
+        localStorage.setItem('space_studio_functional_position', updater.functionalPositionState);
       }
       if (updater.aspectRatio) {
         if (updater.aspectRatio !== aspectRatio) {
@@ -1437,14 +1446,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
         blueprint,
-        aspectRatio: (activeShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
+        aspectRatio: (activeShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio,
+        functionalPositionState: computeConfig.functionalPositionState || 'closed'
       });
       return compiled.positivePrompt;
     } catch (err) {
       console.warn('[SpaceStudioShell] 实时编译镜头正向提示词异常:', err);
       return '';
     }
-  }, [activeShot, products, sceneMaster, selectedSpace, selectedStyle, blueprint, computeConfig.aspectRatio]);
+  }, [activeShot, products, sceneMaster, selectedSpace, selectedStyle, blueprint, computeConfig.aspectRatio, computeConfig.functionalPositionState]);
 
   // 视觉资产驱动工作台状态 (Style, Model, Pose, Lighting)
   const [activeAssets, setActiveAssets] = useState<ActivePhotographyAssets>(() => {
@@ -1792,7 +1802,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         spacePreset: selectedSpace,
         stylePreset: selectedStyle,
         blueprint,
-        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
+        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio,
+        functionalPositionState: computeConfig.functionalPositionState || 'closed'
       });
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: compiled } : null));

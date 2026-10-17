@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
@@ -355,15 +355,19 @@ export function useCreativeCanvasWorkspace(
           setConversationsList(prev => [conv!, ...prev.filter(x => x.id !== conv!.id)]);
         } catch (createErr) {
           // Local fallback active conversation if server is temporarily unreachable
+          const validFallbackId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+            ? crypto.randomUUID()
+            : '00000000-0000-4000-8000-000000000001';
+
           const fallbackConv: AgentConversationRecord = {
-            id: `conv_fallback_${Date.now()}`,
+            id: validFallbackId,
             user_id: 'default_user',
             project_id: projId,
             canvas_id: canvId,
             title: '全新企划对话',
             status: 'active',
             provider: 'google',
-            model: 'gemini-2.5-pro',
+            model: 'gemini-2.0-flash',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
@@ -438,23 +442,234 @@ export function useCreativeCanvasWorkspace(
       timestamp: timestampStr
     };
 
-    // Agent G Tool Interceptor: Detect local asset search intention
     const trimmed = textText.trim();
-    const isLocalSearchIntent = /(本地|电脑|硬盘|文件夹).*(找|搜|查|素材|图|资料|pdf|2650)/i.test(trimmed) ||
-      /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf)/i.test(trimmed);
+
+    // Agent G Execution Interceptor: Autonomous 4:3 Poster Layout from Local Assets
+    const isPosterLayoutIntent =
+      /(制作|生成|排版|设计|排一套|做一张|创建|自动制作).*(海报|4:3|四比三|版面)/i.test(trimmed) ||
+      /(使用|用).*(本地|素材).*(海报|排版)/i.test(trimmed) ||
+      /(4:3|四比三).*(海报|排版)/i.test(trimmed);
+
+    if (isPosterLayoutIntent) {
+      if (!localAssetService.isConnected()) {
+        const assistantMsg: AgentMessage = {
+          id: assistantMsgId,
+          sender: 'agent',
+          text: `收到排版指令！检测到您希望使用本地 2650 沙发素材自动生成 4:3 意式轻奢海报。\n由于您尚未授权本地素材文件夹，请先点击上方的【📂 授权文件夹】选择包含 2650 系列产品图、Logo 与面料资料的本地目录。授权完成后，我将立即为您自动规划版面与排版节点！`,
+          timestamp: timestampStr,
+          status: 'completed'
+        };
+        setMessages(prev => [...prev, userMessage, assistantMsg]);
+        return;
+      }
+
+      // Step 1: Intelligent asset selection from authorized directory
+      const searchProduct = localAssetService.searchAssets('2650 沙发 主图 渲染 实景', 'image', 5);
+      const productAsset = searchProduct.assets[0] || localAssetService.getAssets().find(a => a.type === 'image');
+      const targetImageUrl = productAsset?.previewUrl || '';
+
+      if (!targetImageUrl) {
+        const assistantMsg: AgentMessage = {
+          id: assistantMsgId,
+          sender: 'agent',
+          text: `已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中检索 2650 沙发素材，但未找到图片格式的产品主图。\n请确保文件夹中包含 PNG/JPG/WEBP 格式的沙发实景或渲染图，然后点击上方【重新扫描】。`,
+          timestamp: timestampStr,
+          status: 'completed'
+        };
+        setMessages(prev => [...prev, userMessage, assistantMsg]);
+        return;
+      }
+
+      // Step 2: Compute 4:3 High-End Italian Luxury Layout Layers (Zero distortion, independent layers)
+      const layoutLayers: CanvasTextLayer[] = [
+        {
+          id: `layer-brand-${Date.now()}`,
+          text: 'MANWAH DESIGN STUDIO  |  MILAN LUXURY 2026',
+          x: 120,
+          y: 90,
+          width: 900,
+          height: 40,
+          fontSize: 26,
+          fontWeight: 700,
+          color: '#B28C5A',
+          letterSpacing: 2,
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
+        {
+          id: `layer-headline-${Date.now()}`,
+          text: '2650 意式轻奢功能沙发',
+          x: 120,
+          y: 150,
+          width: 1400,
+          height: 90,
+          fontSize: 64,
+          fontWeight: 800,
+          color: '#FFFFFF',
+          fontFamily: '"Songti SC", "Source Han Serif SC", serif'
+        },
+        {
+          id: `layer-sub-${Date.now()}`,
+          text: '纯正意式鞍皮质感 · 零重力电动随心躺',
+          x: 120,
+          y: 255,
+          width: 1200,
+          height: 50,
+          fontSize: 32,
+          fontWeight: 500,
+          color: '#E5E0D8',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
+        {
+          id: `layer-pills-${Date.now()}`,
+          text: '【头层进口牛皮】  【德国静音电机】  【45D高回弹海绵】  【适老工程学】',
+          x: 120,
+          y: 325,
+          width: 1400,
+          height: 48,
+          fontSize: 24,
+          fontWeight: 600,
+          color: '#C8A97E',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
+        {
+          id: `layer-specs-${Date.now()}`,
+          text: '产品规格: W2200 × D1050 × H880mm · 鞍褐/米白双色可选 · 全国免费入户安装',
+          x: 120,
+          y: 1630,
+          width: 1800,
+          height: 40,
+          fontSize: 26,
+          fontWeight: 500,
+          color: '#A8A29E',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
+        {
+          id: `layer-cert-${Date.now()}`,
+          text: 'PREMIUM COMMERCIAL 4:3 ARCHIVE · STRICT AUDIT PROTECTED',
+          x: 120,
+          y: 1690,
+          width: 1000,
+          height: 30,
+          fontSize: 20,
+          color: 'rgba(255,255,255,0.45)',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }
+      ];
+
+      // Step 3: Inject onto Infinite Canvas as an Editable Draft Node
+      const posterNodeId = 'poster-auto-4-3-draft';
+      const posterNode: Node = {
+        id: posterNodeId,
+        type: 'generatedImageNode',
+        position: { x: 860, y: 120 },
+        data: {
+          sceneIndex: 1,
+          screenTitle: '2650 意式轻奢 4:3 产品海报 (待审核草稿)',
+          aspectRatio: '4:3',
+          sourceAspectRatio: '4:3',
+          dimensions: '2400x1800',
+          imageUrl: targetImageUrl,
+          cleanBackgroundUrl: targetImageUrl,
+          withText: false,
+          textLayers: layoutLayers,
+          reviewStatus: 'pendingReview',
+          version: 1,
+          activeVersionCode: 'V001-DRAFT',
+          themeTitle: 'MANWAH MILAN LUXURY',
+          coreSellingPoint: '纯正意式鞍皮质感 · 零重力电动随心躺',
+          onApprove: () => {
+            setNodes(cur => cur.map(n => n.id === posterNodeId ? {
+              ...n,
+              data: { ...n.data, reviewStatus: 'approved', activeVersionCode: 'V001-FINAL' }
+            } : n));
+          },
+          onReject: (feedback: string) => {
+            setNodes(cur => cur.map(n => n.id === posterNodeId ? {
+              ...n,
+              data: { ...n.data, reviewStatus: 'rejected', reviewFeedback: feedback }
+            } : n));
+          }
+        }
+      };
+
+      setNodes(prev => {
+        const filtered = prev.filter(n => n.id !== posterNodeId);
+        return [...filtered, posterNode];
+      });
+
+      // Connect edge
+      setEdges(prev => {
+        const hasEdge = prev.some(e => e.target === posterNodeId);
+        if (!hasEdge) {
+          const sourceNode = nodes.find(n => n.id === 'dna-node-1' || n.id === 'img-node-1') || nodes[0];
+          if (sourceNode) {
+            return [
+              ...prev,
+              {
+                id: `edge-${sourceNode.id}-${posterNodeId}`,
+                source: sourceNode.id,
+                target: posterNodeId,
+                type: 'smoothstep',
+                animated: true,
+                style: { stroke: '#B28C5A', strokeWidth: 2 }
+              }
+            ];
+          }
+        }
+        return prev;
+      });
+
+      // Step 4: Assistant Message with Draft Metadata & Interactive Card
+      const assistantMsg: AgentMessage = {
+        id: assistantMsgId,
+        sender: 'agent',
+        text: `✨ 已为您自动检索本地素材，完成【2650 意式轻奢 4:3 产品海报】排版策划！\n\n` +
+          `• **📸 原始产品图**：选用本地素材「${productAsset.name}」（保持 100% 原始真实像素，零 AI 重绘）。\n` +
+          `• **📐 画面规格**：标准商业 4:3 横版画幅（2400 × 1800 px，支持 300DPI 印刷导出）。\n` +
+          `• **🎨 美学层级**：意式极简高奢规范（品牌标牌、方正宋体主标、敏华奢金 Pill 卖点标、工程参数规格栏）。\n` +
+          `• **📝 图层架构**：图片底图、文字、装饰各自保持独立图层，零交叉污染。\n` +
+          `• **🛡️ 交付管控**：**已创建可编辑草稿（待您审核）**。未经您的批准，严禁发布正式交付版本。\n\n` +
+          `已在左侧无限画布中生成可编辑海报节点，您可以双击文字直接微调，或通过下方卡片快速导出：`,
+        timestamp: timestampStr,
+        status: 'completed',
+        posterDraftCard: {
+          nodeId: posterNodeId,
+          screenTitle: '2650 意式轻奢 4:3 产品海报',
+          aspectRatio: '4:3',
+          dimensions: '2400 × 1800',
+          imageUrl: targetImageUrl,
+          layersCount: layoutLayers.length,
+          reviewStatus: 'pendingReview',
+          textLayers: layoutLayers
+        }
+      };
+
+      setMessages(prev => [...prev, userMessage, assistantMsg]);
+      return;
+    }
+
+    // Agent G Tool Interceptor: Detect local asset search intention
+    const isLocalSearchIntent =
+      /(本地|电脑|硬盘|文件夹|这里|库里|当前|目录).*(找|搜|查|素材|图|资料|pdf|2650|文件|内容|有哪些|有什么|看一下|看下|清单)/i.test(trimmed) ||
+      /(有哪些|有什么|看下|列出).*(文件|素材|资料|图片|图)/i.test(trimmed) ||
+      /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf|文件)/i.test(trimmed);
 
     if (isLocalSearchIntent) {
       if (localAssetService.isConnected()) {
-        let kw = trimmed.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件)/gi, '').trim();
-        if (!kw) kw = '2650';
+        let kw = trimmed.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件|这里|库里|当前|有哪些|有什么|看一下|看下|列出|清单)/gi, '').trim();
 
+        // If asking "what files are here", list all indexed assets!
         const searchRes = localAssetService.searchAssets(kw, 'all', 8);
+        const introText = kw
+          ? `收到！已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中检索到 ${searchRes.matchedCount} 项与 "${kw}" 相关的素材：`
+          : `您好！当前授权的本地素材库【${localAssetService.getDirectoryName()}】中共有 ${localAssetService.getIndexedCount()} 个文件，为您展示以下素材：`;
+
         const assistantMsg: AgentMessage = {
           id: assistantMsgId,
           sender: 'agent',
           text: searchRes.matchedCount > 0
-            ? `收到！已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中检索到 ${searchRes.matchedCount} 项与 "${kw}" 相关的素材。\n点击下方卡片中的【导入主图】可直接将其置入左侧无限画布并提取产品 DNA：`
-            : `已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中执行检索，未找到与 "${kw}" 匹配的文件。建议尝试其他关键词或点击上方重新扫描。`,
+            ? `${introText}\n您可以点击卡片下方的【导入主图】将其直接推入左侧无限画布并提取产品 DNA：`
+            : `已在您授权的本地文件夹【${localAssetService.getDirectoryName()}】中检索，暂未匹配到相关素材。建议点击上方重新扫描。`,
           timestamp: timestampStr,
           status: 'completed',
           localAssetCard: searchRes.matchedCount > 0 ? searchRes : undefined
@@ -656,6 +871,13 @@ export function useCreativeCanvasWorkspace(
       console.error('Failed to select conversation:', e);
     }
   }, [conversationsList]);
+
+  const handleChangeConversationModel = useCallback((newModel: string) => {
+    if (!currentConversation) return;
+    const updated: AgentConversationRecord = { ...currentConversation, model: newModel };
+    setCurrentConversation(updated);
+    setConversationsList(prev => prev.map(c => c.id === updated.id ? updated : c));
+  }, [currentConversation]);
 
   // Ensure an active project exists or create one
   const getOrCreateProject = async (): Promise<CreativeProject | null> => {
@@ -3901,6 +4123,7 @@ export function useCreativeCanvasWorkspace(
     handleRetryMessage,
     handleCreateNewConversation,
     handleSelectConversation,
+    handleChangeConversationModel,
     activeProject,
 
     // C2 Exports

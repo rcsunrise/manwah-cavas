@@ -468,6 +468,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             aspectRatio: effectiveAspect,
             preferredModel: generationSettings?.model || (req.body as any).preferredModel,
             resolution: generationSettings?.resolution || (req.body as any).resolution,
+            functionalPositionState: (generationSettings as any)?.functionalPositionState || (req.body as any).functionalPositionState || 'closed',
             seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
             productName: effectiveProductName,
             productColor: effectiveProductColor,

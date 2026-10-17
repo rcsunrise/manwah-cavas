@@ -27,6 +27,7 @@ import {
   CheckSquare,
   Square,
   Lock,
+  Unlock,
   UserPlus,
   Sparkle,
   Link2,
@@ -125,7 +126,8 @@ const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
   customAspectRatio: '',
   seed: undefined,
   namingPreset: 'detailed',
-  customPrefix: ''
+  customPrefix: '',
+  functionalPositionState: 'closed'
 };
 
 const LIGHTING_OPTIONS = [
@@ -255,7 +257,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
     if (!availableModels || availableModels.length === 0) return;
 
     const defaultPositionPresets = [
-      { position: '主沙发一号电动功能主座（展开脚托）', action: '从容就座，左手搭扶手，右手握持画册与家人交谈' },
+      { position: '主沙发一号电动功能主座（舒适闭合）', action: '从容就座，左手搭扶手，右手握持画册与家人交谈' },
       { position: '单人真皮功能单椅', action: '端坐品茗，神态安详从容，展现长者风范' },
       { position: '沙发贵妃榻休闲位', action: '优雅侧倚，手捧暖白瓷杯，身体微倾倾听' },
       { position: '沙发前羊毛地毯，倚靠茶几边缘', action: '席地而坐，操作平板电脑，姿态轻松机敏' },
@@ -593,6 +595,51 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
                 </optgroup>
               </select>
+            </div>
+
+            {/* 产品功能位置设定 (每一组镜头默认保持关闭收起形态) */}
+            <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className={`font-medium ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>产品功能位置设定:</span>
+                <span className="font-mono text-[9px] text-amber-500 font-semibold">
+                  {(cfg.functionalPositionState || 'closed') === 'closed' ? '保持关闭 (默认)' : '允许展开'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onChangeComputeConfig?.({ functionalPositionState: 'closed' })}
+                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    (cfg.functionalPositionState || 'closed') === 'closed'
+                      ? 'bg-amber-500 text-black border-amber-400 font-bold shadow-xs'
+                      : isLight
+                      ? 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                      : 'bg-black/30 hover:bg-white/5 text-neutral-300 border-white/10'
+                  }`}
+                  title="全组镜头默认保持功能位关闭形态，电动脚踏收拢收起，标准直立座姿"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span className="text-[10px]">保持关闭 (默认)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeComputeConfig?.({ functionalPositionState: 'open' })}
+                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    cfg.functionalPositionState === 'open'
+                      ? 'bg-amber-500 text-black border-amber-400 font-bold shadow-xs'
+                      : isLight
+                      ? 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                      : 'bg-black/30 hover:bg-white/5 text-neutral-300 border-white/10'
+                  }`}
+                  title="允许展开功能位与电动脚踏"
+                >
+                  <Unlock className="w-3 h-3" />
+                  <span className="text-[10px]">允许展开</span>
+                </button>
+              </div>
+              <p className={`text-[9px] leading-tight ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                * 每一组镜头产品电动脚踏及展开机构默认保持严格收拢关闭形态
+              </p>
             </div>
 
             {/* 出图精度 (Resolution) 选择控制 */}

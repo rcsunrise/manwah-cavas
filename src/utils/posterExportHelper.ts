@@ -1,7 +1,7 @@
 import { CanvasTextLayer } from '../types/creativeCanvas';
 import { downloadHighResImage } from './downloadUtils';
 
-export type PosterExportResolution = 'native' | 'ecommerce_3_4' | 'ultra_4k';
+export type PosterExportResolution = 'native' | 'ecommerce_3_4' | 'ecommerce_4_3' | 'ultra_4k';
 export type PosterExportFormat = 'png' | 'jpeg';
 
 export interface PosterExportOptions {
@@ -117,6 +117,9 @@ export async function renderPosterToCanvas(
   if (resolution === 'ecommerce_3_4') {
     targetW = 2100;
     targetH = 2800;
+  } else if (resolution === 'ecommerce_4_3') {
+    targetW = 2400;
+    targetH = 1800;
   } else if (resolution === 'ultra_4k') {
     const aspect = natW / natH;
     targetH = 4096;

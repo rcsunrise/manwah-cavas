@@ -26,6 +26,7 @@ export interface CompileShotPromptInput {
   stylePreset: StylePreset;
   blueprint: PlacementBlueprint;
   aspectRatio?: ImageAspectRatio;
+  functionalPositionState?: 'closed' | 'open';
 }
 
 export interface CompiledShotPrompt {
@@ -76,11 +77,11 @@ export class ShootCompiler {
       // A02: 45度斜侧透视全景，优先 45_deg，其次 front
       preferredTypes = ['45_deg', 'front', 'side'];
     } else if (code === 'A06' || code.includes('PROFILE') || code.includes('ZERO_WALL')) {
-      // A06: 零靠墙侧面剪影，优先 side (正侧面)，其次 function_open，再次 45_deg
-      preferredTypes = ['side', 'function_open', '45_deg', 'front'];
+      // A06: 零靠墙闭合侧面剪影，优先 side (正侧面)，其次 45_deg，绝不优先 function_open
+      preferredTypes = ['side', '45_deg', 'front'];
     } else if (code === 'A08' || code.includes('RECLINER') || code.includes('FUNCTION') || code.includes('DETAIL')) {
-      // A08: 五档功能展开/特写，优先 function_open (展开态)，其次 detail (工艺特写)，再次 front
-      preferredTypes = ['function_open', 'detail', '45_deg', 'front'];
+      // A08: 单椅展示，优先 front / 45_deg / side
+      preferredTypes = ['front', '45_deg', 'side', 'detail'];
     } else if (code === 'A04' || code.includes('COMPANION') || code === 'A05') {
       // A04/A05: 2/3透视侧景，优先 45_deg，其次 side，再次 front
       preferredTypes = ['45_deg', 'front', 'side'];
@@ -317,19 +318,38 @@ export class ShootCompiler {
       negativeFramingConstraints.push('glossy leather', 'shiny patent leather', 'cowhide texture');
     }
 
-    // 全局功能位展开与收起状态铁律：
-    // 在未加入模特情况下 (shot.hasHumanPass === false)，功能沙发的功能位绝对不打开，必须保持整洁收起关闭状态！
-    // 只有在明确加入模特 (shot.hasHumanPass === true) 且存在舒展需求时才允许展开对应座位。
+    // 全局功能位闭合状态铁律（每一组镜头严格执行）：
+    // 所有镜头（每一组机位）无论是否有模特，默认产品功能位置（电动脚踏、展开位、后仰机械结构）必须保持关闭收起形态！
+    // 坚决杜绝脚踏弹开、伸展或后仰展开。
     const isHumanPassActive = Boolean(shot.hasHumanPass);
-    if (!isHumanPassActive) {
+    const isFunctionalClosed = input.functionalPositionState !== 'open';
+    const functionalPostureMandate = isFunctionalClosed
+      ? 'CRITICAL MANDATE (EVERY SHOT): ALL SOFA AND CHAIR FUNCTIONAL MOTION MECHANISMS STRICTLY REMAIN CLOSED, fully retracted, and neatly tucked flush under the base in standard upright seated configuration. Motorized footrests are completely closed and flush. Absolutely NO deployed footrest, NO extended leg rest, NO open recliner, NO reclining backrest'
+      : 'FUNCTIONAL MOTION DIRECTIVE: Functional recliners and footrests may be opened if appropriate.';
+
+    if (isFunctionalClosed) {
       negativeFramingConstraints.push(
         'deployed footrest',
         'extended footrest',
         'popped leg rest',
         'open recliner mechanism',
-        'reclining sofa without people',
         'unretracted leg rest',
-        'open motorized mechanism'
+        'open motorized mechanism',
+        'unfolded footrest',
+        'reclining sofa',
+        'extended foot stool',
+        'deployed recliner',
+        'popped-out foot support',
+        'feet support deployed',
+        'unfolded mechanism',
+        'footrest sticking out',
+        'reclined backrest',
+        '展开的脚踏',
+        '伸出的脚托',
+        '功能位展开',
+        '靠背倾斜后仰展开',
+        '伸展的脚垫',
+        '脚托弹出'
       );
     }
 
@@ -506,22 +526,21 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
         'inpainting distant sofa'
       );
     } else if (shot.templateCode === 'A06') {
-      const reclineMandate = isHumanPassActive
-        ? 'with backrest deeply reclined (140-160 degrees) and motorized footrest smoothly deployed forward supporting relaxed lady wearing white over-ear headphones listening to music with arms naturally raised in effortless groove'
-        : 'with backrest deeply reclined demonstrating seamless sliding forward mechanism in pristine showroom condition (strictly unoccupied, empty room, zero humans)';
+      const closedZeroWallMandate =
+        'hero sofa strictly remains in standard pristine CLOSED upright configuration: motorized footrests are completely retracted and tucked underneath the base, backrest upright in standard closed form, ZERO deployed footrest, strictly closed showroom posture flush against the solid backdrop wall (<5cm gap)';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO MOTION MECHANISM ASSET (WALL-MOUNTED): Strictly construct the hero sofa from the isolated 3-seater product asset ground truth. Showcase MANWAH signature ZERO-WALL CLEARANCE mechanism IN WALL-MOUNTED LIVING ROOM DISPLAY: the sofa is positioned flush against a solid architectural backdrop wall (wood fluting paneling and shelves). When reclined, the seating unit glides smoothly FORWARD on internal motion tracks, keeping virtually ZERO gap (<5cm flush alignment) against the wall without requiring distance or leaving awkward wall gaps! Full side profile highlights the exterior armrest covered in diamond-quilted leather craftsmanship with circular metal buttons and bottom precision motion tracks. DO NOT clone low-res master sofa pixels.
+- HERO MECHANISM ASSET (WALL-MOUNTED CLOSED POSTURE): Strictly construct the hero sofa from the isolated 3-seater product asset ground truth. Showcase MANWAH signature ZERO-WALL CLEARANCE architecture IN WALL-MOUNTED LIVING ROOM DISPLAY: the sofa is positioned flush against a solid architectural backdrop wall (wood fluting paneling and shelves) with virtually ZERO gap (<5cm flush alignment) against the wall! The functional positions strictly remain CLOSED with footrests fully tucked in and backrest upright in standard closed showroom posture. Full side profile highlights the exterior armrest covered in diamond-quilted leather craftsmanship with circular metal buttons and neat bottom trim. DO NOT clone low-res master sofa pixels.
 - SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (wood paneling on right, floating shelves with art decor, left expansive panoramic window overlooking European/historic city horizon, and low-profile marble coffee table edge in foreground) from the spatial scene master.`;
 
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL MOTION PROFILE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
+        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE motion reclining mechanism in wall-mounted setting: hero sofa seamlessly sliding forward with zero gap against the backdrop wall (${reclineMandate}), highlighting full side armrest diamond-quilted craftsmanship and expansive window daylight backdrop.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and expansive window daylight backdrop.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL MOTION PROFILE VIEW (Studio Sample Zero-Wall Motion Profile - Reference 4)]:
+        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Studio Sample Zero-Wall Profile - Reference 4)]:
 ${linkageDirective}
-Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4) with 80-to-90 degree side profile perspective in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE motion reclining mechanism in wall-mounted setting: hero sofa seamlessly sliding forward with zero gap (<5cm) against the solid backdrop wall (${reclineMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and expansive window daylight backdrop.`;
+Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4) with 80-to-90 degree side profile perspective in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the solid backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and expansive window daylight backdrop.`;
       }
       negativeFramingConstraints.push(
         'flat frontal angle',
@@ -529,6 +548,11 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4
         'large gap between sofa backrest and wall',
         'detached from back wall',
         'floating sofa off wall',
+        'deployed footrest',
+        'extended footrest',
+        'open recliner mechanism',
+        'reclined backrest',
+        'popped leg rest',
         'stiff emotionless posing',
         'crooked perspective',
         'cloning low-res sofa from master image',
@@ -740,6 +764,7 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       ...cameraDirectives.semanticClauses,
       cameraDirectives.framingDirective,
       aspectDirective,
+      functionalPostureMandate,
       styleDna.styleMandateClause,
       ...intentClauses,
       ...mustIncludeClauses,

@@ -49,7 +49,10 @@ export const PosterDownloadModal: React.FC<PosterDownloadModalProps> = ({
   sourceAspectRatio = '3:4'
 }) => {
   const [format, setFormat] = useState<PosterExportFormat>('png');
-  const [resolution, setResolution] = useState<PosterExportResolution>('native');
+  const [resolution, setResolution] = useState<PosterExportResolution>(() => {
+    if (sourceAspectRatio === '4:3') return 'ecommerce_4_3';
+    return 'native';
+  });
   // 如果底层图片本身已是带字海报（withText 为 true 且无独立纯净底图），默认关闭平台模板文字，彻底杜绝双重文案粘连
   const isAiPosterWithoutSeparateBg = Boolean(withText || (!cleanBackgroundUrl && (!textLayers || textLayers.length === 0)));
   const [includeText, setIncludeText] = useState<boolean>(!isAiPosterWithoutSeparateBg);
@@ -304,7 +307,7 @@ export const PosterDownloadModal: React.FC<PosterDownloadModalProps> = ({
                   当前画布比例: {sourceAspectRatio}
                 </span>
               </label>
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 <button
                   type="button"
                   onClick={() => setResolution('native')}
@@ -318,7 +321,26 @@ export const PosterDownloadModal: React.FC<PosterDownloadModalProps> = ({
                   <div className="text-[11px] text-stone-400 font-mono mt-0.5">
                     1536 × 2048
                   </div>
-                  <div className="text-[10px] text-stone-500 mt-1">保持 AI 原画比例</div>
+                  <div className="text-[10px] text-stone-500 mt-1">保持原画比例</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setResolution('ecommerce_4_3')}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    resolution === 'ecommerce_4_3'
+                      ? 'bg-[#B28C5A]/15 border-[#B28C5A] text-white'
+                      : 'bg-stone-800/40 border-stone-700 text-stone-300 hover:bg-stone-800'
+                  }`}
+                >
+                  <div className="font-bold text-xs flex items-center gap-1">
+                    <Printer className="w-3 h-3 text-[#B28C5A]" />
+                    商业横版 4:3
+                  </div>
+                  <div className="text-[11px] text-[#D8B48A] font-mono mt-0.5">
+                    2400 × 1800
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-1">300DPI 标准横图</div>
                 </button>
 
                 <button
@@ -332,12 +354,12 @@ export const PosterDownloadModal: React.FC<PosterDownloadModalProps> = ({
                 >
                   <div className="font-bold text-xs flex items-center gap-1">
                     <Printer className="w-3 h-3 text-[#B28C5A]" />
-                    商业电商 3:4
+                    商业竖版 3:4
                   </div>
                   <div className="text-[11px] text-[#D8B48A] font-mono mt-0.5">
                     2100 × 2800
                   </div>
-                  <div className="text-[10px] text-stone-500 mt-1">300DPI 印刷规范</div>
+                  <div className="text-[10px] text-stone-500 mt-1">300DPI 电商竖屏</div>
                 </button>
 
                 <button

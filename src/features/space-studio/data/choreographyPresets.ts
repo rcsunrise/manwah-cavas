@@ -333,7 +333,7 @@ export const STUDIO_CHOREOGRAPHY_TEMPLATES: StudioChoreographyTemplate[] = [
     name: '【零靠墙展开 · 耳机沉浸仰躺放松】',
     badge: '1人静谧沉浸 · 16:9零靠墙',
     targetShotCode: 'A06',
-    targetShotName: 'A06 零靠墙功能展开景',
+    targetShotName: 'A06 零靠墙功能闭合侧景',
     count: 1,
     mode: 'custom',
     recommendedAspect: '16:9' as any,

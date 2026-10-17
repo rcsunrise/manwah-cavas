@@ -74,7 +74,7 @@ export function getProductFrustumStatus(
     return 'excluded';
   }
 
-  // A06: 零靠墙功能展开景 (主沙发 ② 展开 focused)
+  // A06: 零靠墙功能闭合侧景 (主沙发 ② 闭合贴墙 focused)
   if (shotCode === 'A06') {
     if (annotationIndex === 2) return 'focused';
     if (annotationIndex === 5 || annotationIndex === 4 || annotationIndex === 13) return 'context';

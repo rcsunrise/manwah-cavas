@@ -44,6 +44,16 @@ export interface AgentMessage {
   error_code?: string;
   conversation_id?: string;
   localAssetCard?: LocalAssetSearchCardData;
+  posterDraftCard?: {
+    nodeId: string;
+    screenTitle: string;
+    aspectRatio: string;
+    dimensions: string;
+    imageUrl: string;
+    layersCount: number;
+    reviewStatus: 'pendingReview' | 'approved' | 'rejected';
+    textLayers?: CanvasTextLayer[];
+  };
 }
 
 export interface WelcomeNodeData extends Record<string, unknown> {

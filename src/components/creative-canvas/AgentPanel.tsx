@@ -39,7 +39,8 @@ import {
   Trash,
   FolderOpen,
   Globe,
-  Search
+  Search,
+  Download
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord } from '../../types/creativeCanvas';
@@ -48,6 +49,7 @@ import { CopyWorkspacePanel } from './CopyWorkspacePanel';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
 import { localAssetService } from '../../services/localAssetService';
+import { downloadPosterImage } from '../../utils/posterExportHelper';
 
 interface AgentPanelProps {
   messages: AgentMessage[];
@@ -135,6 +137,7 @@ interface AgentPanelProps {
   onRetryMessage?: () => void;
   onCreateNewConversation?: () => void;
   onSelectConversation?: (convId: string) => void;
+  onChangeConversationModel?: (model: string) => void;
 }
 
 export interface EngineConfigSelectorProps {
@@ -388,7 +391,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onStopGenerating,
   onRetryMessage,
   onCreateNewConversation,
-  onSelectConversation
+  onSelectConversation,
+  onChangeConversationModel
 }) => {
   const [activeTab, setActiveTab] = useState<'setup' | 'render' | 'chat' | 'typography'>('setup');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
@@ -742,6 +746,19 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Agent G Model Selector */}
+          <select
+            value={currentConversation?.model || 'gemini-2.5-flash'}
+            onChange={(e) => onChangeConversationModel?.(e.target.value)}
+            className="text-[10px] font-bold bg-[#FAF8F5] text-[#8C6F43] hover:text-[#B28C5A] px-2 py-1 rounded-lg border border-[#B28C5A]/40 outline-none max-w-[150px] truncate cursor-pointer transition-colors"
+            title="选择 Agent G 思考与推理模型"
+          >
+            <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
+            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash</option>
+            <option value="gpt-6">👑 GPT-6 Astra</option>
+            <option value="gpt-5.5">💎 GPT-5.5</option>
+          </select>
+
           {conversationsList.length > 1 && (
             <select
               value={currentConversation?.id || ''}
@@ -2146,6 +2163,85 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 4:3 Poster Draft Card */}
+              {msg.posterDraftCard && (
+                <div className="mt-3 p-3 bg-gradient-to-br from-[#1E1C1A] to-[#2B2724] text-white rounded-xl border border-[#B28C5A]/50 space-y-2.5 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[#E5C9A6] flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#B28C5A]" />
+                      4:3 意式轻奢海报 · 可编辑草稿
+                    </span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      🟡 待审核草稿
+                    </span>
+                  </div>
+
+                  <div className="flex gap-2.5 items-center bg-black/40 p-2 rounded-lg border border-white/10">
+                    {msg.posterDraftCard.imageUrl && (
+                      <div className="w-20 h-15 rounded overflow-hidden bg-stone-900 shrink-0 border border-white/20">
+                        <img
+                          src={msg.posterDraftCard.imageUrl}
+                          alt="海报草稿预览"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <p className="text-[11px] font-bold truncate text-white">
+                        {msg.posterDraftCard.screenTitle}
+                      </p>
+                      <div className="flex items-center gap-2 text-[9px] text-stone-300 font-mono">
+                        <span>规格: 2400 × 1800 (4:3)</span>
+                        <span>·</span>
+                        <span>{msg.posterDraftCard.layersCount} 个独立图层</span>
+                      </div>
+                      <p className="text-[9px] text-[#C4BDB5] truncate">
+                        品牌标 · 中文大标 · 卖点标签 · 参数栏
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent('canvas:select-node', {
+                            detail: { nodeId: msg.posterDraftCard!.nodeId }
+                          })
+                        );
+                      }}
+                      className="flex-1 py-1.5 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 border border-white/15 cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3 text-[#E5C9A6]" />
+                      <span>画布定位编辑</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await downloadPosterImage({
+                            imageUrl: msg.posterDraftCard!.imageUrl,
+                            textLayers: msg.posterDraftCard!.textLayers,
+                            screenTitle: msg.posterDraftCard!.screenTitle,
+                            resolution: 'ecommerce_4_3',
+                            format: 'png',
+                            includeText: true
+                          });
+                        } catch (e: any) {
+                          alert('导出海报失败: ' + (e?.message || '网络异常'));
+                        }
+                      }}
+                      className="flex-1 py-1.5 bg-[#B28C5A] hover:bg-[#9E7A4A] text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>导出 4:3 无损海报</span>
+                    </button>
                   </div>
                 </div>
               )}

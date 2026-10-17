@@ -69,11 +69,11 @@ describe('产品多视角工业真值联动与机位自适应锁定 (Multi-View 
     expect(matched.reference?.publicUrl).toContain('side.webp');
   });
 
-  it('A08 镜头 (五档电动展开与工艺特写) 严格优选 function_open 展开态参考图', () => {
+  it('A08 镜头 (单椅展示与工艺特写) 遵循全组闭合设定优先 front/45_deg 标准闭合参考图，严禁默认优选展开态', () => {
     const matched = ShootCompiler.selectBestProductReferenceForShot(mockProductWithMultiViews, 'A08');
-    expect(matched.viewType).toBe('function_open');
-    expect(matched.reference?.id).toBe('ref-open');
-    expect(matched.reference?.publicUrl).toContain('open.webp');
+    expect(matched.viewType).toBe('front');
+    expect(matched.reference?.id).toBe('ref-front');
+    expect(matched.reference?.publicUrl).toContain('front.webp');
   });
 
   it('A00 空间母版与 A01 正大视角默认优选 front 正视图', () => {

@@ -1253,7 +1253,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       if (activeShot.templateCode === 'A09') {
                         assetTargetName = '独立餐桌椅、餐边柜、移动餐车等客餐厅配套产品资产';
                       } else if (activeShot.templateCode === 'A06') {
-                        assetTargetName = '独立 3人位主沙发产品资产（客厅空间靠墙展示·体现零靠墙展开）';
+                        assetTargetName = '独立 3人位主沙发产品资产（客厅空间靠墙展示·体现零靠墙闭合贴墙形态）';
                       } else if (activeShot.templateCode === 'A08') {
                         assetTargetName = '独立单人位电动功能沙发资产（摆放于母版空旷开阔的客厅中央）';
                       } else if (['A03', 'A04', 'A05'].includes(activeShot.templateCode)) {

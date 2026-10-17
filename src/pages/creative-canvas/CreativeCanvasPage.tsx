@@ -132,6 +132,7 @@ export default function CreativeCanvasPage() {
     handleRetryMessage,
     handleCreateNewConversation,
     handleSelectConversation,
+    handleChangeConversationModel,
     activeProject,
     planTargetAudience,
     setPlanTargetAudience,
@@ -731,6 +732,7 @@ export default function CreativeCanvasPage() {
             onRetryMessage={handleRetryMessage}
             onCreateNewConversation={handleCreateNewConversation}
             onSelectConversation={handleSelectConversation}
+            onChangeConversationModel={handleChangeConversationModel}
             agentRun={agentRun}
             isPlanGenerating={isPlanGenerating}
             planError={planError}

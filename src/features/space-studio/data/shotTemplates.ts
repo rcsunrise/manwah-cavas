@@ -170,18 +170,18 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
   {
     id: 'tpl-a06',
     code: 'A06',
-    name: '零靠墙功能展开景 (Zero-Wall Motion Profile View)',
-    alignmentSample: 'Studio Sample Zero-Wall Motion Profile / Lateral Lounge',
-    studioCategory: '零靠墙核心技术与展开侧影展示 (靠墙展示)',
-    workflowRole: '35mm 零靠墙侧向展开透视',
+    name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile View)',
+    alignmentSample: 'Studio Sample Zero-Wall Profile / Lateral View',
+    studioCategory: '零靠墙技术与侧影展示 (靠墙展示)',
+    workflowRole: '35mm 零靠墙侧向闭合透视',
     recommendedAspectRatio: '16:9',
     intent: {
       intentCode: 'SI-07',
-      name: '零靠墙技术展示 (Zero-Wall Clearance Profile)',
+      name: '零靠墙贴墙侧向展示 (Zero-Wall Clearance Profile)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '大侧向 80°~90° 侧平视低机位（参考图示4），精准展现客厅中“靠墙摆放”的 3人位主沙发——展示芝华仕核心“零靠墙”前滑机械技术：靠背完全下倾而贴墙零间隙（<5cm），底座向前平滑伸展，展示扶手侧面菱格绗缝高定工艺、圆形金属控制键与舒展展开流线'
+      description: '大侧向 80°~90° 侧平视低机位（参考图示4），精准展现客厅中“靠墙摆放”的 3人位主沙发——展示芝华仕核心“零靠墙”技术：贴墙零间隙（<5cm），产品功能位置严格保持关闭收起形态，靠背标准直立闭合，脚踏完全收拢，侧平视展现沙发侧面高定菱格绗缝与圆形控制键'
     },
     defaultCamera: {
       lensMm: 35,
@@ -191,10 +191,10 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_mounting', 'side_armrest_quilting_detail', 'circular_motion_button', 'fully_deployed_footrest', 'panoramic_window_backdrop'],
-      mustExclude: ['gap_away_from_wall', 'detached_from_back_wall', 'flat_frontal_view', 'crooked_perspective', 'rigid_stiff_models']
+      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_mounting', 'side_armrest_quilting_detail', 'circular_motion_button', 'fully_retracted_closed_footrest', 'panoramic_window_backdrop'],
+      mustExclude: ['gap_away_from_wall', 'detached_from_back_wall', 'deployed_footrest', 'extended_footrest', 'open_recliner', 'flat_frontal_view', 'crooked_perspective', 'rigid_stiff_models']
     },
-    description: '焦段 35mm，低视点机位高度 90cm（参考图示4坐姿眼平），侧向 80° 透视，直观呈现主沙发贴墙零距离前滑展开的零靠墙黑科技，侧面绗缝工艺与靠墙零间隙一览无余'
+    description: '焦段 35mm，低视点机位高度 90cm（参考图示4坐姿眼平），侧向 80° 透视，直观呈现主沙发贴墙零距离（<5cm）闭合常态，侧面绗缝工艺与靠墙零间隙一览无余，功能位严格保持关闭'
   },
   {
     id: 'tpl-a07',
