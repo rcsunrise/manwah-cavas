@@ -13,7 +13,6 @@ import {
   Dna,
   LayoutGrid,
   Film,
-  RotateCw,
   RefreshCw,
   Sliders,
   ChevronRight,
@@ -23,21 +22,17 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  MessageSquare,
   Play,
   Pause,
   ImagePlus,
   RotateCcw,
   Layers,
-  ShieldAlert,
   Eye,
   Type,
   FileText,
-  Plus,
   Save,
   Bookmark,
   Trash,
-  FolderOpen,
   Globe,
   Search,
   Download
@@ -45,7 +40,6 @@ import {
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord } from '../../types/creativeCanvas';
 import { ProductVisualDNA, AgentRun } from '../../types';
-import { CopyWorkspacePanel } from './CopyWorkspacePanel';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
 import { localAssetService } from '../../services/localAssetService';
@@ -160,57 +154,37 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
       id: 'gemini-nano-banana-2.1-preview',
       icon: '🍌',
       title: 'Nano Banana 2.1',
-      subtitle: '极速响应·轻量多图融合(系统默认)',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
-    },
-    {
-      id: 'openai/gpt-image-2-c',
-      icon: '🪐',
-      title: 'GPT 2-c',
-      subtitle: '高一致性母版',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
-    },
-    {
-      id: 'openai/gpt-image-2.5-flare-c',
-      icon: '🔥',
-      title: 'GPT 2.5 Flare',
-      subtitle: '高保真原画·局部Mask重绘',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
-    },
-    {
-      id: 'openai/gpt-image-2.5-sunburst-c',
-      icon: '☀️',
-      title: 'GPT 2.5 Sunburst',
-      subtitle: '旗舰高光·质感重绘',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
-    },
-    {
-      id: 'openai/gpt-image-2',
-      icon: '🌌',
-      title: 'GPT Image 2',
-      subtitle: '系统默认·电影级写实',
-      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
+      subtitle: '极速响应 · 轻量多图融合',
+      badge: '系统推荐',
+      badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md ring-2 ring-[#B28C5A]/30'
     },
     {
       id: 'gemini-3.1-flash-image',
       icon: '⚡',
       title: 'Gemini 3.1 Flash',
-      subtitle: '极速高精·多模态',
-      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md'
+      subtitle: '极速高精 · 新闪电多模态',
+      badge: '电商主推',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md ring-2 ring-[#B28C5A]/30'
     },
     {
       id: 'google/gemini-3-pro-image',
-      icon: '✨',
+      icon: '💎',
       title: 'Gemini 3 Pro',
-      subtitle: '复杂光影旗舰',
-      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
+      subtitle: '商业级光影旗舰 · 4K画质',
+      badge: '极致画质',
+      badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
     },
     {
-      id: 'openai/gpt-image-2-all',
-      icon: '🧩',
-      title: 'GPT 2-all',
-      subtitle: '全能写实增强',
-      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md'
+      id: 'openai/gpt-image-2',
+      icon: '🌌',
+      title: 'GPT Image 2.5',
+      subtitle: '电影级写实 · 高保真备用',
+      badge: '高保真渠道',
+      badgeColor: 'bg-stone-100 text-stone-700 border-stone-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
     }
   ];
 
@@ -234,42 +208,67 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
         )}
       </div>
 
-      {/* Models Grid */}
-      <div className="space-y-1">
-        <div className="grid grid-cols-4 gap-1.5">
-          {models.map(m => {
-            const isSelected =
-              selectedModel === m.id ||
-              (m.id === 'gemini-3.1-flash-image' &&
-                (selectedModel === 'gemini-3.1-flash-image' || selectedModel === 'gemini-3.1-flash-image-preview')) ||
-              (m.id === 'gemini-nano-banana-2.1-preview' &&
-                (selectedModel === 'gemini-nano-banana-2.1-preview' || selectedModel === 'nano-banana-2.1'));
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setSelectedModel(m.id)}
-                className={`p-1.5 rounded-xl text-center border transition-all ${
-                  isSelected
-                    ? m.activeColor
-                    : 'bg-white border-[#E5E0D8] text-stone-700 hover:border-[#B28C5A]'
+      {/* Models Grid (2 Columns, Non-truncated, Clean Industrial Layout) */}
+      <div className="grid grid-cols-2 gap-2">
+        {models.map(m => {
+          const isSelected =
+            selectedModel === m.id ||
+            (m.id === 'gemini-3.1-flash-image' &&
+              (selectedModel === 'gemini-3.1-flash-image' || selectedModel === 'gemini-3.1-flash-image-preview')) ||
+            (m.id === 'gemini-nano-banana-2.1-preview' &&
+              (selectedModel === 'gemini-nano-banana-2.1-preview' || selectedModel === 'nano-banana-2.1')) ||
+            (m.id === 'google/gemini-3-pro-image' &&
+              (selectedModel === 'gemini-3-pro-image' || selectedModel === 'google/gemini-3-pro-image' || selectedModel === 'gemini-3-pro-image-preview')) ||
+            (m.id === 'openai/gpt-image-2' && (selectedModel.includes('gpt-image')));
+
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setSelectedModel(m.id)}
+              className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer relative flex flex-col justify-between ${
+                isSelected
+                  ? m.activeColor
+                  : 'bg-white border-[#E5E0D8] text-stone-700 hover:border-[#B28C5A] hover:shadow-xs'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1 w-full">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-base shrink-0">{m.icon}</span>
+                  <span className="text-[11px] font-bold leading-tight truncate">{m.title}</span>
+                </div>
+                <span
+                  className={`text-[8px] px-1.5 py-0.2 rounded-full font-bold border shrink-0 ${
+                    isSelected ? 'bg-white/20 text-white border-white/30' : m.badgeColor
+                  }`}
+                >
+                  {m.badge}
+                </span>
+              </div>
+              <div
+                className={`text-[9px] mt-1.5 leading-snug line-clamp-1 ${
+                  isSelected ? 'text-white/85' : 'text-stone-400'
                 }`}
               >
-                <div className="text-sm mb-0.5">{m.icon}</div>
-                <div className="text-[10px] font-bold leading-tight truncate">{m.title}</div>
-                <div className="text-[8px] opacity-75 leading-tight truncate mt-0.5">{m.subtitle}</div>
-              </button>
-            );
-          })}
-        </div>
+                {m.subtitle}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Resolution */}
-      <div className="space-y-1">
-        <span className="text-[10px] text-stone-400 font-bold block">渲染精度 (Resolution)</span>
+      <div className="space-y-1 pt-1 border-t border-[#E5E0D8]/60">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="text-stone-400 font-bold">渲染精度 (Resolution)</span>
+          <span className="text-[9px] font-mono text-stone-400">
+            {selectedResolution === '1K' && '1024×1024 (快速)'}
+            {selectedResolution === '2K' && '2048×2048 (高精推荐)'}
+            {selectedResolution === '4K' && '4096×4096 (旗舰超清)'}
+          </span>
+        </div>
         <div className="flex gap-1.5">
           {(['1K', '2K', '4K'] as const).map(r => {
-            // 仅旧版 gemini-2.5-flash-image 限制 1K，而 GPT 2.5 Flare、GPT 2.5 Sunburst、Nano Banana 2.1 均完全支持 1K/2K/4K 旗舰画质
             const isOldGemini25 = selectedModel === 'gemini-2.5-flash-image' || selectedModel === 'google/gemini-2.5-flash-image';
             const isDisabled = isOldGemini25 && (r === '2K' || r === '4K');
             const isSelected = selectedResolution === r;
@@ -285,7 +284,7 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
                     setSelectedModel('gemini-3.1-flash-image');
                   }
                 }}
-                className={`flex-1 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
                   isDisabled
                     ? 'bg-stone-50 border-stone-200 text-stone-300 cursor-not-allowed'
                     : isSelected
@@ -375,19 +374,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onCancelBatch,
   onRetryFailedBatch,
   onSelectSceneIndex,
-  onOpenAssetVersionsModal,
-  dnaCode,
   productDnaVersionCode,
   productDnaVersionId,
-  dnaVersions = [],
-  onSelectDnaVersion,
   projectId,
   canvasId,
   assetVersionId,
   currentConversation,
   conversationsList = [],
   isStreaming = false,
-  streamError,
   onStopGenerating,
   onRetryMessage,
   onCreateNewConversation,
@@ -397,7 +391,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'setup' | 'render' | 'chat' | 'typography'>('setup');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
   const [inputValue, setInputValue] = useState('');
-  const [feedbackInput, setFeedbackInput] = useState('');
+  const [feedbackInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [internalModel, setInternalModel] = useState<string>('gemini-3.1-flash-image');
@@ -1475,1090 +1469,958 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                   <p><span className="text-stone-400 font-bold">目标受众：</span>{agentRun.plan.targetAudience}</p>
                   <p><span className="text-stone-400 font-bold">视觉调性：</span>{agentRun.plan.overallStyle}</p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('render')}
+                  className="w-full mt-2 py-2 px-3 bg-[#FAF8F5] hover:bg-[#F4EFE6] text-[#8C6F43] border border-[#B28C5A]/40 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#B28C5A]" />
+                  <span>前往渲染引擎出图</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             )}
           </div>
         )}
 
-
-
-
-        {/* Selected Node Inspector View inside Right Panel */}
-        {(selectedNodeId?.startsWith('plan-node-') || selectedNodeId === 'nine-grid-plan-node') && agentRun?.plan && (
-          <div className="p-4 bg-white rounded-2xl border border-[#B28C5A] shadow-md space-y-3">
-          <div className="flex items-center justify-between border-b border-[#E5E0D8] pb-2">
-            <div className="flex items-center gap-2 text-[#2C2A29]">
-              <LayoutGrid className="w-4 h-4 text-[#B28C5A]" />
-              <span className="font-bold text-sm">全案企划总览</span>
-            </div>
-            <span className="text-[10px] font-bold bg-[#10B981]/10 text-[#10B981] px-2 py-0.5 rounded-full">
-              全案就绪
-            </span>
-          </div>
-
-          <div className="space-y-1.5 text-xs text-stone-700">
-            <p><span className="text-stone-400 font-bold">企划主题：</span>{agentRun.plan.themeTitle}</p>
-            <p><span className="text-stone-400 font-bold">目标受众：</span>{agentRun.plan.targetAudience}</p>
-            <p><span className="text-stone-400 font-bold">视觉调性：</span>{agentRun.plan.overallStyle}</p>
-          </div>
-
-          <div className="pt-2 border-t border-[#E5E0D8]/60 space-y-3">
+        {/* Lane 2: Render Engine & Scene Generation (渲染引擎) */}
+        {activeTab === 'render' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-stone-400">共 9 屏视角脚本</span>
-              <button
-                onClick={() => onGenerateNineGridPlan()}
-                disabled={isPlanGenerating}
-                className="flex items-center gap-1 text-xs font-bold text-[#B28C5A] hover:text-[#8C6F43] disabled:opacity-50"
-              >
-                <RotateCw className="w-3 h-3" />
-                <span>重新策划全案</span>
-              </button>
+              <span className="text-xs font-bold text-[#2C2A29] flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-[#B28C5A]" />
+                渲染引擎与出图控制
+              </span>
+              <span className="text-[10px] text-stone-500 font-mono">Lane 2 · Render</span>
             </div>
 
-            {/* Model & Resolution selector */}
-            <EngineConfigSelector
-              selectedModel={model}
-              setSelectedModel={setModel}
-              selectedResolution={resolution}
-              setSelectedResolution={setResolution}
-              onPreviewGptImage={onPreviewGptImage}
-            />
-
-            {/* C3B Primary Entry Button */}
-            <button
-              onClick={() => onTriggerBatchMissingModal?.()}
-              disabled={batchState?.status === 'running'}
-              className="w-full py-2.5 px-4 bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5532] text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {batchState?.status === 'running' ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>全案批量生成进行中...</span>
-                </>
-              ) : (
-                <>
-                  <ImagePlus className="w-4 h-4" />
-                  <span>生成缺失画面 (全案受控队列)</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* C3B Batch Task Queue Control Panel */}
-          {(batchState || queueItems.length > 0) && (
-            <div className="pt-3 border-t border-[#E5E0D8] space-y-3 bg-[#FAF8F5] p-3 rounded-xl border border-[#E5E0D8]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-[#B28C5A]" />
-                  <span className="font-bold text-xs text-[#2C2A29]">受控并发任务队列 (Max=2)</span>
+            {!agentRun?.plan ? (
+              <div className="p-6 bg-white rounded-2xl border border-[#E5E0D8] text-center space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center mx-auto border border-[#E5E0D8]">
+                  <Sparkles className="w-6 h-6" />
                 </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white border border-[#E5E0D8] text-stone-700">
-                  {batchState?.status === 'running' && '运行中'}
-                  {batchState?.status === 'paused' && '已暂停'}
-                  {batchState?.status === 'completed' && '全部完成'}
-                  {batchState?.status === 'partial_failed' && '有失败项'}
-                  {batchState?.status === 'cancelled' && '已取消'}
-                </span>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-sm text-[#2C2A29]">尚未生成视觉企划方案</h3>
+                  <p className="text-xs text-stone-500 leading-relaxed max-w-[280px] mx-auto">
+                    请先在【企划配置】中上传产品主角图并生成企划，即可在此调度 4 款核心工业模型批量生成画面。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('setup')}
+                  className="py-2 px-4 bg-[#B28C5A] hover:bg-[#9E7A4A] text-white rounded-xl text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  <span>前往企划配置</span>
+                </button>
               </div>
-
-              {/* Stats overview */}
-              <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
-                <div className="bg-white p-1.5 rounded-lg border border-[#E5E0D8]">
-                  <span className="text-stone-400 block">排队中</span>
-                  <span className="font-bold text-stone-700 font-mono">
-                    {queueItems.filter(i => i.status === 'queued' || i.status === 'pending').length}
-                  </span>
-                </div>
-                <div className="bg-white p-1.5 rounded-lg border border-amber-200">
-                  <span className="text-amber-600 block">生成中</span>
-                  <span className="font-bold text-amber-700 font-mono">
-                    {queueItems.filter(i => i.status === 'generating').length}
-                  </span>
-                </div>
-                <div className="bg-white p-1.5 rounded-lg border border-emerald-200">
-                  <span className="text-emerald-600 block">已完成</span>
-                  <span className="font-bold text-emerald-700 font-mono">
-                    {queueItems.filter(i => i.status === 'success').length}
-                  </span>
-                </div>
-                <div className="bg-white p-1.5 rounded-lg border border-rose-200">
-                  <span className="text-rose-600 block">失败</span>
-                  <span className="font-bold text-rose-700 font-mono">
-                    {queueItems.filter(i => i.status === 'failed').length}
-                  </span>
-                </div>
-              </div>
-
-              {/* Controls */}
-              <div className="flex items-center gap-1.5 pt-1">
-                {batchState?.status === 'running' ? (
-                  <button
-                    onClick={() => onPauseBatch?.()}
-                    className="flex-1 py-1.5 px-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-amber-300 transition-colors"
-                  >
-                    <Pause className="w-3 h-3" />
-                    <span>暂停队列</span>
-                  </button>
-                ) : batchState?.status === 'paused' ? (
-                  <button
-                    onClick={() => onResumeBatch?.()}
-                    className="flex-1 py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-300 transition-colors"
-                  >
-                    <Play className="w-3 h-3" />
-                    <span>继续队列</span>
-                  </button>
-                ) : null}
-
-                {queueItems.some(i => i.status === 'queued' || i.status === 'pending' || i.status === 'generating') && (
-                  <button
-                    onClick={() => onCancelBatch?.()}
-                    className="flex-1 py-1.5 px-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-stone-300 transition-colors"
-                  >
-                    <XCircle className="w-3 h-3" />
-                    <span>取消排队</span>
-                  </button>
-                )}
-
-                {queueItems.some(i => i.status === 'failed') && (
-                  <button
-                    onClick={() => onRetryFailedBatch?.()}
-                    className="flex-1 py-1.5 px-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-rose-300 transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>重试失败项</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Scene Queue Grid Detail */}
-              <div className="space-y-1 text-[10px] max-h-36 overflow-y-auto pt-1 border-t border-[#E5E0D8]/60">
-                {queueItems.map(item => (
-                  <div
-                    key={item.sceneNumber}
-                    className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-[#E5E0D8]"
-                  >
-                    <span className="font-bold text-[#2C2A29]">第 {item.sceneNumber} 屏分镜</span>
-                    <div className="flex items-center gap-1">
-                      {item.status === 'generating' && (
-                        <span className="text-amber-700 font-medium flex items-center gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin" /> 生成中...
-                        </span>
-                      )}
-                      {item.status === 'queued' && <span className="text-stone-400">排队中</span>}
-                      {item.status === 'pending' && <span className="text-stone-400 font-mono">待处理</span>}
-                      {item.status === 'success' && (
-                        <span className="text-emerald-600 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> 已完成
-                        </span>
-                      )}
-                      {item.status === 'failed' && (
-                        <span className="text-rose-600 font-bold flex items-center gap-1" title={item.error?.message}>
-                          <XCircle className="w-3 h-3" /> 失败
-                        </span>
-                      )}
-                      {item.status === 'cancelled' && <span className="text-stone-400">已取消</span>}
+            ) : (
+              <>
+                {/* Scene Selector Pills (分镜快速切换导航条) */}
+                {agentRun.plan.screens && agentRun.plan.screens.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-stone-500 font-bold">
+                      <span>切换聚焦分镜</span>
+                      <span className="font-mono text-[10px] text-[#B28C5A]">
+                        当前: 第 {selectedScreen?.screenIndex || selectedSceneIndex || 1} 屏
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+                      {agentRun.plan.screens.map(s => {
+                        const isCurrent = (selectedScreen?.screenIndex || selectedSceneIndex || 1) === s.screenIndex;
+                        return (
+                          <button
+                            key={s.screenIndex}
+                            type="button"
+                            onClick={() => onSelectSceneIndex?.(s.screenIndex)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 flex items-center gap-1 cursor-pointer ${
+                              isCurrent
+                                ? 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-xs'
+                                : 'bg-white text-stone-600 border-[#E5E0D8] hover:border-[#B28C5A]'
+                            }`}
+                          >
+                            <span>第 {s.screenIndex} 屏</span>
+                            {generatingScenes?.has(s.screenIndex) && <Loader2 className="w-3 h-3 animate-spin text-amber-300" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {selectedScreen && (
-        <div className="p-4 bg-white rounded-2xl border border-[#B28C5A] shadow-md space-y-3">
-          <div className="flex items-center justify-between border-b border-[#E5E0D8] pb-2">
-            <div className="flex items-center gap-2 text-[#2C2A29]">
-              <Film className="w-4 h-4 text-[#B28C5A]" />
-              <span className="font-bold text-sm">
-                第 {selectedScreen.screenIndex} 屏分镜: {selectedScreen.screenTitle}
-              </span>
-            </div>
-            <span className="text-[10px] font-bold bg-[#10B981]/10 text-[#10B981] px-2 py-0.5 rounded-full">
-              策划完成
-            </span>
-          </div>
-
-          <div className="space-y-2 text-xs text-stone-700">
-            <div>
-              <span className="text-[10px] text-stone-400 font-bold block">核心卖点 / 画面目的</span>
-              <p className="font-medium text-[#2C2A29] mt-0.5">{selectedScreen.coreSellingPoint}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 bg-[#FAF8F5] p-2.5 rounded-xl border border-[#E5E0D8]/60">
-              <div>
-                <span className="text-[10px] text-stone-400 block">构图视角</span>
-                <span className="font-bold text-[#2C2A29] block mt-0.5">{selectedScreen.visualComposition}</span>
-              </div>
-              <div>
-                <span className="text-[10px] text-stone-400 block">光影氛围</span>
-                <span className="font-bold text-[#2C2A29] block mt-0.5">{selectedScreen.lightingAndAtmosphere}</span>
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[10px] text-stone-400 font-bold block">图片生成提示词 (Prompt)</span>
-              <p className="font-mono text-[11px] text-[#2C2A29] bg-[#F9F5EF] p-2 rounded-xl border border-[#E5E0D8] mt-0.5">
-                {selectedScreen.promptSuggestion}
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-[#E5E0D8]/60 flex items-center justify-between">
-            <span className="text-[11px] text-stone-400">画幅比例: {selectedScreen.aspectRatio || '3:4'}</span>
-            <button
-              onClick={() => onReplanSingleScene(selectedScreen.screenIndex)}
-              disabled={isPlanGenerating}
-              className="flex items-center gap-1 text-xs font-bold text-[#B28C5A] hover:text-[#8C6F43] disabled:opacity-50"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>重新策划本屏</span>
-            </button>
-          </div>
-
-          {/* Phase C3A: Image Generation & Review Action Section */}
-          {(() => {
-            const screenIndex = selectedScreen.screenIndex;
-            const isGenerating = generatingScenes?.has(screenIndex);
-            const genImgNode = nodes.find(n => n.id === `gen-img-node-${screenIndex}`);
-            const taskNode = nodes.find(n => n.id === `img-gen-task-${screenIndex}`);
-
-            return (
-              <div className="pt-3 border-t border-[#E5E0D8] space-y-3">
-                {/* Engine & Resolution Selector */}
-                <EngineConfigSelector
-                  selectedModel={model}
-                  setSelectedModel={setModel}
-                  selectedResolution={resolution}
-                  setSelectedResolution={setResolution}
-                  onPreviewGptImage={onPreviewGptImage}
-                />
-
-                {/* Image Generation Trigger Buttons */}
-                <div className="flex gap-2 w-full mt-4">
-                  <button
-                    onClick={() => {
-                      if (onGenerateSceneImage) {
-                        onGenerateSceneImage(screenIndex);
-                      }
-                    }}
-                    disabled={isGenerating || isPlanGenerating || !hasDna}
-                    className="flex-1 py-2 px-3 bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5533] text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>生成中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon className="w-3.5 h-3.5" />
-                        <span>生成纯净底图</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (onGenerateSceneImage) {
-                        onGenerateSceneImage(screenIndex, undefined, undefined, undefined, true);
-                      }
-                    }}
-                    disabled={isGenerating || isPlanGenerating}
-                    className="flex-1 py-2 px-3 bg-[#2C2A29] hover:bg-[#1A1818] text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>生成中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Type className="w-3.5 h-3.5 text-[#B28C5A]" />
-                        <span>直接生成带字海报</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {onOpenPosterStudio && (
-                  <button
-                    type="button"
-                    onClick={() => onOpenPosterStudio(screenIndex)}
-                    className="w-full text-[11px] text-[#8C6F43] hover:text-[#B28C5A] hover:underline text-center pt-1 font-medium transition-colors flex items-center justify-center gap-1"
-                  >
-                    <span>需要全案图层精调？进入海报工坊编辑器</span>
-                    <ChevronRight className="w-3 h-3" />
-                  </button>
                 )}
 
-                {!hasDna && (
-                  <div className="flex items-start gap-1.5 p-2 bg-amber-50 text-amber-800 rounded-lg text-[11px] border border-amber-200">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <span>提示：尚未提取产品 DNA，请上传产品主角图以激活海报生成。</span>
+                {/* Selected Screen Control & Image Generation Card */}
+                {selectedScreen && (
+                  <div className="p-4 bg-white rounded-2xl border border-[#B28C5A] shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#E5E0D8] pb-2">
+                      <div className="flex items-center gap-2 text-[#2C2A29]">
+                        <Film className="w-4 h-4 text-[#B28C5A]" />
+                        <span className="font-bold text-sm">
+                          第 {selectedScreen.screenIndex} 屏分镜: {selectedScreen.screenTitle}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold bg-[#10B981]/10 text-[#10B981] px-2 py-0.5 rounded-full">
+                        策划就绪
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-stone-700">
+                      <div>
+                        <span className="text-[10px] text-stone-400 font-bold block">核心卖点 / 画面目的</span>
+                        <p className="font-medium text-[#2C2A29] mt-0.5">{selectedScreen.coreSellingPoint}</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 bg-[#FAF8F5] p-2.5 rounded-xl border border-[#E5E0D8]/60">
+                        <div>
+                          <span className="text-[10px] text-stone-400 block">构图视角</span>
+                          <span className="font-bold text-[#2C2A29] block mt-0.5">{selectedScreen.visualComposition}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-stone-400 block">光影氛围</span>
+                          <span className="font-bold text-[#2C2A29] block mt-0.5">{selectedScreen.lightingAndAtmosphere}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-stone-400 font-bold block">图片生成提示词 (Prompt)</span>
+                        <p className="font-mono text-[11px] text-[#2C2A29] bg-[#F9F5EF] p-2 rounded-xl border border-[#E5E0D8] mt-0.5 leading-relaxed">
+                          {selectedScreen.promptSuggestion}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-[#E5E0D8]/60 flex items-center justify-between">
+                      <span className="text-[11px] text-stone-400">画幅比例: {selectedScreen.aspectRatio || '3:4'}</span>
+                      <button
+                        onClick={() => onReplanSingleScene(selectedScreen.screenIndex)}
+                        disabled={isPlanGenerating}
+                        className="flex items-center gap-1 text-xs font-bold text-[#B28C5A] hover:text-[#8C6F43] disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>重新策划本屏</span>
+                      </button>
+                    </div>
+
+                    {/* Image Generation & Review Action Section */}
+                    {(() => {
+                      const screenIndex = selectedScreen.screenIndex;
+                      const isGenerating = generatingScenes?.has(screenIndex);
+                      const genImgNode = nodes.find(n => n.id === `gen-img-node-${screenIndex}`);
+
+                      return (
+                        <div className="pt-3 border-t border-[#E5E0D8] space-y-3">
+                          {/* 4 Models Selector */}
+                          <EngineConfigSelector
+                            selectedModel={model}
+                            setSelectedModel={setModel}
+                            selectedResolution={resolution}
+                            setSelectedResolution={setResolution}
+                            onPreviewGptImage={onPreviewGptImage}
+                          />
+
+                          {/* Image Generation Trigger Buttons */}
+                          <div className="flex gap-2 w-full mt-4">
+                            <button
+                              onClick={() => {
+                                if (onGenerateSceneImage) {
+                                  onGenerateSceneImage(screenIndex);
+                                }
+                              }}
+                              disabled={isGenerating || isPlanGenerating || !hasDna}
+                              className="flex-1 py-2 px-3 bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5533] text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              {isGenerating ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>生成中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ImageIcon className="w-3.5 h-3.5" />
+                                  <span>生成纯净底图</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                if (onGenerateSceneImage) {
+                                  onGenerateSceneImage(screenIndex, undefined, undefined, undefined, true);
+                                }
+                              }}
+                              disabled={isGenerating || isPlanGenerating}
+                              className="flex-1 py-2 px-3 bg-[#2C2A29] hover:bg-[#1A1818] text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              {isGenerating ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>生成中...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Type className="w-3.5 h-3.5 text-[#B28C5A]" />
+                                  <span>直接生成带字海报</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {onOpenPosterStudio && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenPosterStudio(screenIndex)}
+                              className="w-full text-[11px] text-[#8C6F43] hover:text-[#B28C5A] hover:underline text-center pt-1 font-medium transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <span>需要全案图层精调？进入海报工坊编辑器</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {!hasDna && (
+                            <div className="flex items-start gap-1.5 p-2 bg-amber-50 text-amber-800 rounded-lg text-[11px] border border-amber-200">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                              <span>提示：尚未提取产品 DNA，请前往【企划配置】上传主角图以激活海报生成。</span>
+                            </div>
+                          )}
+
+                          {/* Show Result & Review controls if generated */}
+                          {genImgNode?.data && (
+                            <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8] space-y-2.5 text-xs">
+                              <div className="flex items-center justify-between font-bold text-[#2C2A29]">
+                                <span className="flex items-center gap-1.5 text-xs">
+                                  <Sparkles className="w-3.5 h-3.5 text-[#B28C5A]" />
+                                  <span>渲染图 review (v{genImgNode.data.version || 1})</span>
+                                </span>
+                                {genImgNode.data.reviewStatus === 'approved' && (
+                                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3" /> 已通过
+                                  </span>
+                                )}
+                                {genImgNode.data.reviewStatus === 'rejected' && (
+                                  <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <XCircle className="w-3 h-3" /> 未通过
+                                  </span>
+                                )}
+                                {genImgNode.data.reviewStatus === 'pendingReview' && (
+                                  <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <Clock className="w-3 h-3" /> 待审核
+                                  </span>
+                                )}
+                              </div>
+
+                              <div
+                                className="relative rounded-lg overflow-hidden border border-[#E5E0D8] max-h-[220px] bg-stone-200 flex items-center justify-center"
+                                style={{ aspectRatio: getCssAspectRatio(genImgNode.data.aspectRatio as string) }}
+                              >
+                                <img
+                                  src={genImgNode.data.imageUrl as string}
+                                  alt={`分镜 #${screenIndex} 渲染结果`}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <PosterTypographyOverlay
+                                  screenTitle={(genImgNode.data.screenTitle as string) || `第 ${screenIndex} 屏`}
+                                  coreSellingPoint={(genImgNode.data.coreSellingPoint as string) || (genImgNode.data.screenTitle as string)}
+                                  themeTitle={(genImgNode.data.themeTitle as string) || '敏华全案企划'}
+                                  sceneIndex={screenIndex}
+                                  imageUrl={genImgNode.data.imageUrl as string}
+                                  defaultVisible={false}
+                                />
+                              </div>
+
+                              {/* Review Action Buttons */}
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  onClick={() => onApproveSceneImage?.(screenIndex)}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border transition-colors cursor-pointer ${
+                                    genImgNode.data.reviewStatus === 'approved'
+                                      ? 'bg-emerald-600 text-white border-emerald-600'
+                                      : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  }`}
+                                >
+                                  <ThumbsUp className="w-3.5 h-3.5" />
+                                  <span>通过标绿</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    const reason = prompt('请输入该屏画面需要修改或优化的反馈意见：', feedbackInput);
+                                    if (reason && reason.trim()) {
+                                      onRejectSceneImage?.(screenIndex, reason.trim());
+                                    }
+                                  }}
+                                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border transition-colors cursor-pointer ${
+                                    genImgNode.data.reviewStatus === 'rejected'
+                                      ? 'bg-rose-600 text-white border-rose-600'
+                                      : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+                                  }`}
+                                >
+                                  <ThumbsDown className="w-3.5 h-3.5" />
+                                  <span>标记问题</span>
+                                </button>
+                              </div>
+
+                              {/* Feedback Re-generate Trigger */}
+                              {genImgNode.data.reviewStatus === 'rejected' && (
+                                <div className="space-y-1.5 pt-1 border-t border-[#E5E0D8]">
+                                  <span className="text-[10px] text-rose-700 font-bold block">
+                                    修改意见: {genImgNode.data.reviewFeedback || '细节需调整'}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      if (onGenerateSceneImage) {
+                                        onGenerateSceneImage(screenIndex, genImgNode.data.reviewFeedback as string);
+                                      }
+                                    }}
+                                    disabled={isGenerating}
+                                    className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                    <span>根据反馈重新生成本屏</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
-                {/* Show Result & Review controls if generated */}
-                {genImgNode?.data && (
-                  <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8] space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between font-bold text-[#2C2A29]">
-                      <span className="flex items-center gap-1.5 text-xs">
-                        <Sparkles className="w-3.5 h-3.5 text-[#B28C5A]" />
-                        <span>渲染图 review (v{genImgNode.data.version || 1})</span>
+                {/* C3B Primary Entry Button & Batch Task Queue Control Panel */}
+                <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#B28C5A]" />
+                      <span className="font-bold text-xs text-[#2C2A29]">全案受控批量并发任务队列 (Max=2)</span>
+                    </div>
+                    {batchState?.status && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#FAF8F5] border border-[#E5E0D8] text-stone-700">
+                        {batchState.status === 'running' && '运行中'}
+                        {batchState.status === 'paused' && '已暂停'}
+                        {batchState.status === 'completed' && '全部完成'}
+                        {batchState.status === 'partial_failed' && '有失败项'}
+                        {batchState.status === 'cancelled' && '已取消'}
                       </span>
-                      {genImgNode.data.reviewStatus === 'approved' && (
-                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => onTriggerBatchMissingModal?.()}
+                    disabled={batchState?.status === 'running'}
+                    className="w-full py-2.5 px-4 bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5532] text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    {batchState?.status === 'running' ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>全案批量生成进行中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImagePlus className="w-4 h-4" />
+                        <span>生成缺失画面 (全案受控队列)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Batch Queue Details if Running or Has Items */}
+                  {(batchState || queueItems.length > 0) && (
+                    <div className="pt-2 border-t border-[#E5E0D8] space-y-2">
+                      <div className="grid grid-cols-4 gap-1.5 text-center text-[10px]">
+                        <div className="bg-[#FAF8F5] p-1.5 rounded-lg border border-[#E5E0D8]">
+                          <span className="text-stone-400 block">排队中</span>
+                          <span className="font-bold text-stone-700 font-mono">
+                            {queueItems.filter(i => i.status === 'queued' || i.status === 'pending').length}
+                          </span>
+                        </div>
+                        <div className="bg-[#FAF8F5] p-1.5 rounded-lg border border-amber-200">
+                          <span className="text-amber-600 block">生成中</span>
+                          <span className="font-bold text-amber-700 font-mono">
+                            {queueItems.filter(i => i.status === 'generating').length}
+                          </span>
+                        </div>
+                        <div className="bg-[#FAF8F5] p-1.5 rounded-lg border border-emerald-200">
+                          <span className="text-emerald-600 block">已完成</span>
+                          <span className="font-bold text-emerald-700 font-mono">
+                            {queueItems.filter(i => i.status === 'success').length}
+                          </span>
+                        </div>
+                        <div className="bg-[#FAF8F5] p-1.5 rounded-lg border border-rose-200">
+                          <span className="text-rose-600 block">失败</span>
+                          <span className="font-bold text-rose-700 font-mono">
+                            {queueItems.filter(i => i.status === 'failed').length}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Controls */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        {batchState?.status === 'running' ? (
+                          <button
+                            onClick={() => onPauseBatch?.()}
+                            className="flex-1 py-1.5 px-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-amber-300 transition-colors cursor-pointer"
+                          >
+                            <Pause className="w-3 h-3" />
+                            <span>暂停队列</span>
+                          </button>
+                        ) : batchState?.status === 'paused' ? (
+                          <button
+                            onClick={() => onResumeBatch?.()}
+                            className="flex-1 py-1.5 px-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-300 transition-colors cursor-pointer"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>继续队列</span>
+                          </button>
+                        ) : null}
+
+                        {queueItems.some(i => i.status === 'queued' || i.status === 'pending' || i.status === 'generating') && (
+                          <button
+                            onClick={() => onCancelBatch?.()}
+                            className="flex-1 py-1.5 px-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-stone-300 transition-colors cursor-pointer"
+                          >
+                            <XCircle className="w-3 h-3" />
+                            <span>取消排队</span>
+                          </button>
+                        )}
+
+                        {queueItems.some(i => i.status === 'failed') && (
+                          <button
+                            onClick={() => onRetryFailedBatch?.()}
+                            className="flex-1 py-1.5 px-2 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-rose-300 transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            <span>重试失败项</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Scene Queue Grid Detail */}
+                      <div className="space-y-1 text-[10px] max-h-36 overflow-y-auto pt-1 border-t border-[#E5E0D8]/60">
+                        {queueItems.map(item => (
+                          <div
+                            key={item.sceneNumber}
+                            className="flex items-center justify-between p-1.5 bg-[#FAF8F5] rounded-lg border border-[#E5E0D8]"
+                          >
+                            <span className="font-bold text-[#2C2A29]">第 {item.sceneNumber} 屏分镜</span>
+                            <div className="flex items-center gap-1">
+                              {item.status === 'generating' && (
+                                <span className="text-amber-700 font-medium flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" /> 生成中...
+                                </span>
+                              )}
+                              {item.status === 'queued' && <span className="text-stone-400">排队中</span>}
+                              {item.status === 'pending' && <span className="text-stone-400 font-mono">待处理</span>}
+                              {item.status === 'success' && (
+                                <span className="text-emerald-600 font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" /> 已完成
+                                </span>
+                              )}
+                              {item.status === 'failed' && (
+                                <span className="text-rose-600 font-bold flex items-center gap-1" title={item.error?.message}>
+                                  <XCircle className="w-3 h-3" /> 失败
+                                </span>
+                              )}
+                              {item.status === 'cancelled' && <span className="text-stone-400">已取消</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected GeneratedImageNode Detailed Inspector */}
+                {genImgData && selectedNodeId?.startsWith('gen-img-node-') && (
+                  <div className="p-4 bg-white rounded-2xl border border-[#B28C5A] shadow-md space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#E5E0D8] pb-2">
+                      <div className="flex items-center gap-2 text-[#2C2A29]">
+                        <ImageIcon className="w-4 h-4 text-[#B28C5A]" />
+                        <span className="font-bold text-sm">
+                          第 {genImgData.sceneIndex} 屏渲染结果 (v{genImgData.version || 1})
+                        </span>
+                      </div>
+                      {genImgData.reviewStatus === 'approved' && (
+                        <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> 已通过
                         </span>
                       )}
-                      {genImgNode.data.reviewStatus === 'rejected' && (
-                        <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      {genImgData.reviewStatus === 'rejected' && (
+                        <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                           <XCircle className="w-3 h-3" /> 未通过
                         </span>
                       )}
-                      {genImgNode.data.reviewStatus === 'pendingReview' && (
-                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> 待审核
+                      {genImgData.reviewStatus === 'pendingReview' && (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> 待人审
                         </span>
                       )}
                     </div>
 
                     <div
-                      className="relative rounded-lg overflow-hidden border border-[#E5E0D8] max-h-[220px] bg-stone-200 flex items-center justify-center"
-                      style={{ aspectRatio: getCssAspectRatio(genImgNode.data.aspectRatio as string) }}
+                      className="relative w-full rounded-xl overflow-hidden border border-[#E5E0D8] bg-stone-100 shadow-inner group flex items-center justify-center"
+                      style={{ aspectRatio: getCssAspectRatio(genImgData.aspectRatio as string) }}
                     >
                       <img
-                        src={genImgNode.data.imageUrl as string}
-                        alt={`分镜 #${screenIndex} 渲染结果`}
+                        src={genImgData.imageUrl as string}
+                        alt={genImgData.screenTitle as string}
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
                       />
-                      <PosterTypographyOverlay
-                        screenTitle={(genImgNode.data.screenTitle as string) || `第 ${screenIndex} 屏`}
-                        coreSellingPoint={(genImgNode.data.coreSellingPoint as string) || (genImgNode.data.screenTitle as string)}
-                        themeTitle={(genImgNode.data.themeTitle as string) || '敏华全案企划'}
-                        sceneIndex={screenIndex}
-                        imageUrl={genImgNode.data.imageUrl as string}
-                        defaultVisible={false}
-                      />
+                      <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2.5 py-1 rounded-full font-mono">
+                        {genImgData.aspectRatio || '3:4'} · {genImgData.dimensions || '1024x1365'}
+                      </div>
                     </div>
 
-                    {/* Review Action Buttons */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => onApproveSceneImage?.(screenIndex)}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border transition-colors ${
-                          genImgNode.data.reviewStatus === 'approved'
-                            ? 'bg-emerald-600 text-white border-emerald-600'
-                            : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
-                        }`}
-                      >
-                        <ThumbsUp className="w-3.5 h-3.5" />
-                        <span>通过标绿</span>
-                      </button>
+                    <div className="space-y-2 text-xs text-stone-700 bg-[#FAF8F5] p-3 rounded-xl border border-[#E5E0D8]/80">
+                      <div>
+                        <span className="text-[10px] text-stone-400 font-bold block">分镜主题</span>
+                        <p className="font-bold text-[#2C2A29]">{genImgData.screenTitle as string}</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-[#E5E0D8]/60">
+                        <div>
+                          <span className="text-[10px] text-stone-400 block">生成模型</span>
+                          <span className="font-semibold text-[#2C2A29] truncate block">
+                            {(genImgData.model as string) || 'openai/gpt-image-2'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-stone-400 block">服务通道</span>
+                          <span className="font-semibold text-[#2C2A29] truncate block">
+                            {(genImgData.provider as string) || 'OpenAI Direct API'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 border-t border-[#E5E0D8]/60">
+                        <span className="text-[10px] text-stone-400 font-bold block">完整图片生成 Prompt</span>
+                        <p className="font-mono text-[10px] leading-relaxed text-[#2C2A29] bg-white p-2 rounded-lg border border-[#E5E0D8] max-h-24 overflow-y-auto mt-0.5">
+                          {genImgData.prompt as string}
+                        </p>
+                      </div>
+
+                      {genImgData.negativePrompt && (
+                        <div className="pt-1 border-t border-[#E5E0D8]/60">
+                          <span className="text-[10px] text-stone-400 font-bold block">负面约束 (Negative Prompt)</span>
+                          <p className="font-mono text-[10px] text-stone-600 bg-white p-1.5 rounded-lg border border-[#E5E0D8] mt-0.5">
+                            {genImgData.negativePrompt as string}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-[#E5E0D8]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onApproveSceneImage?.(genImgData.sceneIndex as number)}
+                          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors cursor-pointer ${
+                            genImgData.reviewStatus === 'approved'
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}
+                        >
+                          <ThumbsUp className="w-4 h-4" />
+                          <span>标记通过</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            const reason = prompt('请输入该屏画面需要修改或优化的反馈意见：', (genImgData.reviewFeedback as string) || '');
+                            if (reason && reason.trim()) {
+                              onRejectSceneImage?.(genImgData.sceneIndex as number, reason.trim());
+                            }
+                          }}
+                          className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors cursor-pointer ${
+                            genImgData.reviewStatus === 'rejected'
+                              ? 'bg-rose-600 text-white border-rose-600'
+                              : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+                          }`}
+                        >
+                          <ThumbsDown className="w-4 h-4" />
+                          <span>标记问题</span>
+                        </button>
+                      </div>
 
                       <button
                         onClick={() => {
-                          const reason = prompt('请输入该屏画面需要修改或优化的反馈意见：', feedbackInput);
-                          if (reason && reason.trim()) {
-                            onRejectSceneImage?.(screenIndex, reason.trim());
+                          if (onGenerateSceneImage) {
+                            onGenerateSceneImage(genImgData.sceneIndex as number, genImgData.reviewFeedback as string);
                           }
                         }}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 border transition-colors ${
-                          genImgNode.data.reviewStatus === 'rejected'
-                            ? 'bg-rose-600 text-white border-rose-600'
-                            : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
-                        }`}
+                        disabled={generatingScenes?.has(genImgData.sceneIndex as number)}
+                        className="w-full py-2.5 px-4 bg-[#B28C5A] hover:bg-[#8C6F43] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 cursor-pointer"
                       >
-                        <ThumbsDown className="w-3.5 h-3.5" />
-                        <span>标记问题</span>
+                        {generatingScenes?.has(genImgData.sceneIndex as number) ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>正在重新生成...</span>
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-4 h-4" />
+                            <span>重新生成第 {genImgData.sceneIndex} 屏图片</span>
+                          </>
+                        )}
                       </button>
                     </div>
-
-                    {/* Feedback Re-generate Trigger */}
-                    {genImgNode.data.reviewStatus === 'rejected' && (
-                      <div className="space-y-1.5 pt-1 border-t border-[#E5E0D8]">
-                        <span className="text-[10px] text-rose-700 font-bold block">
-                          修改意见: {genImgNode.data.reviewFeedback || '细节需调整'}
-                        </span>
-                        <button
-                          onClick={() => {
-                            if (onGenerateSceneImage) {
-                              onGenerateSceneImage(screenIndex, genImgNode.data.reviewFeedback as string);
-                            }
-                          }}
-                          disabled={isGenerating}
-                          className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1"
-                        >
-                          <RefreshCw className="w-3 h-3" />
-                          <span>根据反馈重新生成本屏</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Selected GeneratedImageNode Detailed Inspector */}
-      {genImgData && selectedNodeId?.startsWith('gen-img-node-') && (
-        <div className="p-4 bg-white rounded-2xl border border-[#B28C5A] shadow-md space-y-3">
-          <div className="flex items-center justify-between border-b border-[#E5E0D8] pb-2">
-            <div className="flex items-center gap-2 text-[#2C2A29]">
-              <ImageIcon className="w-4 h-4 text-[#B28C5A]" />
-              <span className="font-bold text-sm">
-                第 {genImgData.sceneIndex} 屏渲染结果 (v{genImgData.version || 1})
-              </span>
-            </div>
-            {genImgData.reviewStatus === 'approved' && (
-              <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> 已通过
-              </span>
-            )}
-            {genImgData.reviewStatus === 'rejected' && (
-              <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <XCircle className="w-3 h-3" /> 未通过
-              </span>
-            )}
-            {genImgData.reviewStatus === 'pendingReview' && (
-              <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <Clock className="w-3 h-3" /> 待人审
-              </span>
+              </>
             )}
           </div>
+        )}
 
-          {/* Large Image Preview */}
-          <div
-            className="relative w-full rounded-xl overflow-hidden border border-[#E5E0D8] bg-stone-100 shadow-inner group flex items-center justify-center"
-            style={{ aspectRatio: getCssAspectRatio(genImgData.aspectRatio as string) }}
-          >
-            <img
-              src={genImgData.imageUrl as string}
-              alt={genImgData.screenTitle as string}
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] px-2.5 py-1 rounded-full font-mono">
-              {genImgData.aspectRatio || '3:4'} · {genImgData.dimensions || '1024x1365'}
-            </div>
-          </div>
-
-          {/* Metadata & Prompt Parameters */}
-          <div className="space-y-2 text-xs text-stone-700 bg-[#FAF8F5] p-3 rounded-xl border border-[#E5E0D8]/80">
-            <div>
-              <span className="text-[10px] text-stone-400 font-bold block">分镜主题</span>
-              <p className="font-bold text-[#2C2A29]">{genImgData.screenTitle as string}</p>
+        {/* Lane 3: Intelligent Agent Chat & Thought Flow (智能对话) */}
+        {activeTab === 'chat' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#2C2A29] flex items-center gap-1.5">
+                <Bot className="w-4 h-4 text-[#B28C5A]" />
+                智能体对话思考流
+              </span>
+              <span className="text-[10px] text-stone-500 font-mono">Lane 3 · Chat</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-[#E5E0D8]/60">
-              <div>
-                <span className="text-[10px] text-stone-400 block">生成模型</span>
-                <span className="font-semibold text-[#2C2A29] truncate block">
-                  {(genImgData.model as string) || 'openai/gpt-image-2'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] text-stone-400 block">服务通道</span>
-                <span className="font-semibold text-[#2C2A29] truncate block">
-                  {(genImgData.provider as string) || 'OpenAI Direct API'}
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-1 border-t border-[#E5E0D8]/60">
-              <span className="text-[10px] text-stone-400 font-bold block">完整图片生成 Prompt</span>
-              <p className="font-mono text-[10px] leading-relaxed text-[#2C2A29] bg-white p-2 rounded-lg border border-[#E5E0D8] max-h-24 overflow-y-auto mt-0.5">
-                {genImgData.prompt as string}
-              </p>
-            </div>
-
-            {genImgData.negativePrompt && (
-              <div className="pt-1 border-t border-[#E5E0D8]/60">
-                <span className="text-[10px] text-stone-400 font-bold block">负面约束 (Negative Prompt)</span>
-                <p className="font-mono text-[10px] text-stone-600 bg-white p-1.5 rounded-lg border border-[#E5E0D8] mt-0.5">
-                  {genImgData.negativePrompt as string}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Review Actions & Feedback */}
-          <div className="space-y-2 pt-2 border-t border-[#E5E0D8]">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => onApproveSceneImage?.(genImgData.sceneIndex as number)}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors ${
-                  genImgData.reviewStatus === 'approved'
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border-emerald-200'
-                }`}
-              >
-                <ThumbsUp className="w-4 h-4" />
-                <span>标记通过</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  const reason = prompt('请输入该屏画面需要修改或优化的反馈意见：', (genImgData.reviewFeedback as string) || '');
-                  if (reason && reason.trim()) {
-                    onRejectSceneImage?.(genImgData.sceneIndex as number, reason.trim());
-                  }
-                }}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-colors ${
-                  genImgData.reviewStatus === 'rejected'
-                    ? 'bg-rose-600 text-white border-rose-600'
-                    : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
-                }`}
-              >
-                <ThumbsDown className="w-4 h-4" />
-                <span>标记问题</span>
-              </button>
-            </div>
-
-            {/* Re-generate trigger for this scene */}
-            <button
-              onClick={() => {
-                if (onGenerateSceneImage) {
-                  onGenerateSceneImage(genImgData.sceneIndex as number, genImgData.reviewFeedback as string);
-                }
+            {/* Local Asset Bridge Connector Panel */}
+            <LocalAssetBridgePanel
+              onImportAsMainImage={onUploadFile}
+              onAddAsStyleRef={(url) => setStyleRefImages?.(prev => [...prev, url])}
+              onImportAsRefDoc={(name, text) => {
+                setRefDocName?.(name);
+                setRefDocText?.(text);
               }}
-              disabled={generatingScenes?.has(genImgData.sceneIndex as number)}
-              className="w-full py-2.5 px-4 bg-[#B28C5A] hover:bg-[#8C6F43] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
-            >
-              {generatingScenes?.has(genImgData.sceneIndex as number) ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>正在重新生成...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  <span>重新生成第 {genImgData.sceneIndex} 屏图片</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
+            />
 
-      {/* Local Asset Bridge Connector Panel */}
-      <LocalAssetBridgePanel
-        onImportAsMainImage={onUploadFile}
-        onAddAsStyleRef={(url) => setStyleRefImages?.(prev => [...prev, url])}
-        onImportAsRefDoc={(name, text) => {
-          setRefDocName?.(name);
-          setRefDocText?.(text);
-        }}
-      />
-
-      <div className="p-3 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex items-start gap-3">
-        <Info className="w-4 h-4 text-[#B28C5A] shrink-0 mt-0.5" />
-        <div className="text-xs text-stone-600 leading-relaxed">
-          <span className="font-bold text-[#2C2A29]">企划指南：</span>
-          {uploadState !== 'completed' && '右侧或上方本地库选择产品图以完成 DNA 提取。'}
-          {uploadState === 'completed' && !agentRun?.plan && '点击下方【生成全案企划】开启爆款 全案方案策划。'}
-          {agentRun?.plan && '点击画布中的分镜节点可在右侧实时调阅与重新策划。'}
-        </div>
-      </div>
-
-      {/* Context Snapshot Chips Indicator */}
-      {(selectedSceneIndex || productDnaVersionCode || assetVersionId) && (
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8]/60 text-[10px] text-stone-600">
-          <span className="font-bold text-[#B28C5A]">Context:</span>
-          {selectedSceneIndex && (
-            <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
-              屏-{selectedSceneIndex}
-            </span>
-          )}
-          {productDnaVersionCode && (
-            <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
-              {productDnaVersionCode}
-            </span>
-          )}
-          {assetVersionId && (
-            <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
-              SKU-V
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Messages Area */}
-      <div className="space-y-4 py-1">
-        {messages.map((msg, index) => (
-          <div
-            key={msg.id ? `${msg.id}-${index}` : `msg-${index}`}
-            className={`flex items-start gap-3 ${
-              msg.sender === 'user' ? 'flex-row-reverse' : ''
-            }`}
-          >
-            <div
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
-                msg.sender === 'user'
-                  ? 'bg-stone-800 text-white shadow-sm'
-                  : 'bg-[#F9F5EF] text-[#B28C5A] border border-[#E5E0D8]'
-              }`}
-            >
-              {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+            {/* Conversation Guidelines */}
+            <div className="p-3 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex items-start gap-3">
+              <Info className="w-4 h-4 text-[#B28C5A] shrink-0 mt-0.5" />
+              <div className="text-xs text-stone-600 leading-relaxed">
+                <span className="font-bold text-[#2C2A29]">企划对话指南：</span>
+                {uploadState !== 'completed' && '在【企划配置】中选择产品图完成 DNA 提取，也可在此输入文字直接向 Agent G 咨询。'}
+                {uploadState === 'completed' && !agentRun?.plan && '可随时在此交流策划意图，或让 Agent G 为您建议爆款场景。'}
+                {agentRun?.plan && '输入对话指令可让 Agent G 实时微调全案或单屏构图逻辑。'}
+              </div>
             </div>
 
-            <div
-              className={`max-w-[84%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-sm ${
-                msg.sender === 'user'
-                  ? 'bg-stone-800 text-white rounded-tr-none'
-                  : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
-              }`}
-            >
-              <p className="whitespace-pre-wrap">
-                {msg.text || (msg.status === 'streaming' ? '思考回复中...' : '')}
-              </p>
+            {/* Context Snapshot Chips Indicator */}
+            {(selectedSceneIndex || productDnaVersionCode || assetVersionId) && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8]/60 text-[10px] text-stone-600">
+                <span className="font-bold text-[#B28C5A]">Context:</span>
+                {selectedSceneIndex && (
+                  <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
+                    屏-{selectedSceneIndex}
+                  </span>
+                )}
+                {productDnaVersionCode && (
+                  <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
+                    {productDnaVersionCode}
+                  </span>
+                )}
+                {assetVersionId && (
+                  <span className="bg-white px-1.5 py-0.5 rounded border border-[#E5E0D8] font-mono">
+                    SKU-V
+                  </span>
+                )}
+              </div>
+            )}
 
-              {/* Local Asset Search Results Card embedded in Message */}
-              {msg.localAssetCard && (
-                <div className="mt-2.5 p-2 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8] space-y-2 text-[#2C2A29]">
-                  <div className="flex items-center justify-between text-[11px] font-bold">
-                    <span className="flex items-center gap-1 text-[#B28C5A]">
-                      <Search className="w-3.5 h-3.5" />
-                      本地素材检索: "{msg.localAssetCard.query}"
-                    </span>
-                    <span className="text-[10px] text-stone-500 font-normal">
-                      命中 {msg.localAssetCard.matchedCount} 项
-                    </span>
+            {/* Messages Area */}
+            <div className="space-y-4 py-1">
+              {messages.map((msg, index) => (
+                <div
+                  key={msg.id ? `${msg.id}-${index}` : `msg-${index}`}
+                  className={`flex items-start gap-3 ${
+                    msg.sender === 'user' ? 'flex-row-reverse' : ''
+                  }`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                      msg.sender === 'user'
+                        ? 'bg-stone-800 text-white shadow-sm'
+                        : 'bg-[#F9F5EF] text-[#B28C5A] border border-[#E5E0D8]'
+                    }`}
+                  >
+                    {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
-                    {msg.localAssetCard.assets.map(asset => (
-                      <div key={asset.id} className="p-1.5 bg-white rounded-lg border border-[#E5E0D8] space-y-1">
-                        {asset.previewUrl ? (
-                          <div className="w-full h-14 bg-stone-100 rounded overflow-hidden flex items-center justify-center">
-                            <img src={asset.previewUrl} alt={asset.name} className="w-full h-full object-contain" />
-                          </div>
-                        ) : (
-                          <div className="w-full h-14 bg-stone-100 rounded flex items-center justify-center text-stone-400">
-                            <FileText className="w-5 h-5 text-[#B28C5A]" />
-                          </div>
-                        )}
-                        <p className="text-[10px] font-bold truncate text-[#2C2A29] leading-tight" title={asset.name}>
-                          {asset.name}
-                        </p>
-                        <div className="flex items-center justify-between text-[9px] text-stone-400">
-                          <span>{asset.formattedSize}</span>
-                          {asset.type === 'image' && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const file = await localAssetService.getFileForAsset(asset);
-                                if (file) onUploadFile(file);
-                              }}
-                              className="text-[#B28C5A] hover:underline font-bold"
-                            >
-                              导入主图
-                            </button>
-                          )}
+                  <div
+                    className={`max-w-[84%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-sm ${
+                      msg.sender === 'user'
+                        ? 'bg-stone-800 text-white rounded-tr-none'
+                        : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">
+                      {msg.text || (msg.status === 'streaming' ? '思考回复中...' : '')}
+                    </p>
+
+                    {/* Local Asset Search Results Card embedded in Message */}
+                    {msg.localAssetCard && (
+                      <div className="mt-2.5 p-2 bg-[#FAF8F5] rounded-xl border border-[#E5E0D8] space-y-2 text-[#2C2A29]">
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="flex items-center gap-1 text-[#B28C5A]">
+                            <Search className="w-3.5 h-3.5" />
+                            本地素材检索: "{msg.localAssetCard.query}"
+                          </span>
+                          <span className="text-[10px] text-stone-500 font-normal">
+                            命中 {msg.localAssetCard.matchedCount} 项
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                          {msg.localAssetCard.assets.map(asset => (
+                            <div key={asset.id} className="p-1.5 bg-white rounded-lg border border-[#E5E0D8] space-y-1">
+                              {asset.previewUrl ? (
+                                <div className="w-full h-14 bg-stone-100 rounded overflow-hidden flex items-center justify-center">
+                                  <img src={asset.previewUrl} alt={asset.name} className="w-full h-full object-contain" />
+                                </div>
+                              ) : (
+                                <div className="w-full h-14 bg-stone-100 rounded flex items-center justify-center text-stone-400">
+                                  <FileText className="w-5 h-5 text-[#B28C5A]" />
+                                </div>
+                              )}
+                              <p className="text-[10px] font-bold truncate text-[#2C2A29] leading-tight" title={asset.name}>
+                                {asset.name}
+                              </p>
+                              <div className="flex items-center justify-between text-[9px] text-stone-400">
+                                <span>{asset.formattedSize}</span>
+                                {asset.type === 'image' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const file = await localAssetService.getFileForAsset(asset);
+                                      if (file) onUploadFile(file);
+                                    }}
+                                    className="text-[#B28C5A] hover:underline font-bold cursor-pointer"
+                                  >
+                                    导入主图
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    )}
 
-              {/* 4:3 Poster Draft Card */}
-              {msg.posterDraftCard && (
-                <div className="mt-3 p-3 bg-gradient-to-br from-[#1E1C1A] to-[#2B2724] text-white rounded-xl border border-[#B28C5A]/50 space-y-2.5 shadow-md">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-[#E5C9A6] flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-[#B28C5A]" />
-                      4:3 意式轻奢海报 · 可编辑草稿
-                    </span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                      🟡 待审核草稿
-                    </span>
-                  </div>
+                    {/* 4:3 Poster Draft Card */}
+                    {msg.posterDraftCard && (
+                      <div className="mt-3 p-3 bg-gradient-to-br from-[#1E1C1A] to-[#2B2724] text-white rounded-xl border border-[#B28C5A]/50 space-y-2.5 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-[#E5C9A6] flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-[#B28C5A]" />
+                            4:3 意式轻奢海报 · 可编辑草稿
+                          </span>
+                          <span className="text-[9px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            🟡 待审核草稿
+                          </span>
+                        </div>
 
-                  <div className="flex gap-2.5 items-center bg-black/40 p-2 rounded-lg border border-white/10">
-                    {msg.posterDraftCard.imageUrl && (
-                      <div className="w-20 h-15 rounded overflow-hidden bg-stone-900 shrink-0 border border-white/20">
-                        <img
-                          src={msg.posterDraftCard.imageUrl}
-                          alt="海报草稿预览"
-                          className="w-full h-full object-cover"
-                        />
+                        <div className="flex gap-2.5 items-center bg-black/40 p-2 rounded-lg border border-white/10">
+                          {msg.posterDraftCard.imageUrl && (
+                            <div className="w-20 h-15 rounded overflow-hidden bg-stone-900 shrink-0 border border-white/20">
+                              <img
+                                src={msg.posterDraftCard.imageUrl}
+                                alt="海报草稿预览"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <p className="text-[11px] font-bold truncate text-white">
+                              {msg.posterDraftCard.screenTitle}
+                            </p>
+                            <div className="flex items-center gap-2 text-[9px] text-stone-300 font-mono">
+                              <span>规格: 2400 × 1800 (4:3)</span>
+                              <span>·</span>
+                              <span>{msg.posterDraftCard.layersCount} 个独立图层</span>
+                            </div>
+                            <p className="text-[9px] text-[#C4BDB5] truncate">
+                              品牌标 · 中文大标 · 卖点标签 · 参数栏
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              window.dispatchEvent(
+                                new CustomEvent('canvas:select-node', {
+                                  detail: { nodeId: msg.posterDraftCard!.nodeId }
+                                })
+                              );
+                            }}
+                            className="flex-1 py-1.5 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 border border-white/15 cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3 text-[#E5C9A6]" />
+                            <span>画布定位编辑</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await downloadPosterImage({
+                                  imageUrl: msg.posterDraftCard!.imageUrl,
+                                  textLayers: msg.posterDraftCard!.textLayers,
+                                  screenTitle: msg.posterDraftCard!.screenTitle,
+                                  resolution: 'ecommerce_4_3',
+                                  format: 'png',
+                                  includeText: true
+                                });
+                              } catch (e: any) {
+                                alert('导出海报失败: ' + (e?.message || '网络异常'));
+                              }
+                            }}
+                            className="flex-1 py-1.5 bg-[#B28C5A] hover:bg-[#9E7A4A] text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>导出 4:3 无损海报</span>
+                          </button>
+                        </div>
                       </div>
                     )}
-                    <div className="flex-1 min-w-0 space-y-0.5">
-                      <p className="text-[11px] font-bold truncate text-white">
-                        {msg.posterDraftCard.screenTitle}
-                      </p>
-                      <div className="flex items-center gap-2 text-[9px] text-stone-300 font-mono">
-                        <span>规格: 2400 × 1800 (4:3)</span>
-                        <span>·</span>
-                        <span>{msg.posterDraftCard.layersCount} 个独立图层</span>
+
+                    {msg.status === 'streaming' && (
+                      <div className="flex items-center gap-1.5 mt-2 text-[#B28C5A] font-bold text-[10px]">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Agent G 正在流式生成...</span>
                       </div>
-                      <p className="text-[9px] text-[#C4BDB5] truncate">
-                        品牌标 · 中文大标 · 卖点标签 · 参数栏
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1 border-t border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent('canvas:select-node', {
-                            detail: { nodeId: msg.posterDraftCard!.nodeId }
-                          })
-                        );
-                      }}
-                      className="flex-1 py-1.5 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 border border-white/15 cursor-pointer"
+                    )}
+                    {msg.status === 'failed' && (
+                      <div className="mt-2 pt-1.5 border-t border-rose-200/60 flex items-center justify-between">
+                        <span className="text-rose-600 font-bold text-[10px]">发送中断 ({msg.error_code || 'ERROR'})</span>
+                        {onRetryMessage && (
+                          <button
+                            type="button"
+                            onClick={onRetryMessage}
+                            className="px-2 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                          >
+                            重试
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <span
+                      className={`block text-[9px] mt-1.5 ${
+                        msg.sender === 'user' ? 'text-stone-400 text-right' : 'text-stone-400'
+                      }`}
                     >
-                      <Eye className="w-3 h-3 text-[#E5C9A6]" />
-                      <span>画布定位编辑</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await downloadPosterImage({
-                            imageUrl: msg.posterDraftCard!.imageUrl,
-                            textLayers: msg.posterDraftCard!.textLayers,
-                            screenTitle: msg.posterDraftCard!.screenTitle,
-                            resolution: 'ecommerce_4_3',
-                            format: 'png',
-                            includeText: true
-                          });
-                        } catch (e: any) {
-                          alert('导出海报失败: ' + (e?.message || '网络异常'));
-                        }
-                      }}
-                      className="flex-1 py-1.5 bg-[#B28C5A] hover:bg-[#9E7A4A] text-white rounded-lg text-[10px] font-bold transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-                    >
-                      <Download className="w-3 h-3" />
-                      <span>导出 4:3 无损海报</span>
-                    </button>
+                      {msg.timestamp}
+                    </span>
                   </div>
                 </div>
-              )}
+              ))}
+            </div>
 
-              {msg.status === 'streaming' && (
-                <div className="flex items-center gap-1.5 mt-2 text-[#B28C5A] font-bold text-[10px]">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Agent G 正在流式生成...</span>
+            {/* Error Alert if Any */}
+            {(errorMessage || planError) && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold">操作异常</p>
+                  <p className="text-[11px] text-rose-700 mt-0.5">{errorMessage || planError}</p>
                 </div>
-              )}
-              {msg.status === 'failed' && (
-                <div className="mt-2 pt-1.5 border-t border-rose-200/60 flex items-center justify-between">
-                  <span className="text-rose-600 font-bold text-[10px]">发送中断 ({msg.error_code || 'ERROR'})</span>
-                  {onRetryMessage && (
-                    <button
-                      type="button"
-                      onClick={onRetryMessage}
-                      className="px-2 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded text-[10px] font-bold transition-colors"
-                    >
-                      重试
-                    </button>
-                  )}
-                </div>
-              )}
-              <span
-                className={`block text-[9px] mt-1.5 ${
-                  msg.sender === 'user' ? 'text-stone-400 text-right' : 'text-stone-400'
-                }`}
-              >
-                {msg.timestamp}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Lane 4: Typography & Copywriting Workspace (文案排版) */}
+        {activeTab === 'typography' && (
+          <div className="space-y-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[#2C2A29] flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-[#B28C5A]" />
+                海报文字排版与文案润色工坊
               </span>
+              <span className="text-[10px] text-stone-500 font-mono">Lane 4 · Typography</span>
             </div>
-          </div>
-        ))}
 
-        {/* Upload Trigger Area */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept="image/png, image/jpeg, image/jpg, image/webp"
-          className="hidden"
-        />
-
-        {(() => {
-          const imgNode = nodes?.find(n => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage');
-          const hasImage = !!imgNode?.data?.imageUrl;
-          const imageUrl = imgNode?.data?.imageUrl as string;
-          const fileName = (imgNode?.data?.fileName as string) || 'product_photo.jpg';
-
-          if (hasImage && uploadState === 'completed') {
-            return (
-              <div className="p-3 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm my-3 space-y-2.5">
-                <div className="flex items-center justify-between text-xs font-bold text-[#2C2A29]">
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                    产品主图已就绪
-                  </span>
-                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    已连通 DNA
+            {/* Screen Selector Pills for Typography */}
+            {agentRun?.plan?.screens && agentRun.plan.screens.length > 1 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-stone-500 font-bold">
+                  <span>选择需要排版的分镜</span>
+                  <span className="font-mono text-[10px] text-[#B28C5A]">
+                    当前: 第 {selectedSceneIndex || 1} 屏
                   </span>
                 </div>
-
-                <div className="relative w-full h-32 bg-stone-100 rounded-xl overflow-hidden border border-[#E5E0D8] flex items-center justify-center group">
-                  <img src={imageUrl} alt={fileName} className="w-full h-full object-contain p-2" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-1.5 bg-[#B28C5A] hover:bg-[#9E7A4A] text-white rounded-lg text-xs font-bold shadow-md flex items-center gap-1"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>更换</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[10px] text-stone-500 pt-1">
-                  <span className="truncate max-w-[180px] font-mono">{fileName}</span>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-[#B28C5A] hover:underline font-bold flex items-center gap-1"
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>重新上传</span>
-                  </button>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+                  {agentRun.plan.screens.map(screen => {
+                    const isCurrent = (selectedSceneIndex || 1) === screen.screenIndex;
+                    return (
+                      <button
+                        key={screen.screenIndex}
+                        type="button"
+                        onClick={() => onSelectSceneIndex?.(screen.screenIndex)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                          isCurrent
+                            ? 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-xs'
+                            : 'bg-white text-stone-600 border-[#E5E0D8] hover:border-[#B28C5A]'
+                        }`}
+                      >
+                        第 {screen.screenIndex} 屏: {screen.screenTitle}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          }
+            )}
 
-          return (
-            <div
-              onClick={() => {
-                if (uploadState !== 'uploading' && uploadState !== 'analyzing') {
-                  fileInputRef.current?.click();
-                }
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const file = e.dataTransfer.files?.[0];
-                if (file && onUploadFile) {
-                  onUploadFile(file);
-                }
-              }}
-              className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center my-3 cursor-pointer group ${
-                uploadState === 'uploading' || uploadState === 'analyzing'
-                  ? 'border-amber-300 bg-amber-50/40 cursor-wait'
-                  : 'border-[#E5E0D8] bg-white/70 hover:bg-white hover:border-[#B28C5A]'
-              }`}
-            >
-              {uploadState === 'uploading' && (
-                <div className="flex flex-col items-center py-2">
-                  <Loader2 className="w-8 h-8 text-[#B28C5A] animate-spin mb-2" />
-                  <p className="text-xs font-bold text-[#2C2A29]">正在上传产品主图...</p>
-                </div>
-              )}
-
-              {uploadState === 'analyzing' && (
-                <div className="flex flex-col items-center py-2">
-                  <Sparkles className="w-8 h-8 text-[#B28C5A] animate-pulse mb-2" />
-                  <p className="text-xs font-bold text-[#2C2A29]">正在解析 DNA 视觉特征...</p>
-                  <p className="text-[10px] text-stone-400 mt-0.5">提取造型、色彩、材质与材质纹理</p>
-                </div>
-              )}
-
-              {uploadState !== 'uploading' && uploadState !== 'analyzing' && (
-                <>
-                  <div className="w-10 h-10 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center mb-2 group-hover:scale-105 transition-transform border border-[#E5E0D8]/60">
-                    <Upload className="w-5 h-5" />
-                  </div>
-                  <p className="text-xs font-bold text-[#2C2A29] mb-0.5">
-                    {uploadState === 'completed' ? '重新上传产品主角图' : '点击/拖拽上传产品主角图'}
-                  </p>
-                  <p className="text-[10px] text-stone-400">支持 PNG, JPG, WEBP · 支持 Ctrl+V 粘贴</p>
-                </>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Phase C2: Generate Plan Action Button */}
-        {uploadState === 'completed' && activeDna && (
-          <div className="my-4 p-4 bg-[#F9F5EF] rounded-2xl border border-[#B28C5A]/40 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <LayoutGrid className="w-5 h-5 text-[#B28C5A]" />
-              <div>
-                <h4 className="font-bold text-xs text-[#2C2A29]">{planScreenCount || 1} 屏{planScreenCount === 1 ? '单图' : '全案'}爆款详情页策划</h4>
-                <p className="text-[10px] text-stone-500">基于产品 DNA 与行业模型生成视觉企划</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block space-y-1">
-                <span className="text-[10px] font-bold text-stone-500">企划方向 / 核心受众 (可选)</span>
-                <input
-                  type="text"
-                  placeholder="例如：母婴喂奶、适老化设计、电竞房搭配..."
-                  value={promptValue}
-                  onChange={e => handleUpdatePrompt(e.target.value, { mode: 'replace' })}
-                  className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-xs text-[#2C2A29] outline-none focus:border-[#B28C5A] placeholder-stone-400"
-                />
-              </label>
-
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold text-stone-500">企划屏数</span>
-                  <select
-                    value={planScreenCount || 1}
-                    onChange={e => setPlanScreenCount?.(Number(e.target.value))}
-                    className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
-                  >
-                    <option value={1}>1 屏 (单图传播)</option>
-                    <option value={3}>3 屏 (轻量种草)</option>
-                    <option value={4}>4 屏 (核心卖点)</option>
-                    <option value={6}>6 屏 (精简详情)</option>
-                    <option value={9}>9 屏 (完整全案)</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold text-stone-500">目标画面比例</span>
-                  <select
-                    value={planAspectRatio || '4:3'}
-                    onChange={e => setPlanAspectRatio?.(e.target.value)}
-                    className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
-                  >
-                    <option value="1:1">1:1 (电商主图/方图)</option>
-                    <option value="3:4">3:4 (小红书/海报竖版)</option>
-                    <option value="4:3">4:3 (横版短图/横屏展厅)</option>
-                    <option value="9:16">9:16 (手机全屏竖版)</option>
-                    <option value="16:9">16:9 (PC横版/宽屏)</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold text-stone-500">策划模型</span>
-                  <select
-                    value={planAgentModel}
-                    onChange={event => setPlanAgentModel?.(event.target.value)}
-                    className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
-                  >
-                    <option value="gemini-3.7-flash">Gemini 3.7 Flash（混合推理·思维链加速）</option>
-                    <option value="gpt-6">GPT-6（旗舰全模态 Astra·最强全案企划）</option>
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash（官方原生·快速稳定）</option>
-                    <option value="gpt-5.6-sol">GPT-5.6 Sol（旗舰 GPT-5.6 Responses）</option>
-                    <option value="gpt-5.5">GPT-5.5</option>
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold text-stone-500">思考等级</span>
-                  <select
-                    value={planReasoningEffort}
-                    onChange={event => setPlanReasoningEffort?.(event.target.value as 'minimal' | 'low' | 'medium' | 'high')}
-                    className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
-                  >
-                    <option value="minimal">极简 (最快)</option>
-                    <option value="low">低 (推荐)</option>
-                    <option value="medium">中 (标准深度)</option>
-                    <option value="high">高 (极深，容易超时)</option>
-                  </select>
-                </label>
-              </div>
-
-              {/* Optional Search Grounding Toggle in Chat Card */}
-              <div className="flex items-center justify-between p-2 rounded-lg bg-stone-100/70 border border-stone-200/60">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={planEnableSearch}
-                    onChange={e => setPlanEnableSearch?.(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded text-[#B28C5A] border-stone-300 focus:ring-[#B28C5A] accent-[#B28C5A] cursor-pointer"
-                  />
-                  <span className="text-[10px] font-bold text-stone-700 flex items-center gap-1">
-                    <Globe className="w-3 h-3 text-[#B28C5A]" />
-                    联网检索顾家/乐至宝等竞品命名与排版
-                  </span>
-                </label>
-                <span className="text-[9px] text-stone-400">
-                  {planEnableSearch ? '已启用' : '未开启'}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => onGenerateNineGridPlan()}
-              disabled={isPlanGenerating}
-              className="w-full py-3 bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98]"
-            >
-              {isPlanGenerating ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>正在根据 DNA 生成 {planScreenCount || 1} 屏企划...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>{agentRun?.plan ? `重新生成 ${planScreenCount || 1} 屏企划` : `生成 ${planScreenCount || 1} 屏企划`}</span>
-                </>
-              )}
-            </button>
-          </div>
-        )}
-
-        {/* Error Alert if Any */}
-        {(errorMessage || planError) && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-bold">操作异常</p>
-              <p className="text-[11px] text-rose-700 mt-0.5">{errorMessage || planError}</p>
-            </div>
+            {/* Mount Full Typography Workspace Panel */}
+            <TypographyWorkspacePanel
+              projectId={projectId || '00000000-0000-0000-0000-000000000001'}
+              canvasId={canvasId || '00000000-0000-0000-0000-000000000001'}
+              sceneIndex={selectedSceneIndex || 1}
+              productDnaVersionId={productDnaVersionId}
+              assetVersionId={assetVersionId}
+            />
           </div>
         )}
       </div>
-      </div>
 
-      {/* Fixed Composer Input at Bottom */}
-      <div className="p-4 border-t border-[#E5E0D8] bg-white/90 backdrop-blur-md shrink-0">
-        <form onSubmit={handleSend} className="relative flex items-center gap-2">
-          <input
-            type="text"
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            disabled={isStreaming}
-            placeholder={isStreaming ? "智能体正在回复中..." : "描述你希望生成的企划要求或重新策划建议……"}
-            className="w-full pl-4 pr-12 py-3 bg-[#F9F5EF]/80 border border-[#E5E0D8] rounded-2xl text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none focus:ring-1 focus:ring-[#B28C5A] focus:border-[#B28C5A] transition-all disabled:opacity-60"
-          />
-          {isStreaming ? (
-            <button
-              type="button"
-              onClick={onStopGenerating}
-              className="absolute right-2 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-bold transition-all shadow-sm flex items-center gap-1"
-              title="停止生成"
-            >
-              <Pause className="w-3 h-3" />
-              <span>停止</span>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!inputValue.trim()}
-              className="absolute right-2 p-2 bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-40 text-white rounded-xl transition-all shadow-sm active:scale-95"
-              title="发送"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </form>
-        <div className="mt-2 text-[10px] text-center text-stone-400 flex items-center justify-center gap-1">
-          <CheckCircle className="w-3 h-3 text-emerald-500" />
-          <span>MANWAH 视觉企划智能体 · 阶段 C2 企划工作流</span>
+      {/* Fixed Composer Input at Bottom ONLY when activeTab === 'chat' */}
+      {activeTab === 'chat' && (
+        <div className="p-4 border-t border-[#E5E0D8] bg-white/90 backdrop-blur-md shrink-0">
+          <form onSubmit={handleSend} className="relative flex items-center gap-2">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              disabled={isStreaming}
+              placeholder={isStreaming ? "智能体正在回复中..." : "描述你希望生成的企划要求或重新策划建议……"}
+              className="w-full pl-4 pr-12 py-3 bg-[#F9F5EF]/80 border border-[#E5E0D8] rounded-2xl text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none focus:ring-1 focus:ring-[#B28C5A] focus:border-[#B28C5A] transition-all disabled:opacity-60"
+            />
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={onStopGenerating}
+                className="absolute right-2 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                title="停止生成"
+              >
+                <Pause className="w-3 h-3" />
+                <span>停止</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!inputValue.trim()}
+                className="absolute right-2 p-2 bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-40 text-white rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+                title="发送"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </form>
+          <div className="mt-2 text-[10px] text-center text-stone-400 flex items-center justify-center gap-1">
+            <CheckCircle className="w-3 h-3 text-emerald-500" />
+            <span>MANWAH 视觉企划智能体 · 阶段 C2 企划工作流</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Full DNA Drawer Overlay inside Agent Panel */}
       {showFullDnaDrawer && activeDna && (

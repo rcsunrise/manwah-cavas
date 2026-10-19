@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Type, CheckCircle, AlertTriangle, RefreshCw, Save, ShieldAlert, Sliders, Layers, Sparkles, Wand2 } from 'lucide-react';
-import { TypographySlotSpec, TypographySpecV1, StructuredCopyContent, TypographySemanticRole, TypographyOverflowPolicy } from '../../types/creativeCanvas';
+import { TypographySlotSpec, TypographySpecV1, TypographySemanticRole, TypographyOverflowPolicy } from '../../types/creativeCanvas';
 import { supabase } from '../../lib/supabase';
 
 interface TypographyWorkspacePanelProps {

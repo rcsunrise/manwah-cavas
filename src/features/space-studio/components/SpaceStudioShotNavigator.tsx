@@ -42,6 +42,37 @@ const HEIGHT_EXPANDED = 260;   // Full thumbnails with larger cards
 const HEIGHT_MIN = 44;
 const HEIGHT_MAX = 360;
 
+const ShotThumbnailImage: React.FC<{
+  src?: string;
+  lensMm?: number;
+}> = ({ src, lensMm }) => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (!src || hasError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1 w-full h-full select-none">
+        <Camera className="w-4 h-4 text-stone-400" />
+        <span className="text-[9px] font-mono text-stone-400">{lensMm || 35}mm</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setHasError(true)}
+      className="w-full h-full object-cover select-none"
+      crossOrigin="anonymous"
+      referrerPolicy="no-referrer"
+    />
+  );
+};
+
 export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> = ({
   shots,
   sceneMaster,
@@ -428,20 +459,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                       isLight ? 'bg-stone-100 border-stone-200' : 'bg-stone-950 border-stone-800'
                     }`}
                   >
-                    {previewImage ? (
-                      <img
-                        src={previewImage}
-                        alt={shot.name}
-                        className="w-full h-full object-cover select-none"
-                        crossOrigin="anonymous"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-1">
-                        <Camera className="w-4 h-4 text-stone-400" />
-                        <span className="text-[9px] font-mono text-stone-400">{shot.camera.lensMm}mm</span>
-                      </div>
-                    )}
+                    <ShotThumbnailImage src={previewImage} lensMm={shot.camera?.lensMm} />
 
                     {/* Index & Template Code Pill */}
                     <div
