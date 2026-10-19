@@ -21,7 +21,8 @@ import {
   Server,
   Play,
   Video,
-  Film
+  Film,
+  Camera
 } from 'lucide-react';
 import {
   StorageManagementService,
@@ -684,6 +685,17 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                             <button
                               onClick={() => {
                                 onClose();
+                                navigate(`/poster-studio/${canvas.id}?mode=space`);
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              title="进入摄影画册工作台 (A00~A08全景与多镜头空间实拍)"
+                            >
+                              <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>摄影画册</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                onClose();
                                 navigate(`/creative-canvas/${canvas.id}`);
                               }}
                               className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
@@ -881,6 +893,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                   <div className="divide-y divide-stone-100">
                     {filteredLocalDrafts.map(draft => {
                       const isSelected = selectedLocalDraftKeys.has(draft.key);
+                      const isSpaceStudio = draft.type === 'space_studio';
                       return (
                         <div
                           key={draft.key}
@@ -899,22 +912,76 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                                 <Square className="w-4 h-4" />
                               )}
                             </button>
+
+                            {/* Thumbnail if available */}
+                            {draft.coverImageUrl && (
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-stone-200 shrink-0 bg-stone-100">
+                                <img
+                                  src={draft.coverImageUrl}
+                                  alt="预览"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-xs text-stone-900 truncate">
                                   {draft.title}
                                 </span>
-                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 font-mono">
+                                {isSpaceStudio ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-0.5 shrink-0">
+                                    <Camera className="w-2.5 h-2.5" />
+                                    摄影画册
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-mono shrink-0">
+                                    视觉画布
+                                  </span>
+                                )}
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-stone-100 text-stone-600 font-mono shrink-0">
                                   {formatBytes(draft.sizeBytes)}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-stone-400 font-mono mt-0.5 truncate">
-                                存储键: {draft.key}
+                              <div className="flex items-center gap-3 text-[11px] text-stone-400 font-mono mt-0.5 truncate">
+                                {isSpaceStudio && draft.productName && (
+                                  <span>产品: {draft.productName}</span>
+                                )}
+                                {isSpaceStudio && typeof draft.generatedShotsCount === 'number' && (
+                                  <span>已生成: {draft.generatedShotsCount} 镜头</span>
+                                )}
+                                <span>更新时间: {new Date(draft.updatedAt).toLocaleString()}</span>
                               </div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
+                            {isSpaceStudio ? (
+                              <button
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/poster-studio/${draft.projectId || 'active'}?mode=space`);
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                title="恢复并进入此摄影画册工作台作业"
+                              >
+                                <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                                <span>进入摄影画册</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  onClose();
+                                  const canvasId = draft.key.replace('canvas_workspace_', '').replace('manwah_canvas_', '');
+                                  navigate(`/creative-canvas/${canvasId}`);
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                title="打开并进入此历史企划画布"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
+                                <span>打开画板</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => handleSingleDelete('local', draft.key)}
                               disabled={deleting}

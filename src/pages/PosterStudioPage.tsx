@@ -36,11 +36,12 @@ import {
 } from 'lucide-react';
 import { StorageManagerModal } from '../components/creative-canvas/StorageManagerModal';
 import { UserBadge } from '../components/common/UserBadge';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams, useParams } from 'react-router-dom';
 
 export const PosterStudioPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { workspaceId } = useParams<{ workspaceId: string }>();
   const [searchParams] = useSearchParams();
   const urlMode = searchParams.get('mode');
   const initialMode: SpaceStudioMode = urlMode === 'poster' ? 'poster' : 'space';
@@ -648,6 +649,7 @@ export const PosterStudioPage: React.FC = () => {
 
       {studioMode === 'space' ? (
         <SpaceStudioShell
+          projectId={workspaceId || handoff?.projectId || handoff?.canvasId || 'active'}
           onSwitchMode={setStudioMode}
           onBackToCanvas={handleBackToCanvas}
           onHandoffToPoster={handleSpaceHandoff}

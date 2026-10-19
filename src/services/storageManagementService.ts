@@ -64,6 +64,11 @@ export interface LocalBrowserDraftItem {
   title: string;
   sizeBytes: number;
   updatedAt: string;
+  type?: 'canvas' | 'space_studio';
+  projectId?: string;
+  productName?: string;
+  generatedShotsCount?: number;
+  coverImageUrl?: string;
 }
 
 export class StorageManagementService {
@@ -145,6 +150,44 @@ export class StorageManagementService {
       const key = localStorage.key(i);
       if (!key) continue;
 
+      // 1. 摄影画册工作台 (Space Studio) 本地持久化快照
+      if (key.startsWith('space_studio_project_') || key === 'space_studio_active_project') {
+        const value = localStorage.getItem(key) || '';
+        let title = '【摄影画册工作台】空间摄影工程';
+        let updatedAt = new Date().toISOString();
+        let projectId = key.replace('space_studio_project_', '');
+        if (key === 'space_studio_active_project') projectId = 'active';
+        let productName = '多功能沙发';
+        let generatedShotsCount = 0;
+        let coverImageUrl: string | undefined = undefined;
+
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.projectId) projectId = parsed.projectId;
+            if (parsed.updatedAt) updatedAt = parsed.updatedAt;
+            productName = parsed.summary?.productName || parsed.products?.[0]?.name || productName;
+            generatedShotsCount = parsed.summary?.generatedShotsCount || 0;
+            title = parsed.title || `【摄影画册】${productName} (${generatedShotsCount > 0 ? `${generatedShotsCount}镜头已生成` : '草稿'})`;
+            coverImageUrl = parsed.sceneMaster?.imageUrl || parsed.shots?.[0]?.revisions?.[0]?.imageUrl || parsed.products?.[0]?.referenceImage;
+          }
+        } catch (e) {}
+
+        items.push({
+          key,
+          title,
+          sizeBytes: new Blob([value]).size,
+          updatedAt,
+          type: 'space_studio',
+          projectId,
+          productName,
+          generatedShotsCount,
+          coverImageUrl
+        });
+        continue;
+      }
+
+      // 2. 无限视觉画布草稿
       if (
         key.startsWith('manwah_canvas_') ||
         key.startsWith('canvas_workspace_') ||
@@ -169,7 +212,8 @@ export class StorageManagementService {
           key,
           title,
           sizeBytes: new Blob([value]).size,
-          updatedAt
+          updatedAt,
+          type: 'canvas'
         });
       }
     }

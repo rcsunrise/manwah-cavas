@@ -239,7 +239,8 @@ router.post('/generate-human-revision', async (req: Request, res: Response) => {
       ? `EXPLICIT HUMAN NARRATIVE & LIFESTYLE ACTION: "${sceneDirectives.trim()}". `
       : '';
 
-    const positivePrompt = `MANWAH first-class luxury ${effectiveProductName} in ${effectiveProductColor}, penthouse living room, natural daylight, ${narrativeDirective}${assignments.length} family members seated comfortably: ${assignments.map((a) => `${a.humanAssetId} in ${a.poseId} posture on ${a.seatId} seat with ${a.footrestState} footrest`).join(', ')}, photorealistic 8k architectural interior commercial photography`;
+    // 严禁重新构想客厅 (避免机位漂移)；严格以当前镜头已拍摄底图为绝对基准，仅注入就座人像
+    const positivePrompt = `PHOTOREALISTIC HUMAN SEATING INSERTION (ZERO CAMERA DRIFT): Keep Reference Image 1 camera angle, framing, horizon, and furniture coordinates 100% fixed and frozen. ${narrativeDirective}${assignments.length} individuals naturally seated on the sofa: ${assignments.map((a) => `${a.humanAssetId} in ${a.poseId} posture on ${a.seatId} seat with ${a.footrestState} footrest`).join(', ')}, natural daylight interaction, authentic skin texture, realistic clothing folds and contact shadows`;
 
     const imageResult = await SpaceImageGenerationService.generateAndStore({
       projectId,
@@ -250,7 +251,7 @@ router.post('/generate-human-revision', async (req: Request, res: Response) => {
         name: a.name
       })),
       positivePrompt,
-      negativePrompt: 'blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark',
+      negativePrompt: 'camera drift, camera shift, zoomed in, zoomed out, shifted sofa, altered background, displaced furniture, blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark',
       aspectRatio: req.body.aspectRatio || '4:3',
       productName: effectiveProductName,
       productColor: effectiveProductColor,

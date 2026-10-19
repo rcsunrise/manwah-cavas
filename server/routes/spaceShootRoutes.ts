@@ -575,7 +575,8 @@ router.post('/outpaint', async (req: Request, res: Response) => {
       originalScenePrompt,
       productName,
       productMaterial,
-      productColor
+      productColor,
+      cameraSettings
     } = req.body;
 
     if (!paddedImage) {
@@ -599,6 +600,13 @@ router.post('/outpaint', async (req: Request, res: Response) => {
     const directivePrompt = `[CRITICAL ARCHITECTURAL OUTPAINTING & PANORAMIC EXPANSION MANDATE]
 PRIMARY TASK:
 You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) around the existing room scene in Reference Image 1.
+
+[OPTICAL SENSOR MARGIN EXPANSION - ZERO CAMERA MOVEMENT MANDATE (CRITICAL)]:
+1. OPTICAL PERSPECTIVE LOCK:
+   - The camera position (height, distance, optical horizon, pitch/yaw angle) and lens focal length ARE 100% FIXED${cameraSettings?.lensMm ? ` (Focal Length: ${cameraSettings.lensMm}mm, Lens Height: ${cameraSettings.heightCm || 115}cm)` : ''}.
+   - This is strictly an optical sensor frame expansion revealing what lies just outside the border, NOT a camera pull-back or focal zoom!
+   - The central unmasked portion of Reference Image 1 MUST REMAIN at 100% identical pixel scale, viewing elevation, and perspective angle.
+   - DO NOT flatten or change the perspective horizon! DO NOT zoom out or shrink the existing furniture!
 
 ORIGINAL SCENE TRUTH & INHERITED DNA:
 ${originalScenePrompt ? `- Original Scene Positive Prompt: ${originalScenePrompt}` : ''}

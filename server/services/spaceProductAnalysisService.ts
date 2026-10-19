@@ -492,20 +492,25 @@ export class SpaceProductAnalysisService {
 6. 视觉真值不可篡改锁定规则 (lockedRules):
    - 给出 3~5 条后续在空间母版 A00 及分镜 A01~A08 渲染中必须 100% 保持一致性的硬性物理约束。
 
-7. 【极其关键：多产品多家具解构识别与总图坐标标记 (Multi-Product Ensemble Disaggregation)】:
-   - 若画面是一张组合套装图、全景实拍图或包含多个不同家具（例如同时出现：主位三人位沙发、单人电动躺椅、无功能休闲矮单椅、电视柜、茶几、餐桌椅等）：
-   - 你必须在 "detectedProducts" 数组中，将画面中出现的【每一个独立家具产品】分别拆解出来！
-   - 对于每个拆解产品分别提供：
-     * "id": 唯一单品 ID (如 "item-1", "item-2", "item-3")
-     * "name": 准确单品规范全称 (如 "主位三人位多功能真皮主沙发", "单人电动太空舱躺椅", "无扶手休闲旋转矮单椅", "极简悬浮岩板电视地柜", "极简双拼圆茶几")
-     * "role": 角色分类 ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
-     * "priority": 主品标 "primary"，次品/搭配单椅标 "secondary"，柜几陈设标 "decor"
-     * "functionCapable": true/false (对于带电机/展开脚托的功能位设为 true；对于无电动功能、无脚托的休闲单椅 lounge_chair 严格设为 false！)
-     * "dimensions": 该家具自身独立的真实毫米尺寸 (如三人位宽3150深1080高950，休闲矮单椅宽950深1000高850，单人躺椅宽980深1020高1050，电视柜宽2000深400高450，茶几宽1100深700高420)
-     * "colors": 该家具自身的真实独立色彩 (禁止混淆，主沙发写主沙发色，单椅写单椅色，忠实反映原图色阶明度)
-     * "materials": 该家具真实的材质列表
-     * "boundingBox": 该家具在整张识别总图中的归一化百分比坐标 (0~100 整数)，格式: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}，分别对应顶部ymin、左侧xmin、底部ymax、右侧xmax。
-     * "dossierSummary": 该单品的规格摘要。
+7. 【极其关键：单品 vs 组合图与多家具解构准则 (Multi-Product Ensemble Disaggregation)】:
+   - 【严禁对单品进行暴力切片与虚构搭配 (NO VIOLENT SLICING & PURITY LOCK)】:
+     * 必须首先准确判定当前画面是否为【单件独立产品展示图】（例如仅包含单张沙发、单张休闲椅、单张床、单个茶几或单个电视柜的白底/实拍/效果图展示）。
+     * 若画面确为【单件家具单品】，"detectedProducts" 必须严格返回空数组 []！
+     * 【绝对严禁】将同一件单品的不同结构（如沙发的靠垫、扶手、抱枕、坐垫皮料、电机脚踏）错误拆分为不同的家具单品！
+     * 【绝对严禁】凭空无中生有捏造画面中不存在的搭配品（例如原图只有单张三人位棕色沙发，绝对严禁虚构出白色单人躺椅、黑色单椅或茶几）！
+   - 【多产品组合图解构条件】:
+     * 仅当原图明确为【包含 2 件及以上独立物理实体的家具组合套图/实景客餐厅展厅】（例如画面中同时清晰存在物理分离的主沙发、独立的单人休闲椅、独立的茶几）时，才允许在 "detectedProducts" 数组中分别拆解出这些实体家具。
+     * 对于拆解出的各实体家具提供：
+       * "id": 唯一单品 ID (如 "item-1", "item-2", "item-3")
+       * "name": 准确单品规范全称 (如 "主位三人位多功能真皮主沙发", "无扶手休闲旋转矮单椅", "极简悬浮岩板电视地柜")
+       * "role": 角色分类 ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
+       * "priority": 主品标 "primary"，次品/搭配单椅标 "secondary"，柜几陈设标 "decor"
+       * "functionCapable": true/false (对于带电机/展开脚托的功能位设为 true；对于无电动功能、无脚托的休闲单椅 lounge_chair 严格设为 false！)
+       * "dimensions": 该家具自身独立的真实毫米尺寸
+       * "colors": 该家具自身的真实独立色彩 (禁止混淆，主沙发写主沙发色，单椅写单椅色，忠实反映原图色阶明度)
+       * "materials": 该家具真实的材质列表
+       * "boundingBox": 该家具在整张识别总图中的归一化百分比坐标 (0~100 整数)，格式: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}
+       * "dossierSummary": 该单品的规格摘要。
 
 ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
 
@@ -538,34 +543,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   "dossierSummary": "高精工业级产品档案：三人位多功能真皮主沙发，配备南美半苯胺头层牛皮、德国低压静音双电机与高碳钢合金伸缩骨架，尺寸3100×1080×950mm。",
   "readoutConfidence": 95,
   "explanation": "深度解析完成，已成功提炼材质纹理与几何特征",
-  "detectedProducts": [
-    {
-      "id": "item-1",
-      "name": "主位三人位多功能真皮主沙发",
-      "sku": "MW-CH-9866-3S",
-      "role": "sofa_3seat",
-      "priority": "primary",
-      "dimensions": {"width": 3150, "depth": 1080, "height": 950},
-      "materials": ["南美进口头层牛皮 (半苯胺)", "德国双电机"],
-      "colors": ["复古深栗棕 (Vintage Chestnut)"],
-      "adaptiveStyles": ["意式轻奢", "现代极简"],
-      "boundingBox": {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85},
-      "dossierSummary": "三人位多功能真皮主沙发，复古深栗棕，尺寸3150×1080×950mm。"
-    },
-    {
-      "id": "item-2",
-      "name": "极地奶白单人电动太空舱躺椅",
-      "sku": "MW-CH-9866-1R",
-      "role": "recliner_1seat",
-      "priority": "secondary",
-      "dimensions": {"width": 980, "depth": 1020, "height": 1050},
-      "materials": ["极地奶白头层牛皮", "零重力伸展机构"],
-      "colors": ["极地奶白 (Polar Off-White)"],
-      "adaptiveStyles": ["意式轻奢", "现代极简"],
-      "boundingBox": {"ymin": 22, "xmin": 75, "ymax": 70, "xmax": 98},
-      "dossierSummary": "极地奶白单人电动躺椅，尺寸980×1020×1050mm。"
-    }
-  ]
+  "detectedProducts": []
 }`
         });
 
@@ -664,12 +642,67 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
       }
     }
 
+    // 智能防暴力切片与纯净单品保护机制 (Anti-Violent-Slicing & Pure Single Product Protection)
     const processedDetectedProducts: DisaggregatedProductItem[] = [];
     const rawDetected = Array.isArray(extracted?.detectedProducts) ? extracted.detectedProducts : [];
 
-    if (rawDetected.length > 0) {
-      for (let idx = 0; idx < rawDetected.length; idx++) {
-        const item = rawDetected[idx];
+    // 几何判别函数：计算两个边界框的面积与包含重叠关系，杜绝将同一件家具的局部拆成“独立家具”
+    const isComponentOrOverlapping = (
+      box1: { ymin: number; xmin: number; ymax: number; xmax: number },
+      box2: { ymin: number; xmin: number; ymax: number; xmax: number }
+    ): boolean => {
+      const ymin = Math.max(box1.ymin, box2.ymin);
+      const xmin = Math.max(box1.xmin, box2.xmin);
+      const ymax = Math.min(box1.ymax, box2.ymax);
+      const xmax = Math.min(box1.xmax, box2.xmax);
+      if (ymax <= ymin || xmax <= xmin) return false;
+      const interArea = (ymax - ymin) * (xmax - xmin);
+      const area1 = Math.max(1, (box1.ymax - box1.ymin) * (box1.xmax - box1.xmin));
+      const area2 = Math.max(1, (box2.ymax - box2.ymin) * (box2.xmax - box2.xmin));
+      // 若重叠面积占较小框面积超过 65%，判定为局部构件嵌套或同源重复框
+      return interArea / Math.min(area1, area2) > 0.65;
+    };
+
+    // 1. 过滤掉名称明显为家具局部构件的伪产品（如抱枕、扶手、靠背、坐垫等）
+    const validDetected = rawDetected.filter((item) => {
+      const name = item.name || '';
+      if (/(扶手|靠垫|靠背|抱枕|座包|坐垫|头枕|底框|脚踏|局部|特写|面料|皮质|细节|按键|缝线)/i.test(name)) {
+        console.log(`[SpaceProductAnalysisService] 过滤局部构件误切片: ${name}`);
+        return false;
+      }
+      return true;
+    });
+
+    // 2. 仅当存在 2 件及以上实体家具候选时，进行几何去重筛选
+    const acceptedItems: typeof validDetected = [];
+    if (validDetected.length > 1) {
+      for (const item of validDetected) {
+        const safeBox = normalizeBoundingBox(item.boundingBox, masterMetaWidth, masterMetaHeight);
+        const boxW = safeBox.xmax - safeBox.xmin;
+        const boxH = safeBox.ymax - safeBox.ymin;
+        // 过滤面积过小的微小碎片框 (< 6% 宽或高)
+        if (boxW < 6 || boxH < 6) continue;
+
+        // 检查是否与已接收的独立单品框高度重叠
+        const overlapsWithExisting = acceptedItems.some((accepted) => {
+          const acceptedBox = normalizeBoundingBox(accepted.boundingBox, masterMetaWidth, masterMetaHeight);
+          return isComponentOrOverlapping(safeBox, acceptedBox);
+        });
+
+        if (overlapsWithExisting) {
+          console.log(`[SpaceProductAnalysisService] 过滤重叠度过高的同源伪切片: ${item.name}`);
+          continue;
+        }
+
+        acceptedItems.push(item);
+      }
+    }
+
+    // 3. 仅当去重后确实存在 2 件及以上真正独立的物理家具实体时，才执行物理切片
+    if (acceptedItems.length > 1) {
+      console.log(`[SpaceProductAnalysisService] 确认上传图为多产品实景组合，解构出 ${acceptedItems.length} 款独立家具`);
+      for (let idx = 0; idx < acceptedItems.length; idx++) {
+        const item = acceptedItems[idx];
         const itemId = `item-${productId}-${idx + 1}`;
 
         // 角色防误判与智能纠偏保护：严禁将茶几/几组识别为单椅，严禁将功能沙发识别为陈设
@@ -789,96 +822,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
         });
       }
     } else {
-      // 若大模型未能拆解出多件，但为多产品组合图或全景图，自动推导标准客餐厅组合单品并进行 Sharp 独立物理切片
-      const defaultSuiteItems = [
-        {
-          id: `item-${productId}-1`,
-          name: finalName,
-          sku: fallbackSku,
-          role: finalRole,
-          priority: 'primary' as const,
-          dimensions: finalDimensions,
-          materials: Array.isArray(extracted?.materials) && extracted.materials.length > 0 ? extracted.materials : ['南美进口特选头层牛皮 (半苯胺)'],
-          colors: Array.isArray(extracted?.colors) && extracted.colors.length > 0 ? extracted.colors : [detectedDominantColorName],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: extracted?.surfaceTexture || '细腻平纹半苯胺牛皮',
-          functionCapable: typeof extracted?.functionCapable === 'boolean' ? extracted.functionCapable : true,
-          boundingBox: { ymin: 20, xmin: 38, ymax: 65, xmax: 88 },
-          dossierSummary: `${finalName} · 尺寸 ${finalDimensions.width}×${finalDimensions.depth}×${finalDimensions.height}mm`
-        },
-        {
-          id: `item-${productId}-2`,
-          name: '极地奶白单人电动太空舱躺椅',
-          sku: `MW-CH-${Math.floor(1000 + Math.random() * 9000)}-1R`,
-          role: 'recliner_1seat' as const,
-          priority: 'secondary' as const,
-          dimensions: { width: 980, depth: 1020, height: 1050 },
-          materials: ['极地奶白头层牛皮', '零重力无级伸展机构'],
-          colors: ['极地奶白 (Polar Off-White)'],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: '极地奶白半苯胺牛皮，电动展开功能态',
-          functionCapable: true,
-          boundingBox: { ymin: 22, xmin: 75, ymax: 68, xmax: 98 },
-          dossierSummary: '极地奶白单人电动太空舱躺椅，尺寸980×1020×1050mm'
-        },
-        {
-          id: `item-${productId}-3`,
-          name: '意式极简奢石茶几组',
-          sku: `MW-CT-${Math.floor(1000 + Math.random() * 9000)}-CT`,
-          role: 'coffee_table' as const,
-          priority: 'secondary' as const,
-          dimensions: { width: 1200, depth: 700, height: 420 },
-          materials: ['天然透光奢石台面', '哑光黑钛金属架'],
-          colors: ['曜石深灰', '黑钛金属'],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: '天然奢石纹理与拉丝金属',
-          functionCapable: false,
-          boundingBox: { ymin: 52, xmin: 44, ymax: 76, xmax: 78 },
-          dossierSummary: '意式极简奢石茶几，尺寸1200×700×420mm'
-        },
-        {
-          id: `item-${productId}-4`,
-          name: '极简悬浮岩板电视地柜',
-          sku: `MW-TV-${Math.floor(1000 + Math.random() * 9000)}-TV`,
-          role: 'tv_console' as const,
-          priority: 'decor' as const,
-          dimensions: { width: 2200, depth: 400, height: 450 },
-          materials: ['雪山白岩板', '深色哑光烤漆柜体'],
-          colors: ['极地白', '曜石黑'],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: '高硬度耐磨岩板台面',
-          functionCapable: false,
-          boundingBox: { ymin: 60, xmin: 45, ymax: 88, xmax: 92 },
-          dossierSummary: '极简悬浮电视地柜，尺寸2200×400×450mm'
-        }
-      ];
-
-      for (const suiteItem of defaultSuiteItems) {
-        let cropBase64: string | undefined = undefined;
-        if (masterBuffer) {
-          try {
-            const left = Math.max(0, Math.min(masterMetaWidth - 32, Math.round((suiteItem.boundingBox.xmin / 100) * masterMetaWidth)));
-            const top = Math.max(0, Math.min(masterMetaHeight - 32, Math.round((suiteItem.boundingBox.ymin / 100) * masterMetaHeight)));
-            const availW = Math.max(32, masterMetaWidth - left);
-            const availH = Math.max(32, masterMetaHeight - top);
-            const rawW = Math.round(((suiteItem.boundingBox.xmax - suiteItem.boundingBox.xmin) / 100) * masterMetaWidth);
-            const rawH = Math.round(((suiteItem.boundingBox.ymax - suiteItem.boundingBox.ymin) / 100) * masterMetaHeight);
-            const width = Math.max(32, Math.min(availW, rawW));
-            const height = Math.max(32, Math.min(availH, rawH));
-            const croppedBuffer = await sharp(masterBuffer).extract({ left, top, width, height }).webp({ quality: 85 }).toBuffer();
-            cropBase64 = `data:image/webp;base64,${croppedBuffer.toString('base64')}`;
-          } catch (e) {}
-        }
-        processedDetectedProducts.push({
-          ...suiteItem,
-          cropImageUrl: cropBase64 || sourceMasterImageUrl,
-          cropBase64,
-          sourceMasterImageUrl,
-          lockedRules: [
-            '保持该单品与识别总图中的相对空间比例与材质一致'
-          ]
-        });
-      }
+      console.log('[SpaceProductAnalysisService] 上传图为单件产品，严格保持纯净单品模式，禁止暴力切片与虚构搭配套组');
     }
 
     const finalProduct: ProductDnaReadout = {

@@ -421,5 +421,38 @@ describe('多产品智能解构、参数分配与总图来源索引 (Multi-Produ
       expect(normalized.xmax - normalized.xmin).toBeGreaterThanOrEqual(5);
     });
   });
+
+  describe('单品纯净性保护与严禁暴力切片 (Anti-Violent-Slicing & Single Product Purity)', () => {
+    it('当上传单品图且未解构出多件时，detectedProducts 严格为空，绝对不捏造极地奶白单人椅等虚构搭配套组', () => {
+      const singleProductReadout = {
+        id: 'prod-single-sofa',
+        name: '敏华芝华仕头等舱真皮三人位主沙发 (干邑暖橙)',
+        sku: 'MW-S9999-3S',
+        role: 'sofa_3seat',
+        priority: 'primary',
+        dimensions: { width: 3100, depth: 1080, height: 950 },
+        materials: ['南美进口头层牛皮 (半苯胺)'],
+        colors: ['干邑暖橙 (Cognac Amber)'],
+        adaptiveStyles: ['现代轻奢', '意式极简'],
+        surfaceTexture: '真皮细腻平纹质感',
+        functionCapable: true,
+        readoutConfidence: 98,
+        identityLock: 'strict' as const,
+        structuralFeatures: [{ name: '靠背', description: '高回弹承托' }],
+        lockedRules: ['保持原厂比例与色彩'],
+        explanation: '单品物理读数解析完成',
+        referenceImages: [],
+        detectedProducts: [] // 纯净单品模式
+      };
+
+      const validated = ProductDnaReadoutSchema.parse(singleProductReadout);
+      expect(validated.detectedProducts).toHaveLength(0);
+      expect(validated.name).toContain('主沙发');
+      // 验证绝不包含任何虚构单椅
+      expect(validated.detectedProducts?.some((p) => p.name.includes('极地奶白'))).toBe(false);
+      expect(validated.detectedProducts?.some((p) => p.name.includes('奢石茶几'))).toBe(false);
+    });
+  });
 });
+
 

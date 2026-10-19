@@ -35,7 +35,9 @@ import {
   Trash,
   Globe,
   Search,
-  Download
+  Download,
+  ChevronDown,
+  ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord } from '../../types/creativeCanvas';
@@ -405,6 +407,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   // Prompt Presets State & Handlers
   const DEFAULT_PRESETS = [
     {
+      id: 'p0',
+      name: '4:3 结构真值海报（3大细节解析·隐藏矮脚锁定）',
+      text: '根据该沙发组合，生成一张 4:3 高端家居创意海报。整体版式为 主图场景 + 底部3个细节解析模块，主图与细节解析占比约 5:1。主图中以该沙发组合作为唯一产品主体，必须严格保持原产品的 组合关系、外轮廓、扶手造型、靠背结构、脚型结构、材质纹理、配色关系、比例尺度 完全一致，不得擅自改款、改脚型、改结构、改工艺表达。空间氛围要求高级、温暖、有生活方式感，具有电影感和层次感；沙发前方必须有茶几，位置正确、比例自然，可搭配地毯、背景墙、窗景、绿植等，但不可喧宾夺主。主沙发上放置 两个相同图案的抱枕。海报需有一个 四字以内中文标题，以及一行简洁的设计灵感文案，排版高级、克制、清晰。底部细节解析区仅保留 3个模块，且所有局部特写都必须 直接对应主图中的真实产品结构进行放大特写与结构工艺解析：1. 宽厚舒适扶手造型解析；2. 人体工学分段拉皱靠背解析；3. 低位隐藏式支撑脚/矮脚结构解析（严格锁定原品隐形矮脚，严禁虚构外露细腿或金属高脚）。负面约束：严禁改款、严禁随意替换脚型、严禁虚构不存在的五金构件、严禁沙发形变、严禁多于或少于3个解析模块、严禁无茶几或茶几悬浮。'
+    },
+    {
       id: 'p1',
       name: '电影级高级空间与细节解析',
       text: '根据这款沙发制作创意海报，主图要有中文标题，设计灵感来源，色调，场景，排版。远景，场景高级，电影级，内容丰富有层次，空间感十足，中景或者远景，要求具备艺术感。颜色和谐，沙发上有两个款式相同带图案的抱枕，海报上需出现扶手设计，拉皱背靠，方形沙发脚的设计解析。'
@@ -424,13 +431,37 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   const [savedPresets, setSavedPresets] = useState<Array<{ id: string; name: string; text: string }>>(() => {
     try {
       const raw = localStorage.getItem('mw_planner_presets');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const existingIds = new Set(parsed.map((p: any) => p.id));
+          const missingDefaults = DEFAULT_PRESETS.filter(d => !existingIds.has(d.id));
+          return [...missingDefaults, ...parsed];
+        }
+      }
     } catch {}
     return DEFAULT_PRESETS;
   });
 
   const [presetNameInput, setPresetNameInput] = useState('');
   const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+  const [isPresetDropdownOpen, setIsPresetDropdownOpen] = useState(false);
+  const presetDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close preset dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (presetDropdownRef.current && !presetDropdownRef.current.contains(e.target as Node)) {
+        setIsPresetDropdownOpen(false);
+      }
+    };
+    if (isPresetDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isPresetDropdownOpen]);
 
   // Prompt Textarea Direct Control, Auto-Focus & Visual Feedback State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -979,45 +1010,76 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                   </div>
                 </div>
                 {savedPresets.length > 0 && (
-                  <div className="relative group">
+                  <div className="relative" ref={presetDropdownRef}>
                     <button
                       type="button"
-                      className="flex items-center gap-1 text-[10px] font-bold text-[#8C6F43] bg-white px-2 py-1 rounded-lg border border-[#B28C5A]/30 hover:border-[#B28C5A] shadow-2xs"
+                      onPointerDown={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={() => setIsPresetDropdownOpen(prev => !prev)}
+                      className="flex items-center gap-1.5 text-[10px] font-bold text-[#8C6F43] bg-white px-2.5 py-1.5 rounded-lg border border-[#B28C5A]/40 hover:border-[#B28C5A] hover:bg-[#FAF8F5] shadow-2xs transition-all active:scale-95 cursor-pointer"
+                      title="展开选择企划预设库"
                     >
-                      <Bookmark className="w-3 h-3 text-[#B28C5A]" />
+                      <Bookmark className="w-3.5 h-3.5 text-[#B28C5A]" />
                       <span>企划预设库</span>
+                      <ChevronDown className={`w-3 h-3 text-[#B28C5A] transition-transform duration-200 ${isPresetDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
-                    <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-[#E5E0D8] rounded-xl shadow-xl p-2 z-50 hidden group-hover:block space-y-1">
-                      <div className="text-[10px] font-bold text-stone-400 px-1 pb-1 border-b border-stone-100 flex items-center justify-between">
-                        <span>已保存企划预设 ({savedPresets.length})</span>
-                      </div>
-                      <div className="max-h-48 overflow-y-auto space-y-1">
-                        {savedPresets.map(preset => (
-                          <div
-                            key={preset.id}
-                            onPointerDown={e => e.stopPropagation()}
-                            onMouseDown={e => e.stopPropagation()}
-                            onClick={() => handleUpdatePrompt(preset.text, { mode: 'replace', scrollIntoView: true, feedback: `✓ 已应用预设「${preset.name}」` })}
-                            className="p-1.5 rounded-lg hover:bg-[#F9F5EF] cursor-pointer text-[10px] flex items-center justify-between group/item transition-colors"
-                          >
-                            <div className="truncate flex-1 min-w-0 pr-1">
-                              <span className="font-bold text-[#2C2A29] block truncate">{preset.name}</span>
-                              <span className="text-stone-400 block truncate text-[9px]">{preset.text}</span>
-                            </div>
-                            <button
-                              type="button"
+                    {isPresetDropdownOpen && (
+                      <div
+                        onPointerDown={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1.5 w-84 bg-white border border-[#B28C5A]/40 rounded-xl shadow-2xl p-2.5 z-50 space-y-1.5 animate-fadeIn"
+                      >
+                        <div className="text-[10px] font-bold text-stone-500 px-1 pb-1.5 border-b border-stone-100 flex items-center justify-between">
+                          <span className="flex items-center gap-1 text-[#8C6F43]">
+                            <Bookmark className="w-3 h-3 text-[#B28C5A]" />
+                            已保存企划预设 ({savedPresets.length})
+                          </span>
+                          <span className="text-[9px] text-stone-400">点击立即套用</span>
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-1 pr-0.5">
+                          {savedPresets.map(preset => (
+                            <div
+                              key={preset.id}
                               onPointerDown={e => e.stopPropagation()}
                               onMouseDown={e => e.stopPropagation()}
-                              onClick={(e) => handleDeletePreset(preset.id, e)}
-                              className="text-stone-300 hover:text-rose-500 p-0.5 opacity-0 group-hover/item:opacity-100 transition-opacity"
-                              title="删除此预设"
+                              onClick={() => {
+                                handleUpdatePrompt(preset.text, {
+                                  mode: 'replace',
+                                  scrollIntoView: true,
+                                  feedback: `✓ 已应用预设「${preset.name}」`
+                                });
+                                if (preset.text.includes('4:3')) {
+                                  setPlanAspectRatio?.('4:3');
+                                  setPlanScreenCount?.(1);
+                                }
+                                setIsPresetDropdownOpen(false);
+                              }}
+                              className="p-2 rounded-lg hover:bg-[#F9F5EF] border border-transparent hover:border-[#B28C5A]/20 cursor-pointer text-[10px] flex items-start justify-between group/item transition-colors"
                             >
-                              <Trash className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
+                              <div className="truncate flex-1 min-w-0 pr-1.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-[#2C2A29] block truncate">{preset.name}</span>
+                                  {preset.id === 'p0' && (
+                                    <span className="text-[8px] bg-[#B28C5A]/15 text-[#8C6F43] font-bold px-1 rounded shrink-0">4:3推荐</span>
+                                  )}
+                                </div>
+                                <span className="text-stone-400 block truncate text-[9px] mt-0.5">{preset.text}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onPointerDown={e => e.stopPropagation()}
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={(e) => handleDeletePreset(preset.id, e)}
+                                className="text-stone-300 hover:text-rose-500 p-1 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0"
+                                title="删除此预设"
+                              >
+                                <Trash className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1102,14 +1164,60 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     )}
                   </div>
 
+                  {/* Intelligent Physical Constraint & Layout Grounding Badges */}
+                  {Boolean(promptValue) && (
+                    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-stone-50/90 rounded-xl border border-stone-200/70 text-[9px] animate-fadeIn">
+                      <div className="flex items-center gap-1 font-bold text-[#8C6F43] mr-0.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#B28C5A]" />
+                        <span>AI 视觉约束门禁：</span>
+                      </div>
+                      {promptValue.includes('4:3') && (
+                        <span className="bg-[#B28C5A]/10 text-[#8C6F43] border border-[#B28C5A]/30 px-1.5 py-0.5 rounded-full font-medium">
+                          📐 4:3 比例锁定
+                        </span>
+                      )}
+                      {(promptValue.includes('隐藏') || promptValue.includes('矮脚') || promptValue.includes('低位')) && (
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full font-medium">
+                          🔒 隐形矮脚真值锁定（严禁高脚）
+                        </span>
+                      )}
+                      {(promptValue.includes('3个') || promptValue.includes('3大') || promptValue.includes('3 个') || promptValue.includes('三个')) && (
+                        <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full font-medium">
+                          🔍 3大工艺细节解析
+                        </span>
+                      )}
+                      {promptValue.includes('茶几') && (
+                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full font-medium">
+                          ☕ 前方茶几呼应
+                        </span>
+                      )}
+                      {(promptValue.includes('抱枕') || promptValue.includes('靠枕')) && (
+                        <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded-full font-medium">
+                          🛋️ 双同款抱枕
+                        </span>
+                      )}
+                      {(promptValue.includes('四字') || promptValue.includes('标题')) && (
+                        <span className="bg-stone-200/80 text-stone-700 px-1.5 py-0.5 rounded-full font-medium">
+                          🏷️ 四字标题与灵感排版
+                        </span>
+                      )}
+                      {(promptValue.includes('严禁') || promptValue.includes('负面')) && (
+                        <span className="bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded-full font-medium">
+                          🛡️ 结构防篡改门禁生效
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Preset Tags Click to Insert */}
                   <div className="flex flex-wrap gap-1 pt-1">
                     <span className="text-[9px] font-bold text-stone-400 self-center mr-0.5">快捷添加：</span>
                     {[
+                      { label: '📐 4:3结构真值', text: '4:3画幅，主图原品外轮廓/扶手/靠背/隐形矮脚严格一致，严禁改款改脚，底部3个细节解析模块（扶手、分段靠背、低位隐藏脚）。' },
                       { label: '🎬 电影级视效', text: '电影级空间场景，远景与中景有丰富空间纵深与层次感，具备高雅艺术感。' },
-                      { label: '🛋️ 扶手/拉皱背靠/方形脚解析', text: '海报上需出现扶手线条设计、拉皱靠背背搭、方形沙发脚的细节工程解析打标。' },
+                      { label: '🛋️ 扶手/背靠/隐藏脚解析', text: '海报底部出现扶手线条设计、拉皱靠背背搭、低位隐藏脚的真实工艺结构解构。' },
                       { label: '🎨 双同款图案抱枕', text: '沙发上摆放两个款式相同带有精致图案的靠枕，调性和谐。' },
-                      { label: '🏷️ 中文标题与灵感', text: '主图需包含中文主标题、设计灵感来源、美学调性色盘与高级排版。' },
+                      { label: '🏷️ 中文标题与灵感', text: '主图需包含四字中文主标题、设计灵感来源、美学调性色盘与高级排版。' },
                       { label: '🌾 莫兰迪低饱和色调', text: '莫兰迪低饱和温润光影，质感皮艺与自然温润氛围。' }
                     ].map((tag, idx) => (
                       <button

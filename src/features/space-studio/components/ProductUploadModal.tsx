@@ -287,12 +287,13 @@ interface CanvasDraftPayload {
       setDossierSummary(initialProduct.dossierSummary || '');
       setDossierGeneratedAt(initialProduct.dossierGeneratedAt || '');
       setCloudReferences(initialProduct.referenceImages || []);
-      const rawDPs = initialProduct.detectedProducts || [];
-      setDetectedProducts(rawDPs);
+      const rawDPs = (initialProduct.detectedProducts || []).filter((dp) => dp && dp.name);
+      const safeDPs = rawDPs.length > 1 ? rawDPs : [];
+      setDetectedProducts(safeDPs);
       setSelectedProductIndex(0);
       const masterUrl = initialProduct.sourceMasterImageUrl || (initialImagesList[0]?.base64 || '');
       setSourceMasterImageUrl(masterUrl);
-      if (rawDPs.length > 0 && masterUrl) {
+      if (safeDPs.length > 1 && masterUrl) {
         // 后台异步补全缺失切片，保持数据一致
         Promise.all(
           rawDPs.map(async (dp) => {
@@ -1077,7 +1078,7 @@ interface CanvasDraftPayload {
         setSourceMasterImageUrl(targetImages[0].base64);
       }
 
-      if (Array.isArray(data.detectedProducts) && data.detectedProducts.length > 0) {
+      if (Array.isArray(data.detectedProducts) && data.detectedProducts.length > 1) {
         const masterImg = data.sourceMasterImageUrl || preparedImages[0]?.base64 || '';
         // 自动客户端自愈：如果某个单品未带切片，利用 Canvas 在客户端立即异步裁切补全
         const enrichedDetected = await Promise.all(
@@ -1098,9 +1099,9 @@ interface CanvasDraftPayload {
         );
         setDetectedProducts(enrichedDetected);
         setSelectedProductIndex(0);
-        if (enrichedDetected.length > 1) {
-          setPasteFeedback(`已从总图解构出 ${enrichedDetected.length} 款独立家具，并已建立总图来源索引！`);
-        }
+        setPasteFeedback(`已从总图解构出 ${enrichedDetected.length} 款独立家具，并已建立总图来源索引！`);
+      } else {
+        setDetectedProducts([]);
       }
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') {

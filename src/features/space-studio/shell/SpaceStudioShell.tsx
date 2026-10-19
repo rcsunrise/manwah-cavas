@@ -94,8 +94,10 @@ import { SpaceToPosterAdapter } from '../adapters/spaceToPosterAdapter';
 import { PlanScreenItem } from '../../../services/posterStudioService';
 import { TemplateId } from '../../../types/posterTemplate';
 import { SeatAssignment } from '../../../types/spaceStudio';
+import { SpaceStudioPersistenceService } from '../../../services/spaceStudioPersistenceService';
 
 interface SpaceStudioShellProps {
+  projectId?: string;
   onSwitchMode: (mode: SpaceStudioMode) => void;
   onBackToCanvas?: () => void;
   onHandoffToPoster?: (screenItem: PlanScreenItem) => void;
@@ -387,26 +389,66 @@ const DEFAULT_SHOTS: ShotInstance[] = [
 ];
 
 export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
+  projectId = 'manwah-noble-space-01',
   onSwitchMode,
   onBackToCanvas,
   onHandoffToPoster,
   theme: externalTheme,
   onToggleTheme: externalOnToggleTheme
 }) => {
-  const [currentStep, setCurrentStep] = useState<SpaceWorkflowStep>('build');
-  const [shots, setShots] = useState<ShotInstance[]>(DEFAULT_SHOTS);
-  const [activeShotId, setActiveShotId] = useState<string>('shot-a00');
+  // 1. 初次尝试从浏览器本地持久化快照中恢复上一次作业记录 (支持离开工作台后返回无损恢复)
+  const initialSnapshot = useMemo(() => {
+    return SpaceStudioPersistenceService.loadSnapshot(projectId);
+  }, [projectId]);
 
-  // BUILD 阶段核心工程状态 (必须置于顶部，防止 TDZ 初始化前访问报错)
-  const [products, setProducts] = useState<ProductAsset[]>(INITIAL_MANWAH_PRODUCTS);
-  const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(SPACE_PROTOTYPES[0]);
-  const [selectedStyle, setSelectedStyle] = useState<StylePreset>(STYLE_PRESETS[0]);
-  const [blueprint, setBlueprint] = useState<PlacementBlueprint>(() =>
-    PlacementEngine.generateStandardBlueprint({
+  const [currentStep, setCurrentStep] = useState<SpaceWorkflowStep>('build');
+  const [shots, setShots] = useState<ShotInstance[]>(() => {
+    if (initialSnapshot?.shots && initialSnapshot.shots.length > 0) {
+      return initialSnapshot.shots;
+    }
+    return DEFAULT_SHOTS;
+  });
+  const [activeShotId, setActiveShotId] = useState<string>(() => {
+    return initialSnapshot?.activeShotId || 'shot-a00';
+  });
+
+  // BUILD 阶段核心工程状态：优先使用已持久化的真实上传产品或最近上传素材，杜绝刷新后被系统内置 demo 覆盖
+  const [products, setProducts] = useState<ProductAsset[]>(() => {
+    if (initialSnapshot?.products && initialSnapshot.products.length > 0) {
+      return initialSnapshot.products;
+    }
+    const recent = SpaceStudioPersistenceService.getRecentUploadedProducts();
+    if (recent && recent.length > 0) {
+      return recent;
+    }
+    return INITIAL_MANWAH_PRODUCTS;
+  });
+
+  const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(() => {
+    if (initialSnapshot?.selectedSpaceId) {
+      const found = SPACE_PROTOTYPES.find(s => s.id === initialSnapshot.selectedSpaceId);
+      if (found) return found;
+    }
+    return SPACE_PROTOTYPES[0];
+  });
+
+  const [selectedStyle, setSelectedStyle] = useState<StylePreset>(() => {
+    if (initialSnapshot?.selectedStyleId) {
+      const found = STYLE_PRESETS.find(s => s.id === initialSnapshot.selectedStyleId);
+      if (found) return found;
+    }
+    return STYLE_PRESETS[0];
+  });
+
+  const [blueprint, setBlueprint] = useState<PlacementBlueprint>(() => {
+    if (initialSnapshot?.blueprint) {
+      return initialSnapshot.blueprint;
+    }
+    return PlacementEngine.generateStandardBlueprint({
       spacePreset: SPACE_PROTOTYPES[0],
       products: INITIAL_MANWAH_PRODUCTS
-    })
-  );
+    });
+  });
 
   // 视窗两翼折叠与自由宽度状态
   const [leftDrawerWidth, setLeftDrawerWidth] = useState<number>(() => {
@@ -902,7 +944,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       return updated;
     });
   };
-  const [sceneMaster, setSceneMaster] = useState<SceneMaster | null>(null);
+  const [sceneMaster, setSceneMaster] = useState<SceneMaster | null>(() => {
+    return initialSnapshot?.sceneMaster || null;
+  });
   const sceneMasterRef = useRef<SceneMaster | null>(null);
   useEffect(() => {
     sceneMasterRef.current = sceneMaster;
@@ -1516,9 +1560,67 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   // 4 候选方案字典 (按镜头 ID 与按历史版本 ID 双向索引，确保切换纯空间与人物版时底栏抽屉和画布方案精准对应)
-  const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
+  const [candidateBatches, setCandidateBatches] = useState<Record<string, ShotCandidateBatch>>(() => {
+    return initialSnapshot?.candidateBatches || {};
+  });
   const [revisionCandidateBatches, setRevisionCandidateBatches] = useState<Record<string, ShotCandidateBatch>>({});
-  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Record<string, string>>({});
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Record<string, string>>(() => {
+    return initialSnapshot?.selectedCandidateIds || {};
+  });
+
+  // 自动将用户在生成后产生的素材、上传的产品及作业进度实时持久化到浏览器当前环境
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
+      const productName = primaryProduct?.name || '功能沙发';
+      const generatedShotsCount = shots.filter((s) => s.revisions && s.revisions.length > 0).length;
+      const totalRevisionsCount = shots.reduce((acc, s) => acc + (s.revisions?.length || 0), 0);
+
+      SpaceStudioPersistenceService.saveSnapshot({
+        projectId,
+        title: `【摄影画册】${productName}`,
+        products,
+        shots,
+        sceneMaster,
+        candidateBatches,
+        selectedCandidateIds,
+        activeShotId,
+        selectedSpaceId: selectedSpace?.id,
+        selectedStyleId: selectedStyle?.id,
+        blueprint,
+        summary: {
+          productName,
+          productColor: primaryProduct?.colors?.[0],
+          uploadedProductsCount: products.length,
+          generatedShotsCount,
+          hasMaster: Boolean(sceneMaster?.imageUrl),
+          totalRevisionsCount
+        }
+      });
+    }, 800);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [
+    projectId,
+    products,
+    shots,
+    sceneMaster,
+    candidateBatches,
+    selectedCandidateIds,
+    activeShotId,
+    selectedSpace,
+    selectedStyle,
+    blueprint
+  ]);
 
   useEffect(() => {
     (window as any).__setCandidateBatch = (shotId: string, batch: ShotCandidateBatch) => {
@@ -2662,7 +2764,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           originalScenePrompt: currentPositivePrompt,
           productName: primaryProductForCanvas?.name,
           productMaterial: primaryProductForCanvas?.materials?.[0] || (primaryProductForCanvas as any)?.materialDescription,
-          productColor: (primaryProductForCanvas as any)?.color || primaryProductForCanvas?.colors?.[0]
+          productColor: (primaryProductForCanvas as any)?.color || primaryProductForCanvas?.colors?.[0],
+          cameraSettings: targetShot.camera
         })
       });
 

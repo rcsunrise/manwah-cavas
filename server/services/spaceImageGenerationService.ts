@@ -575,12 +575,17 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
       ).join(', ');
 
       if (isHumanPass || shotInline) {
-        // 模式 A: 模特植入 (Human Pass)：强制要求必须生成人物坐入场景，绝不返回空场景，并强制零文字
+        // 模式 A: 模特植入 (Human Pass)：强制原图机位零漂移，家具绝对不位移，仅将人物自然坐入
         directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
 PRIMARY OBJECTIVE:
 You are an architectural lifestyle photographer. You MUST photorealistically insert real human models into the room shown in Reference Image 1.
 DO NOT LEAVE THE ROOM EMPTY. DO NOT RETURN AN EMPTY ROOM.
 THE HERO SOFA MUST HAVE THE SPECIFIED PEOPLE SEATED AND RELAXING IN IT.
+
+[ABSOLUTE CAMERA STABILITY & ZERO-DRIFT MANDATE (CRITICAL)]:
+1. CAMERA GEOMETRY & FRAMING ZERO DRIFT: Reference Image 1 provides the 100% FROZEN architectural and camera baseline. The camera perspective, focal length, shooting distance, lens height, horizontal line, and furniture positions MUST REMAIN 100% IDENTICAL AND IMMOVABLE.
+2. ABSOLUTE PROHIBITION ON RE-FRAMING: DO NOT zoom in, DO NOT zoom out, DO NOT change the perspective angle, DO NOT shift furniture left or right. ZERO tolerance for camera drift!
+3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with genuine weight and contact shadows. All surrounding architecture, windows, walls, and flooring remain completely untouched!
 
 ${charInlines.length > 0 ? `REFERENCE IMAGE 2 & 3: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ''}
 ${secondaryReferencesText ? `\n${secondaryReferencesText}\n` : ''}
@@ -601,9 +606,9 @@ ${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE (Studio S
 
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}${isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开, ' : ''}empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}${isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开, ' : ''}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
       } else if (productInline && masterInline) {
-        // 模式 B: A01~A08 衍生镜头生图：确立“机位与景别第一性原则”，彻底打破 A00 全景视觉惯性
+        // 模式 B: A01~A08 衍生镜头生图：确立“机位与景别第一性原则”，同时坚决锁定 A00 母版硬装与窗景背景一致性
         const isFrontalPanorama = shotCode === 'A01' || (positivePrompt.includes('GRAND FRONTAL') || positivePrompt.includes('正大视角'));
         const isAngledHero = shotCode === 'A02' || (positivePrompt.includes('45-degree') || positivePrompt.includes('45°') || positivePrompt.includes('3+1 ENSEMBLE'));
         const isHeroSofaFocus = shotCode === 'A03' || (positivePrompt.includes('HERO 3-SEATER') || positivePrompt.includes('3-Seater'));
@@ -630,15 +635,20 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         directivePrompt = `[CRITICAL CAMERA ANGLE & FRAMING MANDATE: NEW PERSPECTIVE REQUIRED FOR SHOT ${shotCode}]
 PRIMARY MISSION:
 You are an architectural and commercial furniture photographer capturing SHOT ${shotCode}.
-DO NOT SIMPLY REPRODUCE THE SAME PANORAMIC CAMERA PERSPECTIVE AS REFERENCE IMAGE 2!
-Reference Image 2 (A00 Master) defines ONLY the room's materials, wall architecture, and furniture color/identity for physical consistency.
-HOWEVER, THE CAMERA POSITION, DISTANCE, AND FRAMING MUST RADICALLY SHIFT ACCORDING TO THIS SHOT'S UNIQUE CAMERA DNA:
+
+[CRITICAL ARCHITECTURAL ENVIRONMENT CONTINUITY - SAME PENTHOUSE LIVING ROOM LOCK]:
+1. SINGLE PHYSICAL WORLD CONTINUITY: This shot ${shotCode} takes place inside the EXACT SAME PENTHOUSE LIVING ROOM shown in Reference Image 2 (A00 Master).
+2. BACKGROUND INVARIANTS:
+   - Floor-to-ceiling panoramic window view (sunset sky, distant mountain ranges, warm cloud layers, twilight golden hour ambient lighting) MUST REMAIN 100% CONSISTENT with Reference Image 2.
+   - Solid wood fluted paneling, dark marble feature walls with illuminated arched display niches, ceiling cove lighting, and flooring/rug textures MUST PHYSICALLY MATCH Reference Image 2.
+   - DO NOT invent a new room, DO NOT change the window scenery, DO NOT alter the wall textures!
+3. CAMERA PERSPECTIVE SHIFT: Shift ONLY the camera focal length and perspective angle to capture SHOT ${shotCode}'s designated composition, while preserving the authentic architectural environment of Reference Image 2.
 
 ${isHeroSofaDedicatedShot ? `[DUAL-TRACK ASSET-SCENE LINKAGE PROTOCOL - HERO 3-SEATER ASSET RE-CREATION]:
 1. REFERENCE IMAGE 1 IS THE PRIMARY HERO 3-SEATER SOFA ASSET (GROUND TRUTH):
    - You MUST faithfully construct the main sofa from Reference Image 1. Replicate its exact three-unit seating division, supple leather texture (${effectiveMaterial}), authentic color (${effectiveColor}), outer armrest contour, diamond-quilted side profile, and power motion reclining footrest structure.
 2. REFERENCE IMAGE 2 IS STRICTLY THE SPATIAL & LIGHTING ANCHOR (DO NOT REPAINT OLD PIXELS):
-   - Reference Image 2 defines ONLY the architectural room envelope, marble wall textures, illuminated arched wall shelves, wood paneling, flooring, natural window lighting, and placement coordinates.
+   - Reference Image 2 defines the architectural room envelope, marble wall textures, illuminated arched wall shelves, wood paneling, flooring, natural window lighting, and placement coordinates.
    - ABSOLUTE PROHIBITION: DO NOT inpaint, copy, or clone the distant downscaled sofa pixels from Reference Image 2!
    - You MUST render a BRAND NEW, razor-sharp, high-detail camera shot of the hero sofa from Reference Image 1 newly placed within Reference Image 2's architectural environment.` : ''}
 
