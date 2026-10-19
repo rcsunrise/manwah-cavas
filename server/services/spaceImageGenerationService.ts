@@ -488,7 +488,8 @@ export class SpaceImageGenerationService {
         });
 
         // 注入搭配产品参考图 (仅注入允许的搭配品)
-        for (const secItem of allowedSecondaryInlines) {
+        const maxSecItemsHuman = targetModel.includes('gpt') ? 1 : 3;
+        for (const secItem of allowedSecondaryInlines.slice(0, maxSecItemsHuman)) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,
@@ -523,7 +524,8 @@ export class SpaceImageGenerationService {
           return true;
         });
 
-        for (const secItem of allowedSecondaryInlines) {
+        const maxSecItems = targetModel.includes('gpt') ? 1 : 3;
+        for (const secItem of allowedSecondaryInlines.slice(0, maxSecItems)) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,

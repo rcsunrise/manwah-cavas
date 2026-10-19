@@ -513,8 +513,10 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
                 isLight ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
               }`}>
-                {cfg.model.includes('banana')
-                  ? 'Nano Banana 2.1 (默认)'
+                {cfg.model.includes('gemini-3.1')
+                  ? 'Google Gemini 3.1 (推荐)'
+                  : cfg.model.includes('banana')
+                  ? 'Nano Banana 2.1'
                   : cfg.model.includes('gpt')
                   ? 'OpenAI GPT Image 2'
                   : 'Google Gemini 3.1'}

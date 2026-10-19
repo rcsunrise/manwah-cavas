@@ -1221,7 +1221,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   // 渲染引擎配置选项 (系统默认使用 Nano Banana 2.1 极速响应·轻量多图融合，默认 4:3 空间透视画幅)
   const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>(() => {
     let initialAspect: ImageAspectRatio = '4:3';
-    let initialModel = 'gemini-nano-banana-2.1-preview';
+    let initialModel = 'gemini-3.1-flash-image-preview';
     let initialRes: RenderResolution = '2K';
     let initialFuncPos: 'closed' | 'open' = 'closed';
     if (typeof window !== 'undefined') {
@@ -1230,7 +1230,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         initialAspect = savedAspect;
       }
       const savedModel = localStorage.getItem('space_studio_model');
-      if (savedModel && savedModel !== 'gpt-image-2' && savedModel !== 'gemini-3.1-flash-image-preview') {
+      if (savedModel) {
         initialModel = savedModel;
       }
       const savedRes = localStorage.getItem('space_studio_resolution') as RenderResolution;
