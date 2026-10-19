@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   Database,
@@ -54,6 +55,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
   currentCanvasId,
   onCanvasDeleted
 }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [scanData, setScanData] = useState<StorageScanResult | null>(null);
@@ -680,9 +682,20 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
 
                           <div className="flex items-center gap-2 shrink-0">
                             <button
+                              onClick={() => {
+                                onClose();
+                                navigate(`/creative-canvas/${canvas.id}`);
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              title="打开并进入此历史企划画布"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
+                              <span>打开画板</span>
+                            </button>
+                            <button
                               onClick={() => handleSingleDelete('canvas', canvas.id)}
                               disabled={deleting}
-                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="删除此画布草稿"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -968,9 +981,20 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
 
                           <div className="flex items-center gap-2 shrink-0">
                             <button
+                              onClick={() => {
+                                onClose();
+                                navigate(`/creative-canvas/${rev.canvasId}`);
+                              }}
+                              className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              title="进入所属企划画布"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>进入画布</span>
+                            </button>
+                            <button
                               onClick={() => handleSingleDelete('revision', rev.id)}
                               disabled={deleting}
-                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="删除此版本快照"
                             >
                               <Trash2 className="w-4 h-4" />

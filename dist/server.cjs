@@ -18218,16 +18218,25 @@ var MANWAH_INDUSTRIAL_COLOR_STANDARDS = {
     hex: "#8D532E",
     rgb: [141, 83, 46],
     descriptionEn: "rich warm saddle caramel brown, deep roasted tone",
-    promptAnchor: "rich warm saddle caramel brown (exact color anchor #8D532E, deep natural roasted chestnut undertones)"
+    promptAnchor: "rich warm saddle caramel brown (exact color anchor #8D532E, deep natural roasted chestnut undertones, balanced warm amber patina, strictly NOT bleached yellow)"
   },
   deep_espresso: {
     code: "CLR-05",
-    nameZh: "\u6DF1\u5496/\u6D53\u7F29\u5496\u5561",
+    nameZh: "\u6DF1\u5496/\u6D53\u7F29\u5496\u5561/\u9ED1\u5DE7\u68D5",
     nameEn: "Deep Espresso",
     hex: "#3D261C",
     rgb: [61, 38, 28],
     descriptionEn: "rich dark espresso coffee brown, deep roast luxury dark tone",
-    promptAnchor: "rich dark espresso coffee brown (exact color anchor #3D261C, deep roast tone with warm micro-highlights, strictly distinct from black)"
+    promptAnchor: "rich dark espresso coffee brown (exact color anchor #3D261C, deep roast tone with warm dark micro-highlights, strictly deep dark tone, strictly NOT light caramel, NOT tan yellow, strictly distinct from black)"
+  },
+  vintage_chestnut: {
+    code: "CLR-15",
+    nameZh: "\u590D\u53E4\u6DF1\u6817\u68D5/\u6DF1\u68D5",
+    nameEn: "Vintage Chestnut Brown",
+    hex: "#4A2A1A",
+    rgb: [74, 42, 26],
+    descriptionEn: "rich deep vintage chestnut brown, dark roasted chocolate tone",
+    promptAnchor: "rich deep vintage chestnut brown (exact color anchor #4A2A1A, deep roasted dark chocolate undertones, strictly deep dark tone, strictly NOT light tan, strictly NOT yellow caramel, strictly NOT bright orange, maintaining rich dark roasted saturation)"
   },
   obsidian_dark_grey: {
     code: "CLR-06",
@@ -18380,14 +18389,17 @@ function resolveIndustrialColorDna(rawColor) {
   if (/象牙灰|象牙|米灰|云雾暖灰/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.warm_greige);
   }
+  if (/深栗|深棕|栗棕|黑巧|黑褐|巧克力|复古棕|chestnut|vintage.*chestnut/i.test(lower)) {
+    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.vintage_chestnut);
+  }
+  if (/深咖|浓缩咖啡|浓咖啡|espresso|dark.*brown/i.test(lower)) {
+    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.deep_espresso);
+  }
   if (/干邑|暖橙|爱马仕橙|琥珀|橙|cognac|amber|orange/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.cognac_amber);
   }
   if (/马鞍棕|鞍皮|鞍褐|焦糖|saddle|caramel/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.caramel_brown);
-  }
-  if (/深咖|咖|黑褐|浓缩咖啡|深栗|espresso|dark.*brown/i.test(lower)) {
-    return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.deep_espresso);
   }
   if (/曜石|深灰|炭灰|碳灰|铁灰|charcoal|graphite/i.test(lower)) {
     return wrapWithExplicitEn(MANWAH_INDUSTRIAL_COLOR_STANDARDS.obsidian_dark_grey);
@@ -21535,37 +21547,61 @@ var SpaceProductAnalysisService = class {
     try {
       if (storedReferences.length > 0) {
         const firstBuffer = storedReferences[0].rawBuffer;
-        const { data, info } = await (0, import_sharp6.default)(firstBuffer).resize(60, 60, { fit: "inside" }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        const { data, info } = await (0, import_sharp6.default)(firstBuffer).resize(80, 80, { fit: "inside" }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        const width = info.width;
+        const height = info.height;
         let totalR = 0, totalG = 0, totalB = 0, count = 0;
-        for (let i = 0; i < data.length; i += 3) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const brightness = (r + g + b) / 3;
-          if (brightness > 25 && brightness < 240) {
-            totalR += r;
-            totalG += g;
-            totalB += b;
-            count++;
+        const foregroundPixels = [];
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 3;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            const lum = (r + g + b) / 3;
+            const isNearNeutralLight = lum > 175 && Math.abs(r - g) < 18 && Math.abs(g - b) < 18 && Math.abs(r - b) < 18;
+            const isPureWhite = lum >= 238;
+            const isDeepBlack = lum <= 18;
+            if (!isPureWhite && !isDeepBlack && !isNearNeutralLight) {
+              const isCenter = x >= width * 0.15 && x <= width * 0.85 && y >= height * 0.15 && y <= height * 0.85;
+              const weight = isCenter ? 2 : 1;
+              for (let w = 0; w < weight; w++) {
+                totalR += r;
+                totalG += g;
+                totalB += b;
+                count++;
+                foregroundPixels.push({ r, g, b, lum });
+              }
+            }
           }
         }
         if (count > 0) {
           const avgR = totalR / count;
           const avgG = totalG / count;
           const avgB = totalB / count;
-          if (avgR > 130 && avgG > 70 && avgB < 85 && avgR > avgB * 1.6) {
-            detectedDominantColorName = "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
-            detectedSecondaryColor = "\u610F\u5F0F\u7126\u7CD6\u68D5\u4E0E\u54D1\u5149\u9ED1\u949B\u91D1\u5C5E";
-          } else if (avgR > 120 && avgG > 100 && avgB < 80) {
-            detectedDominantColorName = "\u6696\u9633\u7126\u7CD6\u9EC4 (Warm Caramel)";
-            detectedSecondaryColor = "\u6C89\u7A33\u54D1\u5149\u6DF1\u7070\u91D1\u5C5E";
-          } else if (avgR > 160 && avgG > 160 && avgB > 150) {
+          const avgLum = (avgR + avgG + avgB) / 3;
+          const isWarmBrownHue = avgR > avgG && avgG >= avgB && avgR > avgB * 1.25;
+          if (isWarmBrownHue) {
+            if (avgLum <= 88 || avgR < 115 && avgG < 80) {
+              detectedDominantColorName = "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)";
+              detectedSecondaryColor = "\u6697\u591C\u62C9\u4E1D\u9ED1\u949B\u4E94\u91D1";
+            } else if (avgR > 140 && avgR - avgG > 42 && avgB < 85) {
+              detectedDominantColorName = "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
+              detectedSecondaryColor = "\u610F\u5F0F\u7126\u7CD6\u68D5\u4E0E\u54D1\u5149\u9ED1\u949B\u91D1\u5C5E";
+            } else if (avgR > 125 && avgG > 95 && avgB < 90) {
+              detectedDominantColorName = "\u6696\u9633\u7126\u7CD6\u9EC4 (Warm Caramel)";
+              detectedSecondaryColor = "\u6C89\u7A33\u54D1\u5149\u6DF1\u7070\u91D1\u5C5E";
+            } else {
+              detectedDominantColorName = "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)";
+              detectedSecondaryColor = "\u6697\u591C\u62C9\u4E1D\u9ED1\u4E94\u91D1";
+            }
+          } else if (avgR > 165 && avgG > 165 && avgB > 155) {
             detectedDominantColorName = "\u6781\u5730\u5976\u767D (Arctic Ivory)";
             detectedSecondaryColor = "\u73CD\u73E0\u94F6\u62C9\u4E1D\u91D1\u5C5E";
-          } else if (avgR < 80 && avgG < 80 && avgB < 80) {
+          } else if (avgLum < 75 && Math.abs(avgR - avgG) < 16 && Math.abs(avgG - avgB) < 16) {
             detectedDominantColorName = "\u66DC\u77F3\u6DF1\u7070 (Obsidian Grey)";
             detectedSecondaryColor = "\u9999\u69DF\u91D1\u91D1\u5C5E\u9970\u6761";
-          } else if (avgR > 80 && avgG < 60 && avgB < 50) {
+          } else if (avgR > 75 && avgG < 55 && avgB < 45) {
             detectedDominantColorName = "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)";
             detectedSecondaryColor = "\u6697\u591C\u62C9\u4E1D\u9ED1\u4E94\u91D1";
           }
@@ -21608,8 +21644,15 @@ var SpaceProductAnalysisService = class {
 3. \u6750\u8D28\u3001\u76AE\u8D28\u4E0E\u4E94\u91D1\u673A\u6784\u8BC6\u522B (materials):
    - \u7EC6\u81F4\u8BC6\u522B\u9762\u6599\u79CD\u7C7B\uFF08\u5934\u5C42\u725B\u76AE/\u534A\u82EF\u80FA\u76AE/\u7279\u7EA7Nappa\u76AE/\u79D1\u6280\u8D85\u7EA4\u5E03/\u78E8\u7802\u76AE\uFF09\u3001\u7535\u673A\u673A\u6784\uFF08\u5FB7\u56FD\u4F4E\u538B\u53CC\u7535\u673A/\u96F6\u91CD\u529B\u65E0\u7EA7\u4F38\u5C55\u4E94\u91D1\u67B6/\u9AD8\u78B3\u94A2\u5408\u91D1\u9AA8\u67B6\uFF09\u3001\u6D77\u7EF5\u586B\u5145\uFF08\u9AD8\u56DE\u5F39\u8C61\u76AE\u6D77\u7EF5/\u5929\u7136\u4E73\u80F6/\u4E91\u611F\u7FBD\u7ED2\uFF09\u3002
 
-4. \u8272\u5F69\u4E0E\u8868\u9762\u808C\u7406 (colors, surfaceTexture):
-   - \u63D0\u53D6\u4E3B\u8272\u8C03\u53CA\u9AD8\u7EA7\u8F85\u52A9\u914D\u8272\uFF08\u5982\u201C\u4E91\u96FE\u6696\u7070\u201D\u3001\u201C\u978D\u8910\u7126\u7CD6\u201D\u3001\u201C\u66DC\u77F3\u6DF1\u7070\u201D\u3001\u201C\u6781\u5730\u5976\u767D\u201D\u7B49\uFF09\u3002
+4. \u8272\u5F69\u4E0E\u8868\u9762\u808C\u7406 (colors, surfaceTexture) \u3010\u9AD8\u7CBE\u5EA6\u8272\u9636\u4E0E\u660E\u5EA6\u6807\u5B9A\uFF0C\u4E25\u7981\u8272\u5F69\u6F02\u79FB\u3011:
+   - \u5FC5\u987B\u57FA\u4E8E\u753B\u9762\u4E2D\u5BB6\u5177\u76AE\u9769\u7684\u3010\u771F\u5B9E\u660E\u5EA6 (Luminance) \u4E0E\u8272\u76F8\u3011\u8FDB\u884C\u5DE5\u4E1A\u7EA7\u7CBE\u51C6\u6253\u6807\uFF0C\u5207\u5FCC\u76F2\u76EE\u5957\u7528\u523B\u677F\u5370\u8C61\uFF01
+   - \u6DF1\u8272\u76AE\u9769 vs \u7126\u7CD6\u9EC4\u8272\u7CFB\u4E25\u8C28\u5224\u5B9A\u6CD5\u5219 (CRITICAL):
+     * \u3010\u590D\u53E4\u6DF1\u6817\u68D5 / \u6D53\u7F29\u9ED1\u5DE7\u68D5\u3011(Vintage Chestnut / Deep Espresso): \u82E5\u76AE\u9769\u5916\u89C2\u5448\u73B0\u6DF1\u6C89\u6D53\u90C1\u3001\u4F4E\u660E\u5EA6\u6697\u8C03\u3001\u9ED1\u5DE7\u514B\u529B\u8272\u3001\u6DF1\u6817\u8910\u8272\u6216\u6DF1\u5496\u5561\u8272\uFF08\u6C89\u7A33\u539A\u91CD\uFF0C\u660E\u5EA6\u8F83\u4F4E\uFF09\uFF0C\u5FC5\u987B\u7CBE\u51C6\u6253\u6807\u4E3A\u201C\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)\u201D\u6216\u201C\u6D53\u7F29\u9ED1\u5DE7\u68D5 (Deep Espresso)\u201D\u3002\u3010\u7EDD\u5BF9\u4E25\u7981\u3011\u5C06\u6DF1\u8272\u6697\u8C03\u76AE\u9769\u8BEF\u6807\u4E3A\u201C\u7126\u7CD6\u201D\u3001\u201C\u9A7C\u9EC4\u201D\u6216\u201C\u6696\u6A59\u201D\uFF01
+     * \u3010\u9A6C\u978D\u590D\u53E4\u68D5\u3011(Saddle Brown): \u4E2D\u7B49\u660E\u5EA6\uFF0C\u81EA\u7136\u70DF\u8349\u8910\u8272\u9A6C\u978D\u76AE\u3002
+     * \u3010\u6696\u9633\u7126\u7CD6\u9EC4 / \u9A7C\u9EC4\u3011(Warm Caramel / Tan): \u4EC5\u5F53\u76AE\u9769\u5448\u73B0\u660E\u663E\u7684\u660E\u4EAE\u91D1\u9EC4\u3001\u59DC\u9EC4\u6216\u9AD8\u660E\u5EA6\u9A7C\u9EC4\u8272\u65F6\u624D\u6807\u8BB0\u3002
+     * \u3010\u5E72\u9091\u6696\u6A59\u3011(Cognac Amber): \u9C9C\u8273\u660E\u4EAE\u7EA2\u6A59\u76AE\u9769\u3002
+     * \u3010\u66DC\u77F3\u6DF1\u7070 / \u7384\u6B66\u6DF1\u9ED1\u3011: \u51B7\u8C03\u6DF1\u7070\u6216\u7EAF\u9ED1\u3002
+     * \u3010\u6781\u5730\u5976\u767D / \u4E91\u96FE\u6696\u7070\u3011: \u6D45\u7070\u7C73\u767D\u3002
    - \u63D0\u53D6\u76AE\u9769\u7EB9\u7406\u3001\u624B\u5DE5\u8F66\u7F1D\u660E\u7EBF\u3001\u5305\u8FB9\u6EDA\u8FB9\u3001\u538B\u8936\u5DE5\u827A\u7EC6\u8282\u3002
 
 5. \u9002\u914D\u7A7A\u95F4\u98CE\u683C\u63A8\u8350 (adaptiveStyles):
@@ -21623,12 +21666,12 @@ var SpaceProductAnalysisService = class {
    - \u4F60\u5FC5\u987B\u5728 "detectedProducts" \u6570\u7EC4\u4E2D\uFF0C\u5C06\u753B\u9762\u4E2D\u51FA\u73B0\u7684\u3010\u6BCF\u4E00\u4E2A\u72EC\u7ACB\u5BB6\u5177\u4EA7\u54C1\u3011\u5206\u522B\u62C6\u89E3\u51FA\u6765\uFF01
    - \u5BF9\u4E8E\u6BCF\u4E2A\u62C6\u89E3\u4EA7\u54C1\u5206\u522B\u63D0\u4F9B\uFF1A
      * "id": \u552F\u4E00\u5355\u54C1 ID (\u5982 "item-1", "item-2", "item-3")
-     * "name": \u51C6\u786E\u5355\u54C1\u89C4\u8303\u5168\u79F0 (\u5982 "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u6C99\u53D1 (\u978D\u8910\u7126\u7CD6)", "\u6781\u5730\u5976\u767D\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905", "\u7126\u7CD6\u68D5\u65E0\u6276\u624B\u4F11\u95F2\u65CB\u8F6C\u77EE\u5355\u6905", "\u6781\u7B80\u60AC\u6D6E\u5CA9\u677F\u7535\u89C6\u5730\u67DC", "\u6781\u7B80\u53CC\u62FC\u5706\u8336\u51E0")
+     * "name": \u51C6\u786E\u5355\u54C1\u89C4\u8303\u5168\u79F0 (\u5982 "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1", "\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905", "\u65E0\u6276\u624B\u4F11\u95F2\u65CB\u8F6C\u77EE\u5355\u6905", "\u6781\u7B80\u60AC\u6D6E\u5CA9\u677F\u7535\u89C6\u5730\u67DC", "\u6781\u7B80\u53CC\u62FC\u5706\u8336\u51E0")
      * "role": \u89D2\u8272\u5206\u7C7B ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
      * "priority": \u4E3B\u54C1\u6807 "primary"\uFF0C\u6B21\u54C1/\u642D\u914D\u5355\u6905\u6807 "secondary"\uFF0C\u67DC\u51E0\u9648\u8BBE\u6807 "decor"
      * "functionCapable": true/false (\u5BF9\u4E8E\u5E26\u7535\u673A/\u5C55\u5F00\u811A\u6258\u7684\u529F\u80FD\u4F4D\u8BBE\u4E3A true\uFF1B\u5BF9\u4E8E\u65E0\u7535\u52A8\u529F\u80FD\u3001\u65E0\u811A\u6258\u7684\u4F11\u95F2\u5355\u6905 lounge_chair \u4E25\u683C\u8BBE\u4E3A false\uFF01)
      * "dimensions": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u72EC\u7ACB\u7684\u771F\u5B9E\u6BEB\u7C73\u5C3A\u5BF8 (\u5982\u4E09\u4EBA\u4F4D\u5BBD3150\u6DF11080\u9AD8950\uFF0C\u4F11\u95F2\u77EE\u5355\u6905\u5BBD950\u6DF11000\u9AD8850\uFF0C\u5355\u4EBA\u8EBA\u6905\u5BBD980\u6DF11020\u9AD81050\uFF0C\u7535\u89C6\u67DC\u5BBD2000\u6DF1400\u9AD8450\uFF0C\u8336\u51E0\u5BBD1100\u6DF1700\u9AD8420)
-     * "colors": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u7684\u771F\u5B9E\u72EC\u7ACB\u8272\u5F69 (\u7981\u6B62\u6DF7\u6DC6\uFF0C\u4E3B\u6C99\u53D1\u5199\u4E3B\u6C99\u53D1\u8272\uFF0C\u5355\u6905\u5199\u5355\u6905\u8272)
+     * "colors": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u7684\u771F\u5B9E\u72EC\u7ACB\u8272\u5F69 (\u7981\u6B62\u6DF7\u6DC6\uFF0C\u4E3B\u6C99\u53D1\u5199\u4E3B\u6C99\u53D1\u8272\uFF0C\u5355\u6905\u5199\u5355\u6905\u8272\uFF0C\u5FE0\u5B9E\u53CD\u6620\u539F\u56FE\u8272\u9636\u660E\u5EA6)
      * "materials": \u8BE5\u5BB6\u5177\u771F\u5B9E\u7684\u6750\u8D28\u5217\u8868
      * "boundingBox": \u8BE5\u5BB6\u5177\u5728\u6574\u5F20\u8BC6\u522B\u603B\u56FE\u4E2D\u7684\u5F52\u4E00\u5316\u767E\u5206\u6BD4\u5750\u6807 (0~100 \u6574\u6570)\uFF0C\u683C\u5F0F: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}\uFF0C\u5206\u522B\u5BF9\u5E94\u9876\u90E8ymin\u3001\u5DE6\u4FA7xmin\u3001\u5E95\u90E8ymax\u3001\u53F3\u4FA7xmax\u3002
      * "dossierSummary": \u8BE5\u5355\u54C1\u7684\u89C4\u683C\u6458\u8981\u3002
@@ -21658,7 +21701,7 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
   ],
   "lockedRules": [
     "\u4E25\u683C\u4FDD\u6301\u539F\u56FE\u4E2D\u7684\u6276\u624B\u53CC\u5305\u7EBF\u9020\u578B\u4E0E\u9971\u6EE1\u5F27\u5EA6",
-    "\u76AE\u8D28\u5149\u6CFD\u5EA6\u4E0E\u539F\u5382 Warm Greige \u8C03\u8272\u7981\u6B62\u6F02\u79FB",
+    "\u76AE\u8D28\u5149\u6CFD\u5EA6\u4E0E\u539F\u5382\u7269\u7406\u8C03\u8272\u7981\u6B62\u6F02\u79FB",
     "\u7535\u52A8\u529F\u80FD\u811A\u8E0F\u6536\u7F29\u6001\u8F6E\u5ED3\u6BD4\u4F8B\u4E25\u683C\u9501\u5B9A"
   ],
   "dossierSummary": "\u9AD8\u7CBE\u5DE5\u4E1A\u7EA7\u4EA7\u54C1\u6863\u6848\uFF1A\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1\uFF0C\u914D\u5907\u5357\u7F8E\u534A\u82EF\u80FA\u5934\u5C42\u725B\u76AE\u3001\u5FB7\u56FD\u4F4E\u538B\u9759\u97F3\u53CC\u7535\u673A\u4E0E\u9AD8\u78B3\u94A2\u5408\u91D1\u4F38\u7F29\u9AA8\u67B6\uFF0C\u5C3A\u5BF83100\xD71080\xD7950mm\u3002",
@@ -21667,16 +21710,16 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
   "detectedProducts": [
     {
       "id": "item-1",
-      "name": "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1 (\u978D\u8910\u7126\u7CD6)",
+      "name": "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1",
       "sku": "MW-CH-9866-3S",
       "role": "sofa_3seat",
       "priority": "primary",
       "dimensions": {"width": 3150, "depth": 1080, "height": 950},
       "materials": ["\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)", "\u5FB7\u56FD\u53CC\u7535\u673A"],
-      "colors": ["\u978D\u8910\u7126\u7CD6 (Caramel Brown)"],
+      "colors": ["\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"],
       "adaptiveStyles": ["\u610F\u5F0F\u8F7B\u5962", "\u73B0\u4EE3\u6781\u7B80"],
       "boundingBox": {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85},
-      "dossierSummary": "\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1\uFF0C\u978D\u8910\u7126\u7CD6\u8272\uFF0C\u5C3A\u5BF83150\xD71080\xD7950mm\u3002"
+      "dossierSummary": "\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1\uFF0C\u590D\u53E4\u6DF1\u6817\u68D5\uFF0C\u5C3A\u5BF83150\xD71080\xD7950mm\u3002"
     },
     {
       "id": "item-2",
