@@ -30,8 +30,11 @@ import {
   FileArchive,
   ArrowLeft,
   Settings,
-  Camera
+  Camera,
+  Database,
+  LayoutGrid
 } from 'lucide-react';
+import { StorageManagerModal } from '../components/creative-canvas/StorageManagerModal';
 import { UserBadge } from '../components/common/UserBadge';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -67,6 +70,7 @@ export const PosterStudioPage: React.FC = () => {
   );
 
   // 2. UI State
+  const [showStorageModal, setShowStorageModal] = useState<boolean>(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isGeneratingCurrent, setIsGeneratingCurrent] = useState<boolean>(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
@@ -506,15 +510,15 @@ export const PosterStudioPage: React.FC = () => {
         <div className="flex items-center gap-4">
           <button
             onClick={handleBackToCanvas}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
               isLight
                 ? 'bg-stone-100 hover:bg-stone-200 text-stone-800 border-stone-200 shadow-2xs'
                 : 'bg-stone-800 hover:bg-stone-700 text-amber-300 border-stone-700'
             }`}
-            title="返回基础工作流"
+            title="返回视觉企划画布（无限画板工作区）"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>返回基础工作流</span>
+            <LayoutGrid className="w-3.5 h-3.5 text-amber-600" />
+            <span>返回企划画布</span>
           </button>
 
           <div className="flex items-center gap-2.5">
@@ -623,6 +627,20 @@ export const PosterStudioPage: React.FC = () => {
             </div>
           )}
 
+          {/* 统一存储管理与历史工程弹窗按钮 */}
+          <button
+            onClick={() => setShowStorageModal(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 shadow-2xs ${
+              isLight
+                ? 'bg-purple-50 hover:bg-purple-100 text-purple-900 border-purple-200'
+                : 'bg-purple-950/60 hover:bg-purple-900/70 text-purple-200 border-purple-700/60'
+            }`}
+            title="查看所有历史企划案工程、版本快照与云端图片素材"
+          >
+            <Database className="w-3.5 h-3.5 text-purple-600" />
+            <span>历史工程 / 存储</span>
+          </button>
+
           <div className={`h-5 w-px my-auto shrink-0 ${isLight ? 'bg-stone-200' : 'bg-stone-800'}`} />
           <UserBadge theme={theme} variant="detailed" className="shrink-0" />
         </div>
@@ -708,6 +726,13 @@ export const PosterStudioPage: React.FC = () => {
 
       {/* 5. DEV DIAGNOSTICS DRAWER */}
       {(import.meta as any).env?.DEV && <DevDebugDrawer currentComposition={activeComposition} />}
+
+      {/* 6. STORAGE & PROJECT MANAGER MODAL */}
+      <StorageManagerModal
+        isOpen={showStorageModal}
+        onClose={() => setShowStorageModal(false)}
+        currentCanvasId={handoff?.canvasId || undefined}
+      />
     </div>
   );
 };
