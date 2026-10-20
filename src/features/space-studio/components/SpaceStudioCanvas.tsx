@@ -35,7 +35,8 @@ import {
   ChevronDown,
   GripHorizontal,
   Tag,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -46,7 +47,8 @@ import {
   calculateRenderDimensions,
   DisaggregatedProductItem,
   StylePreset,
-  SpacePreset
+  SpacePreset,
+  GenerationJob
 } from '../../../types/spaceStudio';
 import { CandidateItem, ShotCandidateBatch } from '../../../types/spaceAssetLibrary';
 import { SceneProductAnnotationOverlay } from './SceneProductAnnotationOverlay';
@@ -120,6 +122,7 @@ interface SpaceStudioCanvasProps {
   currentPositivePrompt?: string;
   selectedAnnotationId?: string | null;
   onLocateInDrawer?: (id: string) => void;
+  currentJob?: GenerationJob | null;
 
   theme?: 'dark' | 'light';
 }
@@ -151,11 +154,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onKeepProductRefreshScene,
   onToggleFavoriteCandidate,
   annotations,
-  showAnnotations = true,
+  showAnnotations = false,
   onToggleShowAnnotations,
   onSelectAnnotation,
   onUpdateAnnotationPosition,
   onHideAnnotation,
+  currentJob,
   selectedAnnotationId,
   onLocateInDrawer,
   stylePreset,
@@ -330,6 +334,16 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     typeof rawCandidateUrl === 'string' && rawCandidateUrl.trim().length > 0
       ? rawCandidateUrl.trim()
       : undefined;
+
+  const isFailed = !isGenerating && (
+    activeShot.status === 'failed' ||
+    (currentJob?.status === 'failed' && currentJob?.targetCode === activeShot.templateCode)
+  );
+
+  const failureError =
+    activeShot.error ||
+    (currentJob?.status === 'failed' && currentJob?.targetCode === activeShot.templateCode ? currentJob.error : '') ||
+    '上游模型调用异常或网络连接超时 (300s)';
 
   // 当切换镜头或图片重置时，平滑重设视口与状态
   useEffect(() => {
@@ -624,7 +638,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             </span>
           )}
 
-          {currentImageUrl && !imageError ? (
+          {isFailed ? (
+            <span className={`flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full border font-semibold ${
+              isLight ? 'text-rose-800 bg-rose-50 border-rose-300' : 'text-rose-400 bg-rose-950/60 border-rose-800/60'
+            }`}>
+              <AlertCircle className="w-2.5 h-2.5" /> 生成失败/异常
+            </span>
+          ) : currentImageUrl && !imageError ? (
             <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold ${
               isLight ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60'
             }`}>
@@ -958,13 +978,31 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
           >
             <AnimatePresence mode="wait">
             <motion.div
-              key={`${activeShot.id}-${activeShot.currentRevisionId || 'rev0'}-${currentImageUrl ? 'img' : isGenerating ? 'gen' : 'empty'}`}
+              key={`${activeShot.id}-${activeShot.currentRevisionId || 'rev0'}-${currentImageUrl ? 'img' : isGenerating ? 'gen' : isFailed ? 'fail' : 'empty'}`}
               initial={{ opacity: 0, scale: 0.985 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.01 }}
               transition={{ duration: 0.2 }}
               className="w-full h-full flex items-center justify-center relative overflow-hidden"
             >
+              {/* 若已有历史图纸但最新一次重试报错，顶部显式挂载浮动警告条 */}
+              {isFailed && currentImageUrl && !imageError && (
+                <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 rounded-xl border shadow-lg backdrop-blur-md max-w-lg ${
+                  isLight ? 'bg-rose-50/95 border-rose-300 text-rose-900' : 'bg-rose-950/95 border-rose-700 text-rose-200'
+                }`}>
+                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                  <div className="text-[11px] flex-1 leading-tight line-clamp-2">
+                    <span className="font-bold">生成异常提示：</span>{failureError}
+                  </div>
+                  <button
+                    onClick={onGenerateCurrent}
+                    className="shrink-0 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>重试</span>
+                  </button>
+                </div>
+              )}
               {/* Interactive Viewport */}
               {isCompareMode && baseRevision?.imageUrl && currentImageUrl && baseRevision.imageUrl !== currentImageUrl ? (
                 <div className="relative w-full h-full flex items-center divide-x divide-amber-500/30 overflow-hidden bg-black/80">
@@ -1193,6 +1231,36 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                     )}
+                  </div>
+                </div>
+              ) : isFailed ? (
+                <div className={`flex flex-col items-center justify-center p-6 text-center space-y-3.5 max-w-md mx-4 rounded-2xl border ${
+                  isLight ? 'bg-rose-50/95 border-rose-200 text-stone-800 shadow-sm' : 'bg-rose-950/30 border-rose-900/60 text-white shadow-xl'
+                }`}>
+                  <div className="w-12 h-12 rounded-2xl border border-rose-500/40 bg-rose-500/15 text-rose-500 flex items-center justify-center">
+                    <AlertTriangle className="w-6 h-6 text-rose-500" />
+                  </div>
+                  <div className="space-y-1.5 w-full">
+                    <h4 className={`text-sm font-bold ${isLight ? 'text-rose-900' : 'text-rose-300'}`}>
+                      模型生成未完成 / 接口异常响应
+                    </h4>
+                    <div className={`text-xs px-3 py-2 rounded-lg border font-mono break-all leading-relaxed text-left max-h-36 overflow-y-auto ${
+                      isLight ? 'bg-white border-rose-200 text-rose-700' : 'bg-black/50 border-rose-800/60 text-rose-300'
+                    }`}>
+                      {failureError}
+                    </div>
+                  </div>
+                  <p className={`text-[11px] leading-relaxed text-left ${isLight ? 'text-stone-600' : 'text-neutral-400'}`}>
+                    💡 <strong>故障容灾提示：</strong>若当前选定模型网络超时或上游接口不可用，可在右侧控制面板开启<strong className="text-amber-500 font-bold">【多模型故障自动轮换 (Auto-Fallback)】</strong>，系统将在主模型失败时自动顺延轮换（Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2 系列）。
+                  </p>
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <button
+                      onClick={onGenerateCurrent}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>立即重试生成</span>
+                    </button>
                   </div>
                 </div>
               ) : imageError ? (

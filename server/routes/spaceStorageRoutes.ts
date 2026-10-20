@@ -660,4 +660,44 @@ router.post('/styles/sync', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/space/storage/projects/snapshot
+ * 将摄影画册作业快照持久化备份至服务端磁盘 .data/space-projects/
+ */
+router.post('/projects/snapshot', (req: Request, res: Response) => {
+  try {
+    const payload = req.body;
+    if (!payload || !payload.projectId) {
+      return res.status(400).json({ success: false, error: 'Missing projectId in snapshot' });
+    }
+    const projectsDir = path.join(process.cwd(), '.data', 'space-projects');
+    if (!fs.existsSync(projectsDir)) {
+      fs.mkdirSync(projectsDir, { recursive: true });
+    }
+    const filePath = path.join(projectsDir, `${payload.projectId}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    return res.json({ success: true, projectId: payload.projectId, path: filePath });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/space/storage/projects/snapshot/:projectId
+ * 读取服务端磁盘中缓存的摄影画册工程快照
+ */
+router.get('/projects/snapshot/:projectId', (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const filePath = path.join(process.cwd(), '.data', 'space-projects', `${projectId}.json`);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: 'Project snapshot not found' });
+    }
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return res.json({ success: true, data: JSON.parse(raw) });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

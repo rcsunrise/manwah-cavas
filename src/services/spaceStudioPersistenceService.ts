@@ -1,9 +1,10 @@
 // src/services/spaceStudioPersistenceService.ts
 // 空间摄影工作台（Space Studio）全量作业状态本地持久化与快照管理服务
 // 解决痛点：
-// 1. 用户上传的产品素材、搭配库、工程规格本地持久化，刷新/离开不丢失；
-// 2. A00 空间母版与 A01~A08 各镜头已生成素材/候选图/历史版本存入浏览器，跨页面/跨会话无缝复原；
-// 3. 为“历史工程 / 云端存储中心”提供空间摄影工程索引与直达入口。
+// 1. 允许用户在生成后保留上一次的生成素材 以及上传的素材记录，存于用户当前浏览器；
+// 2. 支持用户跳转出去工作台回到摄影工作台 还能保持当前的测试作业信息；
+// 3. 采用 IndexedDB（5GB 无损大容量）+ 本地安全轻量 LocalStorage（秒开同步）+ 服务端磁盘备份 三重容灾体系；
+// 4. 为“历史工程 / 云端存储中心”提供空间摄影工程索引与直达入口。
 
 import {
   ProductAsset,
@@ -12,6 +13,7 @@ import {
   PlacementBlueprint
 } from '../types/spaceStudio';
 import { ShotCandidateBatch } from '../types/spaceAssetLibrary';
+import { dbService } from './dbService';
 
 export interface SpaceStudioProjectSnapshot {
   schemaVersion: 'space-studio-snapshot/v1';
@@ -55,84 +57,116 @@ const RECENT_PRODUCTS_KEY = 'space_studio_recent_products';
 
 export class SpaceStudioPersistenceService {
   /**
-   * 保存当前摄影工作台作业快照（自动落盘至当前浏览器）
+   * 将快照中可能存在的超大 base64 字符串（如用户刚上传的 5MB 图片）精简剥离，
+   * 仅保留轻量级 URL 与产品 DNA 结构，确保 localStorage 绝对在 50KB 以内，绝不触发 QuotaExceededError
+   */
+  private static sanitizeSnapshotForLocalStorage(snapshot: SpaceStudioProjectSnapshot): SpaceStudioProjectSnapshot {
+    const isBigDataUrl = (val: any) => typeof val === 'string' && val.startsWith('data:') && val.length > 500;
+
+    const safeProducts = (snapshot.products || []).map(p => {
+      const copy: any = { ...p };
+      if (isBigDataUrl(copy.cropBase64)) copy.cropBase64 = undefined;
+      if (isBigDataUrl(copy.cropImageUrl)) copy.cropImageUrl = undefined;
+      if (isBigDataUrl(copy.uploadedImageUrl)) copy.uploadedImageUrl = undefined;
+      if (isBigDataUrl(copy.sourceMasterImageUrl)) copy.sourceMasterImageUrl = undefined;
+      if (Array.isArray(copy.referenceImages)) {
+        copy.referenceImages = copy.referenceImages.map((ref: any) => ({
+          ...ref,
+          publicUrl: isBigDataUrl(ref.publicUrl) ? '' : ref.publicUrl
+        }));
+      }
+      return copy;
+    });
+
+    const safeShots = (snapshot.shots || []).map(s => ({
+      ...s,
+      revisions: (s.revisions || []).map(r => ({
+        ...r,
+        imageUrl: isBigDataUrl(r.imageUrl) ? '' : r.imageUrl
+      }))
+    }));
+
+    const safeBatches: Record<string, ShotCandidateBatch> = {};
+    for (const [k, b] of Object.entries(snapshot.candidateBatches || {})) {
+      if (b && Array.isArray(b.candidates)) {
+        safeBatches[k] = {
+          ...b,
+          candidates: b.candidates.map(c => ({
+            ...c,
+            imageUrl: isBigDataUrl(c.imageUrl) ? '' : c.imageUrl
+          }))
+        };
+      }
+    }
+
+    return {
+      ...snapshot,
+      products: safeProducts,
+      shots: safeShots,
+      candidateBatches: safeBatches,
+      sceneMaster: snapshot.sceneMaster ? {
+        ...snapshot.sceneMaster,
+        imageUrl: isBigDataUrl(snapshot.sceneMaster.imageUrl) ? '' : snapshot.sceneMaster.imageUrl
+      } : null
+    };
+  }
+
+  /**
+   * 保存当前摄影工作台作业快照（IndexedDB + localStorage + 服务端备份 三重落盘）
    */
   static saveSnapshot(snapshot: Omit<SpaceStudioProjectSnapshot, 'schemaVersion' | 'updatedAt'>): void {
     if (typeof window === 'undefined' || !snapshot.projectId) return;
 
-    try {
-      const fullSnapshot: SpaceStudioProjectSnapshot = {
-        ...snapshot,
-        schemaVersion: 'space-studio-snapshot/v1',
-        updatedAt: new Date().toISOString()
-      };
+    const fullSnapshot: SpaceStudioProjectSnapshot = {
+      ...snapshot,
+      schemaVersion: 'space-studio-snapshot/v1',
+      updatedAt: new Date().toISOString()
+    };
 
-      const serialized = JSON.stringify(fullSnapshot);
+    // 1. 无损存入当前浏览器 IndexedDB（5GB 存储空间，完整保留全部 base64 切片与 4 候选方案）
+    dbService.saveDraft(`space_studio_snapshot_${snapshot.projectId}`, fullSnapshot).catch(e => {
+      console.warn('[SpaceStudioPersistence] IndexedDB saveDraft error:', e);
+    });
+    dbService.saveDraft('space_studio_active_project', fullSnapshot).catch(() => {});
+
+    // 2. 异步同步到服务端 .data/space-projects/${projectId}.json（供后台历史工程中心完整检索）
+    if (typeof fetch !== 'undefined') {
+      fetch('/api/space/storage/projects/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fullSnapshot)
+      }).catch(() => {});
+    }
+
+    // 3. 剥离超大 Base64 后安全写入 localStorage（轻量可靠，保证同步读取与目录索引秒开）
+    try {
+      const sanitized = this.sanitizeSnapshotForLocalStorage(fullSnapshot);
+      const serialized = JSON.stringify(sanitized);
       const storageKey = `space_studio_project_${snapshot.projectId}`;
 
-      // 1. 存入按 projectId 隔离的独立槽位
       localStorage.setItem(storageKey, serialized);
-
-      // 2. 存入当前活跃作业槽位 (用于 /poster-studio/new 或无参返回时无缝继承)
       localStorage.setItem(ACTIVE_PROJECT_KEY, serialized);
 
-      // 3. 独立缓存最近上传的真实产品列表 (非默认 Demo)
-      const realProducts = (snapshot.products || []).filter(
+      // 独立缓存最近上传的真实产品列表 (非默认 Demo)
+      const realProducts = (sanitized.products || []).filter(
         p => p.id && !['p1', 'p2', 'p3', 'p4'].includes(p.id)
       );
       if (realProducts.length > 0) {
         localStorage.setItem(RECENT_PRODUCTS_KEY, JSON.stringify(realProducts));
+        const fullRealProducts = (fullSnapshot.products || []).filter(
+          p => p.id && !['p1', 'p2', 'p3', 'p4'].includes(p.id)
+        );
+        dbService.saveDraft('space_studio_recent_products_full', fullRealProducts).catch(() => {});
       }
 
-      // 4. 更新工程目录索引
       this.updateIndexEntry(fullSnapshot, serialized.length);
     } catch (err: any) {
-      console.warn('[SpaceStudioPersistence] LocalStorage save error (possibly quota):', err);
-      // 若因图片 base64 过大触发 QuotaExceeded，尝试压缩剥离过大临时图后再保存
-      this.saveSafeCompressedFallback(snapshot);
+      console.warn('[SpaceStudioPersistence] LocalStorage save warning:', err);
     }
   }
 
   /**
-   * 配额超限时的降级存盘：剥离超大 base64 图像数据，保留 URL、DNA 规格与版本树
-   */
-  private static saveSafeCompressedFallback(snapshot: any) {
-    try {
-      const cleanProducts = (snapshot.products || []).map((p: any) => {
-        const cleaned = { ...p };
-        if (cleaned.referenceImage && cleaned.referenceImage.length > 200000) {
-          cleaned.referenceImage = cleaned.referenceImage.slice(0, 100); // 截断超长 base64
-        }
-        return cleaned;
-      });
-
-      const cleanShots = (snapshot.shots || []).map((s: any) => ({
-        ...s,
-        revisions: (s.revisions || []).map((r: any) => ({
-          ...r,
-          imageUrl: r.imageUrl?.startsWith('data:') && r.imageUrl.length > 200000 ? '' : r.imageUrl
-        }))
-      }));
-
-      const safePayload: SpaceStudioProjectSnapshot = {
-        ...snapshot,
-        products: cleanProducts,
-        shots: cleanShots,
-        schemaVersion: 'space-studio-snapshot/v1',
-        updatedAt: new Date().toISOString()
-      };
-
-      const serialized = JSON.stringify(safePayload);
-      localStorage.setItem(`space_studio_project_${snapshot.projectId}`, serialized);
-      localStorage.setItem(ACTIVE_PROJECT_KEY, serialized);
-      this.updateIndexEntry(safePayload, serialized.length);
-    } catch (e) {
-      console.error('[SpaceStudioPersistence] Safe compressed fallback also failed:', e);
-    }
-  }
-
-  /**
-   * 加载指定项目或最后活跃的摄影工作台快照
+   * 同步加载指定项目或最后活跃的摄影工作台快照（用于组件 useState 初始秒开）
    */
   static loadSnapshot(projectId?: string): SpaceStudioProjectSnapshot | null {
     if (typeof window === 'undefined') return null;
@@ -158,6 +192,45 @@ export class SpaceStudioPersistenceService {
   }
 
   /**
+   * 异步加载全量高保真快照（优先从 IndexedDB 中读取原图和候选集，若无则回退服务端或 localStorage）
+   */
+  static async loadSnapshotAsync(projectId?: string): Promise<SpaceStudioProjectSnapshot | null> {
+    if (typeof window === 'undefined') return null;
+
+    // 1. 优先从 IndexedDB 读取无损全量快照 (带全部高清切片与未压缩素材)
+    try {
+      let draft: SpaceStudioProjectSnapshot | null = null;
+      if (projectId && projectId !== 'new') {
+        draft = await dbService.getDraft<SpaceStudioProjectSnapshot>(`space_studio_snapshot_${projectId}`);
+      }
+      if (!draft) {
+        draft = await dbService.getDraft<SpaceStudioProjectSnapshot>('space_studio_active_project');
+      }
+      if (draft && draft.schemaVersion === 'space-studio-snapshot/v1') {
+        return draft;
+      }
+    } catch (e) {
+      console.warn('[SpaceStudioPersistence] IndexedDB load error, fallback to server/localStorage:', e);
+    }
+
+    // 2. 尝试从服务端 /api/space/storage/projects/snapshot/:projectId 读取
+    if (projectId && projectId !== 'new') {
+      try {
+        const res = await fetch(`/api/space/storage/projects/snapshot/${encodeURIComponent(projectId)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            return json.data;
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 3. Fallback to localStorage
+    return this.loadSnapshot(projectId);
+  }
+
+  /**
    * 获取最近上传的自定义产品素材 (防止刷新后退回系统内置 demo)
    */
   static getRecentUploadedProducts(): ProductAsset[] | null {
@@ -170,6 +243,17 @@ export class SpaceStudioPersistenceService {
       }
     } catch {}
     return null;
+  }
+
+  /**
+   * 异步获取最近上传的真实完整产品素材（含 IndexedDB 中的高清切片）
+   */
+  static async getRecentUploadedProductsAsync(): Promise<ProductAsset[] | null> {
+    try {
+      const full = await dbService.getDraft<ProductAsset[]>('space_studio_recent_products_full');
+      if (Array.isArray(full) && full.length > 0) return full;
+    } catch {}
+    return this.getRecentUploadedProducts();
   }
 
   /**
@@ -194,6 +278,7 @@ export class SpaceStudioPersistenceService {
     if (typeof window === 'undefined' || !projectId) return;
     try {
       localStorage.removeItem(`space_studio_project_${projectId}`);
+      dbService.deleteDraft(`space_studio_snapshot_${projectId}`).catch(() => {});
 
       // 从索引列表中移除
       const list = this.listAllProjectIndices().filter(item => item.projectId !== projectId);
@@ -203,6 +288,7 @@ export class SpaceStudioPersistenceService {
       const activeRaw = localStorage.getItem(ACTIVE_PROJECT_KEY);
       if (activeRaw && activeRaw.includes(`"projectId":"${projectId}"`)) {
         localStorage.removeItem(ACTIVE_PROJECT_KEY);
+        dbService.deleteDraft('space_studio_active_project').catch(() => {});
       }
     } catch (e) {
       console.error('[SpaceStudioPersistence] Delete error:', e);
@@ -234,12 +320,12 @@ export class SpaceStudioPersistenceService {
 
       const entry: SpaceStudioProjectIndexItem = {
         projectId: snapshot.projectId,
-        title: snapshot.title || `【摄影画册】${snapshot.summary.productName || '多镜头全案'}`,
+        title: snapshot.title || `【摄影画册】${snapshot.summary?.productName || '多镜头全案'}`,
         updatedAt: snapshot.updatedAt,
         sizeBytes,
-        productName: snapshot.summary.productName || '功能沙发',
-        generatedShotsCount: snapshot.summary.generatedShotsCount || 0,
-        totalRevisionsCount: snapshot.summary.totalRevisionsCount || 0,
+        productName: snapshot.summary?.productName || '功能沙发',
+        generatedShotsCount: snapshot.summary?.generatedShotsCount || 0,
+        totalRevisionsCount: snapshot.summary?.totalRevisionsCount || 0,
         hasMaster: Boolean(snapshot.sceneMaster?.imageUrl),
         coverImageUrl: coverImageUrl?.slice(0, 1000)
       };

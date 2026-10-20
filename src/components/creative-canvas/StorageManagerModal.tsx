@@ -40,7 +40,7 @@ interface StorageManagerModalProps {
   onCanvasDeleted?: (deletedCanvasId: string) => void;
 }
 
-type TabType = 'all' | 'canvases' | 'storage_assets' | 'revisions' | 'local_drafts';
+type TabType = 'all' | 'space_studio' | 'canvases' | 'storage_assets' | 'revisions' | 'local_drafts';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B';
@@ -79,7 +79,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
   const [playingVideoUrl, setPlayingVideoUrl] = useState<{ url: string; title: string } | null>(null);
 
   // Confirm purge modal
-  const [purgeConfirmScope, setPurgeConfirmScope] = useState<'canvases' | 'storage_assets' | 'all' | 'local_drafts' | null>(null);
+  const [purgeConfirmScope, setPurgeConfirmScope] = useState<'canvases' | 'storage_assets' | 'all' | 'local_drafts' | 'space_studio' | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -109,15 +109,25 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
     }
   }, [isOpen]);
 
+  const spaceStudioCount = useMemo(() => {
+    return (scanData?.canvases || []).filter(c => c.type === 'space_studio').length;
+  }, [scanData]);
+
+  const pureCanvasesCount = useMemo(() => {
+    return (scanData?.canvases || []).filter(c => c.type !== 'space_studio').length;
+  }, [scanData]);
+
   // Filtered lists
   const filteredCanvases = useMemo(() => {
     if (!scanData) return [];
     return scanData.canvases.filter(c => {
+      if (activeTab === 'space_studio' && c.type !== 'space_studio') return false;
+      if (activeTab === 'canvases' && c.type === 'space_studio') return false;
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return c.title.toLowerCase().includes(q) || c.id.toLowerCase().includes(q);
     });
-  }, [scanData, searchQuery]);
+  }, [scanData, searchQuery, activeTab]);
 
   const filteredRevisions = useMemo(() => {
     if (!scanData) return [];
@@ -186,7 +196,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
 
   // Select all visible in current tab
   const handleSelectAllVisible = () => {
-    if (activeTab === 'canvases' || activeTab === 'all') {
+    if (activeTab === 'canvases' || activeTab === 'space_studio' || activeTab === 'all') {
       const allCids = new Set(filteredCanvases.map(c => c.id));
       const allSelected = filteredCanvases.every(c => selectedCanvasIds.has(c.id));
       if (allSelected) {
@@ -480,6 +490,20 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
               全部资产
             </button>
             <button
+              onClick={() => setActiveTab('space_studio')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === 'space_studio'
+                  ? 'bg-white text-emerald-900 shadow-2xs border border-[#E5E0D8]'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-600" />
+              <span>摄影画册</span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 rounded-full font-mono">
+                {spaceStudioCount}
+              </span>
+            </button>
+            <button
               onClick={() => setActiveTab('canvases')}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
                 activeTab === 'canvases'
@@ -487,9 +511,10 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                   : 'text-stone-600 hover:text-stone-900'
               }`}
             >
-              <span>云端画布</span>
+              <Layers className="w-3.5 h-3.5 text-amber-600" />
+              <span>企划画布</span>
               <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 rounded-full font-mono">
-                {scanData?.canvases.length || 0}
+                {pureCanvasesCount}
               </span>
             </button>
             <button
@@ -601,6 +626,13 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                     <Layers className="w-3.5 h-3.5 text-amber-500" />
                     <span>一键清空所有历史画布</span>
                   </button>
+                  <button
+                    onClick={() => setPurgeConfirmScope('space_studio')}
+                    className="w-full text-left px-3 py-2 text-xs text-stone-700 hover:bg-emerald-50 hover:text-emerald-900 flex items-center gap-2"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>一键清空摄影画册底图与工程</span>
+                  </button>
                   <div className="h-[1px] bg-stone-100 my-1" />
                   <button
                     onClick={() => setPurgeConfirmScope('all')}
@@ -624,22 +656,33 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
             </div>
           ) : (
             <>
-              {/* SECTION: Canvases (if activeTab is 'all' or 'canvases') */}
-              {(activeTab === 'all' || activeTab === 'canvases') && filteredCanvases.length > 0 && (
+              {/* SECTION: Canvases / Space Studio Projects (if activeTab is 'all', 'canvases', or 'space_studio') */}
+              {(activeTab === 'all' || activeTab === 'canvases' || activeTab === 'space_studio') && filteredCanvases.length > 0 && (
                 <div className="bg-white rounded-xl border border-[#E5E0D8] shadow-2xs overflow-hidden">
                   <div className="px-4 py-2.5 bg-[#F9F6F0] border-b border-[#E5E0D8] flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-amber-700" />
+                      {activeTab === 'space_studio' ? (
+                        <Camera className="w-4 h-4 text-emerald-700" />
+                      ) : (
+                        <Layers className="w-4 h-4 text-amber-700" />
+                      )}
                       <h3 className="text-xs font-bold text-stone-800">
-                        Supabase 云端画布草稿与工程 ({filteredCanvases.length})
+                        {activeTab === 'space_studio'
+                          ? `摄影画册空间工程与生成历史 (${filteredCanvases.length})`
+                          : activeTab === 'canvases'
+                          ? `企划视觉画布草稿与工程 (${filteredCanvases.length})`
+                          : `云端工程与摄影画册历史 (${filteredCanvases.length})`}
                       </h3>
                     </div>
-                    <span className="text-[11px] text-stone-500">表: creative_canvases</span>
+                    <span className="text-[11px] text-stone-500 font-mono">
+                      {activeTab === 'space_studio' ? '存储: .data/space-projects' : '来源: Supabase DB / 磁盘快照'}
+                    </span>
                   </div>
                   <div className="divide-y divide-stone-100">
                     {filteredCanvases.map(canvas => {
                       const isSelected = selectedCanvasIds.has(canvas.id);
                       const isCurrent = canvas.id === currentCanvasId;
+                      const isSpaceStudio = canvas.type === 'space_studio';
                       return (
                         <div
                           key={canvas.id}
@@ -658,57 +701,108 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                                 <Square className="w-4 h-4" />
                               )}
                             </button>
+
+                            {/* Thumbnail or Project Type Icon */}
+                            {isSpaceStudio ? (
+                              canvas.thumbnailUrl ? (
+                                <img
+                                  src={canvas.thumbnailUrl}
+                                  alt={canvas.title}
+                                  className="w-11 h-11 rounded-lg object-cover border border-[#E5E0D8] shrink-0 bg-stone-100"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-11 h-11 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col items-center justify-center shrink-0 text-emerald-700">
+                                  <Camera className="w-4 h-4" />
+                                  <span className="text-[8px] font-bold mt-0.5">摄影全案</span>
+                                </div>
+                              )
+                            ) : null}
+
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-xs text-stone-900 truncate">
                                   {canvas.title}
                                 </span>
+                                {isSpaceStudio ? (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 flex items-center gap-1">
+                                    <Camera className="w-2.5 h-2.5 text-emerald-700" />
+                                    摄影画册 (9镜头)
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 font-medium border border-amber-200 flex items-center gap-1">
+                                    <Layers className="w-2.5 h-2.5 text-amber-700" />
+                                    企划画布
+                                  </span>
+                                )}
                                 {isCurrent && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    当前画板
+                                    当前作业
                                   </span>
                                 )}
                                 <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-stone-100 text-stone-600 font-mono">
-                                  {canvas.source === 'supabase' ? 'Supabase DB' : '磁盘持久化'}
+                                  {canvas.source === 'supabase' ? 'Supabase DB' : '磁盘备份'}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-3 text-[11px] text-stone-400 mt-0.5 font-mono">
-                                <span>ID: {canvas.id}</span>
-                                <span>节点数: {canvas.nodeCount}</span>
-                                <span>连线: {canvas.edgeCount}</span>
+                              <div className="flex items-center gap-3 text-[11px] text-stone-400 mt-1 font-mono flex-wrap">
+                                <span>工程ID: {canvas.id}</span>
+                                {isSpaceStudio ? (
+                                  <span>机位: A00~A08 多视角母版</span>
+                                ) : (
+                                  <>
+                                    <span>节点数: {canvas.nodeCount}</span>
+                                    <span>连线: {canvas.edgeCount}</span>
+                                  </>
+                                )}
                                 <span>更新时间: {new Date(canvas.updatedAt).toLocaleString()}</span>
                               </div>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => {
-                                onClose();
-                                navigate(`/poster-studio/${canvas.id}?mode=space`);
-                              }}
-                              className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                              title="进入摄影画册工作台 (A00~A08全景与多镜头空间实拍)"
-                            >
-                              <Camera className="w-3.5 h-3.5 text-emerald-700" />
-                              <span>摄影画册</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                onClose();
-                                navigate(`/creative-canvas/${canvas.id}`);
-                              }}
-                              className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                              title="打开并进入此历史企划画布"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
-                              <span>打开画板</span>
-                            </button>
+                            {isSpaceStudio ? (
+                              <button
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/poster-studio/${canvas.id}?mode=space`);
+                                }}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                                title="直接进入此摄影画册工作台作业"
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                <span>进入摄影画册</span>
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    onClose();
+                                    navigate(`/poster-studio/${canvas.id}?mode=space`);
+                                  }}
+                                  className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="基于此画布进入摄影画册工作台"
+                                >
+                                  <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                                  <span>摄影画册</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    onClose();
+                                    navigate(`/creative-canvas/${canvas.id}`);
+                                  }}
+                                  className="px-2.5 py-1 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="打开并进入此历史企划画布"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>打开画板</span>
+                                </button>
+                              </>
+                            )}
                             <button
                               onClick={() => handleSingleDelete('canvas', canvas.id)}
                               disabled={deleting}
                               className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="删除此画布草稿"
+                              title="删除此工程记录"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -738,6 +832,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                         className="text-[11px] bg-white border border-[#E5E0D8] rounded-md px-2 py-0.5 text-stone-700"
                       >
                         <option value="all">全部分类</option>
+                        <option value="space_studio">摄影画册生成图</option>
                         <option value="video">视频与输入</option>
                         <option value="export">海报与导出</option>
                         <option value="composition">排版图</option>
@@ -818,7 +913,11 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
                                   <span className="font-mono text-xs font-semibold text-stone-900 truncate max-w-sm">
                                     {asset.name}
                                   </span>
-                                  {asset.category === 'video' || asset.name.endsWith('.mp4') ? (
+                                  {asset.category === 'space_studio' ? (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-mono font-medium flex items-center gap-0.5">
+                                      <Camera className="w-2.5 h-2.5 text-emerald-700" /> 摄影画册底图
+                                    </span>
+                                  ) : asset.category === 'video' || asset.name.endsWith('.mp4') ? (
                                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 font-mono font-medium flex items-center gap-0.5">
                                       <Video className="w-2.5 h-2.5" /> 视频素材
                                     </span>
@@ -1191,6 +1290,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
               </h3>
             </div>
             <p className="text-xs text-stone-600 leading-relaxed">
+              {purgeConfirmScope === 'space_studio' && '即将清空摄影画册所有历史工程快照（.data/space-projects）以及所有镜头生成底图与素材（.data/space-storage）。此操作不可撤销。'}
               {purgeConfirmScope === 'local_drafts' && '即将清空当前浏览器中缓存的所有画布草稿。此操作将避免每次打开页面时自动恢复历史草稿，但不会影响 Supabase 云端已保存的数据。'}
               {purgeConfirmScope === 'storage_assets' && '即将清空 Supabase Storage 存储桶中保存的生成图片与海报导出素材。此操作将释放大量云端存储空间。'}
               {purgeConfirmScope === 'canvases' && '即将删除 Supabase 数据库中所有的画布工程记录 (creative_canvases)。此操作不可撤销。'}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   SpaceProject,
   SpaceWorkflowStep,
@@ -469,9 +469,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [isRightCollapsed, setIsRightCollapsed] = useState<boolean>(false);
   const [isBottomCollapsed, setIsBottomCollapsed] = useState<boolean>(false);
 
-  // 空间母版 1~14 多产品交互打标状态 (支持真实产品动态映射与大平层拓扑锁定)
+  // 空间母版 1~14 多产品交互打标状态 (支持真实产品动态映射与大平层拓扑锁定，默认关闭)
   const [sceneAnnotations, setSceneAnnotations] = useState<DisaggregatedProductItem[]>(SAMPLE_SUITE_ANNOTATIONS_14);
-  const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
+  const [showAnnotations, setShowAnnotations] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('space_studio_show_annotations');
+      if (saved !== null) return saved === 'true';
+    }
+    return false;
+  });
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 
   // 动态同步画布打标与当前场景关联的真实产品套组 (告别静态假数据坐标偏离)
@@ -1218,12 +1224,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染引擎配置选项 (系统默认使用 Nano Banana 2.1 极速响应·轻量多图融合，默认 4:3 空间透视画幅)
+  // 渲染引擎配置选项 (系统默认使用 Nano Banana 2.1 极速响应·轻量多图融合，默认 4:3 空间透视画幅，默认开启多模型故障自动轮换)
   const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>(() => {
     let initialAspect: ImageAspectRatio = '4:3';
     let initialModel = 'gemini-3.1-flash-image-preview';
     let initialRes: RenderResolution = '2K';
     let initialFuncPos: 'closed' | 'open' = 'closed';
+    let initialAutoFallback = true;
     if (typeof window !== 'undefined') {
       const savedAspect = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
       if (savedAspect && ['4:3', '16:9', '3:4', '1:1', '9:16', '2:3'].includes(savedAspect)) {
@@ -1241,6 +1248,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       if (savedFuncPos && ['closed', 'open'].includes(savedFuncPos)) {
         initialFuncPos = savedFuncPos;
       }
+      const savedAutoFallback = localStorage.getItem('space_studio_auto_model_fallback');
+      if (savedAutoFallback !== null) {
+        initialAutoFallback = savedAutoFallback === 'true';
+      }
     }
     return {
       model: initialModel,
@@ -1251,7 +1262,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       namingPreset: 'detailed',
       customPrefix: '',
       candidateCount: 1,
-      functionalPositionState: initialFuncPos
+      functionalPositionState: initialFuncPos,
+      autoModelFallback: initialAutoFallback
     };
   });
 
@@ -1266,6 +1278,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       }
       if (typeof window !== 'undefined' && updater.functionalPositionState) {
         localStorage.setItem('space_studio_functional_position', updater.functionalPositionState);
+      }
+      if (typeof window !== 'undefined' && typeof updater.autoModelFallback === 'boolean') {
+        localStorage.setItem('space_studio_auto_model_fallback', String(updater.autoModelFallback));
       }
       if (updater.aspectRatio) {
         if (updater.aspectRatio !== aspectRatio) {
@@ -1570,45 +1585,34 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
   // 自动将用户在生成后产生的素材、上传的产品及作业进度实时持久化到浏览器当前环境
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
 
-    autoSaveTimerRef.current = setTimeout(() => {
-      const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
-      const productName = primaryProduct?.name || '功能沙发';
-      const generatedShotsCount = shots.filter((s) => s.revisions && s.revisions.length > 0).length;
-      const totalRevisionsCount = shots.reduce((acc, s) => acc + (s.revisions?.length || 0), 0);
+  const flushSaveSnapshot = useCallback(() => {
+    const primaryProduct = products.find((p) => p.priority === 'primary') || products[0];
+    const productName = primaryProduct?.name || '功能沙发';
+    const generatedShotsCount = shots.filter((s) => s.revisions && s.revisions.length > 0).length;
+    const totalRevisionsCount = shots.reduce((acc, s) => acc + (s.revisions?.length || 0), 0);
 
-      SpaceStudioPersistenceService.saveSnapshot({
-        projectId,
-        title: `【摄影画册】${productName}`,
-        products,
-        shots,
-        sceneMaster,
-        candidateBatches,
-        selectedCandidateIds,
-        activeShotId,
-        selectedSpaceId: selectedSpace?.id,
-        selectedStyleId: selectedStyle?.id,
-        blueprint,
-        summary: {
-          productName,
-          productColor: primaryProduct?.colors?.[0],
-          uploadedProductsCount: products.length,
-          generatedShotsCount,
-          hasMaster: Boolean(sceneMaster?.imageUrl),
-          totalRevisionsCount
-        }
-      });
-    }, 800);
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
+    SpaceStudioPersistenceService.saveSnapshot({
+      projectId,
+      title: `【摄影画册】${productName}`,
+      products,
+      shots,
+      sceneMaster,
+      candidateBatches,
+      selectedCandidateIds,
+      activeShotId,
+      selectedSpaceId: selectedSpace?.id,
+      selectedStyleId: selectedStyle?.id,
+      blueprint,
+      summary: {
+        productName,
+        productColor: primaryProduct?.colors?.[0],
+        uploadedProductsCount: products.length,
+        generatedShotsCount,
+        hasMaster: Boolean(sceneMaster?.imageUrl),
+        totalRevisionsCount
       }
-    };
+    });
   }, [
     projectId,
     products,
@@ -1621,6 +1625,62 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     selectedStyle,
     blueprint
   ]);
+
+  useEffect(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      flushSaveSnapshot();
+    }, 800);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [flushSaveSnapshot]);
+
+  // 离开工作台或刷新页面时，立即强制落盘保存，杜绝 800ms 防抖尚未触发导致的进度丢失
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushSaveSnapshot();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      flushSaveSnapshot();
+    };
+  }, [flushSaveSnapshot]);
+
+  // 初次挂载时，异步从 IndexedDB 检索更高清的无损快照并平滑增量补齐
+  useEffect(() => {
+    SpaceStudioPersistenceService.loadSnapshotAsync(projectId).then((asyncSnapshot) => {
+      if (!asyncSnapshot) return;
+      if (asyncSnapshot.products && asyncSnapshot.products.length > 0) {
+        setProducts((prev) => {
+          if (isOnlyDemoProducts(prev)) return asyncSnapshot.products;
+          return prev;
+        });
+      }
+      if (asyncSnapshot.shots && asyncSnapshot.shots.some((s) => s.revisions && s.revisions.length > 0)) {
+        setShots((prev) => {
+          const hasGenerations = prev.some((s) => s.revisions && s.revisions.length > 0);
+          if (!hasGenerations) return asyncSnapshot.shots;
+          return prev;
+        });
+      }
+      if (asyncSnapshot.sceneMaster && !sceneMasterRef.current) {
+        setSceneMaster(asyncSnapshot.sceneMaster);
+      }
+      if (asyncSnapshot.candidateBatches && Object.keys(asyncSnapshot.candidateBatches).length > 0) {
+        setCandidateBatches((prev) => ({ ...asyncSnapshot.candidateBatches, ...prev }));
+      }
+    }).catch((e) => {
+      console.warn('[SpaceStudioShell] loadSnapshotAsync notice:', e);
+    });
+  }, [projectId]);
 
   useEffect(() => {
     (window as any).__setCandidateBatch = (shotId: string, batch: ShotCandidateBatch) => {
@@ -1851,6 +1911,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       model: customSettings?.model || computeConfig.model,
       resolution: (customSettings as any)?.resolution || computeConfig.resolution || '2K',
       aspectRatio: (customSettings as any)?.aspectRatio || targetShot.aspectRatio || computeConfig.aspectRatio,
+      autoModelFallback: (customSettings as any)?.autoModelFallback ?? computeConfig.autoModelFallback,
       ...(computeConfig.seed !== undefined ? { seed: computeConfig.seed } : {}),
       useRandomSeed: computeConfig.seed === undefined,
       ...customSettings
@@ -1868,9 +1929,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     };
     setCurrentJob(initialJob);
 
-    // 状态置为 generating
+    // 状态置为 generating 并重置历史 error
     setShots((prev) =>
-      prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'generating' } : s))
+      prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'generating', error: undefined } : s))
     );
 
     try {
@@ -1965,6 +2026,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionNumber: (targetShot.revisions.length || 0) + 1,
           candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
           resolution: activeSettings.resolution,
+          autoModelFallback: activeSettings.autoModelFallback,
           roomName: selectedSpace.name.split(' (')[0],
           spaceCode: selectedSpace.code,
           styleName: selectedStyle.name.split(' (')[0],
@@ -2171,7 +2233,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             : null
         );
         setShots((prev) =>
-          prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'failed' } : s))
+          prev.map((s) => (s.id === targetShot.id ? { ...s, status: 'failed', error: errorMessage } : s))
         );
         return { success: false, error: errorMessage };
       }
@@ -3269,7 +3331,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onDeleteRevision={handleDeleteRevision}
           annotations={sceneAnnotations}
           showAnnotations={showAnnotations}
-          onToggleShowAnnotations={() => setShowAnnotations(!showAnnotations)}
+          onToggleShowAnnotations={() => {
+            setShowAnnotations((prev) => {
+              const next = !prev;
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('space_studio_show_annotations', String(next));
+              }
+              return next;
+            });
+          }}
+          currentJob={currentJob}
           selectedAnnotationId={selectedAnnotationId}
           onSelectAnnotation={(item) => setSelectedAnnotationId(item ? item.id : null)}
           onUpdateAnnotationPosition={handleUpdateAnnotationPosition}

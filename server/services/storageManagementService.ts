@@ -11,7 +11,7 @@ export interface StorageAssetItem {
   mimeType?: string;
   updatedAt?: string;
   publicUrl?: string;
-  category: 'composition' | 'export' | 'upload' | 'mask' | 'video' | 'other';
+  category: 'space_studio' | 'composition' | 'export' | 'upload' | 'mask' | 'video' | 'other';
 }
 
 export interface CanvasRecordItem {
@@ -24,6 +24,10 @@ export interface CanvasRecordItem {
   createdAt?: string;
   source: 'supabase' | 'disk';
   sizeBytes?: number;
+  type?: 'canvas' | 'space_studio';
+  shotCount?: number;
+  coverImageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface RevisionRecordItem {
@@ -297,6 +301,82 @@ export class StorageManagementService {
           }
         }
       }
+      // 4.5 Scan Space Studio Generated Assets & Projects in .data/space-storage and .data/space-projects
+      const spaceStorageDir = path.join(this.DATA_DIR, 'space-storage');
+      if (fs.existsSync(spaceStorageDir)) {
+        const scanSpaceStorage = (dir: string) => {
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullF = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              scanSpaceStorage(fullF);
+            } else if (entry.isFile()) {
+              try {
+                const stat = fs.statSync(fullF);
+                const relKey = path.relative(spaceStorageDir, fullF).replace(/\\/g, '/');
+                localDiskItems.push({
+                  fileName: entry.name,
+                  folder: 'space-storage',
+                  fullPath: fullF,
+                  sizeBytes: stat.size,
+                  updatedAt: stat.mtime.toISOString()
+                });
+
+                const isImageOrVideo = /\.(webp|png|jpe?g|mp4|mov)$/i.test(entry.name);
+                if (isImageOrVideo) {
+                  storageAssets.push({
+                    id: `space_${relKey}`,
+                    bucket: 'space-storage',
+                    name: entry.name,
+                    fullPath: relKey,
+                    sizeBytes: stat.size,
+                    mimeType: entry.name.endsWith('.webp') ? 'image/webp' : entry.name.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg',
+                    updatedAt: stat.mtime.toISOString(),
+                    publicUrl: `/api/space/storage/local-file?key=${encodeURIComponent(relKey)}`,
+                    category: 'space_studio'
+                  });
+                }
+              } catch (e) {}
+            }
+          }
+        };
+        scanSpaceStorage(spaceStorageDir);
+      }
+
+      // Also scan .data/space-projects (server-side project snapshots)
+      const spaceProjectsDir = path.join(this.DATA_DIR, 'space-projects');
+      if (fs.existsSync(spaceProjectsDir)) {
+        const pEntries = fs.readdirSync(spaceProjectsDir);
+        for (const f of pEntries) {
+          if (f.endsWith('.json')) {
+            try {
+              const fullF = path.join(spaceProjectsDir, f);
+              const stat = fs.statSync(fullF);
+              const raw = fs.readFileSync(fullF, 'utf-8');
+              const parsed = JSON.parse(raw);
+              const pId = parsed.projectId || f.replace('.json', '');
+              const pName = parsed.summary?.productName || parsed.title || pId;
+              const generatedCount = parsed.summary?.generatedShotsCount || 0;
+              const cover = parsed.sceneMaster?.imageUrl || parsed.shots?.[0]?.revisions?.[0]?.imageUrl || parsed.products?.[0]?.referenceImages?.[0]?.publicUrl;
+
+              canvases.push({
+                id: pId,
+                title: parsed.title || `【摄影画册】${pName}`,
+                projectId: pId,
+                nodeCount: parsed.shots?.length || 9,
+                edgeCount: generatedCount,
+                updatedAt: parsed.updatedAt || stat.mtime.toISOString(),
+                createdAt: parsed.createdAt || stat.birthtime.toISOString(),
+                source: 'disk',
+                type: 'space_studio',
+                shotCount: parsed.shots?.length || 9,
+                coverImageUrl: cover,
+                sizeBytes: stat.size
+              });
+            } catch (e) {}
+          }
+        }
+      }
     } catch (e) {
       console.warn('[StorageManagement] Failed to scan local .data directory:', e);
     }
@@ -364,6 +444,16 @@ export class StorageManagementService {
             deletedDiskFilesCount++;
           }
         } catch (e) {}
+
+        try {
+          const spaceProjPath = path.join(this.DATA_DIR, 'space-projects', `${cid}.json`);
+          if (fs.existsSync(spaceProjPath)) {
+            const stat = fs.statSync(spaceProjPath);
+            freedBytesEstimate += stat.size;
+            fs.unlinkSync(spaceProjPath);
+            deletedCanvasesCount++;
+          }
+        } catch (e) {}
       }
     }
 
@@ -401,6 +491,21 @@ export class StorageManagementService {
       }
 
       for (const [bucket, paths] of bucketMap.entries()) {
+        if (bucket === 'space-storage') {
+          for (const p of paths) {
+            try {
+              const fullF = path.join(this.DATA_DIR, 'space-storage', p);
+              if (fs.existsSync(fullF)) {
+                const stat = fs.statSync(fullF);
+                freedBytesEstimate += stat.size;
+                fs.unlinkSync(fullF);
+                deletedStorageFilesCount++;
+              }
+            } catch (e) {}
+          }
+          continue;
+        }
+
         try {
           // Batch remove in chunks of 50
           for (let i = 0; i < paths.length; i += 50) {
@@ -445,7 +550,7 @@ export class StorageManagementService {
   /**
    * Purge data by scope
    */
-  static async purgeAll(scope: 'all' | 'canvases' | 'revisions' | 'storage_assets' | 'disk'): Promise<{
+  static async purgeAll(scope: 'all' | 'canvases' | 'revisions' | 'storage_assets' | 'disk' | 'space_studio'): Promise<{
     message: string;
     details: any;
   }> {
@@ -458,17 +563,22 @@ export class StorageManagementService {
       diskFiles?: Array<{ folder: string; fileName: string }>;
     } = {};
 
-    if (scope === 'all' || scope === 'canvases') {
-      toDelete.canvasIds = scan.canvases.map(c => c.id);
-    }
-    if (scope === 'all' || scope === 'revisions') {
-      toDelete.revisionIds = scan.revisions.map(r => r.id);
-    }
-    if (scope === 'all' || scope === 'storage_assets') {
-      toDelete.storageFiles = scan.storageAssets.map(s => ({ bucket: s.bucket, path: s.fullPath }));
-    }
-    if (scope === 'all' || scope === 'disk') {
-      toDelete.diskFiles = scan.localDiskItems.map(d => ({ folder: d.folder, fileName: d.fileName }));
+    if (scope === 'space_studio') {
+      toDelete.canvasIds = scan.canvases.filter(c => c.type === 'space_studio').map(c => c.id);
+      toDelete.storageFiles = scan.storageAssets.filter(s => s.category === 'space_studio').map(s => ({ bucket: s.bucket, path: s.fullPath }));
+    } else {
+      if (scope === 'all' || scope === 'canvases') {
+        toDelete.canvasIds = scan.canvases.map(c => c.id);
+      }
+      if (scope === 'all' || scope === 'revisions') {
+        toDelete.revisionIds = scan.revisions.map(r => r.id);
+      }
+      if (scope === 'all' || scope === 'storage_assets') {
+        toDelete.storageFiles = scan.storageAssets.map(s => ({ bucket: s.bucket, path: s.fullPath }));
+      }
+      if (scope === 'all' || scope === 'disk') {
+        toDelete.diskFiles = scan.localDiskItems.map(d => ({ folder: d.folder, fileName: d.fileName }));
+      }
     }
 
     const res = await this.deleteItems(toDelete);

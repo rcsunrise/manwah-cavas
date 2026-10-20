@@ -190,7 +190,8 @@ router.post('/lock-master', async (req: Request, res: Response) => {
       objectKey,
       preferredModel: generationSettings?.model,
       resolution: generationSettings?.resolution,
-      seed: generationSettings?.seed
+      seed: generationSettings?.seed,
+      autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback
     });
 
     // 2. 保存空间母版元数据快照到对象存储中

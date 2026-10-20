@@ -159,6 +159,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
       preferredModel: generationSettings?.model,
       resolution: generationSettings?.resolution,
       seed: generationSettings?.seed,
+      autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,
@@ -470,6 +471,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             resolution: generationSettings?.resolution || (req.body as any).resolution,
             functionalPositionState: (generationSettings as any)?.functionalPositionState || (req.body as any).functionalPositionState || 'closed',
             seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
+            autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
             productName: effectiveProductName,
             productColor: effectiveProductColor,
             productMaterial: effectiveProductMaterial,
@@ -506,8 +508,11 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             createdAt: new Date().toISOString()
           };
         } catch (candErr: any) {
-          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation fallback:`, candErr?.message);
-          // 高可用自愈保障：当云端接口严重报错或超时，返回真值底图，杜绝 500 导致视口瘫痪
+          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation failed:`, candErr?.message);
+          const autoFallback = (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback;
+          if (autoFallback === false || v.idx === 1) {
+            throw candErr;
+          }
           const fallbackUrl = baseShotRef || effectiveSceneMasterRef || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
           return {
             id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,

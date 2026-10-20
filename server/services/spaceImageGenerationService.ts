@@ -78,6 +78,7 @@ export interface SpaceGenerateImageInput {
   variantIndex?: number;
   variantTag?: string;
   functionalPositionState?: 'closed' | 'open';
+  autoModelFallback?: boolean;
 }
 
 export interface SpaceGenerateImageResult {
@@ -422,8 +423,7 @@ export class SpaceImageGenerationService {
     }
 
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
-    try {
-      const config = await resolveApiConfig('system');
+    const config = await resolveApiConfig('system');
       if (!isProviderKeyValid(config?.apiKey)) {
         throw new Error(`Provider "${config?.provider || 'none'}" 未配置有效 API Key，已安全转入确定性工程底图管线`);
       }
@@ -762,61 +762,106 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         aspectRatio === '3:2' ? '3:2' :
         aspectRatio || '4:3';
 
-      console.log(
-        `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway: model=${targetModel}, res=${validResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
-      );
+      const isAutoFallback = input.autoModelFallback !== false;
+      const primaryModel = targetModel;
+      const candidateModels: string[] = [primaryModel];
+
+      if (isAutoFallback) {
+        const fallbacks = [
+          'gemini-3.1-flash-image-preview',
+          'openai/gpt-image-2.5-flare-c',
+          'gpt-image-2-c'
+        ];
+        for (const fb of fallbacks) {
+          if (!candidateModels.includes(fb)) {
+            candidateModels.push(fb);
+          }
+        }
+      }
+
+      const attemptErrors: Array<{ model: string; error: string }> = [];
+      let rawImageBuffer: Buffer | null = null;
+      let wasFallbackUsed = false;
 
       const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
       const generationIntent = images.length > 0 ? 'image_edit' : 'text_to_image';
 
-      const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : 300000;
-      const gatewayRes = await fetch(gatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-uuid': 'system'
-        },
-        body: JSON.stringify({
-          prompt: directivePrompt,
-          model: targetModel,
-          aspectRatio: mappedAspectRatio,
-          resolution: validResolution,
-          seed: typeof input.seed === 'number' ? input.seed : undefined,
-          images,
-          generationIntent
-        }),
-        signal: AbortSignal.timeout(timeoutMs)
-      });
+      for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
+        const currentModelToAttempt = candidateModels[mIdx];
+        const currentResolution =
+          currentModelToAttempt === 'gemini-2.5-flash-image' || currentModelToAttempt === 'gemini-2.5-flash'
+            ? '1K'
+            : validResolution;
 
-      const gatewayData = await gatewayRes.json();
+        console.log(
+          `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway (尝试 ${mIdx + 1}/${candidateModels.length}): model=${currentModelToAttempt}, res=${currentResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
+        );
 
-      let rawImageBuffer: Buffer | null = null;
-      if (gatewayRes.ok && !gatewayData.error && (gatewayData.success !== false)) {
-        const imgUrlOrBase64 =
-          gatewayData.imageUrl ||
-          gatewayData.data?.[0]?.url ||
-          gatewayData.data?.[0]?.b64_json ||
-          gatewayData.images?.[0]?.data ||
-          gatewayData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : (currentModelToAttempt.includes('gpt') ? 120000 : 75000);
 
-        if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.length > 0) {
-          if (imgUrlOrBase64.startsWith('data:')) {
-            const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
-            rawImageBuffer = Buffer.from(base64Clean, 'base64');
-          } else if (imgUrlOrBase64.startsWith('http://') || imgUrlOrBase64.startsWith('https://')) {
-            const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(60000) });
-            if (fetched.ok) {
-              rawImageBuffer = Buffer.from(await fetched.arrayBuffer());
+        try {
+          const gatewayRes = await fetch(gatewayUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-uuid': 'system'
+            },
+            body: JSON.stringify({
+              prompt: directivePrompt,
+              model: currentModelToAttempt,
+              aspectRatio: mappedAspectRatio,
+              resolution: currentResolution,
+              seed: typeof input.seed === 'number' ? input.seed : undefined,
+              images,
+              generationIntent
+            }),
+            signal: AbortSignal.timeout(timeoutMs)
+          });
+
+          const gatewayData = await gatewayRes.json();
+
+          if (gatewayRes.ok && !gatewayData.error && gatewayData.success !== false) {
+            const imgUrlOrBase64 =
+              gatewayData.imageUrl ||
+              gatewayData.data?.[0]?.url ||
+              gatewayData.data?.[0]?.b64_json ||
+              gatewayData.images?.[0]?.data ||
+              gatewayData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+            if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.length > 0) {
+              if (imgUrlOrBase64.startsWith('data:')) {
+                const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+                rawImageBuffer = Buffer.from(base64Clean, 'base64');
+              } else if (imgUrlOrBase64.startsWith('http://') || imgUrlOrBase64.startsWith('https://')) {
+                const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(60000) });
+                if (fetched.ok) {
+                  rawImageBuffer = Buffer.from(await fetched.arrayBuffer());
+                }
+              } else if (imgUrlOrBase64.length > 500) {
+                rawImageBuffer = Buffer.from(imgUrlOrBase64, 'base64');
+              }
             }
-          } else if (imgUrlOrBase64.length > 500) {
-            rawImageBuffer = Buffer.from(imgUrlOrBase64, 'base64');
           }
+
+          if (rawImageBuffer && rawImageBuffer.length > 0) {
+            wasFallbackUsed = currentModelToAttempt !== primaryModel;
+            usedProvider = gatewayData.provider || config.provider || 'tiantoken';
+            usedModel = gatewayData.model || currentModelToAttempt;
+            provenance = 'AI_ESTIMATED';
+            console.log(`[SpaceImageGenerationService] Successfully generated via ${usedProvider} (${usedModel}), bytes: ${rawImageBuffer.length}`);
+            break;
+          } else {
+            const errDetail = typeof gatewayData?.error === 'object'
+              ? (gatewayData.error?.message || JSON.stringify(gatewayData.error))
+              : (gatewayData?.error || gatewayData?.message || '上游接口未返回有效图像数据');
+            attemptErrors.push({ model: currentModelToAttempt, error: String(errDetail) });
+            console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} gateway error:`, errDetail);
+          }
+        } catch (apiErr: any) {
+          const errMsg = apiErr?.name === 'AbortError' ? '上游请求网络超时' : (apiErr?.message || '云端网络请求异常');
+          attemptErrors.push({ model: currentModelToAttempt, error: errMsg });
+          console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} deferred: ${errMsg}`);
         }
-      } else {
-        const errDetail = typeof gatewayData.error === 'object' ? (gatewayData.error?.message || JSON.stringify(gatewayData.error)) : (gatewayData.error || gatewayData.message || JSON.stringify(gatewayData));
-        cloudError = `云端生成网关返回错误: ${errDetail}`;
-        console.warn(`[SpaceImageGenerationService] Gateway returned error:`, errDetail);
-        try { fs.appendFileSync('debug.log', `[SpaceImageGenerationService ERROR] ${errDetail}\n`); } catch(e) {}
       }
 
       if (rawImageBuffer && rawImageBuffer.length > 0) {
@@ -830,94 +875,57 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
           imageBuffer = rawImageBuffer;
           contentType = 'image/png';
         }
+      } else {
+        const errorText = attemptErrors.length > 0
+          ? attemptErrors.map(e => `[${e.model}]: ${e.error}`).join('； ')
+          : (cloudError || '上游生图接口未响应');
 
-        usedProvider = gatewayData.provider || config.provider || 'tiantoken';
-        usedModel = gatewayData.model || targetModel;
-        provenance = 'AI_ESTIMATED';
-        console.log(`[SpaceImageGenerationService] Successfully generated via ${usedProvider} (${usedModel}), bytes: ${imageBuffer.length}`);
-      } else if (!cloudError) {
-        cloudError = '云端生图网关未解析出有效图像数据流';
-      }
-    } catch (apiErr: any) {
-      cloudError = apiErr?.message || '云端网络请求异常';
-      console.warn(`[SpaceImageGenerationService] Cloud image generation deferred: ${cloudError}.`);
-      try { fs.appendFileSync('debug.log', `[SpaceImageGenerationService EXCEPTION] ${cloudError}\n`); } catch(e) {}
-    }
-
-    // 3. 若云端生成未能获得图像：无论生产还是测试环境，自动优雅降级为高保真确定性工程物理底图自愈，杜绝抛 500 导致视口瘫痪
-    let isFallbackTriggered = false;
-    if (!imageBuffer) {
-      isFallbackTriggered = true;
-      console.warn(`[SpaceImageGenerationService] 云端生图受阻 (${cloudError})，优雅降级为高保真真值工程底图保障流程连续推进`);
-
-      try {
-        const rawColor = productColor || primaryProduct?.colors?.[0] || primaryProduct?.color || effectiveColor;
-        const svgBuffer = this.renderDeterministicSpatialAsset({
-          shotCode,
-          productName: effectiveProductName,
-          productColor: rawColor,
-          productRole: primaryProduct?.role,
-          roomName,
-          styleName,
-          camera: cameraSettings || { lensMm: 35, heightCm: 130, yawDeg: 0, pitchDeg: -2 },
-          variantIndex: input.variantIndex || 1,
-          variantTag: input.variantTag
-        });
-
-        if (objectKey.endsWith('.webp')) {
-          imageBuffer = await sharp(svgBuffer).webp({ quality: 92 }).toBuffer();
-          contentType = 'image/webp';
+        if (!isAutoFallback) {
+          throw new Error(`云端生图受阻 (${primaryModel}): ${attemptErrors[0]?.error || errorText}。请在控制面板开启【多模型故障自动轮换】开关以自动切换备选可用模型重试。`);
         } else {
-          imageBuffer = await sharp(svgBuffer).png().toBuffer();
-          contentType = 'image/png';
+          throw new Error(`全部候选模型均受阻 (已尝试: ${candidateModels.join(' -> ')}): ${errorText}。请检查网络或稍后重新生成。`);
         }
-        usedProvider = 'deterministic_renderer';
-        usedModel = 'manwah-spatial-color-truth-v3';
-        provenance = 'SOLVER_RESOLVED';
-      } catch (detErr: any) {
-        throw new Error(
-          `PROVIDER UNAVAILABLE: 图像生成未响应且确定性资产生成失败: ${detErr.message}`
-        );
       }
-    }
 
-    const sha256 = crypto.createHash('sha256').update(imageBuffer).digest('hex');
+      const sha256 = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
-    // 4. 严格持久化写入 GCS 对象存储系统 (GcsAssetStorage)
-    await this.storage.put({
-      bucketType: 'generated',
-      objectKey,
-      buffer: imageBuffer,
-      contentType,
-      metadata: {
-        projectId,
-        shotCode,
-        sha256,
+      // 4. 严格持久化写入 GCS 对象存储系统 (GcsAssetStorage)
+      await this.storage.put({
+        bucketType: 'generated',
+        objectKey,
+        buffer: imageBuffer,
+        contentType,
+        metadata: {
+          projectId,
+          shotCode,
+          sha256,
+          provider: usedProvider,
+          model: usedModel,
+          provenance,
+          productColor: effectiveColor
+        }
+      });
+
+      // 5. 获取签名或受控访问 URL
+      const readUrlRes = await this.storage.getSignedReadUrl(objectKey, 3600, 'generated');
+
+      const warningNotice = wasFallbackUsed
+        ? `主选模型 (${primaryModel}) 响应受阻，已自动故障转移至 (${usedModel}) 成功生成真实大图！`
+        : undefined;
+
+      return {
+        objectKey,
+        imageUrl: readUrlRes?.url || `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
         provider: usedProvider,
         model: usedModel,
+        bytes: imageBuffer.length,
+        sha256,
+        contentType,
         provenance,
-        productColor: effectiveColor
-      }
-    });
-
-    // 5. 获取签名或受控访问 URL
-    const readUrlRes = await this.storage.getSignedReadUrl(objectKey, 3600, 'generated');
-
-    return {
-      objectKey,
-      imageUrl: readUrlRes?.url || `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
-      provider: usedProvider,
-      model: usedModel,
-      bytes: imageBuffer.length,
-      sha256,
-      contentType,
-      provenance,
-      productionTruth: true,
-      isFallback: isFallbackTriggered,
-      warningNotice: isFallbackTriggered
-        ? `云端生图模型服务响应异常（${cloudError || '请求超时或 API Key 未就绪'}），已自动为您启用空间物理真值工程底图保障流程连续，您可随时在右上角点击重新生成。`
-        : undefined
-    };
+        productionTruth: true,
+        isFallback: wasFallbackUsed,
+        warningNotice
+      };
   }
 
   /**

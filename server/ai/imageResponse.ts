@@ -53,18 +53,48 @@ export function normalizeGeminiImageResponse(
 ): NormalizedImageResponse {
   const images: NormalizedImage[] = [];
   const finishReasons: string[] = [];
+  let collectedText = '';
+
   for (const candidate of Array.isArray(raw?.candidates) ? raw.candidates : []) {
     if (candidate?.finishReason) finishReasons.push(String(candidate.finishReason));
     for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
       const inlineData = part?.inlineData || part?.inline_data;
       if (inlineData?.data) {
         images.push({
-          mimeType: inlineData.mimeType || inlineData.mime_type || 'image/png',
+          mimeType: inlineData.mimeType || inlineData.mime_type || 'image/jpeg',
           data: inlineData.data
         });
+      } else if (part?.text) {
+        const textStr = String(part.text).trim();
+        if (textStr) {
+          collectedText += (collectedText ? ' | ' : '') + textStr;
+          const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/);
+          if (dataUrlMatch && dataUrlMatch[2].length > 100) {
+            images.push({
+              mimeType: dataUrlMatch[1],
+              data: dataUrlMatch[2]
+            });
+          } else {
+            const urlMatch = textStr.match(/https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp)/i);
+            if (urlMatch) {
+              images.push({
+                mimeType: 'image/png',
+                data: urlMatch[0]
+              });
+            }
+          }
+        }
       }
     }
   }
+
+  if (images.length === 0) {
+    if (collectedText) {
+      throw new Error(`上游模型未返回图片数据流，仅返回了文本内容: "${collectedText.slice(0, 120)}${collectedText.length > 120 ? '...' : ''}"`);
+    }
+    throw new Error('上游接口未返回有效图像数据。');
+  }
+
   return buildNormalizedImageResponse(images, {
     ...context,
     providerRequestId: raw?.responseId || raw?.id,

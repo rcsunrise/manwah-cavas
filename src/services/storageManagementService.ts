@@ -9,7 +9,7 @@ export interface StorageAssetItem {
   mimeType?: string;
   updatedAt?: string;
   publicUrl?: string;
-  category: 'composition' | 'export' | 'upload' | 'mask' | 'video' | 'other';
+  category: 'space_studio' | 'composition' | 'export' | 'upload' | 'mask' | 'video' | 'other';
 }
 
 export interface CanvasRecordItem {
@@ -22,6 +22,10 @@ export interface CanvasRecordItem {
   createdAt?: string;
   source: 'supabase' | 'disk';
   sizeBytes?: number;
+  type?: 'canvas' | 'space_studio';
+  shotCount?: number;
+  coverImageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface RevisionRecordItem {
@@ -120,7 +124,7 @@ export class StorageManagementService {
   /**
    * Purge all items in a given scope
    */
-  static async purgeAll(scope: 'all' | 'canvases' | 'revisions' | 'storage_assets' | 'disk'): Promise<{
+  static async purgeAll(scope: 'all' | 'canvases' | 'revisions' | 'storage_assets' | 'disk' | 'space_studio'): Promise<{
     message: string;
     details: any;
   }> {

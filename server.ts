@@ -1091,9 +1091,6 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           if (currentProvider === 'tiantoken' && finalModel === 'gpt-image-2') {
             finalModel = 'gpt-image-2-c';
           }
-          if (currentProvider === 'tiantoken' && (finalModel === 'gemini-nano-banana-2.1-preview' || finalModel === 'google/gemini-nano-banana-2.1-preview')) {
-            finalModel = 'gemini-3.1-flash-image';
-          }
           let targetUrl = modelAdapter.buildEndpoint(currentBaseUrl, { ...registeredModel, id: finalModel }, intent);
           let reqPayload: any = payload;
           

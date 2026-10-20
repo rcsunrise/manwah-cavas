@@ -429,6 +429,7 @@ export interface RenderComputeConfig {
   namingPreset: NamingPreset;
   customPrefix?: string;
   functionalPositionState?: 'closed' | 'open';
+  autoModelFallback?: boolean; // 多模型故障自动轮换开关 (开启时主模型失败自动轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2)
 }
 
 export type UIThemeMode = 'dark' | 'light';
@@ -548,6 +549,7 @@ export interface ShotInstance {
   revisions: ShotRevision[];
   hasHumanPass: boolean;
   aspectRatio?: ImageAspectRatio;
+  error?: string; // 记录最近一次生成失败的显式异常原因（网络超时/上游接口异常等）
 }
 
 // 8. HUMAN MODEL & PASS (HUMAN)
@@ -649,6 +651,7 @@ export interface GenerationSettings {
   seed?: number;
   useRandomSeed: boolean;
   functionalPositionState?: 'closed' | 'open';
+  autoModelFallback?: boolean;
 }
 
 export interface GenerationJob {

@@ -599,6 +599,44 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               </select>
             </div>
 
+            {/* 多模型故障自动轮换开关 (Auto-Fallback) */}
+            <div className={`p-2 rounded-lg border transition-all ${
+              cfg.autoModelFallback !== false
+                ? isLight ? 'bg-amber-50/70 border-amber-300' : 'bg-amber-500/10 border-amber-500/25'
+                : isLight ? 'bg-stone-50 border-stone-200' : 'bg-black/30 border-white/5'
+            }`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${
+                    cfg.autoModelFallback !== false ? 'text-amber-500' : isLight ? 'text-stone-400' : 'text-neutral-500'
+                  }`} />
+                  <span className={`text-[11px] font-bold truncate ${isLight ? 'text-stone-800' : 'text-neutral-200'}`}>
+                    多模型故障自动轮换
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onChangeComputeConfig?.({ autoModelFallback: cfg.autoModelFallback === false ? true : false })}
+                  className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    cfg.autoModelFallback !== false ? 'bg-amber-500' : isLight ? 'bg-stone-300' : 'bg-neutral-700'
+                  }`}
+                  title={cfg.autoModelFallback !== false ? '点击关闭自动轮换，严格直连当前选定模型' : '点击开启自动轮换，当前模型失败时自动重试备选模型'}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      cfg.autoModelFallback !== false ? 'translate-x-3.5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className={`text-[9.5px] mt-1 leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                {cfg.autoModelFallback !== false
+                  ? '✓ 开启中：若主模型超时或无图，自动按序轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2，确保出图成功率。'
+                  : '✕ 已关闭：仅严格直连当前模型，遇超时或接口异常直接报错，绝不降级为保底简图。'}
+              </p>
+            </div>
+
             {/* 产品功能位置设定 (每一组镜头默认保持关闭收起形态) */}
             <div className="space-y-1.5 pt-1.5 border-t border-white/5">
               <div className="flex items-center justify-between text-[10px]">
