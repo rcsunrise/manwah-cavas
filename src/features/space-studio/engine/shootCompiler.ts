@@ -428,16 +428,16 @@ export class ShootCompiler {
       
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO SEATING ASSET: Strictly construct the hero sofa from the isolated 3-seater product asset ground truth (3 seating cushions, horizontal division, supple leather, flared comfort armrests). DO NOT inpaint or clone downscaled sofa pixels from any master panoramic image.
-- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (luxury marble wall paneling, illuminated double-arch wall shelves, left indoor potted greenery) and center furniture placement grid from the spatial scene master.`;
+- SPATIAL & PLACEMENT ANCHOR: Lock the exact architectural room envelope, wall finishes, natural window daylight, and placement grid strictly from the spatial scene master A00. Maintain 100% architectural continuity with zero newly invented background elements!`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree angle centered directly on the hero three-seater main sofa ${footrestMandate}, accompanied by the Laurent Black Gold marble coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out and exclude any separate side accent chair, lounge chair, or 3+1 ensemble arrangement!`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree angle centered directly on the hero three-seater main sofa ${footrestMandate}, accompanied by the center coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out and exclude any separate side accent chair, lounge chair, or 3+1 ensemble arrangement!`;
       } else {
         shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample Hero 3-Seater Recline)]:
 ${linkageDirective}
-Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10 to 15 degree angle. Frame tightly and comfortably ONLY around the hero three-seater main sofa ${footrestMandate}, accompanied by the Laurent Black Gold dual coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
+Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10 to 15 degree angle. Frame tightly and comfortably ONLY around the hero three-seater main sofa ${footrestMandate}, accompanied by the center coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
       }
       negativeFramingConstraints.push(
         'side chair',
@@ -453,7 +453,9 @@ Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 
         'camera centered on single accent chair',
         'framing the separate single chair',
         'cloning low-res sofa from master image',
-        'inpainting distant sofa'
+        'inpainting distant sofa',
+        'different room background',
+        'altered wall finish'
       );
     } else if (shot.templateCode === 'A04') {
       const footrestMandate = isHumanPassActive
@@ -468,16 +470,16 @@ Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (outer wide armrest, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
-- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (left floor-to-ceiling sheer daylight window, tall indoor fiddle-leaf fig plant, warm wood fluting and marble paneling) and placement orientation from the spatial scene master.`;
+- SPATIAL & PLACEMENT ANCHOR: Lock the exact architectural background, wall finishes, window lighting direction, and floor texture strictly from the spatial scene master A00. Maintain 100% spatial environment continuity!`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree oblique three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deep seating cushion, ${lifestyleMoment} against luxury architectural backdrop and indoor foliage. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree oblique three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deep seating cushion, ${lifestyleMoment} within the authentic architectural room from A00. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, ${footrestAction}, deep seating cushion, ${lifestyleMoment} against luxury architectural backdrop (left sheer window daylight, wood paneling, marble wall, and tall indoor foliage/rubber plant). ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, ${footrestAction}, deep seating cushion, ${lifestyleMoment} within the authentic architectural room from A00 with consistent wall finishes and natural window daylight. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -488,7 +490,9 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
         'stiff emotionless posing',
         'wide empty room',
         'cloning low-res sofa from master image',
-        'inpainting distant sofa'
+        'inpainting distant sofa',
+        'different room background',
+        'altered wall finish'
       );
     } else if (shot.templateCode === 'A05') {
       const footrestMandate = isHumanPassActive
@@ -503,16 +507,16 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (right outer armrest featuring diamond-quilted leather craftsmanship with flush circular metal motion buttons, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
-- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (dark grey marble feature wall with illuminated double-arched ambient shelves, warm cove lighting, and tailored carpet) and placement grid from the spatial scene master.`;
+- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background, wall finishes, cove lighting, and tailored carpet strictly from the spatial scene master A00. Zero tolerance for background drift!`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and flush metal buttons, deep seating cushion, ${lifestyleMoment} against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and flush metal buttons, deep seating cushion, ${lifestyleMoment} within the consistent architectural room envelope from A00. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and circular metal motion buttons, ${footrestAction}, deep seating cushion, ${lifestyleMoment} against luxury architectural marble wall with illuminated ambient arched shelves. ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and circular metal motion buttons, ${footrestAction}, deep seating cushion, ${lifestyleMoment} within the consistent architectural room envelope from A00. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -523,24 +527,26 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
         'stiff emotionless posing',
         'wide empty room',
         'cloning low-res sofa from master image',
-        'inpainting distant sofa'
+        'inpainting distant sofa',
+        'different room background',
+        'altered wall finish'
       );
     } else if (shot.templateCode === 'A06') {
       const closedZeroWallMandate =
         'hero sofa strictly remains in standard pristine CLOSED upright configuration: motorized footrests are completely retracted and tucked underneath the base, backrest upright in standard closed form, ZERO deployed footrest, strictly closed showroom posture flush against the solid backdrop wall (<5cm gap)';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO MECHANISM ASSET (WALL-MOUNTED CLOSED POSTURE): Strictly construct the hero sofa from the isolated 3-seater product asset ground truth. Showcase MANWAH signature ZERO-WALL CLEARANCE architecture IN WALL-MOUNTED LIVING ROOM DISPLAY: the sofa is positioned flush against a solid architectural backdrop wall (wood fluting paneling and shelves) with virtually ZERO gap (<5cm flush alignment) against the wall! The functional positions strictly remain CLOSED with footrests fully tucked in and backrest upright in standard closed showroom posture. Full side profile highlights the exterior armrest covered in diamond-quilted leather craftsmanship with circular metal buttons and neat bottom trim. DO NOT clone low-res master sofa pixels.
-- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (wood paneling on right, floating shelves with art decor, left expansive panoramic window overlooking European/historic city horizon, and low-profile marble coffee table edge in foreground) from the spatial scene master.`;
+- HERO MECHANISM ASSET (WALL-MOUNTED CLOSED POSTURE): Strictly construct the hero sofa from the isolated 3-seater product asset ground truth. Showcase MANWAH signature ZERO-WALL CLEARANCE architecture IN WALL-MOUNTED LIVING ROOM DISPLAY: the sofa is positioned flush against the continuous solid architectural backdrop wall from A00 with virtually ZERO gap (<5cm flush alignment) against the wall! The functional positions strictly remain CLOSED with footrests fully tucked in and backrest upright in standard closed showroom posture. Full side profile highlights the exterior armrest covered in diamond-quilted leather craftsmanship with circular metal buttons and neat bottom trim. DO NOT clone low-res master sofa pixels.
+- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background wall, window lighting direction, and floor finishes strictly from the spatial scene master A00.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and expansive window daylight backdrop.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and window daylight backdrop from A00.`;
       } else {
         shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Studio Sample Zero-Wall Profile - Reference 4)]:
 ${linkageDirective}
-Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4) with 80-to-90 degree side profile perspective in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the solid backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and expansive window daylight backdrop.`;
+Camera: 35mm wide prime lens at 90cm seated eye-level height with 80-to-90 degree side profile perspective in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in wall-mounted setting: hero sofa flush against the solid backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and window daylight backdrop from A00.`;
       }
       negativeFramingConstraints.push(
         'flat frontal angle',
@@ -556,7 +562,9 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4
         'stiff emotionless posing',
         'crooked perspective',
         'cloning low-res sofa from master image',
-        'inpainting distant sofa'
+        'inpainting distant sofa',
+        'different room background',
+        'altered wall finish'
       );
     } else if (shot.templateCode === 'A07') {
       if (isCameraCustomized) {
@@ -575,17 +583,17 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height (reference sample 4
         : 'and personal luxury sanctuary in an unoccupied living space (strictly zero humans)';
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT RECLINER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO RECLINER CHAIR ASSET: Strictly construct the power recliner chair from the isolated product asset ground truth (deep brown genuine leather, diamond-quilted exterior armrest panels, circular metallic control buttons, high-resilience ergonomic headrest and fully deployed motorized footrest). DO NOT clone or stretch distant low-res master pixels.
-- SPATIAL & PLACEMENT ANCHOR (OPEN SPACIOUS LIVING ROOM ZONE): Lock the architectural background (left floor-to-ceiling panoramic windows with city skyline, sheer drapes, indoor fiddle-leaf plant, warm wood/marble columns, and high-end tailored rug with cigar humidor tray in foreground) from the spatial scene master. PLACED IN THE OPEN SPACIOUS MASTER LIVING ROOM POSITION: positioned serenely on the expansive living room rug, with the three-seater main sofa off-frame or non-intrusive, highlighting the recliner as an independent personal luxury sanctuary.`;
+- HERO RECLINER CHAIR ASSET: Strictly construct the power recliner chair from the isolated product asset ground truth (genuine leather, diamond-quilted exterior armrest panels, circular metallic control buttons, high-resilience ergonomic headrest and fully deployed motorized footrest). DO NOT clone or stretch distant low-res master pixels.
+- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background, natural daylight direction, and tailored area rug strictly from the spatial scene master A00. Positioned comfortably in the master living room zone of A00, with the three-seater main sofa off-frame or non-intrusive.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08}.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 16:9 widescreen. Dedicated single power recliner motion showcase in the open living room of A00, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08}.`;
       } else {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Studio Sample Recliner 5 Postures - Reference 5)]:
 ${linkageDirective}
-Camera: 45mm environmental portrait lens at 100cm eye-level seated height (reference sample 5) with fixed 35-degree three-quarters perspective in 16:9 widescreen. Dedicated single power recliner motion showcase in open spacious living room setting, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08} against panoramic window daylight and architectural finishes.`;
+Camera: 45mm environmental portrait lens at 100cm eye-level seated height (reference sample 5) with fixed 35-degree three-quarters perspective in 16:9 widescreen. Dedicated single power recliner motion showcase in the open living room of A00, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08} against consistent window daylight and architectural finishes.`;
       }
       negativeFramingConstraints.push(
         'shifting camera angle',
@@ -594,21 +602,23 @@ Camera: 45mm environmental portrait lens at 100cm eye-level seated height (refer
         'three-seater sofa centered in frame',
         'three-seater sofa blocking recliner',
         'cloning low-res sofa from master image',
-        'inpainting distant sofa'
+        'inpainting distant sofa',
+        'different room background',
+        'altered wall finish'
       );
     } else if (shot.templateCode === 'A09') {
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT DINING SUITE ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO DINING SUITE ASSETS: Strictly construct the dining ensemble from the isolated dining suite product asset ground truth (luxurious black Laurent gold marble rectangular dining table, 6 matching tailored leather dining chairs featuring two-tone cream and cognac upholstery with dark wooden legs, background black credenza sideboard with table lamp and modern framed art painting, and mobile gold/glass champagne bar cart on the right with glassware). DO NOT clone low-res master sofa pixels, and STRICTLY EXCLUDE three-seater main sofa from center frame!
-- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background (left floor-to-ceiling panoramic sheer window overlooking historic European cityscape, indoor tall rubber/fiddle-leaf plant, dark marble and rich fluted wood wall panels, and deep tone hardwood flooring) and dining zone placement coordinates from the spatial scene master.`;
+- HERO DINING SUITE ASSETS: Strictly construct the dining ensemble from the isolated dining suite product asset ground truth (luxurious rectangular dining table with matching tailored leather dining chairs, coordinating credenza sideboard, and modern bar cart). DO NOT clone low-res master sofa pixels, and STRICTLY EXCLUDE three-seater main sofa from center frame!
+- SPATIAL & PLACEMENT ANCHOR: Lock the architectural background, flooring, and natural window lighting direction strictly from the spatial scene master A00 open-plan layout.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A09 DINING SUITE ENSEMBLE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm architectural lens at ${camera.heightCm}cm standing eye-level height with ${camera.yawDeg} degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury marble-topped dining table with matching tailored leather dining chairs, architectural credenza sideboard, elegant champagne bar cart, bathed in natural window daylight, showcasing complete open-plan living-dining high-end lifestyle.`;
+Camera: ${camera.lensMm}mm architectural lens at ${camera.heightCm}cm standing eye-level height with ${camera.yawDeg} degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather dining chairs, architectural credenza sideboard, bathed in natural window daylight, showcasing complete open-plan living-dining high-end lifestyle from A00.`;
       } else {
         shotMandate = `[SHOT MANDATE - A09 DINING SUITE ENSEMBLE VIEW (Studio Sample Luxury Dining Flat - Reference 1)]:
 ${linkageDirective}
-Camera: 38mm architectural prime lens at 125cm standing eye-level height (reference sample 1, subtle downward perspective) with 15-degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury black marble dining table with 6 matching tailored leather chairs, architectural black credenza sideboard with lamp and art painting against marble wall, elegant mobile champagne bar cart on the right, bathed in natural window daylight, showcasing complete open-plan living-dining luxury lifestyle.`;
+Camera: 38mm architectural prime lens at 125cm standing eye-level height (reference sample 1, subtle downward perspective) with 15-degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather chairs, architectural credenza sideboard with lamp and art painting against consistent wall from A00, elegant champagne bar cart, bathed in natural window daylight, showcasing complete open-plan living-dining luxury lifestyle.`;
       }
       negativeFramingConstraints.push(
         'three-seater sofa centered in frame',
