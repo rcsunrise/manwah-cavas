@@ -275,22 +275,6 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     (r) => r.revisionType === 'scene' || (!r.id.includes('human') && r.id !== currentRevision?.id)
   ) || activeShot.revisions[activeShot.revisions.length - 1];
 
-  const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
-  const extractedKey = primaryKey || (() => {
-    const url = currentRevision?.imageUrl || activeCandidate?.imageUrl || sceneMaster?.imageUrl;
-    if (!url || typeof url !== 'string') return undefined;
-    if (url.includes('storage.googleapis.com')) {
-      try {
-        const u = new URL(url);
-        const parts = u.pathname.split('/');
-        return parts.slice(2).join('/');
-      } catch {}
-    }
-    return undefined;
-  })();
-  const effectiveProxyKey = primaryKey || extractedKey || (activeShot.templateCode ? `shots/${activeShot.templateCode.toLowerCase()}/healed.svg` : undefined);
-  const localFileUrl = effectiveProxyKey ? `/api/space/storage/local-file?key=${encodeURIComponent(effectiveProxyKey)}` : undefined;
-
   // 1. 严格版本类型与批次语义提取（判定是否包含人物/模特）
   const isRevisionHuman = Boolean(
     currentRevision?.revisionType === 'human' ||
@@ -328,6 +312,23 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   const activeCandidate = isCandidateBatchMatchingCurrentRevision
     ? (candidateBatch?.candidates.find((c) => c.id === selectedCandidateId) || candidateBatch?.candidates[0])
     : undefined;
+
+  // 4. 提取当前图片代理 Key（此时 activeCandidate 已安全完成初始化，彻底根治 TDZ ReferenceError）
+  const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
+  const extractedKey = primaryKey || (() => {
+    const url = currentRevision?.imageUrl || activeCandidate?.imageUrl || sceneMaster?.imageUrl;
+    if (!url || typeof url !== 'string') return undefined;
+    if (url.includes('storage.googleapis.com')) {
+      try {
+        const u = new URL(url);
+        const parts = u.pathname.split('/');
+        return parts.slice(2).join('/');
+      } catch {}
+    }
+    return undefined;
+  })();
+  const effectiveProxyKey = primaryKey || extractedKey || (activeShot.templateCode ? `shots/${activeShot.templateCode.toLowerCase()}/healed.svg` : undefined);
+  const localFileUrl = effectiveProxyKey ? `/api/space/storage/local-file?key=${encodeURIComponent(effectiveProxyKey)}` : undefined;
 
   // 4. 定稿版本图片：当前选中的版本已有明确定稿图片时优先
   const revisionFinalUrl = !triedFallback
