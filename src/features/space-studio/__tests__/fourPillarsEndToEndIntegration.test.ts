@@ -185,9 +185,9 @@ describe('四要素全链路闭环 (Space Preset --- Style Preset --- Product En
       blueprint
     });
 
-    // A02 置顶机位 Mandate 与 38mm 45° 组合摄影词
+    // A02 置顶机位 Mandate 与 45mm 45° 组合摄影词
     expect(compiledA02.positivePrompt).toContain('[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW');
-    expect(compiledA02.positivePrompt).toContain('38mm prime lens at 115cm height');
+    expect(compiledA02.positivePrompt).toContain('45mm standard-wide prime lens at 115cm height');
     expect(compiledA02.positivePrompt).toContain('dynamic 40-to-45 degree side isometric perspective');
     expect(compiledA02.negativePrompt).toContain('flat frontal mugshot');
 

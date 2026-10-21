@@ -55,9 +55,14 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     });
 
     expect(compiled.shotCode).toBe('A02');
-    expect(compiled.positivePrompt).toContain('38mm');
+    expect(compiled.positivePrompt).toContain('45mm');
     expect(compiled.positivePrompt).toContain('Hasselblad');
     expect(compiled.positivePrompt).toContain('45-DEGREE 3+1 ENSEMBLE VIEW');
+    expect(compiled.positivePrompt).toContain('MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE');
+    expect(compiled.negativePrompt).toContain('flat frontal mugshot');
+    expect(compiled.negativePrompt).toContain('straight-on camera');
+    expect(compiled.negativePrompt).toContain('symmetrical center sofa');
+    expect(compiled.negativePrompt).toContain('facing directly forward');
     expect(compiled.invarianceChecks.furnitureFixed).toBe(true);
     expect(compiled.invarianceChecks.productLocked).toBe(true);
   });
@@ -84,7 +89,7 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     });
 
     expect(compiled.shotCode).toBe('A08');
-    expect(compiled.positivePrompt).toContain('45mm');
+    expect(compiled.positivePrompt).toContain('50mm');
     expect(compiled.positivePrompt).toContain('RECLINER 5-MODE FUNCTION SHOWCASE');
     expect(compiled.negativePrompt).toContain('shifted sofa coordinates');
   });
@@ -93,8 +98,8 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     const shotA01: ShotInstance = {
       id: 'shot-a01',
       templateCode: 'A01',
-      name: '空间主大全景',
-      camera: STANDARD_SHOT_TEMPLATES[0].defaultCamera, // 24mm, 118cm, yaw: 0, pitch: 0, framing: 'wide'
+      name: '空间主大场景',
+      camera: STANDARD_SHOT_TEMPLATES[0].defaultCamera, // 35mm, 115cm, yaw: 0, pitch: 0, framing: 'wide'
       intent: STANDARD_SHOT_TEMPLATES[0].intent,
       status: 'draft',
       revisions: [],
@@ -114,13 +119,13 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
     expect(compiled.shotCode).toBe('A01');
 
     // 2. 验证 Camera DNA 单变量改变
-    expect(compiled.cameraSpec.lensMm).toBe(24);
-    expect(compiled.cameraSpec.heightCm).toBe(118);
+    expect(compiled.cameraSpec.lensMm).toBe(35);
+    expect(compiled.cameraSpec.heightCm).toBe(115);
     expect(compiled.cameraSpec.yawDeg).toBe(0);
     expect(compiled.cameraSpec.pitchDeg).toBe(0);
     expect(compiled.cameraSpec.framing).toBe('wide');
-    expect(compiled.positivePrompt).toContain('ultra-wide 24mm architectural lens');
-    expect(compiled.positivePrompt).toContain('118cm above finished floor');
+    expect(compiled.positivePrompt).toContain('35mm');
+    expect(compiled.positivePrompt).toContain('115cm above finished floor');
 
     // 3. 验证空间世界与家具物理不变量严格继承
     expect(compiled.positivePrompt).toContain(`space prototype anchor: ${spacePreset.name}`);

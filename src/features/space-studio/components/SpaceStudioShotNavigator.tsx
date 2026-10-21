@@ -67,7 +67,6 @@ const ShotThumbnailImage: React.FC<{
       alt=""
       onError={() => setHasError(true)}
       className="w-full h-full object-cover select-none"
-      crossOrigin="anonymous"
       referrerPolicy="no-referrer"
     />
   );
@@ -232,7 +231,9 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
             {shots.map((shot, idx) => {
               const isActive = idx === activeShotIndex;
               const currentRev = shot.revisions.find((r) => r.id === shot.currentRevisionId) || shot.revisions[shot.revisions.length - 1];
-              const previewImage = idx === 0 ? sceneMaster?.imageUrl || currentRev?.imageUrl : currentRev?.imageUrl;
+              const fallbackRev = shot.revisions.slice().reverse().find((r) => r.imageUrl && r.imageUrl.trim().length > 0);
+              const effectiveRevImage = currentRev?.imageUrl && currentRev.imageUrl.trim().length > 0 ? currentRev.imageUrl : fallbackRev?.imageUrl;
+              const previewImage = idx === 0 ? sceneMaster?.imageUrl || effectiveRevImage : effectiveRevImage;
 
               // 是否对当前 Shot 展开垂直向上历史版本面板
               const shouldShowHistory = shot.revisions.length > 1 && (

@@ -79,7 +79,7 @@ describe('SpaceStudio - 机位调试与镜头专属 Mandate 效用测试', () =>
     isLocked: true
   };
 
-  it('1. A08 单椅五档功能状态景：精准生成 45mm 35° 侧角五档功能展示 Mandate，并锁定固定机位', () => {
+  it('1. A08 单椅五档功能状态景：精准生成 50mm 黄金对角五档功能展示 Mandate，并锁定固定机位', () => {
     const tplA08 = STANDARD_SHOT_TEMPLATES.find(t => t.code === 'A08')!;
     const shotA08: ShotInstance = {
       id: 'shot-a08',
@@ -103,8 +103,8 @@ describe('SpaceStudio - 机位调试与镜头专属 Mandate 效用测试', () =>
 
     // 验证置顶 Mandate 强行约束五档状态展示且机位固定
     expect(compiled.positivePrompt).toContain('[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE');
-    expect(compiled.positivePrompt).toContain('45mm');
-    expect(compiled.positivePrompt).toContain('35-degree');
+    expect(compiled.positivePrompt).toContain('50mm');
+    expect(compiled.positivePrompt).toContain('golden diagonal perspective');
     expect(compiled.negativePrompt).toContain('shifting camera angle');
   });
 
@@ -131,7 +131,7 @@ describe('SpaceStudio - 机位调试与镜头专属 Mandate 效用测试', () =>
     });
 
     expect(compiled.positivePrompt).toContain('[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW');
-    expect(compiled.positivePrompt).toContain('38mm prime lens at 115cm height');
+    expect(compiled.positivePrompt).toContain('45mm standard-wide prime lens at 115cm height');
     expect(compiled.positivePrompt).toContain('dynamic 40-to-45 degree side isometric perspective');
     expect(compiled.positivePrompt).toContain('complete 3+1 furniture ensemble');
     expect(compiled.negativePrompt).toContain('flat frontal mugshot');
@@ -161,7 +161,7 @@ describe('SpaceStudio - 机位调试与镜头专属 Mandate 效用测试', () =>
     });
 
     expect(compiled.positivePrompt).toContain('[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS');
-    expect(compiled.positivePrompt).toContain('50mm portrait standard prime lens at 110cm eye-level height');
+    expect(compiled.positivePrompt).toContain('50mm portrait standard prime lens at 95cm eye-level height');
     expect(compiled.positivePrompt).toContain('hero three-seater main sofa');
     expect(compiled.positivePrompt).toContain('all motorized footrests and recliners completely RETRACTED AND CLOSED');
     expect(compiled.positivePrompt).toContain('STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE');

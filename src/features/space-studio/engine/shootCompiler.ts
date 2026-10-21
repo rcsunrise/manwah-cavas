@@ -385,9 +385,9 @@ export class ShootCompiler {
         ? 'with primary motion seat deployed for relaxed human occupancy'
         : 'with all motorized footrests on BOTH main sofa AND accent single chair strictly 100% CLOSED, RETRACTED FLUSH, and locked in pristine showroom condition';
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm ultra-wide architectural lens at ${camera.heightCm}cm eye-level height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS. Two-point perspective with vertical plumb lines strictly straight. Ultra-wide expansive architectural panorama capturing a breathtakingly open horizontal flat: soaring cove-lit ceiling volume, full-span floor-to-ceiling panoramic glass windows on the room flank flooding the space with daylight strictly preserving the spatial master A00 daylight orientation, central hero furniture suite (${cleanProductName}, designer coffee tables, side recliner, ${footrestMandate}), and a generous artistic area rug anchoring the living ensemble forward into the foreground. The panoramic vista extends smoothly into the integrated dining area, radiating grand luxury spatial volume without empty foreground barrenness.`;
+        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm environmental architectural lens at ${camera.heightCm}cm eye-level height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with vertical plumb lines strictly straight. Architectural panorama capturing expansive open-plan horizontal living-dining flow: soaring cove-lit ceiling volume, full-span floor-to-ceiling panoramic glass windows on the left flank flooding space with 6000K cool daylight strictly preserving spatial master A00 daylight orientation, centered marble backdrop wall axis, complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring the living ensemble into foreground alongside the white matte cylindrical planter coordinate origin. The vista extends smoothly into integrated dining area on right without empty foreground barrenness.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Studio Sample Ultra-Wide Grand Horizon)]: 24mm ultra-wide architectural prime lens at 118cm eye-level seated/standing height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS. Two-point perspective with perfectly vertical plumb lines. Centered ultra-wide panorama capturing a breathtakingly expansive open-plan horizontal living-dining horizon: soaring architectural ceiling with linear ambient cove lighting, full floor-to-ceiling panoramic glass window wall on the room flank strictly matching the spatial master A00 daylight orientation, central living room suite (${cleanProductName}, coffee tables, matching accent chair, ${footrestMandate}), and a generous luxury area rug naturally extending forward to anchor the foreground. The open horizon extends seamlessly to the luxury dining suite, presenting an exceptionally expansive, grand, and majestic spatial envelope.`;
+        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Studio Sample 35mm Grand Horizon)]: 35mm humanistic wide prime lens at 115cm eye-level standing/seated height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with perfectly vertical plumb lines. Centered architectural panorama capturing expansive open-plan living-dining flow: soaring cove-lit ceiling volume, full floor-to-ceiling panoramic glass window wall on left flank flooding space with 6000K cool daylight strictly matching spatial master A00 daylight orientation, centered marble backdrop wall axis, complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring foreground alongside the white matte cylindrical planter coordinate origin. The open horizon extends seamlessly to right-side luxury dining suite with majestic spatial balance.`;
       }
       negativeFramingConstraints.push(
         'angled side shot',
@@ -416,13 +416,24 @@ export class ShootCompiler {
       const sofaPostureMandate = isHumanPassActive
         ? 'luxury three-seater main sofa with family relaxation posture'
         : 'luxury three-seater main sofa with all motorized footrests completely closed and retracted in showroom posture';
+      const perspectiveShiftDirective = `[MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE]
+Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.`;
+
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm lens at ${camera.heightCm}cm height, angled ${camera.yawDeg} degrees. Capture the complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one cohesive living environment.`;
+        shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
+${perspectiveShiftDirective}
+${camera.lensMm}mm lens at ${camera.heightCm}cm height, angled ${camera.yawDeg} degrees in 4:3 horizontal aspect ratio. Capture complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one cohesive living environment with dynamic diagonal perspective depth, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Studio Sample 45° 3+1 Living Ensemble)]: 38mm prime lens at 115cm height with dynamic 40-to-45 degree side isometric perspective. Capture the complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one unified spatial composition with rich perspective depth against architectural luxury backdrop.`;
+        shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Studio Sample 45mm 3+1 Living Ensemble)]:
+${perspectiveShiftDirective}
+45mm standard-wide prime lens at 115cm height with dynamic 40-to-45 degree side isometric perspective in 4:3 horizontal aspect ratio. Capture complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one unified spatial composition with rich perspective depth against architectural luxury backdrop, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
       }
       negativeFramingConstraints.push(
         'flat frontal mugshot',
+        'straight-on camera',
+        'symmetrical center sofa',
+        'facing directly forward',
         'tight single product crop',
         'cropping out matching side chair',
         'cropping out main sofa',
@@ -440,11 +451,11 @@ export class ShootCompiler {
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree angle centered directly on the hero three-seater main sofa ${footrestMandate}, accompanied by the center coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out and exclude any separate side accent chair, lounge chair, or 3+1 ensemble arrangement!`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Centered directly on hero three-seater main sofa ${footrestMandate}, accompanied by center coffee table in foreground, aligned with symmetrical marble backdrop wall axis and dual curved sconces midline. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out and exclude any separate side accent chair, lounge chair, or 3+1 ensemble arrangement!`;
       } else {
-        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample Hero 3-Seater Recline)]:
+        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample 50mm Standard Focus)]:
 ${linkageDirective}
-Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10 to 15 degree angle. Frame tightly and comfortably ONLY around the hero three-seater main sofa ${footrestMandate}, accompanied by the center coffee table in foreground. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
+Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with sofa backrest, 0° tilt) with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Frame tightly and comfortably ONLY around hero three-seater main sofa ${footrestMandate}, accompanied by center coffee table in foreground, aligned with symmetrical marble backdrop wall axis and dual curved sconces midline. Deep contact AO shadows ground the sofa and table. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
       }
       negativeFramingConstraints.push(
         'side chair',
@@ -455,6 +466,7 @@ Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 
         '3+1 ensemble',
         'extra chair',
         'additional seating',
+        'angled view',
         'wide empty room panorama',
         'far distant vantage',
         'camera centered on single accent chair',
@@ -482,11 +494,11 @@ Camera: 50mm portrait standard prime lens at 110cm eye-level height with subtle 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree oblique three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, deep seating cushion, ${lifestyleMoment} within the authentic architectural room from A00. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree downward pitch and ${camera.yawDeg} degree oblique angle in 3:4 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing wide seating depth, outer armrest contour, foreground play rug stage bathed in left window sheer curtain daylight, and white matte cylindrical planter anchor. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
+        shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Studio Sample 45mm Micro-Downward)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing outer armrest contour, ${footrestAction}, deep seating cushion, ${lifestyleMoment} within the authentic architectural room from A00 with consistent wall finishes and natural window daylight. ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 45mm portrait environmental prime lens at 140cm standing eye-level height with -15 degree downward pitch looking down onto the living area rug stage in 3:4 vertical aspect ratio. Frame approximately 2/3 of hero motion sofa (${footrestMandate}), capturing wide seating depth, outer armrest contour, ${footrestAction}, foreground play rug stage bathed in left window sheer curtain daylight, ${lifestyleMoment}, and white matte cylindrical planter anchor. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -522,11 +534,11 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right three-quarters angle in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and flush metal buttons, deep seating cushion, ${lifestyleMoment} within the consistent architectural room envelope from A00. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right angle in 3:4 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, metal trim accent, brass closure strip anchor, and warm 3000K ambient wall sconce. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Studio Sample 2/3 Hero Sofa Angle)]:
+        shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Studio Sample 50mm Private Lounge)]:
 ${linkageDirective}
-Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing the right armrest with diamond quilting detail and circular metal motion buttons, ${footrestAction}, deep seating cushion, ${lifestyleMoment} within the consistent architectural room envelope from A00. ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 50mm portrait environmental prime lens at 95cm height (seated eye-level slightly low, 0° tilt) with 28 degree right oblique perspective in 3:4 vertical aspect ratio. Frame approximately 2/3 of hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, flush metal trim, brass closure strip anchor, ${footrestAction}, deep seating cushion, ${lifestyleMoment}, and warm 3000K ambient wall sconce from A00. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -558,11 +570,11 @@ Camera: 45mm portrait environmental prime lens at 110cm height with 25-to-30 deg
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in living room setting: hero sofa flush against the backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and window daylight backdrop from A00.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm seated eye-level height with ${camera.yawDeg} degree lateral profile angle in 4:3 horizontal aspect ratio. Showcase MANWAH signature ZERO-WALL CLEARANCE in living room setting: hero sofa flush against the backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, vertical plumb lines, and window daylight backdrop from A00.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Studio Sample Zero-Wall Profile - Reference 4)]:
+        shotMandate = `[SHOT MANDATE - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Studio Sample 60mm Pure Lateral Profile)]:
 ${linkageDirective}
-Camera: 35mm wide prime lens at 90cm seated eye-level height with 80-to-90 degree side profile perspective in 16:9 widescreen. Showcase MANWAH signature ZERO-WALL CLEARANCE in living room setting: hero sofa flush against the solid backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and window daylight backdrop from A00.`;
+Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with 85-to-90 degree side profile perspective in 4:3 horizontal aspect ratio. Two-point perspective with vertical plumb lines strictly perpendicular. Showcase MANWAH signature ZERO-WALL CLEARANCE in living room setting: hero sofa flush against the solid backdrop wall with zero gap (<5cm) (${closedZeroWallMandate}), highlighting full side armrest diamond-quilted craftsmanship, circular metal button, and window daylight backdrop from A00.`;
       }
       negativeFramingConstraints.push(
         'flat frontal angle',
@@ -570,6 +582,7 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height with 80-to-90 degre
         'large gap between sofa backrest and wall',
         'detached from back wall',
         'floating sofa off wall',
+        'wide angle perspective distortion',
         'deployed footrest',
         'extended footrest',
         'open recliner mechanism',
@@ -591,9 +604,9 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height with 80-to-90 degre
       );
     } else if (shot.templateCode === 'A07') {
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree tilt in 16:9 widescreen. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground with curated decor styling, subtle hint of side recliner, bathed in natural daytime window daylight and soft ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space.`;
+        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Studio Sample Ensemble Living)]: 40mm prime lens at 115cm height with subtle -5 degree downward tilt in 16:9 widescreen composition. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground with curated decor styling, subtle hint of side recliner, bathed in natural daytime window daylight and soft ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
+        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Studio Sample 55mm Medium Ensemble)]: 55mm medium telephoto prime lens at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
       }
       negativeFramingConstraints.push(
         'far distance view',
@@ -622,11 +635,11 @@ Camera: 35mm wide prime lens at 90cm seated eye-level height with 80-to-90 degre
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 16:9 widescreen. Dedicated single power recliner motion showcase in the open living room of A00, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08}.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 4:3 horizontal aspect ratio. Dedicated single power recliner motion showcase in the open living room of A00 on area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Studio Sample Recliner 5 Postures - Reference 5)]:
+        shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Studio Sample 50mm Golden Diagonal)]:
 ${linkageDirective}
-Camera: 45mm environmental portrait lens at 100cm eye-level seated height (reference sample 5) with fixed 35-degree three-quarters perspective in 16:9 widescreen. Dedicated single power recliner motion showcase in the open living room of A00, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), highlighting power motor precision, diamond-quilted leather armrest, ${lifestyleMomentA08} against consistent window daylight and architectural finishes.`;
+Camera: 50mm environmental portrait prime lens at 95cm eye-level seated height with fixed 35-to-40 degree golden diagonal perspective in 4:3 horizontal aspect ratio. Dedicated single power recliner motion showcase in the open spacious living room of A00 on the area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner against consistent window daylight and architectural finishes.`;
       }
       negativeFramingConstraints.push(
         'shifting camera angle',
@@ -656,11 +669,11 @@ Camera: 45mm environmental portrait lens at 100cm eye-level seated height (refer
         if (isCameraCustomized) {
           shotMandate = `[SHOT MANDATE - A09 DINING SUITE ENSEMBLE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm architectural lens at ${camera.heightCm}cm standing eye-level height with ${camera.yawDeg} degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather dining chairs, architectural credenza sideboard, bathed in natural window daylight, showcasing complete open-plan living-dining high-end lifestyle from A00.`;
+Camera: ${camera.lensMm}mm architectural lens at ${camera.heightCm}cm standing eye-level height with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather dining chairs, architectural credenza sideboard, bathed in natural window daylight, showcasing complete open-plan living-dining high-end lifestyle from A00.`;
         } else {
-          shotMandate = `[SHOT MANDATE - A09 DINING SUITE ENSEMBLE VIEW (Studio Sample Luxury Dining Flat - Reference 1)]:
+          shotMandate = `[SHOT MANDATE - A09 DINING SUITE ENSEMBLE VIEW (Studio Sample 40mm Frontal Dining Flat)]:
 ${linkageDirective}
-Camera: 38mm architectural prime lens at 125cm standing eye-level height (reference sample 1, subtle downward perspective) with 15-degree oblique vantage in 16:9 widescreen. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather chairs, architectural credenza sideboard with lamp and art painting against consistent wall from A00, elegant champagne bar cart, bathed in natural window daylight, showcasing complete open-plan living-dining luxury lifestyle.`;
+Camera: 40mm architectural prime lens at 115cm standing eye-level height with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Capture grand integrated dining suite: expansive luxury dining table with matching tailored leather chairs, architectural credenza sideboard with lamp and art painting against consistent right wall from A00, elegant champagne bar cart, bathed in natural window daylight, showcasing complete open-plan living-dining luxury lifestyle.`;
         }
         negativeFramingConstraints.push(
           'three-seater sofa centered in frame',
@@ -676,7 +689,7 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
         shotMandate = `[SHOT MANDATE - A09 OPEN-PLAN LIVING-DINING VISTA (Integrated Architecture Perspective)]:
 [DUAL-TRACK LINKAGE: CONTINUOUS OPEN-PLAN SPATIAL PERSPECTIVE]
 - HERO SOFA IN DEEP VISTA: Reference Image 1 provides the primary MANWAH sofa asset. In this grand continuous living-dining architectural vista, the primary sofa remains the grounded visual anchor across the open lifestyle floor plan.
-- SPATIAL CONTINUITY: Camera is positioned along the dining-living axis in 16:9 widescreen, looking through the generous open-plan layout towards the main living salon of A00.
+- SPATIAL CONTINUITY: Camera is positioned along the dining-living axis with strict 0-degree frontal view in 4:3 horizontal aspect ratio, looking through the generous open-plan layout towards the main living salon of A00.
 - ABSOLUTE PROHIBITION ON HALLUCINATED DINING SETS: DO NOT invent random non-MANWAH dining tables, DO NOT generate generic dining chairs, and DO NOT obstruct the open architectural living vista with unreferenced furniture!`;
         negativeFramingConstraints.push(
           'hallucinated dining table',
@@ -813,6 +826,14 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       ...placementClauses
     ];
 
+    // 空间一致性四大金科玉律 (Four Spatial Invariance Pillars)
+    const fourInvariancePillars = [
+      'SPATIAL INVARIANCE ANCHOR: white matte cylindrical planter with indoor foliage plant serving as immutable physical coordinate origin (constant height and distance from window and backdrop wall)',
+      'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming exclusively from the left panoramic window flank, paired with warm ambient cove lighting and wall sconces (3000K) illuminating the interior, casting consistent soft eastward diagonal contact shadows',
+      'CONTACT SHADOW & AO: deep physical ambient occlusion contact shadows grounding all furniture legs, metal table frames, and recliner chassis firmly onto the area rug, completely eliminating floating sticker artifact',
+      'TWO-POINT ARCHITECTURAL PERSPECTIVE: plumb vertical architectural lines with vertical shift correction (tilt angle = 0 degrees), window mullions and wall corners strictly parallel to vertical frame edges'
+    ];
+
     // 8. 画幅比例构图强化指令 (Aspect Ratio Composition Mandate)
     const activeAspectRatio: ImageAspectRatio = input.aspectRatio || shot.aspectRatio || '4:3';
     const aspectDirective = activeAspectRatio === '16:9'
@@ -827,7 +848,7 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       ? 'proportional 2:3 vertical catalog composition'
       : 'proportional 4:3 classic commercial catalog composition';
 
-    // 核心组合：机位景别 + 构图画幅 + 空间主色调强约束置顶 + 产品与空间搭配
+    // 核心组合：机位景别 + 构图画幅 + 空间主色调强约束置顶 + 产品与空间搭配 + 空间一致性四大定律
     const positivePrompt = [
       shotMandate,
       ...cameraDirectives.semanticClauses,
@@ -835,6 +856,7 @@ Camera: 38mm architectural prime lens at 125cm standing eye-level height (refere
       aspectDirective,
       functionalPostureMandate,
       styleDna.styleMandateClause,
+      ...fourInvariancePillars,
       ...intentClauses,
       ...mustIncludeClauses,
       ...secondaryClauses,

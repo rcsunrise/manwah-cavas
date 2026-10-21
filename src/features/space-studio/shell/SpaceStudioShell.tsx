@@ -138,26 +138,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a01',
     templateCode: 'A01',
-    name: '空间主大全景 (Grand Frontal Architectural Panorama)',
-    aspectRatio: '16:9',
+    name: '空间主大场景 (Grand Frontal Architectural Panorama)',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 24,
-      heightCm: 118,
+      lensMm: 35,
+      heightCm: 115,
       yawDeg: 0,
       pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'zone', id: 'living_room' },
       framing: 'wide',
-      mustInclude: ['breathtakingly_expansive_open_plan_grand_horizon', 'strictly_straight_on_frontal_view', 'centered_living_axis', 'panoramic_floor_to_ceiling_window_wall', 'soaring_cove_ceiling_architecture', 'generous_area_rug_anchoring_foreground', 'retracted_closed_showroom_footrests', 'complete_furniture_suite'],
+      mustInclude: ['strictly_straight_on_frontal_view', 'centered_marble_backdrop_wall_axis', 'panoramic_full_height_left_window', 'open_right_corridor_and_dining_flow', 'complete_3_plus_1_sofa_ensemble', 'designer_coffee_table', 'generous_living_area_rug', 'white_matte_cylindrical_planter_anchor'],
       mustExclude: ['angled_side_perspective', 'diagonal_camera_view', 'tilted_off_center', 'cramped_framing', 'excessive_empty_wooden_floor_in_foreground', 'vast_barren_foreground_floor_void', 'deployed_footrest_without_people', 'blank_featureless_white_ceiling']
     },
     intent: {
       intentCode: 'SI-01',
-      name: '空间与产品平衡 (Space/Product Balance)',
-      productDominancePct: 40,
+      name: '空间主大场景 (Grand Frontal Horizon)',
+      productDominancePct: 45,
       backgroundSuppression: 'low',
       maxOcclusionPct: 5,
-      description: '大平层客餐通透一体化大开间全貌 + 超广阔通透视野 + 全套客厅主沙发、单椅、茶几与远端配套餐厅全案入镜，交代大宅空间全局与开敞尺度'
+      description: '客餐厅一体全案大平层生活方式；展示 3+1 沙发组、茶几、地毯与右侧餐厅的整体空间流动感。锚定居中背景墙、左侧通高落地窗、右侧开阔过道与餐厅区。'
     },
     status: 'draft',
     revisions: [],
@@ -166,26 +166,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a02',
     templateCode: 'A02',
-    name: '45° 3+1 成套组合全景 (45° 3+1 Living Ensemble View)',
+    name: '45° 3+1 组合大全景 (45° 3+1 Living Ensemble View)',
     aspectRatio: '4:3',
     camera: {
-      lensMm: 38,
+      lensMm: 45,
       heightCm: 115,
       yawDeg: 40,
       pitchDeg: -3,
       rollDeg: 0,
       target: { type: 'product', id: 'living_ensemble' },
       framing: 'wide',
-      mustInclude: ['three_seater_sofa', 'matching_side_chair', 'center_coffee_table', 'ensemble_spatial_depth', 'stone_backdrop'],
-      mustExclude: ['flat_frontal_mugshot', 'tight_single_product_crop', 'cropping_out_side_chair', 'cropping_out_main_sofa']
+      mustInclude: ['three_seater_sofa', 'matching_side_chair', 'center_coffee_table', 'ensemble_spatial_depth', 'left_side_daylight_sheen', 'floor_diagonal_vanishing_lines', 'white_matte_cylindrical_planter_anchor'],
+      mustExclude: ['flat_frontal_mugshot', 'straight_on_camera', 'symmetrical_center_sofa', 'facing_directly_forward', 'tight_single_product_crop', 'cropping_out_side_chair', 'cropping_out_main_sofa']
     },
     intent: {
       intentCode: 'SI-02',
-      name: '45° 组群成套聚焦 (3+1 Ensemble Living Focus)',
+      name: '45° 3+1 组合全景聚焦 (3+1 Ensemble Living Focus)',
       productDominancePct: 65,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 8,
-      description: '35°~45° 侧前方大透视，同框展现 3 人位主沙发 + 单人椅 + 中岛茶几成套围合生活方式景，体现家庭组群空间的进深感与高级感'
+      description: '展示“3人位+单人位”围合布局与开阔度；呈现左侧自然采光下皮质的光泽度与落座动线。锚定地板对角线灭点、地毯铺设基准区、窗帘垂坠边界。'
     },
     status: 'draft',
     revisions: [],
@@ -194,26 +194,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a03',
     templateCode: 'A03',
-    name: '3人位主沙发组合焦点景 (Hero 3-Seater Living Focus)',
+    name: '三人位主沙发场景 (Hero 3-Seater Living Focus)',
     aspectRatio: '4:3',
     camera: {
       lensMm: 50,
-      heightCm: 110,
-      yawDeg: 12,
-      pitchDeg: -2,
+      heightCm: 95,
+      yawDeg: 0,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'product',
-      mustInclude: ['three_seater_sofa', 'foreground_coffee_table', 'hero_leather_seating_silhouette'],
-      mustExclude: ['separate_accent_single_chair', 'side_armchair', 'lounge_chair', '3+1_ensemble', 'camera_centered_on_single_chair', 'wide_empty_room_panorama']
+      mustInclude: ['three_seater_sofa', 'symmetrical_marble_backdrop_axis', 'dual_curved_sconce_midline', 'sofa_leather_texture', 'foreground_coffee_table'],
+      mustExclude: ['separate_accent_single_chair', 'side_armchair', 'lounge_chair', 'angled_view', 'deployed_footrests_when_no_human']
     },
     intent: {
       intentCode: 'SI-03',
-      name: '3人位主沙发核心聚焦 (Hero 3-Seater Focus)',
+      name: '三人位主沙发场景 (Hero 3-Seater Focus)',
       productDominancePct: 75,
       backgroundSuppression: 'high',
       maxOcclusionPct: 5,
-      description: '50mm 标准人眼透视聚焦 3人位主沙发与茶几前景，自然裁切排除独立单椅，凸显主沙发奢华感与生活方式'
+      description: '主推核心单品（C位三人位）；展示靠背饱满支撑感、双向扶手体量与背景墙的对称高级感。锚定大理石背景墙中轴对称线、双弧形壁灯高度中线。'
     },
     status: 'draft',
     revisions: [],
@@ -222,26 +222,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a04',
     templateCode: 'A04',
-    name: '2/3主沙发亲子陪伴景 (2/3 Hero Sofa Companion View)',
-    aspectRatio: '2:3',
+    name: '三分之二主沙亲子陪伴场景 (2/3 Hero Sofa Companion View)',
+    aspectRatio: '3:4',
     camera: {
       lensMm: 45,
-      heightCm: 110,
+      heightCm: 140,
       yawDeg: -28,
-      pitchDeg: -2,
+      pitchDeg: -15,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa_left_two_thirds' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_main_sofa_left', 'deployed_outer_motion_seat', 'sofa_armrest_contour', 'companion_lifestyle_warmth', 'indoor_foliage_backdrop'],
+      mustInclude: ['two_thirds_hero_sofa', 'wide_seating_depth', 'foreground_play_rug_stage', 'sheer_curtain_window_light', 'white_matte_cylindrical_planter_anchor'],
       mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'stiff_emotionless_posing']
     },
     intent: {
-      intentCode: 'SI-04',
-      name: '2/3主沙发亲子陪伴 (Companion Lifestyle Focus)',
+      intentCode: 'SI-08',
+      name: '三分之二主沙亲子陪伴 (2/3 Hero Companion View)',
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '画幅比例 2:3 纵向，45mm 侧前约 28° 透视取景主沙发左侧 2/3。外侧功能位顺滑展开，呈现母女依偎自拍/陪伴的温情生活方式，背景为木饰面大理石与室内绿植'
+      description: '情感化/家庭生活方式：聚焦 2/3 座面与前沿地毯，突出宽大座深供亲子互动、地毯玩耍的温馨感。锚定地板光影渐变区、左侧落地窗白色纱帘透光处、固定绿植。'
     },
     status: 'draft',
     revisions: [],
@@ -250,26 +250,26 @@ const DEFAULT_SHOTS: ShotInstance[] = [
   {
     id: 'shot-a05',
     templateCode: 'A05',
-    name: '2/3主沙发私享休闲景 (2/3 Hero Sofa Private Lounge View)',
-    aspectRatio: '2:3',
+    name: '三分之二主沙私享休闲景 (2/3 Hero Sofa Private Lounge View)',
+    aspectRatio: '3:4',
     camera: {
-      lensMm: 45,
-      heightCm: 110,
+      lensMm: 50,
+      heightCm: 95,
       yawDeg: 28,
-      pitchDeg: -2,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa_right_two_thirds' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_main_sofa_right', 'deployed_outer_motion_seat', 'diamond_quilted_armrest_craftsmanship', 'elegant_wine_lounge_relaxation', 'marble_shelf_ambient_light'],
+      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'metal_trim_accent', 'brass_closure_strip_anchor', 'warm_ambient_wall_sconce'],
       mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'casual_messy_elements']
     },
     intent: {
       intentCode: 'SI-05',
-      name: '2/3主沙发私享微醺 (Private Luxury Lounge Focus)',
+      name: '三分之二主沙私享休闲 (2/3 Hero Private Lounge)',
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 12,
-      description: '画幅比例 2:3 纵向，45mm 侧前约 28° 透视取景主沙发右侧 2/3。外侧功能位展开，优雅女主手持红酒杯微醺私享，突出绗缝扶手工艺与轻奢背景氛围层板'
+      description: '品质感/工艺细节：聚焦扶手立体菱格纹压花、金属收边、皮质微距触感与后方温暖壁灯。锚定背景墙右侧铜条收口线、悬浮发光层板下边缘。'
     },
     status: 'draft',
     revisions: [],
@@ -279,25 +279,25 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     id: 'shot-a06',
     templateCode: 'A06',
     name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile View)',
-    aspectRatio: '16:9',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 35,
-      heightCm: 105,
-      yawDeg: 75,
-      pitchDeg: -2,
+      lensMm: 60,
+      heightCm: 90,
+      yawDeg: 88,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'zero_wall_mechanism' },
       framing: 'lifestyle',
-      mustInclude: ['zero_wall_clearance_feature', 'lateral_profile_sofa_closed', 'diamond_quilted_side_armrest', 'flush_closed_footrest_and_upright_backrest', 'panoramic_window_backdrop'],
+      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_placement', 'pure_lateral_profile_60mm', 'side_armrest_quilting_detail', 'fully_retracted_closed_footrest', 'vertical_plumb_lines'],
       mustExclude: ['flat_frontal_mugshot', 'three_quarters_generic_angle', 'deployed_footrest', 'extended_footrest', 'reclined_backrest', 'unfolded_mechanism', 'crowded_foreground']
     },
     intent: {
       intentCode: 'SI-07',
-      name: '零靠墙贴墙闭合侧向结构 (Zero-Wall Clearance Function)',
+      name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '画幅比例 16:9 宽屏，侧向 75°~90° 大透视，直观呈现贴墙零距离（<5cm）与侧面优雅闭合线条，功能位置严格保持关闭，脚踏完全收拢，背景为通透落地大窗'
+      description: '核心硬核卖点：直观量化“零靠墙”省空间功能；展现沙发背部贴墙极小距离（<5cm）与侧面紧凑线条。锚定背景墙侧面厚度基准、窗框竖柱与地平线垂直线。'
     },
     status: 'draft',
     revisions: [],
@@ -307,25 +307,25 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     id: 'shot-a07',
     templateCode: 'A07',
     name: '沙发茶几组群中景 (Ensemble Living Composition)',
-    aspectRatio: '16:9',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 40,
-      heightCm: 115,
-      yawDeg: -15,
-      pitchDeg: -4,
+      lensMm: 55,
+      heightCm: 95,
+      yawDeg: -35,
+      pitchDeg: -5,
       rollDeg: 0,
       target: { type: 'product', id: 'living_ensemble' },
       framing: 'product',
-      mustInclude: ['hero_motion_sofa', 'dual_island_marble_coffee_tables', 'accent_side_table', 'styled_lifestyle_props_tray', 'layered_conversation_circle'],
+      mustInclude: ['hero_main_sofa', 'natural_marble_coffee_table', 'golden_height_drop_450mm_vs_400mm', 'carpet_geometric_pattern_anchor', 'foliage_shadow_falloff_anchor', 'deep_contact_ao_shadow'],
       mustExclude: ['messy_foreground', 'extreme_close_up', 'isolated_single_furniture_item', 'empty_room_void']
     },
     intent: {
-      intentCode: 'SI-06',
-      name: '客厅核心围合生活方式 (Conversation Circle Focus)',
+      intentCode: 'SI-01',
+      name: '沙发茶几组群中景 (Ensemble Living)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 10,
-      description: '画幅比例 16:9 宽屏，40mm 中景呈现主沙发+奢石中岛双茶几+边几围合。茶几摆放精致托盘、艺术香薰与杂志，突显多层次起居生活质感'
+      description: '配套材质与围合感：展示大理石茶几、深色方几、绿植与主沙发的黄金高低差（450mm vs 400mm）。锚定地毯中央几何图案定位区、绿植阴影投射区。'
     },
     status: 'draft',
     revisions: [],
@@ -335,25 +335,25 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     id: 'shot-a08',
     templateCode: 'A08',
     name: '单椅五档功能状态景 (Single Recliner 5-Mode Function Matrix)',
-    aspectRatio: '16:9',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 45,
-      heightCm: 100,
-      yawDeg: 35,
+      lensMm: 50,
+      heightCm: 95,
+      yawDeg: 38,
       pitchDeg: -3,
       rollDeg: 0,
       target: { type: 'product', id: 'power_recliner_modes' },
-      framing: 'product',
-      mustInclude: ['manwah_power_recliner_chair', 'fixed_35_degree_three_quarters_angle', 'motion_function_modes', 'diamond_quilted_leather_armrest', 'accent_side_table_coffee'],
+      framing: 'lifestyle',
+      mustInclude: ['manwah_power_recliner_chair', 'golden_diagonal_perspective_50mm', 'open_spacious_living_room_placement', 'window_daylight_shadow_boundary', 'deep_contact_ao_shadow'],
       mustExclude: ['camera_angle_drift', 'three_seater_sofa_dominant', 'flat_frontal_view', 'distorted_vanishing_lines']
     },
     intent: {
-      intentCode: 'SI-08',
-      name: '单椅五档多功能状态矩阵 (5-Mode Ergonomic Matrix)',
+      intentCode: 'SI-06',
+      name: '单椅五档功能状态景 (Recliner 5-Mode Showcase)',
       productDominancePct: 80,
       backgroundSuppression: 'high',
       maxOcclusionPct: 15,
-      description: '画幅比例 16:9 宽屏，机位固定 35° 侧斜视角。展示单椅 5 档功能状态（160°小憩沉睡盖毯、140°听歌仰躺、120°追剧遥控、110°阅览书刊、110°智能冲浪），结合人物动态编排生动呈现'
+      description: '单人位核心功能体验：五档调节、电动脚踏展开、后仰舒适弧度；搭配雪茄盒/红酒杯营造个人私享角。锚定大落地窗明暗分界线、左下角地毯边缘留白区。'
     },
     status: 'draft',
     revisions: [],
@@ -363,25 +363,25 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     id: 'shot-a09',
     templateCode: 'A09',
     name: '餐桌配套展示景 (Dining Suite Ensemble View)',
-    aspectRatio: '16:9',
+    aspectRatio: '4:3',
     camera: {
-      lensMm: 35,
-      heightCm: 125,
-      yawDeg: -10,
-      pitchDeg: -3,
+      lensMm: 40,
+      heightCm: 115,
+      yawDeg: 0,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'zone', id: 'dining_room' },
       framing: 'wide',
-      mustInclude: ['luxury_stone_dining_table', 'matching_dining_chairs_set', 'architectural_credenza_sideboard', 'champagne_bar_cart', 'bright_window_daylight'],
+      mustInclude: ['luxury_marble_dining_table', 'matching_leather_dining_chairs', 'dining_credenza_sideboard', 'champagne_bar_cart', 'right_wall_panel_anchor', 'art_painting_axis_anchor'],
       mustExclude: ['cramped_table_crop', 'living_room_sofa_dominant', 'cluttered_dirty_dishes', 'harsh_shadows']
     },
     intent: {
       intentCode: 'SI-09',
-      name: '餐客一体配套全景 (Dining Suite Harmony)',
-      productDominancePct: 65,
-      backgroundSuppression: 'low',
-      maxOcclusionPct: 8,
-      description: '画幅比例 16:9 宽屏，35mm 餐客一体全景，展示天然奢石大餐桌+6张餐椅+艺术餐边柜+移动酒水餐车，与客厅风格呼应，交代大宅用餐仪式感'
+      name: '餐厅配套展示组 (Dining Suite Ensemble)',
+      productDominancePct: 75,
+      backgroundSuppression: 'medium',
+      maxOcclusionPct: 10,
+      description: '整家配套延伸：展现同色系大理石餐桌、皮革餐椅、餐边柜与酒水推车，强化“买全屋配齐”的客单拉力。锚定右侧背景墙壁板、独立艺术挂画中轴线。'
     },
     status: 'draft',
     revisions: [],
@@ -576,7 +576,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setSceneAnnotations((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // 自动将当前镜头列表对齐至最新的实拍标准校对名称与推荐画幅
+  // 自动将当前镜头列表对齐至最新的实拍标准校对名称与推荐画幅 (强制纠偏旧快照中的画幅错位)
+  // 标准画幅映射：A01(16:9), A02(4:3), A03(4:3), A04(2:3), A05(2:3), A06~A09(16:9)
   useEffect(() => {
     setShots((prevShots) => {
       let changed = false;
@@ -584,20 +585,34 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         const tpl = getShotTemplateByCode(s.templateCode);
         if (!tpl) return s;
         const needsNameUpdate = Boolean(tpl.name && s.name !== tpl.name);
-        const needsA02AspectUpdate = s.templateCode === 'A02' && (s.aspectRatio === '3:4' || s.aspectRatio === '16:9');
-        if (needsNameUpdate || needsA02AspectUpdate) {
+        const standardAspect = tpl.recommendedAspectRatio as ImageAspectRatio | undefined;
+        const needsAspectUpdate = Boolean(standardAspect && s.aspectRatio !== standardAspect);
+        if (needsNameUpdate || needsAspectUpdate) {
           changed = true;
           return {
             ...s,
             name: tpl.name,
-            aspectRatio: needsA02AspectUpdate ? '4:3' : s.aspectRatio
+            aspectRatio: standardAspect || s.aspectRatio
           };
         }
         return s;
       });
+
+      if (changed) {
+        // 同步校准当前激活镜头的顶部画幅状态与计算配置
+        const currentActive = updated.find((s) => s.id === activeShotId);
+        if (currentActive && currentActive.aspectRatio) {
+          setAspectRatio(currentActive.aspectRatio);
+          setComputeConfig((prev) => ({ ...prev, aspectRatio: currentActive.aspectRatio }));
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('space_studio_aspect_ratio', currentActive.aspectRatio);
+          }
+        }
+      }
+
       return changed ? updated : prevShots;
     });
-  }, []);
+  }, [activeShotId]);
 
   const isDraggingLeftRef = React.useRef(false);
   const startXLeftRef = React.useRef(0);
@@ -1663,24 +1678,94 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   useEffect(() => {
     SpaceStudioPersistenceService.loadSnapshotAsync(projectId).then((asyncSnapshot) => {
       if (!asyncSnapshot) return;
+
+      // 1. 增量补全产品的高清 base64 切片与参考图
       if (asyncSnapshot.products && asyncSnapshot.products.length > 0) {
         setProducts((prev) => {
           if (isOnlyDemoProducts(prev)) return asyncSnapshot.products;
-          return prev;
+          return prev.map((p) => {
+            const asyncP = asyncSnapshot.products?.find((ap) => ap.id === p.id);
+            if (asyncP) {
+              return {
+                ...p,
+                cropBase64: p.cropBase64 || asyncP.cropBase64,
+                cropImageUrl: p.cropImageUrl || asyncP.cropImageUrl,
+                sourceMasterImageUrl: p.sourceMasterImageUrl || asyncP.sourceMasterImageUrl,
+                referenceImages: (p.referenceImages && p.referenceImages.length > 0)
+                  ? p.referenceImages.map((ref, idx) => {
+                      const asyncRef = asyncP.referenceImages?.[idx];
+                      return {
+                        ...ref,
+                        publicUrl: ref.publicUrl || asyncRef?.publicUrl,
+                        objectKey: ref.objectKey || asyncRef?.objectKey || ''
+                      };
+                    })
+                  : (asyncP.referenceImages || p.referenceImages)
+              };
+            }
+            return p;
+          });
         });
       }
+
+      // 2. 增量补全 Shots 中被 localStorage 剥离的 imageUrl 与完整历史版本
       if (asyncSnapshot.shots && asyncSnapshot.shots.some((s) => s.revisions && s.revisions.length > 0)) {
         setShots((prev) => {
           const hasGenerations = prev.some((s) => s.revisions && s.revisions.length > 0);
           if (!hasGenerations) return asyncSnapshot.shots;
+
+          // 若 prev 已有 revisions，但部分 revision 的 imageUrl 在 localStorage 阶段被置空，用 IndexedDB 完整还原
+          return prev.map((s) => {
+            const asyncShot = asyncSnapshot.shots.find((as) => as.id === s.id);
+            if (!asyncShot) return s;
+            return {
+              ...s,
+              revisions: s.revisions.map((rev) => {
+                const asyncRev = asyncShot.revisions.find((ar) => ar.id === rev.id);
+                if (asyncRev && asyncRev.imageUrl && (!rev.imageUrl || rev.imageUrl.trim() === '')) {
+                  return { ...rev, imageUrl: asyncRev.imageUrl };
+                }
+                return rev;
+              })
+            };
+          });
+        });
+      }
+
+      // 3. 增量补全母版 SceneMaster 图像
+      if (asyncSnapshot.sceneMaster) {
+        setSceneMaster((prev) => {
+          if (!prev) return asyncSnapshot.sceneMaster;
+          if (!prev.imageUrl && asyncSnapshot.sceneMaster?.imageUrl) {
+            return { ...prev, imageUrl: asyncSnapshot.sceneMaster.imageUrl };
+          }
           return prev;
         });
       }
-      if (asyncSnapshot.sceneMaster && !sceneMasterRef.current) {
-        setSceneMaster(asyncSnapshot.sceneMaster);
-      }
+
+      // 4. 增量补全候选方案批次 CandidateBatches
       if (asyncSnapshot.candidateBatches && Object.keys(asyncSnapshot.candidateBatches).length > 0) {
-        setCandidateBatches((prev) => ({ ...asyncSnapshot.candidateBatches, ...prev }));
+        setCandidateBatches((prev) => {
+          const merged = { ...asyncSnapshot.candidateBatches };
+          for (const [key, batch] of Object.entries(prev)) {
+            if (!merged[key]) {
+              merged[key] = batch;
+            } else {
+              merged[key] = {
+                ...merged[key],
+                ...batch,
+                candidates: batch.candidates.map((c) => {
+                  const asyncC = merged[key].candidates.find((ac) => ac.id === c.id);
+                  if (asyncC && asyncC.imageUrl && (!c.imageUrl || c.imageUrl.trim() === '')) {
+                    return { ...c, imageUrl: asyncC.imageUrl };
+                  }
+                  return c;
+                })
+              };
+            }
+          }
+          return merged;
+        });
       }
     }).catch((e) => {
       console.warn('[SpaceStudioShell] loadSnapshotAsync notice:', e);
@@ -3688,14 +3773,21 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           const target = shots[idx];
           if (!target) return;
           setActiveShotId(target.id);
-          // 影棚实拍商业对齐：全量镜头（A00~A08）按画面规划与商业构图意图自动自适应长宽比例
+          // 影棚实拍商业对齐：全量镜头（A00~A09）按画面规划与商业构图意图自动自适应长宽比例
           const tpl = getShotTemplateByCode(target.templateCode);
           const plannedRatio: ImageAspectRatio =
-            target.aspectRatio || (tpl?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
+            (tpl?.recommendedAspectRatio as ImageAspectRatio) || target.aspectRatio || '4:3';
+
+          if (target.aspectRatio !== plannedRatio) {
+            setShots((prev) => prev.map((s) => (s.id === target.id ? { ...s, aspectRatio: plannedRatio } : s)));
+          }
 
           if (aspectRatio !== plannedRatio) {
             setAspectRatio(plannedRatio);
             handleUpdateComputeConfig({ aspectRatio: plannedRatio });
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('space_studio_aspect_ratio', plannedRatio);
+            }
           }
         }}
         onSelectRevision={handleSelectRevision}

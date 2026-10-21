@@ -1,242 +1,264 @@
 // src/features/space-studio/data/shotTemplates.ts
-// MANWAH Space Studio｜影棚实拍商业对齐版 A01~A08 标准镜头模版库 V3.0
+// MANWAH Space Studio｜影棚实拍商业对齐版 A01~A09 标准镜头模版库 V4.0
+// 严格对齐 18 张实拍真值素材：7 个横构图（4:3） + 2 个竖构图（3:4）
 import { ShotTemplate } from '../../../types/spaceStudio';
 
 export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
   {
     id: 'tpl-a01',
     code: 'A01',
-    name: '空间主大全景 (Grand Frontal Architectural Panorama)',
+    name: '空间主大场景 (Grand Frontal Architectural Panorama)',
     alignmentSample: 'Studio Sample Ultra-Wide Architectural Grand Horizon / Living-Dining Flat',
     studioCategory: '正大视角·大平层建筑全景气场',
-    workflowRole: '24mm 正大开阔全景两点透视全案',
-    recommendedAspectRatio: '16:9',
+    workflowRole: '35mm 广角人文客餐一体全案',
+    recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-01',
-      name: '空间与产品平衡 (Space/Product Balance)',
-      productDominancePct: 40,
+      name: '空间主大场景 (Grand Frontal Horizon)',
+      productDominancePct: 45,
       backgroundSuppression: 'low',
       maxOcclusionPct: 5,
-      description: '大平层客餐通透一体化大开间全貌 + 超广阔通透视野 + 全套客厅主沙发、单椅、茶几与远端配套餐厅全案入镜，交代大宅空间全局与开敞尺度'
+      description: '客餐厅一体全案大平层生活方式；展示 3+1 沙发组、茶几、地毯与右侧餐厅的整体空间流动感。锚定居中背景墙、左侧通高落地窗、右侧开阔过道与餐厅区。'
     },
     defaultCamera: {
-      lensMm: 24,
-      heightCm: 118,
+      lensMm: 35,
+      heightCm: 115,
       yawDeg: 0,
       pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'zone', id: 'living_room' },
       framing: 'wide',
       mustInclude: [
-        'breathtakingly_expansive_open_plan_grand_horizon',
         'strictly_straight_on_frontal_view',
-        'centered_living_axis',
-        'panoramic_floor_to_ceiling_window_wall',
-        'soaring_cove_ceiling_architecture',
-        'generous_area_rug_anchoring_foreground',
-        'retracted_closed_showroom_footrests',
-        'complete_furniture_suite'
+        'centered_marble_backdrop_wall_axis',
+        'panoramic_full_height_left_window',
+        'open_right_corridor_and_dining_flow',
+        'complete_3_plus_1_sofa_ensemble',
+        'designer_coffee_table',
+        'generous_living_area_rug',
+        'white_matte_cylindrical_planter_anchor'
       ],
       mustExclude: [
         'angled_side_perspective',
         'diagonal_camera_view',
         'tilted_off_center',
-        'cramped_framing',
-        'awkward_empty_corners',
-        'excessive_empty_wooden_floor_in_foreground',
-        'vast_barren_foreground_floor_void',
-        'deployed_footrest_without_people',
-        'blank_featureless_white_ceiling',
+        'excessive_ceiling_void',
+        'deployed_footrests_when_no_human',
         'flipped_room',
-        'mirrored_window',
-        'altered_wall_finishes',
-        'newly_invented_architecture'
+        'mirrored_window'
       ]
     },
-    description: '焦段 24mm 超广角建筑镜头，机位高度 118cm 人眼平视中轴线（Yaw: 0°/Pitch: 0°），严苛横平竖直两点透视，极度开阔的大平层横厅大开间气场。艺术地毯向前舒展消除空旷地面，通透通顶落地窗与高级建筑暗藏灯槽天花一体延展，家具居中庄重恢弘，全套脚踏平整收起。'
+    description: '焦段 35mm 广角人文镜头，机位高度 115cm 人眼站姿微低平视中轴线（Yaw: 0°/Pitch: 0°），严苛横平竖直两点透视，4:3 横构图，展现客餐厅一体全案大平层生活方式，居中背景墙、左侧通高落地窗、右侧开阔过道与餐厅区。'
   },
   {
     id: 'tpl-a02',
     code: 'A02',
-    name: '45° 3+1 成套组合全景 (45° 3+1 Living Ensemble View)',
+    name: '45° 3+1 组合大全景 (45° 3+1 Living Ensemble View)',
     alignmentSample: '1021.jpg / 45° 3+1 Ensemble',
     studioCategory: '45° 3+1 沙发组群生活方式',
-    workflowRole: '38mm 45° 侧前方成套组群位',
+    workflowRole: '45mm 45° 侧前方成套组群位',
     recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-02',
-      name: '45° 组群成套聚焦 (3+1 Ensemble Living Focus)',
+      name: '45° 3+1 组合全景聚焦 (3+1 Ensemble Living Focus)',
       productDominancePct: 65,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 8,
-      description: '35°~45° 侧前方大透视，同框展现 3 人位主沙发 + 单人椅 + 中岛茶几成套围合生活方式景，体现家庭组群空间的进深感与高级感'
+      description: '展示“3人位+单人位”围合布局与开阔度；呈现左侧自然采光下皮质的光泽度与落座动线。锚定地板对角线灭点、地毯铺设基准区、窗帘垂坠边界。'
     },
     defaultCamera: {
-      lensMm: 38,
+      lensMm: 45,
       heightCm: 115,
       yawDeg: 40,
       pitchDeg: -3,
       rollDeg: 0,
       target: { type: 'product', id: 'living_ensemble' },
       framing: 'wide',
-      mustInclude: ['three_seater_sofa', 'matching_side_chair', 'center_coffee_table', 'ensemble_spatial_depth', 'stone_backdrop'],
-      mustExclude: ['flat_frontal_mugshot', 'tight_single_product_crop', 'cropping_out_side_chair', 'cropping_out_main_sofa']
+      mustInclude: [
+        'three_seater_sofa',
+        'matching_side_chair',
+        'center_coffee_table',
+        'ensemble_spatial_depth',
+        'left_side_daylight_sheen',
+        'floor_diagonal_vanishing_lines',
+        'white_matte_cylindrical_planter_anchor'
+      ],
+      mustExclude: [
+        'flat_frontal_mugshot',
+        'straight_on_camera',
+        'symmetrical_center_sofa',
+        'facing_directly_forward',
+        'tight_single_product_crop',
+        'cropping_out_side_chair',
+        'cropping_out_main_sofa'
+      ]
     },
-    description: '焦段 38mm 组群视角，机位高度 115cm，侧前方 40°~45° 透视，同框展现 3人位主沙发、搭配单椅与中岛茶几成套围合氛围'
+    description: '焦段 45mm 标准偏广镜头，机位高度 115cm，侧前方 40° 斜侧透视，4:3 横构图，展现 3人位主沙发+搭配单椅与中岛茶几成套围合布局与开阔动线。'
   },
   {
     id: 'tpl-a03',
     code: 'A03',
-    name: '3人位主沙发组合焦点景 (Hero 3-Seater Living Focus)',
+    name: '三人位主沙发场景 (Hero 3-Seater Living Focus)',
     alignmentSample: 'Hero 3-Seater Recline / Focus',
-    studioCategory: '主位 3 人座功能聚焦/核心起居',
+    studioCategory: '主位 3 人座核心聚焦',
     workflowRole: '50mm 中景主沙发核心位',
     recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-03',
-      name: '主沙发核心聚焦 (Hero 3-Seater Focus)',
+      name: '三人位主沙发场景 (Hero 3-Seater Focus)',
       productDominancePct: 75,
       backgroundSuppression: 'high',
       maxOcclusionPct: 5,
-      description: '50mm 中景聚焦 3人位主沙发与茶几前景，自然裁切排除侧边独立单椅，无模特时功能位保持平整收起，展现核心沙发尊享质感'
+      description: '主推核心单品（C位三人位）；展示靠背饱满支撑感、双向扶手体量与背景墙的对称高级感。锚定大理石背景墙中轴对称线、双弧形壁灯高度中线。'
     },
     defaultCamera: {
       lensMm: 50,
-      heightCm: 110,
-      yawDeg: 12,
-      pitchDeg: -2,
+      heightCm: 95,
+      yawDeg: 0,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'product',
-      mustInclude: ['three_seater_sofa', 'sofa_leather_texture', 'foreground_coffee_table'],
-      mustExclude: ['separate_accent_single_chair', 'side_armchair', 'lounge_chair', 'deployed_footrests_when_no_human', 'wide_empty_room_panorama']
+      mustInclude: [
+        'three_seater_sofa',
+        'symmetrical_marble_backdrop_axis',
+        'dual_curved_sconce_midline',
+        'sofa_leather_texture',
+        'foreground_coffee_table'
+      ],
+      mustExclude: [
+        'separate_accent_single_chair',
+        'side_armchair',
+        'lounge_chair',
+        'angled_view',
+        'deployed_footrests_when_no_human'
+      ]
     },
-    description: '焦段 50mm 标准中焦，高度 110cm，微侧 12° 视点，精细聚焦 3人位主沙发与茶几前景，严格排除单椅，无模特时脚托完全收起'
+    description: '焦段 50mm 标准视平，机位高度 95cm（与靠背齐平略低，仰角 0°），纯 0° 正视对称中轴，4:3 横构图，展现 C位三人位主沙发的挺拔体量感与对称高级感，严格排除侧边单椅。'
   },
   {
     id: 'tpl-a04',
     code: 'A04',
-    name: '2/3主沙发亲子陪伴景 (2/3 Hero Sofa Companion View)',
+    name: '三分之二主沙亲子陪伴场景 (2/3 Hero Sofa Companion View)',
     alignmentSample: 'Studio Sample 2/3 Hero Sofa Angle / Parent-Child Companion',
-    studioCategory: '主沙发 2/3 角度亲子温情生活方式',
-    workflowRole: '45mm 2/3 主沙发侧前角度',
-    recommendedAspectRatio: '2:3',
+    studioCategory: '主沙发 2/3 亲子温情生活方式',
+    workflowRole: '45mm 微俯亲子生活舞台',
+    recommendedAspectRatio: '3:4',
     intent: {
       intentCode: 'SI-08',
-      name: '主沙发 2/3 温情共鸣 (2/3 Hero Companion Resonance)',
+      name: '三分之二主沙亲子陪伴 (2/3 Hero Companion View)',
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '呈现主沙发 2/3 产品形态与侧前角度（展示左侧外扶手、材质坐深与靠背线条），纯净空间展示家具结构与高端质感（模特为后续独立添加）'
+      description: '情感化/家庭生活方式：聚焦 2/3 座面与前沿地毯，突出宽大座深供亲子互动、地毯玩耍的温馨感。锚定地板光影渐变区、左侧落地窗白色纱帘透光处、白色圆柱盆绿植。'
     },
     defaultCamera: {
       lensMm: 45,
-      heightCm: 110,
+      heightCm: 140,
       yawDeg: -28,
-      pitchDeg: -3,
+      pitchDeg: -15,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa', 'outer_armrest_contour', 'luxury_architectural_backdrop', 'indoor_foliage_plant'],
+      mustInclude: [
+        'two_thirds_hero_sofa',
+        'wide_seating_depth',
+        'foreground_play_rug_stage',
+        'sheer_curtain_window_light',
+        'white_matte_cylindrical_planter_anchor'
+      ],
       mustExclude: [
         'separate_accent_single_chair',
         'isolated_armchair',
-        'full_sofa_100_percent_wide',
         'flat_frontal_view',
-        'rigid_stiff_models',
-        'flipped_room',
-        'mirrored_window_position',
-        'reversed_daylight_direction',
-        'different_room_background'
+        'flipped_room'
       ]
     },
-    description: '焦段 45mm 人文中焦，机位高度 110cm，侧前方 28° 透视，精细呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
+    description: '焦段 45mm 微俯视镜头，机位高度 140cm，俯角 -15°，侧偏 -28°，纵向 3:4 画幅，聚焦 2/3 主沙发座面与前沿地毯生活舞台。'
   },
   {
     id: 'tpl-a05',
     code: 'A05',
-    name: '2/3主沙发私享休闲景 (2/3 Hero Sofa Private Lounge View)',
+    name: '三分之二主沙私享休闲景 (2/3 Hero Sofa Private Lounge View)',
     alignmentSample: 'Studio Sample 2/3 Hero Sofa Angle / Wine Lounge Relaxation',
-    studioCategory: '主沙发 2/3 角度私享微醺生活方式',
-    workflowRole: '45mm 2/3 主沙发右侧前角度',
-    recommendedAspectRatio: '2:3',
+    studioCategory: '主沙发 2/3 角度品质与工艺细节',
+    workflowRole: '50mm 平视略低高定细节位',
+    recommendedAspectRatio: '3:4',
     intent: {
       intentCode: 'SI-05',
-      name: '主沙发 2/3 私享休闲 (2/3 Hero Private Lounge)',
+      name: '三分之二主沙私享休闲 (2/3 Hero Private Lounge)',
       productDominancePct: 70,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '呈现主沙发 2/3 产品形态与右侧前角度（展示右侧绗缝扶手、坐垫肌理与空间层深），纯净空间展示家具结构与高端质感（模特为后续独立添加）'
+      description: '品质感/工艺细节：聚焦扶手立体菱格纹压花、金属收边、皮质微距触感与后方温暖壁灯。锚定背景墙右侧铜条收口线、悬浮发光层板下边缘。'
     },
     defaultCamera: {
-      lensMm: 45,
-      heightCm: 110,
+      lensMm: 50,
+      heightCm: 95,
       yawDeg: 28,
-      pitchDeg: -3,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'luxury_architectural_backdrop', 'ambient_cove_light_strip'],
+      mustInclude: [
+        'two_thirds_hero_sofa_right',
+        'right_armrest_quilting',
+        'metal_trim_accent',
+        'brass_closure_strip_anchor',
+        'warm_ambient_wall_sconce'
+      ],
       mustExclude: [
         'separate_accent_single_chair',
         'isolated_armchair',
-        'full_sofa_100_percent_wide',
-        'flat_frontal_view',
-        'rigid_stiff_models',
         'arched_shelves',
         'bookshelf',
-        'bookcase',
-        'wall_niches',
-        'built_in_shelving',
-        'different_room_background'
+        'bookcase'
       ]
     },
-    description: '焦段 45mm 人文中焦，机位高度 110cm，右侧前方 28° 透视，呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
+    description: '焦段 50mm 标准中焦，机位高度 95cm 平视略低（仰角 0°），右侧偏 28°，纵向 3:4 画幅，聚焦扶手高定菱格压花、金属收边与微距皮革质感。'
   },
   {
     id: 'tpl-a06',
     code: 'A06',
     name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile View)',
     alignmentSample: 'Studio Sample Zero-Wall Profile / Lateral View',
-    studioCategory: '零靠墙技术与侧影展示 (靠墙展示)',
-    workflowRole: '35mm 零靠墙侧向闭合透视',
-    recommendedAspectRatio: '16:9',
+    studioCategory: '零靠墙技术与侧影展示',
+    workflowRole: '60mm 纯侧视硬核功能位',
+    recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-07',
-      name: '零靠墙贴墙侧向展示 (Zero-Wall Clearance Profile)',
+      name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '大侧向 80°~90° 侧平视低机位（参考图示4），精准展现客厅中“靠墙摆放”的 3人位主沙发——展示芝华仕核心“零靠墙”技术：贴墙零间隙（<5cm），产品功能位置严格保持关闭收起形态，靠背标准直立闭合，脚踏完全收拢，侧平视展现沙发侧面高定菱格绗缝与圆形控制键'
+      description: '核心硬核卖点：直观量化“零靠墙”省空间功能；展现沙发背部贴墙极小距离（<5cm）与侧面紧凑线条。锚定背景墙侧面厚度基准、窗框竖柱与地平线垂直线。'
     },
     defaultCamera: {
-      lensMm: 35,
+      lensMm: 60,
       heightCm: 90,
-      yawDeg: 80,
-      pitchDeg: -1,
+      yawDeg: 88,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_placement', 'side_armrest_quilting_detail', 'circular_motion_button', 'fully_retracted_closed_footrest', 'panoramic_window_backdrop'],
+      mustInclude: [
+        'zero_wall_back_clearance_against_wall',
+        'flush_wall_placement',
+        'pure_lateral_profile_60mm',
+        'side_armrest_quilting_detail',
+        'fully_retracted_closed_footrest',
+        'vertical_plumb_lines'
+      ],
       mustExclude: [
         'gap_away_from_wall',
         'detached_from_back_wall',
         'deployed_footrest',
-        'extended_footrest',
-        'open_recliner',
-        'flat_frontal_view',
-        'crooked_perspective',
-        'rigid_stiff_models',
+        'wide_angle_distortion',
         'bookshelf',
-        'bookcase',
-        'study_room',
-        'library_shelves',
-        'office_room',
-        'wall_niches',
-        'different_room_background'
+        'bookcase'
       ]
     },
-    description: '焦段 35mm，低视点机位高度 90cm（参考图示4坐姿眼平），侧向 80° 透视，直观呈现主沙发贴墙零距离（<5cm）闭合常态，侧面绗缝工艺与靠墙零间隙一览无余，功能位严格保持关闭'
+    description: '焦段 60mm 纯侧视长焦镜头，机位高度 90cm，大侧偏 88°（85°~90°纯侧切），横向 4:3 画幅，严苛两点透视垂直线锁定，量化主沙发贴墙零间隙（<5cm）与紧凑侧面线条。'
   },
   {
     id: 'tpl-a07',
@@ -244,99 +266,122 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
     name: '沙发茶几组群中景 (Ensemble Living Composition)',
     alignmentSample: 'Studio Sample 0939/0914 / Ensemble Living',
     studioCategory: '客厅核心起居生活方式',
-    workflowRole: '40mm 经典会客中景',
-    recommendedAspectRatio: '16:9',
+    workflowRole: '55mm 中焦经典起居中景',
+    recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-01',
-      name: '经典组群围合 (Ensemble Harmony)',
+      name: '沙发茶几组群中景 (Ensemble Living)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 12,
-      description: '宽屏全景中景，主沙发+奢石中岛双茶几+边几，侧翼微露单椅，展现起居会客区的层次感与高定奢石肌理'
+      description: '配套材质与围合感：展示大理石茶几、深色方几、绿植与主沙发的黄金高低差（450mm vs 400mm）。锚定地毯中央几何图案定位区、绿植阴影投射区。'
     },
     defaultCamera: {
-      lensMm: 40,
-      heightCm: 115,
-      yawDeg: -15,
+      lensMm: 55,
+      heightCm: 95,
+      yawDeg: -35,
       pitchDeg: -5,
       rollDeg: 0,
       target: { type: 'product', id: 'living_ensemble' },
       framing: 'product',
-      mustInclude: ['hero_main_sofa', 'center_coffee_table', 'foreground_table_styling', 'carpet_pattern', 'natural_daylight_through_window'],
-      mustExclude: ['messy_foreground', 'wide_empty_edges', 'flat_frontal_mugshot', 'night_time', 'dark_room', 'moody_night_shadows']
+      mustInclude: [
+        'hero_main_sofa',
+        'natural_marble_coffee_table',
+        'golden_height_drop_450mm_vs_400mm',
+        'carpet_geometric_pattern_anchor',
+        'foliage_shadow_falloff_anchor',
+        'deep_contact_ao_shadow'
+      ],
+      mustExclude: [
+        'wide_empty_edges',
+        'flat_frontal_mugshot',
+        'floating_furniture',
+        'sticker_marble_foil'
+      ]
     },
-    description: '焦段 40mm，机位高度 115cm，微俯 -5°，16:9 宽屏中景，主沙发与奢石中岛双茶几亲密呼应，经典起居组群生活方式'
+    description: '焦段 55mm 中焦镜头，机位高度 95cm，侧偏 -35°，微俯 -5°，横向 4:3 画幅，压缩景深强化奢石中岛双茶几与主沙发的亲密呼应与黄金高低落差。'
   },
   {
     id: 'tpl-a08',
     code: 'A08',
     name: '单椅五档功能状态景 (Recliner 5-Mode Function Showcase)',
     alignmentSample: 'Studio Sample Recliner 5 Postures / Multi-Mode Life',
-    studioCategory: '单椅 5 档多功能状态展示 (空旷客厅位)',
-    workflowRole: '45mm 35° 固定视角功能矩阵位',
-    recommendedAspectRatio: '16:9',
+    studioCategory: '单椅五档功能状态景',
+    workflowRole: '50mm 黄金对角单椅私享景',
+    recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-06',
-      name: '单椅五档功能全态 (Recliner 5 Functional States)',
+      name: '单椅五档功能状态景 (Recliner 5-Mode Showcase)',
       productDominancePct: 80,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 15,
-      description: '中景眼平高度 100cm（参考图示5），保持 35° 侧斜机位固定，单椅独立摆放在母版空旷开阔的客厅中央地毯区域（主沙发不入镜争夺焦点），呈现单人位头等舱沙发的 5 种功能状态：160°小憩沉睡、140°听歌仰躺、120°追剧观影、110°阅览书刊、110°智能冲浪'
+      description: '单人位核心功能体验：五档调节、电动脚踏展开、后仰舒适弧度；搭配雪茄盒/红酒杯营造个人私享角。锚定大落地窗明暗分界线、左下角地毯边缘留白区。'
     },
     defaultCamera: {
-      lensMm: 45,
-      heightCm: 100,
-      yawDeg: 35,
+      lensMm: 50,
+      heightCm: 95,
+      yawDeg: 38,
       pitchDeg: -3,
       rollDeg: 0,
       target: { type: 'product', id: 'recliner' },
       framing: 'lifestyle',
-      mustInclude: ['manwah_power_recliner_chair', 'open_spacious_living_room_placement', 'motion_mechanism_ergonomics', 'ergonomic_recliner_contour', 'ambient_living_rug'],
+      mustInclude: [
+        'manwah_power_recliner_chair',
+        'golden_diagonal_perspective_50mm',
+        'open_spacious_living_room_placement',
+        'window_daylight_shadow_boundary',
+        'deep_contact_ao_shadow'
+      ],
       mustExclude: [
-        'distant_room_clutter',
-        'crooked_camera_shifts',
         'three_seater_sofa_centered',
         'hallway',
         'corridor',
         'doorway',
-        'foyer',
-        'door_frame',
-        'passageway',
-        'entryway',
-        'white_door_frame',
-        'different_room_background'
+        'door_frame'
       ]
     },
-    description: '焦段 45mm，机位高度 100cm（参考图示5中景眼平），固定 35° 侧斜角，单椅独立置于空旷开阔的客厅中央，展示单椅 5 种功能角度与舒展外观（默认无模特，模特为单独添加）'
+    description: '焦段 50mm 黄金对角镜头，机位高度 95cm，侧斜 38°，横向 4:3 画幅，单椅独立置于空旷开阔的客厅中央地毯区，展示单人位多功能舒适角度与私享角质感。'
   },
   {
     id: 'tpl-a09',
     code: 'A09',
-    name: '餐桌配套展示景 (Dining Suite Ensemble View)',
+    name: '餐厅配套展示组 (Dining Suite Ensemble View)',
     alignmentSample: 'Studio Sample Dining Suite / Luxury Dining Flat',
-    studioCategory: '客餐一体化大平层奢华餐区全案 (餐桌椅配套)',
-    workflowRole: '38mm 餐客一体餐区全景位',
-    recommendedAspectRatio: '16:9',
+    studioCategory: '餐厅配套展示组',
+    workflowRole: '40mm 平视全景整家配套',
+    recommendedAspectRatio: '4:3',
     intent: {
       intentCode: 'SI-09',
-      name: '餐客一体全案空间 (Integrated Dining Ensemble)',
+      name: '餐厅配套展示组 (Dining Suite Ensemble)',
       productDominancePct: 75,
       backgroundSuppression: 'medium',
       maxOcclusionPct: 10,
-      description: '大平层客餐一体化纵深全案（参考图示1）：站姿眼平高度 125cm，微侧 15° 视角。单独关联餐桌椅、餐边柜、移动餐车等配套产品资产录入生成（母版作为空间与摆放参考锁定）：天然奢石黑色大理石长餐桌 + 配套双拼皮革餐椅 + 艺术定制黑金餐边柜（含艺术画与台灯）+ 移动酒水餐车，呈现大平层奢华宴饮与用餐格调'
+      description: '整家配套延伸：展现同色系大理石餐桌、皮革餐椅、餐边柜与酒水推车，强化“买全屋配齐”的客单拉力。锚定右侧背景墙壁板、独立艺术挂画中轴线。'
     },
     defaultCamera: {
-      lensMm: 38,
-      heightCm: 125,
-      yawDeg: 15,
-      pitchDeg: -4,
+      lensMm: 40,
+      heightCm: 115,
+      yawDeg: 0,
+      pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'dining_suite' },
       framing: 'wide',
-      mustInclude: ['luxury_marble_dining_table', 'matching_dining_chairs', 'dining_credenza_sideboard', 'champagne_bar_cart', 'panoramic_window_light', 'indoor_foliage_plant'],
-      mustExclude: ['three_seater_sofa_in_center', 'messy_kitchen_sink', 'cramped_space', 'crooked_verticals']
+      mustInclude: [
+        'luxury_marble_dining_table',
+        'matching_leather_dining_chairs',
+        'dining_credenza_sideboard',
+        'champagne_bar_cart',
+        'right_wall_panel_anchor',
+        'art_painting_axis_anchor'
+      ],
+      mustExclude: [
+        'three_seater_sofa_in_center',
+        'messy_kitchen_sink',
+        'cramped_space',
+        'crooked_verticals'
+      ]
     },
-    description: '焦段 38mm，机位高度 125cm（参考图示1站姿眼平微俯视），微侧 15° 视角，16:9 宽画幅完整呈现奢石长餐桌、配套餐椅、定制餐边柜与移动酒水餐车'
+    description: '焦段 40mm 平视全景镜头，机位高度 115cm，0° 正视对称轴线，横向 4:3 画幅，完整呈现同色系天然奢石长餐桌、皮革餐椅、定制餐边柜与移动酒水餐车。'
   }
 ];
 

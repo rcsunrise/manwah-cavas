@@ -648,6 +648,12 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         const hasBrownSecondary = allowedSecondaryInlines.some(sec => /brown|caramel|amber|espresso/i.test(sec.colorEn));
         const brownNegativeFilter = hasBrownSecondary ? '' : 'brown recliner, brown armchair, ';
 
+        const a02PerspectiveShiftClause = (shotCode === 'A02' || isAngledHero)
+          ? `[MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE]
+Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.\n\n`
+          : '';
+
         directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
 MULTI-VIEW ASSET ANCHOR:
 1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
@@ -657,16 +663,22 @@ MULTI-VIEW ASSET ANCHOR:
    - Inherit the architectural walls, fixed background walnut/stone layout, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
 
 CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
-${positivePrompt}
+${a02PerspectiveShiftClause}${positivePrompt}
 ${secondaryReferencesText ? `\nMATCHING ENSEMBLE:\n${secondaryReferencesText}\n` : ''}
 CORE INVARIANTS:
-- OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines. Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
+- FOUR INVARIANCE PILLARS:
+  1. Coordinate origin: white matte cylindrical planter with indoor foliage plant (constant position and height relative to window and wall).
+  2. Dual curved wall sconces on marble backdrop with consistent curvature and spacing.
+  3. Left panoramic window 6000K cool daylight paired with interior 3000K warm ambient glow, soft eastward contact shadow falloff.
+  4. Deep physical contact AO grounding all furniture legs and chassis firmly onto the area rug.
+- OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines (tilt = 0°). Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
 - CLOSED SHOWROOM POSTURE: ${isFunctionalClosed ? 'All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base.' : 'Motion mechanism may be deployed as specified.'}`;
 
         const cleanNegativeConstraints = [
           negativePrompt,
           antiStickerNegatives,
+          (shotCode === 'A02' || isAngledHero) ? 'flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward' : '',
           'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
           'double sofas, ghost sofa, overlapping couches, morphing furniture',
           'different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room',
