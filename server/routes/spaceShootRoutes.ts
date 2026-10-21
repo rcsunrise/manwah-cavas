@@ -337,11 +337,11 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const shotId = (req.body as any).shotId || `shot-${shotCode.toLowerCase()}`;
     const isHumanPass = Boolean((req.body as any).isHumanPass);
 
-    // 防抖防并发锁：拦截 4 秒内同镜头的重复提交，避免重复调用生图 API
+    // 防抖防并发锁：拦截 2 秒内同镜头的重复提交，避免重复调用生图 API
     const lockKey = `${projectId}:${shotCode}:${isHumanPass ? 'human' : 'base'}`;
     const now = Date.now();
     const existingLockTime = activeRenderingLocks.get(lockKey);
-    if (existingLockTime && now - existingLockTime < 4000) {
+    if (existingLockTime && now - existingLockTime < 2000) {
       console.warn(`[spaceShootRoutes] Debounced duplicate render request for ${lockKey}`);
       return res.status(429).json({
         success: false,

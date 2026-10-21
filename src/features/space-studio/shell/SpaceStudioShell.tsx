@@ -2387,12 +2387,22 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         return;
       }
 
-      const concurrency = 3;
+      const concurrency = 2; // 自适应平滑并发，防止瞬间并发过高打穿上游限流
       const queue = [...candidateShots];
       const executing: Promise<any>[] = [];
 
       for (const shot of queue) {
-        const p = handleRenderShot(shot, undefined, currentMaster).then(() => {
+        const renderWithRetry = async () => {
+          let res = await handleRenderShot(shot, undefined, currentMaster);
+          if (!res || !res.success) {
+            console.warn(`[SpaceStudioShell] 镜头 ${shot.templateCode} 首次渲染未完成，启动退避重试 (1.5s 后)...`);
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            res = await handleRenderShot(shot, undefined, currentMaster);
+          }
+          return res;
+        };
+
+        const p = renderWithRetry().then(() => {
           const idx = executing.indexOf(p);
           if (idx !== -1) executing.splice(idx, 1);
         });

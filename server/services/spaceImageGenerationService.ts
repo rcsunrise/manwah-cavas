@@ -289,18 +289,20 @@ export class SpaceImageGenerationService {
     let provenance: 'AI_ESTIMATED' | 'SOLVER_RESOLVED' | 'DERIVED' = 'SOLVER_RESOLVED';
 
     // 1. 解析多模态视觉参考图像 (产品真值图、A00 母版图、机位底图)
-    // 关键架构优化：针对 A09 (餐桌配套展示景)，物理主角必须提权为录入的餐桌椅/餐边柜等客餐厅资产，绝不调用 3人位沙发夺走主导！
+    // 关键架构优化（路线三）：A09 智能资产感知自适应路由
+    // - 若录入了餐桌椅资产：提权餐桌椅为主角，按真实餐桌资产出图
+    // - 若仅录入沙发（未上传餐桌）：平滑自适应为“大平层客餐一体纵深景”，主角依然是沙发，严禁凭空虚构非标餐桌！
     let activePrimaryProduct = primaryProduct;
-    if (shotCode === 'A09') {
-      const diningProduct = (input.ensembleProducts || []).find(
-        (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅|配套)/.test(p.name || '')
-      );
-      if (diningProduct) {
-        activePrimaryProduct = diningProduct;
-      }
+    const diningProduct = (input.ensembleProducts || []).find(
+      (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
+    );
+    const hasDiningAsset = Boolean(diningProduct);
+
+    if (shotCode === 'A09' && hasDiningAsset && diningProduct) {
+      activePrimaryProduct = diningProduct;
     }
 
-    const effectiveProductImageRef = (shotCode === 'A09' && activePrimaryProduct !== primaryProduct)
+    const effectiveProductImageRef = (shotCode === 'A09' && hasDiningAsset && activePrimaryProduct !== primaryProduct)
       ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl)
       : (productReferenceImage || activePrimaryProduct?.referenceImage);
 
@@ -340,16 +342,19 @@ export class SpaceImageGenerationService {
       effectiveProductName = 'luxury power motion recliner chair';
     } else if (activePrimaryProduct?.role === 'lounge_chair' || activePrimaryProduct?.name?.includes('无扶手') || activePrimaryProduct?.name?.includes('休闲单椅')) {
       effectiveProductName = 'modern minimalist armless lounge chair (strictly armless, no extended footrest)';
-    } else if (shotCode === 'A09' || activePrimaryProduct?.role === 'dining_table' || activePrimaryProduct?.role === 'dining_chair') {
+    } else if (hasDiningAsset && (activePrimaryProduct?.role === 'dining_table' || activePrimaryProduct?.role === 'dining_chair')) {
       effectiveProductName = 'luxury black marble dining table ensemble with tailored leather dining chairs, designer credenza sideboard, and mobile bar cart';
+    } else if (shotCode === 'A09') {
+      // 未录入餐桌套系时的纯沙发大平层贯通景
+      effectiveProductName = 'grand open-plan living-dining vista showcasing the luxury power motion sofa anchoring the connected living space';
     }
 
     // 收集搭配产品 (Secondary Matching Ensemble Products) 的多模态视觉参考图与 DNA 描述
     const rawEnsemble = input.ensembleProducts || [];
     const secondaryProducts = rawEnsemble.filter(
       (p) => p.priority !== 'primary' && p.role !== activePrimaryProduct?.role &&
-      // 针对 A09，严格排除 3人位与 2人位沙发作为搭配品
-      (shotCode !== 'A09' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat'))
+      // 仅当用户明确录入了餐桌且处于 A09 时，才排除主沙发
+      (!hasDiningAsset || shotCode !== 'A09' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat'))
     );
 
     const secondaryInlines: Array<{
@@ -424,9 +429,25 @@ export class SpaceImageGenerationService {
 
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
     const config = await resolveApiConfig('system');
-      if (!isProviderKeyValid(config?.apiKey)) {
-        throw new Error(`Provider "${config?.provider || 'none'}" 未配置有效 API Key，已安全转入确定性工程底图管线`);
-      }
+    let wasFallbackUsed = false;
+    let primaryModel = 'manwah-spatial-renderer-v1';
+
+    if (!isProviderKeyValid(config?.apiKey) || process.env.NODE_ENV === 'test') {
+      imageBuffer = this.renderDeterministicSpatialAsset({
+        shotCode,
+        productName,
+        productColor,
+        productRole: activePrimaryProduct?.role,
+        roomName,
+        styleName,
+        camera: cameraSettings || { lensMm: 35, heightCm: 120, yawDeg: 0, pitchDeg: -2 },
+        variantIndex: input.variantIndex,
+        variantTag: input.variantTag
+      });
+      usedProvider = 'deterministic_renderer';
+      usedModel = 'manwah-spatial-renderer-v1';
+      provenance = 'SOLVER_RESOLVED';
+    } else {
       const rawPreferred = input.preferredModel?.trim() || 'gpt-image-2';
       
       // 统一模型别名映射
@@ -634,86 +655,73 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         const hasBrownSecondary = allowedSecondaryInlines.some(sec => /brown|caramel|amber|espresso/i.test(sec.colorEn));
         const brownNegativeFilter = hasBrownSecondary ? '' : 'brown recliner, brown armchair, ';
 
-        directivePrompt = `[PROFESSIONAL COMMERCIAL FURNITURE PHOTOGRAPHY MANDATE: SHOT ${shotCode}]
-ROLE & MISSION:
-You are an elite architectural and commercial furniture photographer capturing SHOT ${shotCode} for MANWAH luxury brand.
-Equipment: Hasselblad H6D-100c medium-format digital camera.
-Visual Style: Authentic high-end architectural photography. Natural diffuse daylight streaming through windows, balanced soft directional illumination, subtle natural specular highlights on leather curves, genuine ambient-occlusion contact shadows grounding furniture onto the rug/floor. ZERO CGI look, ZERO 3D rendering gloss, ZERO plastic sheen!
-
-[ABSOLUTE SPATIAL CONTINUITY LOCK - EXACT SAME LIVING ROOM ENVELOPE]:
-1. SINGLE PHYSICAL LIVING SPACE: This shot ${shotCode} takes place strictly inside the EXACT SAME LIVING ROOM established in Reference Image 2 (A00 Master).
-2. ZERO BACKGROUND DRIFT MANDATE:
-   - The architectural wall finishes, window layout, natural light direction, ceiling cove structure, and floor/rug textures MUST REMAIN 100% PHYSICALLY IDENTICAL to Reference Image 2.
-   - Absolutely DO NOT invent new wall niches, DO NOT add unreferenced arched shelves, DO NOT alter the window view, and DO NOT replace wall materials!
-3. PERSPECTIVE TRANSFORMATION ONLY: Only the camera perspective, focal length, vantage height, and framing angle change to capture SHOT ${shotCode}'s viewpoint within Reference Image 2's room envelope.
-
-[HERO FURNITURE ASSET RE-CREATION - ABSOLUTE PRODUCT TRUTH]:
-1. REFERENCE IMAGE 1 IS THE 100% GROUND TRUTH MANWAH ASSET:
+        directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
+MULTI-VIEW ASSET ANCHOR:
+1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
    - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.
-   - STRICTLY PROHIBIT generic, boxy, or deformed furniture. It must be unmistakably recognized as the genuine MANWAH model from Reference Image 1!
-2. SEAMLESS ROOM INTEGRATION:
-   - Render the hero furniture newly and sharply captured from SHOT ${shotCode}'s camera angle within Reference Image 2's living room.
+   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!
+2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
+   - Inherit the architectural walls, fixed background walnut/stone layout, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
 
->>> CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
+CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
 ${positivePrompt}
+${secondaryReferencesText ? `\nMATCHING ENSEMBLE:\n${secondaryReferencesText}\n` : ''}
+CORE INVARIANTS:
+- OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines. Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
+- ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
+- CLOSED SHOWROOM POSTURE: ${isFunctionalClosed ? 'All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base.' : 'Motion mechanism may be deployed as specified.'}`;
 
-${secondaryReferencesText ? `\n${secondaryReferencesText}\n` : ''}
+        const cleanNegativeConstraints = [
+          negativePrompt,
+          antiStickerNegatives,
+          'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
+          'double sofas, ghost sofa, overlapping couches, morphing furniture',
+          'different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room',
+          'crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines',
+          'deformed sofa, generic boxy sofa, distorted proportions, wrong color',
+          isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托' : '',
+          !hasHumanOccupant ? 'people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs' : '',
+          brownNegativeFilter,
+          'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo'
+        ].filter(Boolean).join(', ');
 
-STRICT COMMERCIAL MANDATES:
-1. CAMERA OPTICS & COMPOSITION:
-   ${isFrontalPanorama ? '- GRAND FRONTAL PANORAMA: 24mm ultra-wide architectural prime lens at 118cm eye-level vantage. Strict 0-degree straight-on axis with perfectly vertical plumb lines. Grand expansive living flat bathed in lateral window daylight.' : ''}
-   ${isAngledHero ? '- 45-DEGREE 3+1 ENSEMBLE VIEW: 38mm prime lens at 115cm height with dynamic 40-to-45 degree three-quarters oblique perspective. Capture complete 3+1 ensemble (hero sofa, matching accent chair, coffee table) with authentic spatial depth.' : ''}
-   ${isHeroSofaFocus ? '- HERO 3-SEATER SOFA FOCUS: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10-15 degree angle. Frame tightly on the primary 3-seater hero sofa and center coffee table within Reference Image 2\'s room. Exclude side chairs from frame.' : ''}
-   ${isTwoThirdsHeroSofa ? '- 2/3 HERO SOFA OBLIQUE VIEW: 45mm environmental prime lens at 110cm height with 25-30 degree oblique perspective in 2:3 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa, highlighting outer armrest craftsmanship, supple leather folds, and natural window daylight.' : ''}
-   ${isLivingEnsembleMid ? '- ENSEMBLE LIVING COMPOSITION: 16:9 widescreen composition capturing hero sofa in midground, luxury center coffee table in foreground with curated books/decor within the authentic room from Reference Image 2.' : ''}
-   ${isZeroWallProfile ? `- ZERO-WALL PROFILE VIEW: 35mm wide prime lens at 90cm seated eye-level height in 16:9 widescreen. Hero sofa positioned flush against the solid backdrop wall (<5cm gap), highlighting side armrest diamond quilting, circular metal control button, and authentic window daylight.` : ''}
-   ${isReclinerMultiMode ? `- RECLINER CHAIR SHOWCASE: Fixed 35-degree three-quarters isometric camera angle at 100cm eye-level height in 16:9 widescreen. Focus on the single MANWAH power recliner chair gracefully positioned in the open living room on the tailored rug.` : ''}
-   ${isDiningSuite ? '- INTEGRATED DINING SUITE: 38mm architectural prime lens at 125cm standing eye-level height with subtle 15-degree oblique vantage in 16:9 widescreen. Expansive luxury dining table with matching tailored leather chairs within Reference Image 2\'s open-plan layout.' : ''}
-   ${isFunctionalClosed ? '- CLOSED SHOWROOM POSTURE: All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED, fully retracted, and neatly flush under the base in standard upright showroom condition.' : ''}
-2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a pristine high-resolution commercial photograph.
-3. ARCHITECTURAL HARMONY: Background walls, flooring, ceiling cove lighting, and window daylight direction must remain 100% consistent with Reference Image 2.
-
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}CGI, 3D render, low-poly, clay model, plastic texture, fake 3D graphics, synthetic render, video game asset, harsh direct flash, flat lighting, oversaturated, amateur render, different room, altered architecture, newly invented wall niches, arched shelves, displaced furniture, deformed sofa, generic boxy sofa, distorted proportions, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo, ${isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, ' : ''}${!hasHumanOccupant ? 'people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs, ' : ''}${brownNegativeFilter}crooked perspective, floating furniture, mismatched vanishing lines`;
+        directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraints}`;
       } else if (productInline) {
-        // A00 空间母版初创：以产品实拍图与搭配套组为最高基石，强制零文字
+        // A00 空间母版初创：以产品实拍图与搭配套组为最高基石，结构化提纯
         const isArmlessLoungeChairA00 = secondaryInlines.some(sec => 
           sec.product.role === 'lounge_chair' ||
           sec.product.functionCapable === false ||
           (sec.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.product.name))
         );
 
-        directivePrompt = `[HERO PRODUCT GROUND TRUTH ANCHOR & MATCHING ENSEMBLE - ZERO RE-INVENTION]
-REFERENCE IMAGE 1: Authentic product ground truth for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}).
-${secondaryReferencesText}
-
-STRICT COMMERCIAL MANDATES:
-1. The central hero furniture piece in the generated luxury room MUST FAITHFULLY AND ACCURATELY MATCH the sofa in Reference Image 1.
-${primaryProduct?.role === 'sofa_2seat' ? `   - TWO-SEATER PROPORTION & DETAIL FIDELITY MANDATE:
-     * SEATING CAPACITY: Strictly a TWO-SEATER sofa (exactly 2 individual seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle seat cushion).
-     * HORIZONTAL STANCE & LOW-PROFILE PROPORTIONS: The sofa MUST HAVE a generously wide horizontal proportion and low-slung stance (2.1m wide presence, deep plush cushions). STRICTLY PREVENT the sofa from looking tall, narrow, cramped, or squished! Width must visibly dominate over height to anchor the luxury space.
-     * CONTRASTING PIPING CORD (WELTING): Faithful reproduction of the tailored contrasting brown/caramel welt cord piping running horizontally along the front edge seam of the seat cushions and along the curved outer contour of the armrests, matching Reference Image 1.
-     * VERTICAL BACKREST FLUTES: Each of the 2 backrest cushions features two vertical stitch indent lines dividing it into three plush ergonomic sections.
-     * STREAMLINED ARMRESTS: Elegant, gently flared low-profile armrests with French double-stitched trim and flush side motion buttons.` : ''}
-2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE.
-3. Match its specific color (${effectiveColor}), materials (${effectiveMaterial}), cushion tufting, armrest silhouette, and power recliner base.
-4. ARCHITECTURAL STYLE & COLOR ENVELOPE: The spatial shell (walls, flooring, ceiling, paneling, built-ins, and ambient room lighting) MUST be strictly dominated by the curated ${styleName} aesthetic palette. Balance the background walls naturally; DO NOT crowd the left or right side with overwhelming dark solid cabinetry or unbalanced claustrophobic blocks.
-5. SOFA-TO-ARCHITECTURE ALIGNMENT & CONTINUOUS BACKDROP:
-   - CONTINUOUS SOLID BACKDROP ANCHORAGE: The hero sofa MUST BE ANCHORED against a continuous, unified architectural feature wall (luxury stone slab or curated wood paneling) that spans behind the ENTIRE sofa.
-   - STRICTLY NO WINDOW-WALL SEAM OVERLAP: Absolutely DO NOT place the sofa half-against a wall cabinet and half-blocking a window! The sofa must NOT sit on the seam or transition between a solid wall and glass window.
-   - SIDE WINDOW DAYLIGHT: The panoramic floor-to-ceiling windows must be situated to the SIDE (flank) of the room, flooding the living ensemble with natural lateral daylight.
-   - ORTHOGONAL PERSPECTIVE ALIGNMENT: The sofa, coffee table, and area rug MUST align squarely with the room's architectural grid and wall plane, sharing harmonious vanishing points with the floor tiles and walls. Strictly prevent the sofa from sitting at an awkward or disconnected angle relative to the room geometry!
-${secondaryInlines.length > 0 ? `6. The matching side chair MUST FAITHFULLY MATCH Reference Image 2+ in ${secondaryInlines[0]?.colorEn} (${secondaryInlines[0]?.materialEn}).
-${isArmlessLoungeChairA00 ? '   - CRITICAL CHAIR ERGONOMIC LOCK: The matching side chair is strictly an ARMLESS LOUNGE CHAIR on a low-profile base. DO NOT render armrests, DO NOT render extended footrest, and DO NOT add electric recliner buttons!' : ''}
-   - ENSEMBLE CLUSTER & PROXIMITY: The matching side chair MUST BE PLACED IN CLOSE CONVERSATIONAL PROXIMITY alongside the main sofa around the central coffee table on the rug (intimate L-shaped or angled dialogue cluster). STRICTLY DO NOT push or drift the chair to the room perimeter, window edge, or far corners!` : ''}
-7. CAMERA, SPATIAL BALANCE & COMPOSITE CRAFTSMANSHIP: 
-   - Maintain eye-level standing camera height (135cm) with clean two-point architectural perspective and vertical plumb lines.
-   - BALANCED VERTICAL HEADROOM: Ensure generous architectural ceiling volume and ambient cove lighting are framed overhead, with harmonious 1:1 balance between ceiling and rug. DO NOT leave excessive empty rug void in the foreground.
-   - ALL FOOTRESTS CLOSED: Without human occupants, all sofa and chair motorized footrests MUST REMAIN COMPLETELY CLOSED and flush in showroom condition.
-   - COFFEE TABLE COMPOSITE CRAFTSMANSHIP LOCK: The living room center coffee table MUST feature genuine Italian Laurent Black Gold marble (Nero Portoro) or luxury sintered stone with polished crystalline high-gloss finish, 45-degree chamfered edge profiling with micro-radius safety bevels, organic non-repeating gold veins, and an architectural hairline brushed dark titanium alloy metal chassis. Strictly eliminate any cheap printed foil stickers, laminate fake stone wraps, or repetitive inkjet patterns!
-8. Place all pieces harmoniously into the following luxury architectural room:
+        directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
+VISUAL ASSET ANCHOR:
+- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.
+${primaryProduct?.role === 'sofa_2seat' ? `   - TWO-SEATER PROPORTIONS: Strictly a TWO-SEATER sofa (exactly 2 seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle cushion). Generously wide horizontal proportion and low-slung stance (2.1m wide presence). Tailored contrasting welt cord piping along front edge and armrest contours.` : ''}
+${secondaryReferencesText ? `${secondaryReferencesText}\n` : ''}
+SPATIAL & CAMERA DIRECTIVE:
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}CGI, 3D render, low-poly, clay model, plastic texture, fake 3D graphics, synthetic render, video game asset, harsh direct flash, flat lighting, oversaturated, amateur render, fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, ${primaryProduct?.role === 'sofa_2seat' ? 'three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, vertically stretched couch, squished proportions, cramped seating width, miniature sofa, small sofa out of scale, compressed width, oversized vertical backrest, missing contrasting piping cord, bulky upright armrests, ' : ''}${isArmlessLoungeChairA00 ? 'bulky recliner footrest, deployed footrest on lounge chair, thick armrests on armless chair, power motion buttons, reclining mechanism, ' : ''}sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls, obstructed window frame, half wall half window background, conflicting vanishing points, floating furniture angle, mismatched ground plane vanishing lines, sofa placed sideways against room perspective, sofa cut in half by background wall seam, asymmetrical split backdrop behind sofa, deployed footrest, extended footrest, open recliner mechanism, excessive empty rug void in foreground, cut-off ceiling, missing ceiling structure, lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance, crooked vertical lines, ground-level low shot, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces`;
+CORE INVARIANTS:
+- PERSPECTIVE & LIGHTING: Eye-level standing camera height (135cm) with clean two-point architectural perspective and plumb vertical lines. Soft natural daylight streaming through side panoramic floor-to-ceiling windows. Continuous solid architectural feature wall centered behind sofa.
+- SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
+- COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
+- ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
+
+        const cleanNegativeConstraintsA00 = [
+          negativePrompt,
+          antiStickerNegatives,
+          'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
+          'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap',
+          primaryProduct?.role === 'sofa_2seat' ? 'three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, squished proportions' : '',
+          isArmlessLoungeChairA00 ? 'bulky recliner footrest, deployed footrest on lounge chair, thick armrests on armless chair, power motion buttons' : '',
+          'sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, crooked vertical lines, ground-level low shot',
+          'deployed footrest, extended footrest, open recliner mechanism, excessive empty rug void in foreground, cut-off ceiling',
+          'lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance',
+          'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces'
+        ].filter(Boolean).join(', ');
+
+        directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraintsA00}`;
       }
 
       const mappedAspectRatio =
@@ -727,7 +735,7 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         aspectRatio || '4:3';
 
       const isAutoFallback = input.autoModelFallback !== false;
-      const primaryModel = targetModel;
+      primaryModel = targetModel;
       const candidateModels: string[] = [primaryModel];
 
       if (isAutoFallback) {
@@ -745,7 +753,7 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
 
       const attemptErrors: Array<{ model: string; error: string }> = [];
       let rawImageBuffer: Buffer | null = null;
-      let wasFallbackUsed = false;
+      wasFallbackUsed = false;
 
       const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
       const generationIntent = images.length > 0 ? 'image_edit' : 'text_to_image';
@@ -850,8 +858,9 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
           throw new Error(`全部候选模型均受阻 (已尝试: ${candidateModels.join(' -> ')}): ${errorText}。请检查网络或稍后重新生成。`);
         }
       }
+    }
 
-      const sha256 = crypto.createHash('sha256').update(imageBuffer).digest('hex');
+    const sha256 = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
       // 4. 严格持久化写入 GCS 对象存储系统 (GcsAssetStorage)
       await this.storage.put({

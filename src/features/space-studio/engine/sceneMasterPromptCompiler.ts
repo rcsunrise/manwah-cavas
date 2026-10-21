@@ -129,17 +129,17 @@ export class SceneMasterPromptCompiler {
       }
     }
 
-    // 2. 空间户型描述与建筑轴线对齐 (Architectural Space & Sofa Alignment)
+    // 2. 空间户型描述与建筑轴线对齐 (Architectural Space & Fixed Backdrop Topology)
     const architecturalClauses = [
       `luxury interior architecture: ${spacePreset.name}`,
       ...(spacePreset.promptFragments || []),
-      `grand open layout, ${spacePreset.ceilingHeight || 3.5}m high structural ceiling with recessed ambient shadow gaps`,
-      'continuous solid architectural backdrop feature wall securely anchoring the hero sofa (strictly continuous curated wall paneling or luxury stone backdrop extending seamlessly across the entire width behind the sofa, strictly NO window seam or wall transition splitting behind the sofa)',
-      'side panoramic floor-to-ceiling window wall positioned on the room flank, providing expansive natural volumetric side daylight orthogonal to the sofa arrangement',
+      `grand open layout, ${spacePreset.ceilingHeight || 3.5}m high ceiling with muted subtle architectural shadow reveals`,
+      'continuous solid architectural backdrop feature wall with fixed geometric balance (structured rich walnut millwork paneling flanking refined stone paneling centered directly behind the sofa, strictly continuous without sudden seams or material switches behind the sofa)',
+      'side panoramic floor-to-ceiling window wall positioned on the room flank, providing pure soft diffuse natural daylight as the primary key light orthogonal to the sofa arrangement',
       'strict orthogonal architectural grid alignment: the hero sofa, center coffee table, and large area rug are precisely aligned parallel with the backdrop wall and room perspective grid, sharing cohesive vanishing points with floor tiles and architectural axes, eliminating mismatched angles or floating orientation'
     ];
 
-    // 3. 美学硬装空间色调与材质采光系统 (Interior Dominant Palette & Lighting)
+    // 3. 美学硬装空间色调与材质采光系统 (Interior Dominant Palette & High-End Photography Lighting)
     const styleDna = compileStyleDnaToEnglish(stylePreset);
     const styleClauses = [
       styleDna.styleMandateClause,
@@ -147,7 +147,7 @@ export class SceneMasterPromptCompiler {
       ...(stylePreset.promptFragments || []),
       `spatial color harmony: ${styleDna.dominantColorTone}`,
       `curated architectural materiality: ${styleDna.materialFinishes}`,
-      `lighting: ${styleDna.atmosphericLighting}, raytraced photorealistic interior global illumination`
+      `lighting: ${styleDna.atmosphericLighting}, pure soft north-facing natural window daylight, subtle natural light falloff creating deep organic leather modeling, muted ambient ceiling without glaring yellow cove strips, authentic ambient-occlusion contact shadows grounding furniture`
     ];
 
     // 4. 摄影机与构图约定 (经典大平层平视构图，天地平衡，严防沉底与空地毯)
@@ -156,8 +156,7 @@ export class SceneMasterPromptCompiler {
       '35mm architectural prime lens at eye level (height 135cm)',
       'perfect two-point architectural perspective, strictly plumb vertical lines without keystone convergence or wall tilting',
       `proportional ${aspectRatio} composition`,
-      'masterful architectural spatial balance: harmonious 1:1 vertical balance between soaring ceiling architectural volume and floor rug, capturing both the ceiling lighting architecture and the grounded living room ensemble',
-      'centered furniture ensemble anchored comfortably in mid-ground parallel to the architectural backdrop wall, preventing excessive empty rug void in foreground',
+      'masterful commercial furniture catalog composition: grounded living room ensemble comfortably centered in mid-ground against the solid architectural feature wall, gentle subtle ceiling headroom, preventing excessive empty rug void in foreground',
       'neutral straight-on architectural perspective angle (yaw 0 deg, pitch -1 deg), sofa aligned squarely with camera axis and backdrop elevation'
     ];
 

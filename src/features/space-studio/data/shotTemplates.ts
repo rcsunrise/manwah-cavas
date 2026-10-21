@@ -46,7 +46,11 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
         'excessive_empty_wooden_floor_in_foreground',
         'vast_barren_foreground_floor_void',
         'deployed_footrest_without_people',
-        'blank_featureless_white_ceiling'
+        'blank_featureless_white_ceiling',
+        'flipped_room',
+        'mirrored_window',
+        'altered_wall_finishes',
+        'newly_invented_architecture'
       ]
     },
     description: '焦段 24mm 超广角建筑镜头，机位高度 118cm 人眼平视中轴线（Yaw: 0°/Pitch: 0°），严苛横平竖直两点透视，极度开阔的大平层横厅大开间气场。艺术地毯向前舒展消除空旷地面，通透通顶落地窗与高级建筑暗藏灯槽天花一体延展，家具居中庄重恢弘，全套脚踏平整收起。'
@@ -134,7 +138,17 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
       mustInclude: ['two_thirds_hero_sofa', 'outer_armrest_contour', 'luxury_architectural_backdrop', 'indoor_foliage_plant'],
-      mustExclude: ['separate_accent_single_chair', 'isolated_armchair', 'full_sofa_100_percent_wide', 'flat_frontal_view', 'rigid_stiff_models']
+      mustExclude: [
+        'separate_accent_single_chair',
+        'isolated_armchair',
+        'full_sofa_100_percent_wide',
+        'flat_frontal_view',
+        'rigid_stiff_models',
+        'flipped_room',
+        'mirrored_window_position',
+        'reversed_daylight_direction',
+        'different_room_background'
+      ]
     },
     description: '焦段 45mm 人文中焦，机位高度 110cm，侧前方 28° 透视，精细呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
   },
@@ -162,8 +176,20 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'luxury_architectural_backdrop', 'wall_shelves_ambient_light'],
-      mustExclude: ['separate_accent_single_chair', 'isolated_armchair', 'full_sofa_100_percent_wide', 'flat_frontal_view', 'rigid_stiff_models']
+      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'luxury_architectural_backdrop', 'ambient_cove_light_strip'],
+      mustExclude: [
+        'separate_accent_single_chair',
+        'isolated_armchair',
+        'full_sofa_100_percent_wide',
+        'flat_frontal_view',
+        'rigid_stiff_models',
+        'arched_shelves',
+        'bookshelf',
+        'bookcase',
+        'wall_niches',
+        'built_in_shelving',
+        'different_room_background'
+      ]
     },
     description: '焦段 45mm 人文中焦，机位高度 110cm，右侧前方 28° 透视，呈现主沙发 2/3 产品角度与侧翼线条，默认无模特时脚托完全收起'
   },
@@ -191,8 +217,24 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'lifestyle',
-      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_mounting', 'side_armrest_quilting_detail', 'circular_motion_button', 'fully_retracted_closed_footrest', 'panoramic_window_backdrop'],
-      mustExclude: ['gap_away_from_wall', 'detached_from_back_wall', 'deployed_footrest', 'extended_footrest', 'open_recliner', 'flat_frontal_view', 'crooked_perspective', 'rigid_stiff_models']
+      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_placement', 'side_armrest_quilting_detail', 'circular_motion_button', 'fully_retracted_closed_footrest', 'panoramic_window_backdrop'],
+      mustExclude: [
+        'gap_away_from_wall',
+        'detached_from_back_wall',
+        'deployed_footrest',
+        'extended_footrest',
+        'open_recliner',
+        'flat_frontal_view',
+        'crooked_perspective',
+        'rigid_stiff_models',
+        'bookshelf',
+        'bookcase',
+        'study_room',
+        'library_shelves',
+        'office_room',
+        'wall_niches',
+        'different_room_background'
+      ]
     },
     description: '焦段 35mm，低视点机位高度 90cm（参考图示4坐姿眼平），侧向 80° 透视，直观呈现主沙发贴墙零距离（<5cm）闭合常态，侧面绗缝工艺与靠墙零间隙一览无余，功能位严格保持关闭'
   },
@@ -220,8 +262,8 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       rollDeg: 0,
       target: { type: 'product', id: 'living_ensemble' },
       framing: 'product',
-      mustInclude: ['hero_main_sofa', 'center_coffee_table', 'foreground_table_styling', 'carpet_pattern'],
-      mustExclude: ['messy_foreground', 'wide_empty_edges', 'flat_frontal_mugshot']
+      mustInclude: ['hero_main_sofa', 'center_coffee_table', 'foreground_table_styling', 'carpet_pattern', 'natural_daylight_through_window'],
+      mustExclude: ['messy_foreground', 'wide_empty_edges', 'flat_frontal_mugshot', 'night_time', 'dark_room', 'moody_night_shadows']
     },
     description: '焦段 40mm，机位高度 115cm，微俯 -5°，16:9 宽屏中景，主沙发与奢石中岛双茶几亲密呼应，经典起居组群生活方式'
   },
@@ -250,7 +292,20 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
       target: { type: 'product', id: 'recliner' },
       framing: 'lifestyle',
       mustInclude: ['manwah_power_recliner_chair', 'open_spacious_living_room_placement', 'motion_mechanism_ergonomics', 'ergonomic_recliner_contour', 'ambient_living_rug'],
-      mustExclude: ['distant_room_clutter', 'crooked_camera_shifts', 'three_seater_sofa_centered']
+      mustExclude: [
+        'distant_room_clutter',
+        'crooked_camera_shifts',
+        'three_seater_sofa_centered',
+        'hallway',
+        'corridor',
+        'doorway',
+        'foyer',
+        'door_frame',
+        'passageway',
+        'entryway',
+        'white_door_frame',
+        'different_room_background'
+      ]
     },
     description: '焦段 45mm，机位高度 100cm（参考图示5中景眼平），固定 35° 侧斜角，单椅独立置于空旷开阔的客厅中央，展示单椅 5 种功能角度与舒展外观（默认无模特，模特为单独添加）'
   },
