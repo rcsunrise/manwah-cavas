@@ -1976,6 +1976,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const targetShotCode = targetShot.templateCode;
       const isHeroSofaDedicatedShot = ['A03', 'A04', 'A05', 'A06'].includes(targetShotCode);
       const isReclinerDedicatedShot = ['A08'].includes(targetShotCode);
+      const isDiningDedicatedShot = ['A09'].includes(targetShotCode);
 
       const hero3SeatSofa = activeEnsemble.find(
         (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
@@ -1983,11 +1984,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const reclinerChair = activeEnsemble.find(
         (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
       );
+      const diningTableProd = activeEnsemble.find(
+        (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
+      );
 
       const primaryProd = (isHeroSofaDedicatedShot && hero3SeatSofa)
         ? hero3SeatSofa
         : (isReclinerDedicatedShot && reclinerChair)
         ? reclinerChair
+        : (isDiningDedicatedShot && diningTableProd)
+        ? diningTableProd
         : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]);
 
       // 提取该核心单品的独立真值资产：优先使用独立切片原图 (如 cropBase64, cropImageUrl)
@@ -2004,12 +2010,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       // 搭配品精准过滤：
       // 1. A04 / A05 / A06 (主沙发特写/侧剖) 以及 A08 (单椅功能特写)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
       // 2. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
+      // 3. A09 (餐桌展示景)：若上传了餐桌，严格剔除主沙发，防止双家具冲突！
       const filteredEnsemble = activeEnsemble.filter((p) => {
         if (['A04', 'A05', 'A06', 'A08'].includes(targetShotCode)) {
           return p.id === primaryProd.id;
         }
         if (targetShotCode === 'A03') {
           return p.id === primaryProd.id || p.role === 'coffee_table';
+        }
+        if (targetShotCode === 'A09' && diningTableProd) {
+          return p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat';
         }
         return true;
       });

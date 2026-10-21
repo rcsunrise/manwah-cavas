@@ -300,10 +300,24 @@ export class SpaceImageGenerationService {
 
     if (shotCode === 'A09' && hasDiningAsset && diningProduct) {
       activePrimaryProduct = diningProduct;
+    } else if (shotCode === 'A08') {
+      const reclinerProduct = (input.ensembleProducts || []).find(
+        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
+      );
+      if (reclinerProduct) {
+        activePrimaryProduct = reclinerProduct;
+      }
+    } else if (['A03', 'A04', 'A05', 'A06'].includes(shotCode)) {
+      const hero3SeatProduct = (input.ensembleProducts || []).find(
+        (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
+      );
+      if (hero3SeatProduct) {
+        activePrimaryProduct = hero3SeatProduct;
+      }
     }
 
-    const effectiveProductImageRef = (shotCode === 'A09' && hasDiningAsset && activePrimaryProduct !== primaryProduct)
-      ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl)
+    const effectiveProductImageRef = (activePrimaryProduct !== primaryProduct)
+      ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.cropBase64 || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl || activePrimaryProduct?.referenceImage)
       : (productReferenceImage || activePrimaryProduct?.referenceImage);
 
     const [productInline, masterInline, shotInline] = await Promise.all([
@@ -467,6 +481,22 @@ export class SpaceImageGenerationService {
 
       // 编织多模态视觉参考图像 (按工作模式优先级排序)
       const images: Array<{ data: string; mimeType?: string; role?: string }> = [];
+      // 核心工业逻辑：针对 3人位主沙发专属镜头 (A03, A04, A05, A06)，绝对不把单椅作为搭配品参考图塞入！
+      // A04 (2/3亲子景) / A05 (2/3私享景) / A06 (零靠墙侧景)：100% 专属于独立 3 人位主沙发资产，严格杜绝任何单椅或茶几参考图混入干扰！
+      // A03 (3人位焦点景)：仅保留中心茶几参考图，严格剔除侧边单椅！
+      const allowedSecondaryInlines = secondaryInlines.filter(s => {
+        if (['A04', 'A05', 'A06'].includes(shotCode)) {
+          return false;
+        }
+        if (shotCode === 'A03') {
+          return s.product.role === 'coffee_table';
+        }
+        return true;
+      });
+
+      const maxSecItems = targetModel.includes('gpt') ? 1 : 3;
+      const pushedSecondaryInlines = allowedSecondaryInlines.slice(0, maxSecItems);
+
       if (shotInline) {
         // 人物添加模式：以当前镜头真实底图为最高物理基石
         images.push({
@@ -495,22 +525,8 @@ export class SpaceImageGenerationService {
           });
         }
 
-        // 核心工业逻辑：针对 3人位主沙发专属镜头 (A03, A04, A05, A06)，绝对不把单椅作为搭配品参考图塞入！
-        // A04 (2/3亲子景) / A05 (2/3私享景) / A06 (零靠墙侧景)：100% 专属于独立 3 人位主沙发资产，严格杜绝任何单椅或茶几参考图混入干扰！
-        // A03 (3人位焦点景)：仅保留中心茶几参考图，严格剔除侧边单椅！
-        const allowedSecondaryInlines = secondaryInlines.filter(s => {
-          if (['A04', 'A05', 'A06'].includes(shotCode)) {
-            return false;
-          }
-          if (shotCode === 'A03') {
-            return s.product.role === 'coffee_table';
-          }
-          return true;
-        });
-
         // 注入搭配产品参考图 (仅注入允许的搭配品)
-        const maxSecItemsHuman = targetModel.includes('gpt') ? 1 : 3;
-        for (const secItem of allowedSecondaryInlines.slice(0, maxSecItemsHuman)) {
+        for (const secItem of pushedSecondaryInlines) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,
@@ -532,21 +548,8 @@ export class SpaceImageGenerationService {
             role: 'scene_reference'
           });
         }
-        // 核心工业逻辑：针对 3人位主沙发专属镜头 (A03, A04, A05, A06)，绝对不把单椅作为搭配品参考图塞入！
-        // A04 (2/3亲子景) / A05 (2/3私享景) / A06 (零靠墙侧景)：100% 专属于独立 3 人位主沙发资产，严格杜绝任何单椅或茶几参考图混入干扰！
-        // A03 (3人位焦点景)：仅保留中心茶几参考图，严格剔除侧边单椅！
-        const allowedSecondaryInlines = secondaryInlines.filter(s => {
-          if (['A04', 'A05', 'A06'].includes(shotCode)) {
-            return false;
-          }
-          if (shotCode === 'A03') {
-            return s.product.role === 'coffee_table';
-          }
-          return true;
-        });
 
-        const maxSecItems = targetModel.includes('gpt') ? 1 : 3;
-        for (const secItem of allowedSecondaryInlines.slice(0, maxSecItems)) {
+        for (const secItem of pushedSecondaryInlines) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,
@@ -555,20 +558,10 @@ export class SpaceImageGenerationService {
         }
       }
 
-      // 构建针对搭配产品的多模态参考图指令描述 (仅针对被允许的搭配品)
-      const allowedSecondaryInlines = secondaryInlines.filter(s => {
-        if (['A04', 'A05', 'A06'].includes(shotCode)) {
-          return false;
-        }
-        if (shotCode === 'A03') {
-          return s.product.role === 'coffee_table';
-        }
-        return true;
-      });
-
+      // 构建针对搭配产品的多模态参考图指令描述 (严格与实际传入 images 保持 1:1 对齐)
       let secondaryReferencesText = '';
-      if (allowedSecondaryInlines.length > 0) {
-        secondaryReferencesText = allowedSecondaryInlines
+      if (pushedSecondaryInlines.length > 0) {
+        secondaryReferencesText = pushedSecondaryInlines
           .map((s, idx) => {
             const refIdx = (shotInline || masterInline) ? 3 + idx : 2 + idx;
             const isArmless =

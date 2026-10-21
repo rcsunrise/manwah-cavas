@@ -311,6 +311,7 @@ router.post('/confirm-production-truth', async (req: Request, res: Response) => 
  * 为指定镜头生成 4 候选方案（严格继承 A00 空间与家具世界，仅 Camera DNA 驱动，并提供 4 组细分变体）
  */
 router.post('/render-candidates', async (req: Request, res: Response) => {
+  let lockKey: string | null = null;
   try {
     const parsed = RenderShotSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -338,7 +339,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const isHumanPass = Boolean((req.body as any).isHumanPass);
 
     // 防抖防并发锁：拦截 2 秒内同镜头的重复提交，避免重复调用生图 API
-    const lockKey = `${projectId}:${shotCode}:${isHumanPass ? 'human' : 'base'}`;
+    lockKey = `${projectId}:${shotCode}:${isHumanPass ? 'human' : 'base'}`;
     const now = Date.now();
     const existingLockTime = activeRenderingLocks.get(lockKey);
     if (existingLockTime && now - existingLockTime < 2000) {
@@ -549,10 +550,12 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     });
   } finally {
     // 渲染完成后延迟释放锁，避免毫秒级连击
-    const lockKey = `${(req.body as any)?.projectId}:${(req.body as any)?.shotCode}:${(req.body as any)?.isHumanPass ? 'human' : 'base'}`;
-    setTimeout(() => {
-      activeRenderingLocks.delete(lockKey);
-    }, 1500);
+    if (lockKey) {
+      const keyToRelease = lockKey;
+      setTimeout(() => {
+        activeRenderingLocks.delete(keyToRelease);
+      }, 1500);
+    }
   }
 });
 

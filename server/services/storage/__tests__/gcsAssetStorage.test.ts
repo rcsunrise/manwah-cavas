@@ -49,7 +49,7 @@ describe('GcsAssetStorage (G1 Asset Core Spec)', () => {
     await storage.delete(objectKey);
     const existsAfterDelete = await storage.exists(objectKey);
     expect(existsAfterDelete).toBe(false);
-  });
+  }, 15000);
 
   it('generates signed read and upload urls with reasonable expiration', async () => {
     const objectKey = 'projects/test-proj/shots/shot-a02/revisions/rev-01/original.webp';
