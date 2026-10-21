@@ -330,32 +330,85 @@ export const STUDIO_CHOREOGRAPHY_TEMPLATES: StudioChoreographyTemplate[] = [
   },
   {
     id: 'studio-tpl-a07',
-    name: '【零靠墙展开 · 耳机沉浸仰躺放松】',
-    badge: '1人静谧沉浸 · 16:9零靠墙',
+    name: '【零靠墙闭合 · 耳机静享音乐从容端坐】',
+    badge: '1人静谧端坐 · 16:9零靠墙',
     targetShotCode: 'A06',
     targetShotName: 'A06 零靠墙功能闭合侧景',
     count: 1,
     mode: 'custom',
     recommendedAspect: '16:9' as any,
-    summary: '75°~90° 侧向大透视，直观展现沙发紧贴墙面零间隙前滑展开，女主佩戴耳机深度仰躺',
+    summary: '75°~90° 侧向大透视，直观展现沙发紧贴墙面零间隙闭合形态，女主优雅端坐闭目静享音乐',
     fullPrompt:
-      '16:9 宽屏电影感侧向透视景。机位处于侧向约 80° 角度，清晰呈现主沙发后背紧贴墙面仅数公分、“零靠墙前滑展开”的核心机构。沙发功能位已向前滑出并深度后仰至 150°，电动脚托平稳托起双足。一位年轻女主人身着棉麻居家服，头戴高保真无线头戴式耳机，双目微合微仰，沉浸在美妙音乐世界中。窗外通透光线打在展开的侧翼轮廓上，科技感与舒适度并存。',
+      '16:9 宽屏电影感侧向透视景。机位处于侧向约 80° 角度，清晰呈现主沙发后背紧贴墙面仅数公分（<5cm）的零靠墙闭合形态。沙发电动脚托完全闭合收于底部，靠背保持标准端坐形态。一位年轻女主人身着棉麻居家服端坐在沙发上，头戴高保真无线头戴式降噪耳机，双足自然踏在脚前羊毛地毯上，双手闲适搭在带有精致绗缝的真皮扶手上，双目微闭微仰，沉浸在美妙音乐世界中。突出零靠墙紧凑美学与从容居家格调。',
     negativeConstraints: [
       '严禁正面平视（必须是 75°~90° 侧面大透视呈现零靠墙结构）',
+      '严禁脚托展开或伸出（必须完全收回闭合）',
+      '严禁靠背大角度倾斜后仰',
       '严禁后背与墙面留有过大空隙（必须体现零靠墙）',
       '严禁动作僵硬紧绷'
     ],
-    lightingAdvice: '大侧光轮廓勾勒零靠墙滑轨前移弧线与人体舒展线条',
+    lightingAdvice: '大侧光轮廓勾勒零靠墙靠背贴墙线条与人体舒展轮廓',
     slots: [
       {
-        roleLabel: '女主人 (零靠墙音乐沉浸位)',
+        roleLabel: '女主人 (零靠墙音乐沉浸端座位)',
         defaultRole: 'mother',
         gender: 'female',
         ageRange: '26-32岁 知性文艺',
-        positionDesc: '主沙发侧边展开功能位 (前滑展开 150°，脚托水平托举)',
-        actionDesc: '佩戴头戴式耳机，头枕微仰，双目微闭，双手闲适交叠或搭在扶手上',
-        ergonomicPosture: '零重力贴合承托，腿部平直舒展',
+        positionDesc: '主沙发侧边标准闭合坐位 (脚托完全收拢，双足着地)',
+        actionDesc: '佩戴头戴式耳机，端坐优雅倚靠，双目微闭静听，双手闲适搭在扶手上',
+        ergonomicPosture: '腰背贴靠饱满腰枕，双腿自然垂直垂足，神态静谧舒适',
         suggestedProps: ['头戴式降噪耳机']
+      }
+    ]
+  },
+  {
+    id: 'studio-tpl-a03',
+    name: '【3人位主沙发 · 温馨家庭中心聚会】',
+    badge: '3人家庭温馨 · 4:3经典',
+    targetShotCode: 'A03',
+    targetShotName: 'A03 三人位主沙发组合焦点景',
+    count: 3,
+    mode: 'custom',
+    recommendedAspect: '4:3',
+    summary: '以 3 人位主沙发为唯一视觉中心，父母与活泼女儿自然依偎入座，正前平视呈现温馨家庭其乐融融',
+    fullPrompt:
+      '4:3 经典商业摄影画幅。机位正平视聚焦三人位主沙发。男主人与女主人分别坐在主沙发舒适座区，手持温热茶杯低声倾谈；活泼可爱的小女儿坐在中间依偎在父母身旁，专注翻看精装绘本。整张三人沙发皮革质感饱满，自然入座下沉褶皱真实，沙发前奢石茶几放有茶具与艺术花瓶。画面严格聚焦主沙发本身，无多余侧边单椅干扰。',
+    negativeConstraints: [
+      '严禁单椅或无关家具抢占中心位置',
+      '严禁肢体僵硬呆板摆拍',
+      '严禁画面边缘出现半截家具'
+    ],
+    lightingAdvice: '正面明朗通透的自然窗光与室内温馨暖光交融',
+    slots: [
+      {
+        roleLabel: '男主人 (主座谈话位)',
+        defaultRole: 'father',
+        gender: 'male',
+        ageRange: '32-38岁 儒雅精英',
+        positionDesc: '主沙发外侧座区',
+        actionDesc: '前倾放松坐姿，手持茶杯与妻子对视交谈',
+        ergonomicPosture: '重心自然微倾，手肘轻搭大腿',
+        suggestedProps: ['白瓷茶杯']
+      },
+      {
+        roleLabel: '女主人 (优雅倚靠位)',
+        defaultRole: 'mother',
+        gender: 'female',
+        ageRange: '30-35岁 气质名媛',
+        positionDesc: '主沙发另一侧座区',
+        actionDesc: '侧倚靠背，一手搂着身侧孩子，温和微笑倾听',
+        ergonomicPosture: '侧倚腰背支撑，仪态端庄大方',
+        suggestedProps: []
+      },
+      {
+        roleLabel: '小女儿 (中央依偎伴读位)',
+        defaultRole: 'girl',
+        gender: 'female',
+        ageRange: '5-8岁 甜美可爱',
+        positionDesc: '主沙发中央座区',
+        actionDesc: '依偎在母亲身侧，低头专注翻看立体儿童绘本',
+        ergonomicPosture: '双腿并拢屈坐，神情专注喜悦',
+        suggestedProps: ['精装儿童立体绘本']
       }
     ]
   },
@@ -502,14 +555,14 @@ export const STUDIO_CHOREOGRAPHY_TEMPLATES: StudioChoreographyTemplate[] = [
 export function getRecommendedStudioTemplate(shotCode?: string): StudioChoreographyTemplate {
   if (!shotCode) return STUDIO_CHOREOGRAPHY_TEMPLATES[0];
   const upper = shotCode.toUpperCase();
-  if (upper === 'A04') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a04') || STUDIO_CHOREOGRAPHY_TEMPLATES[1];
-  if (upper === 'A05') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a05') || STUDIO_CHOREOGRAPHY_TEMPLATES[2];
-  if (upper === 'A06') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a07') || STUDIO_CHOREOGRAPHY_TEMPLATES[4];
+  if (upper === 'A03') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a03') || STUDIO_CHOREOGRAPHY_TEMPLATES[3]; // 3人位主沙发家庭聚会焦点
+  if (upper === 'A04') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a04') || STUDIO_CHOREOGRAPHY_TEMPLATES[1]; // 2/3主沙发亲子自拍
+  if (upper === 'A05') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a05') || STUDIO_CHOREOGRAPHY_TEMPLATES[2]; // 2/3主沙发私享微醺
+  if (upper === 'A06') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a07') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 零靠墙闭合侧景静享音乐
   if (upper === 'A07') return STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 沙发茶几组群中景 / 社交聚会
-  if (upper === 'A08') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a08-01') || STUDIO_CHOREOGRAPHY_TEMPLATES[0];
-  if (upper === 'A03') return STUDIO_CHOREOGRAPHY_TEMPLATES[0]; // 主沙发/单椅零重力
-  if (upper === 'A02') return STUDIO_CHOREOGRAPHY_TEMPLATES[3]; // 精英主座 3:4
-  if (upper === 'A01' || upper === 'A09') return STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 三代同堂全景 / 餐客全景
+  if (upper === 'A08') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a08-01') || STUDIO_CHOREOGRAPHY_TEMPLATES[0]; // 单椅五档深度睡眠/零重力舒享
+  if (upper === 'A02') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-04') || STUDIO_CHOREOGRAPHY_TEMPLATES[3]; // 精英主座 3:4
+  if (upper === 'A01' || upper === 'A09') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-05') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 三代同堂全景 / 餐客全景
   return STUDIO_CHOREOGRAPHY_TEMPLATES[0];
 }
 

@@ -129,18 +129,22 @@ export class SceneMasterPromptCompiler {
       }
     }
 
-    // 2. 空间户型描述与建筑轴线对齐 (Architectural Space & Fixed Backdrop Topology)
+    // 2. 美学硬装空间色调与材质采光系统 (Interior Dominant Palette & High-End Photography Lighting)
+    const styleDna = compileStyleDnaToEnglish(stylePreset);
+    const backdropMaterialDesc = styleDna.materialFinishes
+      ? `curated ${styleDna.materialFinishes}`
+      : 'refined architectural paneling';
+
+    // 3. 空间户型描述与建筑轴线对齐 (Architectural Space & Fixed Backdrop Topology)
     const architecturalClauses = [
       `luxury interior architecture: ${spacePreset.name}`,
       ...(spacePreset.promptFragments || []),
       `grand open layout, ${spacePreset.ceilingHeight || 3.5}m high ceiling with muted subtle architectural shadow reveals`,
-      'continuous solid architectural backdrop feature wall with fixed geometric balance (structured rich walnut millwork paneling flanking refined stone paneling centered directly behind the sofa, strictly continuous without sudden seams or material switches behind the sofa)',
+      `continuous solid architectural backdrop feature wall with fixed geometric balance (${backdropMaterialDesc} centered directly behind the sofa, strictly continuous without sudden seams or material switches behind the sofa)`,
       'side panoramic floor-to-ceiling window wall positioned on the room flank, providing pure soft diffuse natural daylight as the primary key light orthogonal to the sofa arrangement',
       'strict orthogonal architectural grid alignment: the hero sofa, center coffee table, and large area rug are precisely aligned parallel with the backdrop wall and room perspective grid, sharing cohesive vanishing points with floor tiles and architectural axes, eliminating mismatched angles or floating orientation'
     ];
 
-    // 3. 美学硬装空间色调与材质采光系统 (Interior Dominant Palette & High-End Photography Lighting)
-    const styleDna = compileStyleDnaToEnglish(stylePreset);
     const styleClauses = [
       styleDna.styleMandateClause,
       `interior design aesthetic: ${stylePreset.name}`,
