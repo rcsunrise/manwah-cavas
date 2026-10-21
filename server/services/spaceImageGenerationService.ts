@@ -302,8 +302,8 @@ export class SpaceImageGenerationService {
       activePrimaryProduct = diningProduct;
     } else if (shotCode === 'A08') {
       const reclinerProduct = (input.ensembleProducts || []).find(
-        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
-      );
+        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
+      ) || (input.ensembleProducts || []).find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
       if (reclinerProduct) {
         activePrimaryProduct = reclinerProduct;
       }
@@ -316,8 +316,8 @@ export class SpaceImageGenerationService {
       }
     }
 
-    const effectiveProductImageRef = (activePrimaryProduct !== primaryProduct)
-      ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.cropBase64 || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl || activePrimaryProduct?.referenceImage)
+    const effectiveProductImageRef = (activePrimaryProduct && activePrimaryProduct !== primaryProduct)
+      ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.cropBase64 || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl || activePrimaryProduct?.referenceImage || productReferenceImage)
       : (productReferenceImage || activePrimaryProduct?.referenceImage);
 
     const [productInline, masterInline, shotInline] = await Promise.all([
@@ -710,12 +710,14 @@ ${positivePrompt}
 CORE INVARIANTS:
 - PERSPECTIVE & LIGHTING: Eye-level standing camera height (135cm) with clean two-point architectural perspective and plumb vertical lines. Soft natural daylight streaming through side panoramic floor-to-ceiling windows. Continuous solid architectural feature wall centered behind sofa.
 - SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
+- ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
 
         const cleanNegativeConstraintsA00 = [
           negativePrompt,
           antiStickerNegatives,
+          'throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric pillow, blanket, clutter, floral armchair, patterned fabric chair, patchwork armchair',
           'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
           'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap',
           primaryProduct?.role === 'sofa_2seat' ? 'three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, squished proportions' : '',
@@ -884,8 +886,8 @@ CORE INVARIANTS:
         }
       });
 
-      // 5. 获取签名或受控访问 URL
-      const readUrlRes = await this.storage.getSignedReadUrl(objectKey, 3600, 'generated');
+      // 5. 优先使用受控同源代理 URL，确保客户端在任何网络环境下（包括无外网代理的国内浏览器）100% 畅通稳定加载
+      const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
 
       const warningNotice = wasFallbackUsed
         ? `主选模型 (${primaryModel}) 响应受阻，已自动故障转移至 (${usedModel}) 成功生成真实大图！`
@@ -893,7 +895,7 @@ CORE INVARIANTS:
 
       return {
         objectKey,
-        imageUrl: readUrlRes?.url || `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
+        imageUrl: proxyUrl,
         provider: usedProvider,
         model: usedModel,
         bytes: imageBuffer.length,

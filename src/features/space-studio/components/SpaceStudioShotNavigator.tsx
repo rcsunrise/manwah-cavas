@@ -47,12 +47,29 @@ const ShotThumbnailImage: React.FC<{
   lensMm?: number;
 }> = ({ src, lensMm }) => {
   const [hasError, setHasError] = useState(false);
+  const [imgSrc, setImgSrc] = useState(src);
 
   useEffect(() => {
     setHasError(false);
+    setImgSrc(src);
   }, [src]);
 
-  if (!src || hasError) {
+  const handleError = () => {
+    if (imgSrc && imgSrc.includes('storage.googleapis.com')) {
+      try {
+        const u = new URL(imgSrc);
+        const parts = u.pathname.split('/');
+        const key = parts.slice(2).join('/');
+        if (key) {
+          setImgSrc(`/api/space/storage/local-file?key=${encodeURIComponent(key)}`);
+          return;
+        }
+      } catch {}
+    }
+    setHasError(true);
+  };
+
+  if (!imgSrc || hasError) {
     return (
       <div className="flex flex-col items-center justify-center gap-1 w-full h-full select-none">
         <Camera className="w-4 h-4 text-stone-400" />
@@ -63,9 +80,9 @@ const ShotThumbnailImage: React.FC<{
 
   return (
     <img
-      src={src}
+      src={imgSrc}
       alt=""
-      onError={() => setHasError(true)}
+      onError={handleError}
       className="w-full h-full object-cover select-none"
       referrerPolicy="no-referrer"
     />

@@ -2182,8 +2182,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
       );
       const reclinerChair = activeEnsemble.find(
-        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
-      );
+        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
+      ) || activeEnsemble.find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
       const diningTableProd = activeEnsemble.find(
         (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
       );
@@ -2205,15 +2205,20 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         bestPrimaryView.reference?.objectKey ||
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
-        (primaryProd as any)?.uploadedImageUrl;
+        (primaryProd as any)?.uploadedImageUrl ||
+        products[0]?.cropImageUrl ||
+        products[0]?.referenceImages?.[0]?.publicUrl;
 
       // 搭配品精准过滤：
       // 1. A04 / A05 / A06 (主沙发特写/侧剖) 以及 A08 (单椅功能特写)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
       // 2. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
       // 3. A09 (餐桌展示景)：若上传了餐桌，严格剔除主沙发，防止双家具冲突！
       const filteredEnsemble = activeEnsemble.filter((p) => {
-        if (['A04', 'A05', 'A06', 'A08'].includes(targetShotCode)) {
+        if (['A04', 'A05', 'A06'].includes(targetShotCode)) {
           return p.id === primaryProd.id;
+        }
+        if (targetShotCode === 'A08') {
+          return reclinerChair ? p.id === reclinerChair.id : p.id === primaryProd.id;
         }
         if (targetShotCode === 'A03') {
           return p.id === primaryProd.id || p.role === 'coffee_table';

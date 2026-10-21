@@ -225,8 +225,8 @@ export class ShootCompiler {
       (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
     );
     const reclinerCandidate = activeProducts.find(
-      (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位)/.test(p.name || '')
-    );
+      (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
+    ) || activeProducts.find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
     const diningCandidate = activeProducts.find(
       (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅|配套)/.test(p.name || '')
     );
@@ -621,8 +621,10 @@ Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with
       );
     } else if (shot.templateCode === 'A08') {
       const postureMandate = isHumanPassActive
-        ? 'with motorized footrest fully deployed supporting lady comfortably browsing a tablet/iPad in 110-120 degree ergonomic reading posture'
-        : 'with motorized footrest fully deployed showcasing ergonomic 5-mode contour in pristine unoccupied showroom condition (strictly empty room, zero human presence)';
+        ? 'with motorized footrest gently deployed supporting lady comfortably browsing a tablet/iPad in 110-120 degree ergonomic reading posture'
+        : (isFunctionalClosed
+            ? 'with motorized footrest completely retracted, closed, and tucked flush under base in pristine showroom upright configuration (strictly zero deployed footrest, closed flush)'
+            : 'with motorized footrest fully deployed showcasing ergonomic 5-mode contour in pristine unoccupied showroom condition (strictly empty room, zero human presence)');
 
       const lifestyleMomentA08 = isHumanPassActive
         ? 'and personal sanctuary lifestyle'
@@ -734,14 +736,20 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       const compositeInfo = resolveCompositeMaterialDna(sec.materials?.[0] || sec.name, sec.role);
       mustIncludeClauses.push(secColorEn, secMatEn);
 
+      const isChairFabric = /fabric|cloth|microfiber|woven|linen|textile|麻|布/i.test(
+        `${sec.materials?.join(' ') || ''} ${sec.name || ''}`
+      );
+      const chairUpholsteryClause = isChairFabric
+        ? 'textured upholstery fabric'
+        : `genuine top-grain semi-aniline cowhide leather in ${secColorEn}`;
+
       const isNonFunctionalOrArmless =
-        sec.role === 'lounge_chair' ||
-        sec.functionCapable === false ||
-        (sec.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.name));
+        (sec.role === 'lounge_chair' || sec.functionCapable === false) &&
+        !/(功能|电动|头等舱|展开|太空舱|大师)/.test(sec.name || '');
 
       if (isNonFunctionalOrArmless) {
         secondaryClauses.push(
-          `MANDATORY MATCHING ACCENT CHAIR: authentic modern armless lounge chair (${sec.name}) in ${secColorEn} (${secMatEn}), low-profile minimalist block seating, textured upholstery fabric, sleek swivel or stationary base, strictly NO armrests, strictly NO extended footrest, strictly NO electric motion mechanism`
+          `MANDATORY MATCHING ACCENT CHAIR: authentic modern armless lounge chair (${sec.name}) in ${secColorEn} (${secMatEn}), low-profile minimalist block seating, ${chairUpholsteryClause}, sleek swivel or stationary base, strictly NO armrests, strictly NO extended footrest, strictly NO electric motion mechanism`
         );
         negativeFramingConstraints.push(
           'bulky recliner footrest on lounge chair',
@@ -750,11 +758,21 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
           'extended footrest',
           'thick armrests on armless chair',
           'power recliner buttons',
-          'motorized reclining mechanism'
+          'motorized reclining mechanism',
+          'floral pattern armchair',
+          'patterned fabric chair',
+          'patchwork chair',
+          'mismatched printed fabric'
         );
-      } else if (sec.role === 'recliner_1seat') {
+      } else if (sec.role === 'recliner_1seat' || /(大师|单人|单椅|头等舱)/.test(sec.name || '')) {
         secondaryClauses.push(
           `MANDATORY MATCHING ARMCHAIR: authentic MANWAH power recliner armchair in ${secColorEn} ${secMatEn} matching secondary product reference${sec.sourceMasterImageUrl ? ' with lighting directly harmonized from master suite ensemble' : ''}`
+        );
+        negativeFramingConstraints.push(
+          'floral pattern armchair',
+          'patterned fabric chair',
+          'patchwork armchair',
+          'mismatched printed fabric'
         );
       } else if (sec.role === 'coffee_table') {
         secondaryClauses.push(
@@ -861,7 +879,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       ...mustIncludeClauses,
       ...secondaryClauses,
       ...sceneMasterHeritage,
-      !isHumanPassActive ? 'pure unoccupied architectural space, pristine showroom furniture presentation, zero human presence' : '',
+      !isHumanPassActive ? 'pure unoccupied architectural space, pristine showroom furniture presentation, zero human presence, clean empty sofa seat cushions strictly without decorative throw pillows or loose cushions' : '',
       'commercial furniture catalog masterpiece, authentic luxury materiality, razor sharp optical clarity, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
     ].filter(Boolean).join(', ');
 
@@ -874,6 +892,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
     const negativePrompt = [
       ...humanExclusionNegative,
       ...negativeFramingConstraints,
+      'throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, accent pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric patterned cushions, blanket on sofa, loose fabric on sofa, clutter on seating',
       'different room background, altered architectural layout, flipped room orientation, mirrored window, window on wrong side, reversed daylight direction, invented wall shelves, arched bookshelf, unreferenced bookcase, hallway or corridor view, doorway framing, nighttime dark atmosphere in daytime space',
       'physically moved furniture positions, shifted sofa coordinates',
       'deformed sofa structure, distorted perspective distortion, warped straight lines',

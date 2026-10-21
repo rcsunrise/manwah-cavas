@@ -386,8 +386,54 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
 ];
 
 /**
- * 依据镜头编号获取标准模版
+ * 空间母版 (A00) 标准模版
+ */
+export const SCENE_MASTER_TEMPLATE: ShotTemplate = {
+  id: 'tpl-a00',
+  code: 'A00',
+  name: '空间母版 (Scene Master)',
+  alignmentSample: 'Studio Sample Architectural Master Foundation / 35mm Frontal Baseline',
+  studioCategory: '权威基准·空间母版统领全景',
+  workflowRole: '35mm 建筑级基准·统领全屋空间硬装与光影基线',
+  recommendedAspectRatio: '4:3',
+  intent: {
+    intentCode: 'SI-01',
+    name: '空间母版权威基准 (Master Foundation)',
+    productDominancePct: 50,
+    backgroundSuppression: 'low',
+    maxOcclusionPct: 5,
+    description: '全景确立空间户型、建筑硬装材质、落地大窗采光与敏华家具的核心基准，统领后续 A01~A09 所有机位。'
+  },
+  defaultCamera: {
+    lensMm: 35,
+    heightCm: 135,
+    yawDeg: 0,
+    pitchDeg: -1,
+    rollDeg: 0,
+    target: { type: 'product', id: 'primary_sofa' },
+    framing: 'wide',
+    mustInclude: [
+      'strictly_straight_on_frontal_view',
+      'centered_marble_backdrop_wall_axis',
+      'panoramic_full_height_left_window',
+      'complete_3_plus_1_sofa_ensemble',
+      'white_matte_cylindrical_planter_anchor'
+    ],
+    mustExclude: [
+      'angled_side_perspective',
+      'excessive_ceiling_void',
+      'deployed_footrests_when_no_human'
+    ]
+  },
+  description: '焦段 35mm 人文广角镜头，机位高度 135cm，0° 正视对称基线，横向 4:3 画幅，统领全案空间母版。'
+};
+
+/**
+ * 依据镜头编号获取标准模版 (支持 A00 空间母版与 A01~A09 分镜模版)
  */
 export function getShotTemplateByCode(code: string): ShotTemplate | undefined {
+  if (code.toUpperCase() === 'A00') {
+    return SCENE_MASTER_TEMPLATE;
+  }
   return STANDARD_SHOT_TEMPLATES.find((t) => t.code.toUpperCase() === code.toUpperCase());
 }

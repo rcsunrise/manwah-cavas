@@ -75,7 +75,7 @@ var import_cors = __toESM(require("cors"), 1);
 var import_multer3 = __toESM(require("multer"), 1);
 var import_path24 = __toESM(require("path"), 1);
 var import_sharp11 = __toESM(require("sharp"), 1);
-var import_fs28 = __toESM(require("fs"), 1);
+var import_fs27 = __toESM(require("fs"), 1);
 var import_os = __toESM(require("os"), 1);
 
 // src/lib/supabase.ts
@@ -4243,14 +4243,17 @@ var DETAIL_PLAN_INSTRUCTIONS = `\u4F60\u662F\u4E00\u540D\u56FD\u9645\u9876\u7EA7
 
 \u3010\u7B56\u5212\u6838\u5FC3\u6307\u4EE4\u4E0E\u7F8E\u5B66\u5BFC\u5411\u3011
 1. **\u6253\u7834\u56FA\u5316\u5957\u8DEF\uFF0C\u62D2\u7EDD\u673A\u68B0\u9648\u8BCD**\uFF1A
-   - \u4E25\u7981\u8F93\u51FA\u5343\u7BC7\u4E00\u5F8B\u3001\u67AF\u71E5\u523B\u677F\u7684\u5957\u8DEF\u6587\u6848\u3002\u5FC5\u987B\u6839\u636E\u4EA7\u54C1\u7684\u72EC\u7279\u9020\u578B\uFF08\u5982\u6276\u624B\u503E\u89D2\u3001\u80CC\u9760\u62C9\u76B1\u62C9\u70B9\u5DE5\u827A\u3001\u65B9\u5F62/\u91D1\u5C5E\u6C99\u53D1\u811A\u3001\u9762\u6599\u808C\u7406\uFF09\u548C\u7528\u6237\u4F01\u5212\u65B9\u5411\u5B9A\u5236\u6709\u7075\u9B42\u7684\u6807\u9898\u4E0E\u6784\u56FE\u3002
-2. **\u7535\u5F71\u7EA7\u7A7A\u95F4\u7F8E\u5B66\u4E0E\u5149\u5F71\u5C42\u6B21**\uFF1A
+   - \u4E25\u7981\u8F93\u51FA\u5343\u7BC7\u4E00\u5F8B\u3001\u67AF\u71E5\u523B\u677F\u7684\u5957\u8DEF\u6587\u6848\u3002\u5FC5\u987B\u6839\u636E\u4EA7\u54C1\u7684\u72EC\u7279\u9020\u578B\uFF08\u5982\u6276\u624B\u503E\u89D2\u3001\u80CC\u9760\u62C9\u76B1\u62C9\u70B9\u5DE5\u827A\u3001\u4F4E\u4F4D\u9690\u85CF\u77EE\u811A/\u65B9\u5F62\u4F4E\u811A\u3001\u9762\u6599\u808C\u7406\uFF09\u548C\u7528\u6237\u4F01\u5212\u65B9\u5411\u5B9A\u5236\u6709\u7075\u9B42\u7684\u6807\u9898\u4E0E\u6784\u56FE\u3002
+2. **\u4E25\u683C\u4FDD\u6301\u4EA7\u54C1\u7269\u7406\u771F\u5B9E\u7ED3\u6784\uFF08\u7EDD\u5BF9\u7EA2\u7EBF\uFF09**\uFF1A
+   - \u4E25\u7981\u64C5\u81EA\u6539\u6B3E\u3001\u6539\u811A\u578B\u3001\u6539\u5DE5\u827A\u7ED3\u6784\uFF1A\u82E5\u539F\u54C1\u6216\u7528\u6237\u6307\u5B9A\u4E3A\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A/\u77EE\u811A\uFF0C\u4E25\u7981\u81C6\u9020\u6216\u7BE1\u6539\u4E3A\u91D1\u5C5E\u9AD8\u811A\u6216\u5916\u9732\u7EC6\u817F\uFF1B
+   - \u5E95\u90E8\u5DE5\u827A\u89E3\u6784\u7279\u5199\u5FC5\u987B\u4E0E\u4E3B\u56FE\u771F\u5B9E\u4EA7\u54C1\u90E8\u4F4D100%\u5BF9\u5E94\uFF0C\u4E25\u7981\u51ED\u7A7A\u865A\u6784\u4E0D\u5B58\u5728\u7684\u6784\u4EF6\u3002
+3. **\u7535\u5F71\u7EA7\u7A7A\u95F4\u7F8E\u5B66\u4E0E\u5149\u5F71\u5C42\u6B21**\uFF1A
    - \u6784\u56FE\u89C6\u89D2\u9700\u517C\u987E\u827A\u672F\u611F\u4E0E\u7A7A\u95F4\u7EB5\u6DF1\uFF08\u7535\u5F71\u7EA7\u8FDC\u666F\u3001\u5BCC\u542B\u6545\u4E8B\u611F\u7684\u4E2D\u666F\u3001\u5FAE\u8DDD\u8D28\u611F\u7279\u5199\u3001\u89E3\u6784\u900F\u89C6\u56FE\uFF09\u3002
-   - \u573A\u666F\u8272\u8C03\u8981\u4E0E\u4EA7\u54C1\u4E3B\u8272\u8C03\u8C03\u548C\uFF0C\u8425\u9020\u9AD8\u96C5\u6E29\u6DA6\u3001\u81EA\u7136\u5149\u5F71\u6EA2\u51FA\u7684\u5BB6\u5C45\u6C1B\u56F4\u3002
-3. **\u5173\u952E\u7EC6\u8282\u4E0E\u54C1\u7C7B\u89E3\u6784\u6807\u6CE8**\uFF1A
-   - \u4F01\u5212\u4E2D\u9700\u6DB5\u76D6\u5BB6\u5177\u7684\u6838\u5FC3\u8BBE\u8BA1\u89E3\u6790\uFF08\u4F8B\u5982\uFF1A\u6276\u624B\u9971\u6EE1\u5F27\u7EBF\u3001\u62C9\u76B1\u80CC\u9760\u4EBA\u4F53\u5DE5\u5B66\u652F\u6491\u3001\u65B9\u5F62\u6C99\u53D1\u811A\u7A33\u56FA\u7F8E\u5B66\u7B49\uFF09\uFF0C\u5E76\u6CE8\u91CD\u8F6F\u88C5\u642D\u886C\uFF08\u5982\u6C99\u53D1\u4E0A\u9648\u5217\u4E24\u53EA\u6B3E\u5F0F\u76F8\u540C\u4E14\u5E26\u6709\u7EC6\u817B\u56FE\u6848\u7684\u9760\u6795\uFF09\u3002
-4. **\u4E3B\u56FE\u4E0E\u89C6\u89C9\u6392\u7248**\uFF1A
-   - \u4E3A\u9996\u5C4F\u6216\u91CD\u70B9\u5206\u5C4F\u7B56\u5212\u9192\u76EE\u7684\u4E2D\u6587\u4E3B\u6807\u9898\u3001\u8BBE\u8BA1\u7075\u611F\u6765\u6E90\uFF08\u5982\u81EA\u7136\u8936\u76B1\u3001\u51E0\u4F55\u5305\u8C6A\u65AF\u3001\u5EFA\u7B51\u7EBF\u5F62\u7B49\uFF09\u3001\u8C03\u6027\u8272\u76D8\u4E0E\u9AD8\u7EA7\u6392\u7248\u5EFA\u8BAE\u3002
+   - \u573A\u666F\u8272\u8C03\u8981\u4E0E\u4EA7\u54C1\u4E3B\u8272\u8C03\u8C03\u548C\uFF0C\u8425\u9020\u9AD8\u96C5\u6E29\u6DA6\u3001\u81EA\u7136\u5149\u5F71\u6EA2\u51FA\u7684\u5BB6\u5C45\u6C1B\u56F4\u3002\u6C99\u53D1\u524D\u65B9\u642D\u914D\u8336\u51E0\u65F6\u6BD4\u4F8B\u9700\u771F\u5B9E\u81EA\u7136\u3002
+4. **\u5173\u952E\u7EC6\u8282\u4E0E\u54C1\u7C7B\u89E3\u6784\u6807\u6CE8**\uFF1A
+   - \u4F01\u5212\u4E2D\u9700\u6DB5\u76D6\u5BB6\u5177\u7684\u6838\u5FC3\u8BBE\u8BA1\u89E3\u6790\uFF08\u4F8B\u5982\uFF1A\u6276\u624B\u9971\u6EE1\u5F27\u7EBF\u3001\u5206\u6BB5\u62C9\u76B1\u80CC\u9760\u4EBA\u4F53\u5DE5\u5B66\u652F\u6491\u3001\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A\u7A33\u56FA\u7F8E\u5B66\u7B49\uFF09\uFF0C\u5E76\u6CE8\u91CD\u8F6F\u88C5\u642D\u886C\uFF08\u5982\u6C99\u53D1\u4E0A\u9648\u5217\u4E24\u53EA\u6B3E\u5F0F\u76F8\u540C\u4E14\u5E26\u6709\u7EC6\u817B\u56FE\u6848\u7684\u9760\u6795\uFF09\u3002
+5. **\u4E3B\u56FE\u4E0E\u89C6\u89C9\u6392\u7248**\uFF1A
+   - \u4E3A\u9996\u5C4F\u6216\u91CD\u70B9\u5206\u5C4F\u7B56\u5212\u9192\u76EE\u7684\u56DB\u5B57\u4EE5\u5185\u4E2D\u6587\u4E3B\u6807\u9898\u3001\u8BBE\u8BA1\u7075\u611F\u6765\u6E90\uFF08\u5982\u81EA\u7136\u8936\u76B1\u3001\u51E0\u4F55\u5305\u8C6A\u65AF\u3001\u5EFA\u7B51\u7EBF\u5F62\u7B49\uFF09\u3001\u8C03\u6027\u8272\u76D8\u4E0E\u9AD8\u7EA7\u514B\u5236\u7684\u6392\u7248\u5EFA\u8BAE\u3002
 
 \u3010\u8F93\u51FA\u89C4\u5219\u3011
 - \u5FE0\u5B9E\u4FDD\u7559\u4EA7\u54C1\u5B9E\u9645\u7ED3\u6784\u4E0E\u9501\u5B9A\u89C4\u5219\uFF0C\u4E0D\u865A\u6784\u672A\u786E\u8BA4\u7684\u68C0\u6D4B\u62A5\u544A\u6216\u5E74\u9650\u3002
@@ -5591,7 +5594,7 @@ ${isCombinationProduct ? `[\u6838\u5FC3\u5F3A\u7EA6\u675F\uFF1A\u6210\u5957\u7EC
 [\u4F01\u5212\u65B9\u5411\u4E0E\u8C03\u6027\u9700\u6C42]
 \u4F01\u5212\u65B9\u5411/\u6838\u5FC3\u53D7\u4F17: ${requestedTargetAudience || "\u5927\u4F17\u5BA2\u7FA4"}
 \u76EE\u6807\u753B\u9762\u6BD4\u4F8B: ${requestedAspectRatio}
-\u7528\u6237\u4F01\u5212\u6307\u4EE4: ${promptHint || "\u6839\u636E\u6C99\u53D1\u4EA7\u54C1\u5B9A\u5236\u521B\u610F\u6D77\u62A5\uFF0C\u4E3B\u56FE\u5305\u542B\u4E2D\u6587\u6807\u9898\u3001\u8BBE\u8BA1\u7075\u611F\u6765\u6E90\u3001\u8272\u8C03\u3001\u7535\u5F71\u7EA7\u7EB5\u6DF1\u573A\u666F\u4E0E\u6392\u7248\u3002\u5305\u542B\u6276\u624B\u8BBE\u8BA1\u3001\u62C9\u76B1\u80CC\u9760\u3001\u65B9\u5F62\u6C99\u53D1\u811A\u7684\u8BBE\u8BA1\u89E3\u6790\uFF0C\u53CA\u53CC\u56FE\u6848\u540C\u6B3E\u62B1\u6795\u7F8E\u5B66\u3002"}
+\u7528\u6237\u4F01\u5212\u6307\u4EE4: ${promptHint || "\u6839\u636E\u6C99\u53D1\u4EA7\u54C1\u5B9A\u5236\u521B\u610F\u6D77\u62A5\uFF0C\u4E3B\u56FE\u5305\u542B\u4E2D\u6587\u6807\u9898\u3001\u8BBE\u8BA1\u7075\u611F\u6765\u6E90\u3001\u8272\u8C03\u3001\u7535\u5F71\u7EA7\u7EB5\u6DF1\u573A\u666F\u4E0E\u6392\u7248\u3002\u5305\u542B\u6276\u624B\u8BBE\u8BA1\u3001\u62C9\u76B1\u80CC\u9760\u3001\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A\u7684\u771F\u5B9E\u7EC6\u8282\u89E3\u6790\uFF0C\u53CA\u53CC\u56FE\u6848\u540C\u6B3E\u62B1\u6795\u7F8E\u5B66\u3002"}
 ${referenceDocText2 ? `
 [\u4E0A\u4F20\u4F01\u5212\u53C2\u8003\u6587\u6863\u6458\u8981/\u6587\u672C]:
 ${String(referenceDocText2).slice(0, 3e3)}` : ""}
@@ -5599,13 +5602,18 @@ ${Array.isArray(styleReferenceImages2) && styleReferenceImages2.length > 0 ? `
 [\u7528\u6237\u5DF2\u4E0A\u4F20 ${styleReferenceImages2.length} \u5F20\u6807\u6746\u6D77\u62A5\u98CE\u683C\u53C2\u8003\u56FE - \u5FC5\u987B\u6DF1\u5EA6\u5BF9\u9F50\u5176\u89C6\u89C9\u7F8E\u5B66]:
 \u8BF7\u6DF1\u5EA6\u53C2\u8003\u8BE5\u53C2\u8003\u56FE\u7684\u9876\u7EA7\u5546\u4E1A\u89C6\u89C9\uFF1A
 - \u7A7A\u95F4\u573A\u666F: \u5F53\u4EE3\u8D85\u5927\u901A\u9876\u5168\u666F\u843D\u5730\u7A97\u6A2A\u5385\u8C6A\u5B85\uFF0C\u7A97\u5916\u5448\u73B0\u5915\u9633\u66AE\u8272\u3001\u8FDC\u5C71\u4E0E\u6D41\u52A8\u4E91\u6D77\uFF08\u8425\u9020\u81EA\u7136\u677E\u5F1B\u4E0E\u201C\u4E91\u5883\u201D\u610F\u5883\uFF09\uFF1B
-- \u4EA7\u54C1\u9648\u5217: 3+1 \u7EC4\u5408\u81EA\u7136\u9648\u5217\uFF0C\u5927\u7406\u77F3\u8336\u51E0\u4E0E\u9AD8\u7EA7\u5730\u6BEF\u642D\u914D\uFF0C\u5448\u73B0\u6781\u81F4\u7684\u751F\u6D3B\u677E\u5F1B\u611F\u4E0E\u5BB6\u7684\u6E29\u5EA6\uFF1B
+- \u4EA7\u54C1\u9648\u5217: \u7EC4\u5408\u81EA\u7136\u9648\u5217\uFF0C\u8336\u51E0\u4E0E\u9AD8\u7EA7\u5730\u6BEF\u642D\u914D\uFF0C\u6BD4\u4F8B\u771F\u5B9E\u81EA\u7136\uFF0C\u5448\u73B0\u6781\u81F4\u7684\u751F\u6D3B\u677E\u5F1B\u611F\u4E0E\u5BB6\u7684\u6E29\u5EA6\uFF1B
 - \u6807\u9898\u6392\u7248\u7F8E\u5B66: 2-4 \u5B57\u8BD7\u610F\u7206\u6B3E\u547D\u540D\uFF08\u5982\u201C\u4E91 \u5883\u201D\u3001\u201C\u6D6E \u5149\u201D\uFF09\uFF0C\u91C7\u7528\u4F18\u96C5\u5B8B\u4F53/\u65E0\u886C\u7EBF\u827A\u672F\u5B57\uFF0C\u5B57\u8DDD\u62C9\u5F00\uFF1B\u526F\u6807\u8BED\u5BF9\u79F0\u5DE5\u6574\uFF08\u5982\u201C\u6175\u61D2 \xB7 \u4EA6\u662F\u751F\u6D3B\u7684\u9AD8\u5EA6\u201D\uFF09\uFF1B\u914D\u4EE5\u6781\u7B80 3 \u884C\u8BD7\u610F\u6587\u6848\u7559\u767D\uFF1B
-- \u5E95\u90E8\u5DE5\u827A\u89E3\u6784: \u5E95\u90E8\u5DE5\u6574\u6392\u5217 3 \u4E2A\u5DE5\u827A\u7EC6\u8282\u89E3\u6784\u6A21\u5757\uFF08\u5982\u201C\u4E91\u611F\u6276\u624B\u201D\u3001\u201C\u5206\u6BB5\u9760\u80CC\u201D\u3001\u201C\u91D1\u5C5E\u9AD8\u811A\u201D\uFF09\uFF0C\u914D\u6709\u7CBE\u70BC\u6807\u7B7E\u4E0E\u7ED3\u6784\u7EBF\u7A3F\u3002` : ""}
+- \u5E95\u90E8\u5DE5\u827A\u89E3\u6784: \u4E25\u683C\u6309\u7167\u4EA7\u54C1\u771F\u5B9E DNA \u4E0E\u7528\u6237\u6307\u4EE4\u6392\u5217\u5DE5\u827A\u7EC6\u8282\u89E3\u6784\u6A21\u5757\uFF08\u5982\u7528\u6237\u6307\u5B9A\u201C\u6276\u624B\u201D\u3001\u201C\u5206\u6BB5\u9760\u80CC\u201D\u3001\u201C\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A/\u77EE\u811A\u201D\uFF0C\u4E25\u7981\u64C5\u81EA\u7BE1\u6539\u4E3A\u91D1\u5C5E\u9AD8\u811A\u6216\u5916\u9732\u7EC6\u817F\uFF0C\u7279\u5199\u7ED3\u6784\u5FC5\u987B\u4E0E\u4E3B\u56FE\u539F\u54C1100%\u4E00\u81F4\uFF09\uFF0C\u914D\u6709\u7CBE\u70BC\u6807\u7B7E\u4E0E\u7ED3\u6784\u7EBF\u7A3F\u3002` : ""}
 ${marketResearchText ? `
 [\u884C\u4E1A\u6700\u65B0\u7ADE\u54C1\u4E0E\u5E02\u573A\u8054\u7F51\u68C0\u7D22\u53C2\u8003 (VectorEngine Real-time Search)]:
 ${marketResearchText}
 (\u63D0\u793A\uFF1A\u8BF7\u5728\u7B56\u5212\u5404\u5C4F\u65F6\u79EF\u6781\u53C2\u8003\u4E0A\u8FF0\u987E\u5BB6/\u4E50\u81F3\u5B9D\u7B49\u54C1\u724C\u7684\u7206\u6B3E\u547D\u540D\u7075\u611F\u3001\u8272\u8C03\u642D\u914D\u4E0E\u573A\u666F\u6784\u601D\uFF0C\u4F7F\u5168\u6848\u4F01\u5212\u66F4\u5177\u5F53\u4E0B\u5E02\u573A\u70ED\u5EA6\u4E0E\u884C\u4E1A\u9AD8\u7EA7\u611F\uFF01)` : ""}
+
+[\u4EA7\u54C1\u771F\u5B9E\u7269\u7406\u7ED3\u6784\u9632\u7BE1\u6539\u4E0E\u7528\u6237\u6307\u4EE4\u6700\u9AD8\u9075\u4ECE\u539F\u5219]:
+1. \u4E25\u7981\u6539\u6B3E\u3001\u6539\u811A\u578B\u3001\u6539\u7ED3\u6784\uFF1A\u82E5\u4EA7\u54C1\u89C6\u89C9 DNA \u6216\u7528\u6237\u4F01\u5212\u6307\u4EE4\u4E2D\u6307\u5B9A\u4E86\u6C99\u53D1\u811A\u578B\uFF08\u5982\u201C\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A\u201D\u3001\u201C\u9690\u5F62\u77EE\u811A\u201D\u6216\u201C\u539F\u54C1\u811A\u578B\u201D\uFF09\uFF0C\u5168\u6848\u7B56\u5212\uFF08\u5C24\u5176\u662F\u4E3B\u56FE\u548C\u7EC6\u8282\u89E3\u6784\u5C4F\uFF09\u5FC5\u987B\u767E\u5206\u767E\u4E25\u683C\u4FDD\u6301\u4E00\u81F4\uFF0C\u4E25\u7981\u81C6\u9020\u6216\u7BE1\u6539\u4E3A\u91D1\u5C5E\u9AD8\u811A\u3001\u5916\u9732\u7EC6\u817F\u6216\u4EFB\u4F55\u5176\u4ED6\u6784\u4EF6\uFF01
+2. \u7EC6\u8282\u89E3\u6784\u7279\u5199\u6A21\u5757\u6570\u91CF\u4E0E\u5185\u5BB9\u5FC5\u987B\u4E25\u683C\u9075\u5B88\u7528\u6237\u6307\u4EE4\uFF08\u5982\u7528\u6237\u9650\u5B9A 3 \u4E2A\u6A21\u5757\uFF0C\u5219\u7CBE\u51C6\u5BF9\u5E94\u6276\u624B\u9020\u578B\u3001\u5206\u6BB5\u9760\u80CC\u3001\u4F4E\u4F4D\u9690\u85CF\u652F\u6491\u811A\u8FDB\u884C\u89E3\u6790\u7279\u5199\uFF09\uFF0C\u6240\u6709\u7279\u5199\u5FC5\u987B\u76F4\u63A5\u5BF9\u5E94\u4E3B\u56FE\u4E2D\u7684\u771F\u5B9E\u4EA7\u54C1\u90E8\u4F4D\uFF0C\u4E25\u7981\u865A\u6784\u4E0D\u5B58\u5728\u7684\u4E94\u91D1\u6216\u7ED3\u6784\u3002
+3. \u82E5\u7528\u6237\u6307\u5B9A\u4E86\u7279\u5B9A\u6BD4\u4F8B\uFF08\u5982 4:3\uFF09\u3001\u524D\u65B9\u8336\u51E0\u9648\u5217\u3001\u53CC\u540C\u6B3E\u62B1\u6795\u3001\u56DB\u5B57\u4EE5\u5185\u4E2D\u6587\u6807\u9898\u4E0E\u8BBE\u8BA1\u7075\u611F\u6587\u6848\uFF0C\u5404\u5C4F\u811A\u672C\u5FC5\u987B\u7CBE\u51C6\u4F53\u73B0\u4E0E\u547C\u5E94\u3002
 
 \u8981\u6C42\u7B56\u5212\u4E25\u683C\u5305\u542B ${requestedScreenCount} \u5C4F\u5206\u5C4F\u811A\u672C\uFF1A
 \u6BCF\u4E2A\u5206\u5C4F\u8BF7\u5206\u914D\u591A\u5143\u5316\u7684\u89C6\u89D2\uFF08\u5305\u542B\u7535\u5F71\u7EA7\u5168\u666F/\u8FDC\u666F\u3001\u827A\u672F\u7F8E\u5B66\u4E2D\u666F\u3001\u6276\u624B/\u62C9\u76B1\u80CC\u9760/\u6C99\u53D1\u811A\u7EC6\u8282\u89E3\u6784\u7279\u5199\u7B49\uFF0C\u5C4F\u6570\u4E25\u683C\u7B49\u4E8E ${requestedScreenCount}\uFF09\u3002\u6240\u6709\u5206\u5C4F\u5EFA\u8BAE\u753B\u5E45\u6BD4\u4F8B\u9ED8\u8BA4\u4E3A ${requestedAspectRatio}\u3002\u8BF7\u786E\u4FDD\u6587\u6848\u4E0E\u753B\u9762\u7B56\u5212\u517C\u5177\u521B\u610F\u7075\u611F\u3001\u5C42\u6B21\u611F\u4E0E\u5546\u4E1A\u5438\u5F15\u529B\uFF01
@@ -15834,7 +15842,7 @@ var posterRoutes_default = router13;
 
 // server/routes/videoRoutes.ts
 var import_express14 = require("express");
-var import_fs24 = __toESM(require("fs"), 1);
+var import_fs23 = __toESM(require("fs"), 1);
 var import_crypto22 = __toESM(require("crypto"), 1);
 var import_multer2 = __toESM(require("multer"), 1);
 
@@ -18178,7 +18186,6 @@ var VideoJobService = class _VideoJobService {
 };
 
 // server/services/spaceImageGenerationService.ts
-var import_fs22 = __toESM(require("fs"), 1);
 var import_crypto20 = __toESM(require("crypto"), 1);
 var import_sharp4 = __toESM(require("sharp"), 1);
 
@@ -18683,15 +18690,28 @@ var SpaceImageGenerationService = class {
     let contentType = "image/webp";
     let provenance = "SOLVER_RESOLVED";
     let activePrimaryProduct = primaryProduct;
-    if (shotCode === "A09") {
-      const diningProduct = (input.ensembleProducts || []).find(
-        (p) => p.role === "dining_table" || p.role === "dining_chair" || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅|配套)/.test(p.name || "")
+    const diningProduct = (input.ensembleProducts || []).find(
+      (p) => p.role === "dining_table" || p.role === "dining_chair" || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || "")
+    );
+    const hasDiningAsset = Boolean(diningProduct);
+    if (shotCode === "A09" && hasDiningAsset && diningProduct) {
+      activePrimaryProduct = diningProduct;
+    } else if (shotCode === "A08") {
+      const reclinerProduct = (input.ensembleProducts || []).find(
+        (p) => p.role === "recliner_1seat" || p.role === "lounge_chair" || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || "")
+      ) || (input.ensembleProducts || []).find((p) => p.priority === "secondary" || p.role !== "sofa_3seat" && p.role !== "sofa_2seat" && p.role !== "coffee_table" && p.role !== "dining_table");
+      if (reclinerProduct) {
+        activePrimaryProduct = reclinerProduct;
+      }
+    } else if (["A03", "A04", "A05", "A06"].includes(shotCode)) {
+      const hero3SeatProduct = (input.ensembleProducts || []).find(
+        (p) => p.role === "sofa_3seat" || p.role === "sofa_2seat" || /(三人|3人|主沙发|直排)/.test(p.name || "")
       );
-      if (diningProduct) {
-        activePrimaryProduct = diningProduct;
+      if (hero3SeatProduct) {
+        activePrimaryProduct = hero3SeatProduct;
       }
     }
-    const effectiveProductImageRef = shotCode === "A09" && activePrimaryProduct !== primaryProduct ? activePrimaryProduct?.cropImageUrl || activePrimaryProduct?.referenceImage || activePrimaryProduct?.uploadedImageUrl : productReferenceImage || activePrimaryProduct?.referenceImage;
+    const effectiveProductImageRef = activePrimaryProduct && activePrimaryProduct !== primaryProduct ? activePrimaryProduct?.cropImageUrl || activePrimaryProduct?.cropBase64 || activePrimaryProduct?.referenceImage || activePrimaryProduct?.uploadedImageUrl || activePrimaryProduct?.referenceImage || productReferenceImage : productReferenceImage || activePrimaryProduct?.referenceImage;
     const [productInline, masterInline, shotInline] = await Promise.all([
       resolveImageInlineData(effectiveProductImageRef),
       resolveImageInlineData(sceneMasterReferenceImage),
@@ -18720,13 +18740,15 @@ var SpaceImageGenerationService = class {
       effectiveProductName = "luxury power motion recliner chair";
     } else if (activePrimaryProduct?.role === "lounge_chair" || activePrimaryProduct?.name?.includes("\u65E0\u6276\u624B") || activePrimaryProduct?.name?.includes("\u4F11\u95F2\u5355\u6905")) {
       effectiveProductName = "modern minimalist armless lounge chair (strictly armless, no extended footrest)";
-    } else if (shotCode === "A09" || activePrimaryProduct?.role === "dining_table" || activePrimaryProduct?.role === "dining_chair") {
+    } else if (hasDiningAsset && (activePrimaryProduct?.role === "dining_table" || activePrimaryProduct?.role === "dining_chair")) {
       effectiveProductName = "luxury black marble dining table ensemble with tailored leather dining chairs, designer credenza sideboard, and mobile bar cart";
+    } else if (shotCode === "A09") {
+      effectiveProductName = "grand open-plan living-dining vista showcasing the luxury power motion sofa anchoring the connected living space";
     }
     const rawEnsemble = input.ensembleProducts || [];
     const secondaryProducts = rawEnsemble.filter(
-      (p) => p.priority !== "primary" && p.role !== activePrimaryProduct?.role && // 针对 A09，严格排除 3人位与 2人位沙发作为搭配品
-      (shotCode !== "A09" || p.role !== "sofa_3seat" && p.role !== "sofa_2seat")
+      (p) => p.priority !== "primary" && p.role !== activePrimaryProduct?.role && // 仅当用户明确录入了餐桌且处于 A09 时，才排除主沙发
+      (!hasDiningAsset || shotCode !== "A09" || p.role !== "sofa_3seat" && p.role !== "sofa_2seat")
     );
     const secondaryInlines = [];
     for (const sec of secondaryProducts) {
@@ -18767,11 +18789,25 @@ var SpaceImageGenerationService = class {
         }
       }
     }
-    try {
-      const config = await resolveApiConfig("system");
-      if (!isProviderKeyValid(config?.apiKey)) {
-        throw new Error(`Provider "${config?.provider || "none"}" \u672A\u914D\u7F6E\u6709\u6548 API Key\uFF0C\u5DF2\u5B89\u5168\u8F6C\u5165\u786E\u5B9A\u6027\u5DE5\u7A0B\u5E95\u56FE\u7BA1\u7EBF`);
-      }
+    const config = await resolveApiConfig("system");
+    let wasFallbackUsed = false;
+    let primaryModel = "manwah-spatial-renderer-v1";
+    if (!isProviderKeyValid(config?.apiKey) || process.env.NODE_ENV === "test") {
+      imageBuffer = this.renderDeterministicSpatialAsset({
+        shotCode,
+        productName,
+        productColor,
+        productRole: activePrimaryProduct?.role,
+        roomName,
+        styleName,
+        camera: cameraSettings || { lensMm: 35, heightCm: 120, yawDeg: 0, pitchDeg: -2 },
+        variantIndex: input.variantIndex,
+        variantTag: input.variantTag
+      });
+      usedProvider = "deterministic_renderer";
+      usedModel = "manwah-spatial-renderer-v1";
+      provenance = "SOLVER_RESOLVED";
+    } else {
       const rawPreferred = input.preferredModel?.trim() || "gpt-image-2";
       let targetModel = rawPreferred;
       if (targetModel === "gemini-2.5-flash") targetModel = "gemini-2.5-flash-image";
@@ -18786,6 +18822,17 @@ var SpaceImageGenerationService = class {
       const isFlash25 = targetModel === "gemini-2.5-flash-image" || targetModel === "gemini-2.5-flash";
       const validResolution = isFlash25 ? "1K" : ["1K", "2K", "4K"].includes(reqResolution) ? reqResolution : "2K";
       const images = [];
+      const allowedSecondaryInlines = secondaryInlines.filter((s) => {
+        if (["A04", "A05", "A06"].includes(shotCode)) {
+          return false;
+        }
+        if (shotCode === "A03") {
+          return s.product.role === "coffee_table";
+        }
+        return true;
+      });
+      const maxSecItems = targetModel.includes("gpt") ? 1 : 3;
+      const pushedSecondaryInlines = allowedSecondaryInlines.slice(0, maxSecItems);
       if (shotInline) {
         images.push({
           data: `data:${shotInline.mimeType};base64,${shotInline.data}`,
@@ -18809,16 +18856,7 @@ var SpaceImageGenerationService = class {
             role: "primary_product"
           });
         }
-        const allowedSecondaryInlines2 = secondaryInlines.filter((s) => {
-          if (["A04", "A05", "A06"].includes(shotCode)) {
-            return false;
-          }
-          if (shotCode === "A03") {
-            return s.product.role === "coffee_table";
-          }
-          return true;
-        });
-        for (const secItem of allowedSecondaryInlines2) {
+        for (const secItem of pushedSecondaryInlines) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,
@@ -18840,16 +18878,7 @@ var SpaceImageGenerationService = class {
             role: "scene_reference"
           });
         }
-        const allowedSecondaryInlines2 = secondaryInlines.filter((s) => {
-          if (["A04", "A05", "A06"].includes(shotCode)) {
-            return false;
-          }
-          if (shotCode === "A03") {
-            return s.product.role === "coffee_table";
-          }
-          return true;
-        });
-        for (const secItem of allowedSecondaryInlines2) {
+        for (const secItem of pushedSecondaryInlines) {
           images.push({
             data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
             mimeType: secItem.inline.mimeType,
@@ -18857,18 +18886,9 @@ var SpaceImageGenerationService = class {
           });
         }
       }
-      const allowedSecondaryInlines = secondaryInlines.filter((s) => {
-        if (["A04", "A05", "A06"].includes(shotCode)) {
-          return false;
-        }
-        if (shotCode === "A03") {
-          return s.product.role === "coffee_table";
-        }
-        return true;
-      });
       let secondaryReferencesText = "";
-      if (allowedSecondaryInlines.length > 0) {
-        secondaryReferencesText = allowedSecondaryInlines.map((s, idx) => {
+      if (pushedSecondaryInlines.length > 0) {
+        secondaryReferencesText = pushedSecondaryInlines.map((s, idx) => {
           const refIdx = shotInline || masterInline ? 3 + idx : 2 + idx;
           const isArmless = s.product.role === "lounge_chair" || s.product.functionCapable === false || s.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(s.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(s.product.name);
           const isStoneOrTable = s.product.role === "coffee_table" || s.product.role === "side_table" || /marble|stone|porcelain|岩板|大理石|黑金/i.test(s.materialEn) || /茶几|边几/.test(s.product.name || "");
@@ -18893,6 +18913,11 @@ You are an architectural lifestyle photographer. You MUST photorealistically ins
 DO NOT LEAVE THE ROOM EMPTY. DO NOT RETURN AN EMPTY ROOM.
 THE HERO SOFA MUST HAVE THE SPECIFIED PEOPLE SEATED AND RELAXING IN IT.
 
+[ABSOLUTE CAMERA STABILITY & ZERO-DRIFT MANDATE (CRITICAL)]:
+1. CAMERA GEOMETRY & FRAMING ZERO DRIFT: Reference Image 1 provides the 100% FROZEN architectural and camera baseline. The camera perspective, focal length, shooting distance, lens height, horizontal line, and furniture positions MUST REMAIN 100% IDENTICAL AND IMMOVABLE.
+2. ABSOLUTE PROHIBITION ON RE-FRAMING: DO NOT zoom in, DO NOT zoom out, DO NOT change the perspective angle, DO NOT shift furniture left or right. ZERO tolerance for camera drift!
+3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with genuine weight and contact shadows. All surrounding architecture, windows, walls, and flooring remain completely untouched!
+
 ${charInlines.length > 0 ? `REFERENCE IMAGE 2 & 3: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ""}
 ${secondaryReferencesText ? `
 ${secondaryReferencesText}
@@ -18900,11 +18925,11 @@ ${secondaryReferencesText}
 
 STRICT COMMERCIAL MANDATES:
 1. POPULATE THE HERO SOFA: The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with realistic body weight, folds in clothes, and authentic contact shadows on the leather cushions.
-${shotCode === "A03" ? `   - A03 HERO 3-SEATER FAMILY LEISURE (Studio Sample Reference): Depict a genuine warm family moment with parents and young daughter seated together on the 3-seater hero sofa. Functional footrests strictly remain completely closed and retracted under the base in standard upright comfortable configuration, center seat is comfortable and level where the young daughter sits holding a storybook or plush toy. Natural, relaxed, joyful expressions. Center Laurent Black Gold coffee table in foreground with coffee cups and art books. Background features luxury marble wall with illuminated double arched shelves.` : ""}
-${shotCode === "A04" ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION (Studio Sample Reference): Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio. Depict an affectionate mother and young daughter companion moment. The motorized footrests strictly remain completely closed and tucked flush under the base, supporting the mother and daughter seated together comfortably (taking a selfie or reading warmly). Highlight the wide outer armrest, supple brown leather folds, left sheer window daylight, and tall indoor foliage. ZERO single chairs, ZERO coffee table obstruction!` : ""}
-${shotCode === "A05" ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE (Studio Sample Reference): Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio. Depict an elegant lady in a light dress sitting relaxed with footrests completely retracted under the base in standard upright closed posture, holding a glass of red wine in a private leisure lounge posture. Highlight the exterior armrest diamond-quilted leather craftsmanship, circular metal button, and background dark grey marble with illuminated ambient arched shelves. ZERO single chairs, ZERO coffee table obstruction!` : ""}
-${shotCode === "A06" ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW (Studio Sample Reference): Lateral side profile (75-90 degrees) in 16:9 widescreen. Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music. Full side exterior armrest diamond quilting, circular button, bottom precision sliding tracks, and left panoramic window daylight.` : ""}
-${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE (Studio Sample Reference): Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective. Motorized footrest is completely retracted and closed in standard upright reading posture supporting a relaxed lady comfortably browsing an iPad/tablet. Highlight deep brown leather, diamond-quilted side armrest, left panoramic window daylight with city skyline, sheer curtains, indoor greenery, and high-end tailored rug with cigar humidor tray in foreground.` : ""}
+${shotCode === "A03" ? `   - A03 HERO 3-SEATER FAMILY LEISURE: Depict a genuine warm family moment with parents and young daughter seated together on the 3-seater hero sofa. Functional footrests strictly remain completely closed and retracted under the base in standard upright comfortable configuration. Natural, relaxed, joyful expressions. Center coffee table in foreground with coffee cups and art books within the authentic living room.` : ""}
+${shotCode === "A04" ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio. Depict an affectionate mother and young daughter companion moment. The motorized footrests strictly remain completely closed and tucked flush under the base, supporting the mother and daughter seated together comfortably. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ""}
+${shotCode === "A05" ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio. Depict an elegant lady in a light dress sitting relaxed with footrests completely retracted under the base in standard upright closed posture, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ""}
+${shotCode === "A06" ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW: Lateral side profile (75-90 degrees) in 16:9 widescreen. Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music.` : ""}
+${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective. Motorized footrest is completely retracted and closed in standard upright reading posture supporting a relaxed lady comfortably browsing an iPad/tablet within the authentic living room.` : ""}
 2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a 100% clean pristine photograph.
 3. MOTION & ERGONOMIC FUNCTION:
    - Keep sofa color (${effectiveColor}), leather grain (${effectiveMaterial}), and armrest styling completely unchanged.
@@ -18914,7 +18939,7 @@ ${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE (Studio S
 
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}${isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00, " : ""}empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}${isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00, " : ""}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
       } else if (productInline && masterInline) {
         const isFrontalPanorama = shotCode === "A01" || (positivePrompt.includes("GRAND FRONTAL") || positivePrompt.includes("\u6B63\u5927\u89C6\u89D2"));
         const isAngledHero = shotCode === "A02" || (positivePrompt.includes("45-degree") || positivePrompt.includes("45\xB0") || positivePrompt.includes("3+1 ENSEMBLE"));
@@ -18935,157 +18960,166 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
         );
         const hasBrownSecondary = allowedSecondaryInlines.some((sec) => /brown|caramel|amber|espresso/i.test(sec.colorEn));
         const brownNegativeFilter = hasBrownSecondary ? "" : "brown recliner, brown armchair, ";
-        directivePrompt = `[CRITICAL CAMERA ANGLE & FRAMING MANDATE: NEW PERSPECTIVE REQUIRED FOR SHOT ${shotCode}]
-PRIMARY MISSION:
-You are an architectural and commercial furniture photographer capturing SHOT ${shotCode}.
-DO NOT SIMPLY REPRODUCE THE SAME PANORAMIC CAMERA PERSPECTIVE AS REFERENCE IMAGE 2!
-Reference Image 2 (A00 Master) defines ONLY the room's materials, wall architecture, and furniture color/identity for physical consistency.
-HOWEVER, THE CAMERA POSITION, DISTANCE, AND FRAMING MUST RADICALLY SHIFT ACCORDING TO THIS SHOT'S UNIQUE CAMERA DNA:
+        const a02PerspectiveShiftClause = shotCode === "A02" || isAngledHero ? `[MANDATORY PERSPECTIVE SHIFT: 45\xB0 THREE-QUARTERS OBLIQUE ANGLE]
+Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.
 
-${isHeroSofaDedicatedShot ? `[DUAL-TRACK ASSET-SCENE LINKAGE PROTOCOL - HERO 3-SEATER ASSET RE-CREATION]:
-1. REFERENCE IMAGE 1 IS THE PRIMARY HERO 3-SEATER SOFA ASSET (GROUND TRUTH):
-   - You MUST faithfully construct the main sofa from Reference Image 1. Replicate its exact three-unit seating division, supple leather texture (${effectiveMaterial}), authentic color (${effectiveColor}), outer armrest contour, diamond-quilted side profile, and power motion reclining footrest structure.
-2. REFERENCE IMAGE 2 IS STRICTLY THE SPATIAL & LIGHTING ANCHOR (DO NOT REPAINT OLD PIXELS):
-   - Reference Image 2 defines ONLY the architectural room envelope, marble wall textures, illuminated arched wall shelves, wood paneling, flooring, natural window lighting, and placement coordinates.
-   - ABSOLUTE PROHIBITION: DO NOT inpaint, copy, or clone the distant downscaled sofa pixels from Reference Image 2!
-   - You MUST render a BRAND NEW, razor-sharp, high-detail camera shot of the hero sofa from Reference Image 1 newly placed within Reference Image 2's architectural environment.` : ""}
+` : "";
+        directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
+MULTI-VIEW ASSET ANCHOR:
+1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
+   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.
+   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!
+2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
+   - Inherit the architectural walls, fixed background walnut/stone layout, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
 
-${isReclinerDedicatedShot ? `[DUAL-TRACK ASSET-SCENE LINKAGE PROTOCOL - HERO RECLINER CHAIR ASSET RE-CREATION]:
-1. REFERENCE IMAGE 1 IS THE PRIMARY RECLINER CHAIR ASSET (GROUND TRUTH):
-   - You MUST faithfully construct the single power recliner armchair from Reference Image 1. Replicate its exact diamond-quilted armrest panels, deep brown leather materiality (${effectiveMaterial}), circular metal motion buttons, ergonomic headrest, and fully deployed motorized footrest.
-2. REFERENCE IMAGE 2 IS STRICTLY THE SPATIAL & LIGHTING ANCHOR (OPEN SPACIOUS LIVING ROOM PLACEMENT):
-   - Reference Image 2 defines ONLY the architectural room envelope, marble wall textures, panoramic floor-to-ceiling windows, and natural daylight.
-   - PLACEMENT MANDATE: The recliner chair is placed gracefully in the open, spacious master living room zone on the tailored area rug. The 3-seater main sofa is off-center or excluded to preserve an open, uncluttered personal sanctuary.
-   - ABSOLUTE PROHIBITION: DO NOT inpaint, copy, or clone the distant low-res chair pixels from Reference Image 2!
-   - You MUST render a BRAND NEW, razor-sharp, high-detail camera shot of the power recliner chair from Reference Image 1 newly placed within Reference Image 2's architectural environment.` : ""}
-
-${isDiningSuite ? `[DUAL-TRACK ASSET-SCENE LINKAGE PROTOCOL - HERO DINING SUITE ASSET RE-CREATION]:
-1. REFERENCE IMAGE 1 IS THE PRIMARY DINING SUITE ASSET (GROUND TRUTH):
-   - You MUST faithfully construct the luxury dining suite from Reference Image 1 (or designated dining asset). Replicate the black Laurent gold marble rectangular dining table, coordinated two-tone beige and cognac leather dining chairs, matching black credenza sideboard, and gold/glass champagne bar cart.
-2. REFERENCE IMAGE 2 IS STRICTLY THE SPATIAL & LIGHTING ANCHOR (DO NOT REPAINT OLD PIXELS):
-   - Reference Image 2 defines ONLY the architectural dining room zone envelope, panoramic floor-to-ceiling daylight window, dark marble and fluted wood wall finishes, and natural light direction.
-   - ABSOLUTE PROHIBITION: DO NOT place the three-seater living room sofa in the center of the dining shot!
-   - You MUST render a BRAND NEW commercial dining showcase with camera positioned at 125cm standing eye-level height (matching Reference Image 1 angle).` : ""}
-
->>> MANDATORY CAMERA PERSPECTIVE & FRAMING DIRECTIVE:
-${positivePrompt}
-
+CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
+${a02PerspectiveShiftClause}${positivePrompt}
 ${secondaryReferencesText ? `
+MATCHING ENSEMBLE:
 ${secondaryReferencesText}
 ` : ""}
+CORE INVARIANTS:
+- FOUR INVARIANCE PILLARS:
+  1. Coordinate origin: white matte cylindrical planter with indoor foliage plant (constant position and height relative to window and wall).
+  2. Dual curved wall sconces on marble backdrop with consistent curvature and spacing.
+  3. Left panoramic window 6000K cool daylight paired with interior 3000K warm ambient glow, soft eastward contact shadow falloff.
+  4. Deep physical contact AO grounding all furniture legs and chassis firmly onto the area rug.
+- OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines (tilt = 0\xB0). Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
+- ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
+- CLOSED SHOWROOM POSTURE: ${isFunctionalClosed ? "All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base." : "Motion mechanism may be deployed as specified."}`;
+        const cleanNegativeConstraints = [
+          negativePrompt,
+          antiStickerNegatives,
+          shotCode === "A02" || isAngledHero ? "flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward" : "",
+          "CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render",
+          "double sofas, ghost sofa, overlapping couches, morphing furniture",
+          "different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room",
+          "crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines",
+          "deformed sofa, generic boxy sofa, distorted proportions, wrong color",
+          isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258" : "",
+          !hasHumanOccupant ? "people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs" : "",
+          brownNegativeFilter,
+          "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo"
+        ].filter(Boolean).join(", ");
+        directivePrompt += `
 
-STRICT COMMERCIAL MANDATES:
-1. CAMERA & FRAMING FIRST: Strictly execute the specified focal length, camera height, and framing angle.
-   ${isFrontalPanorama ? "- CRITICAL ULTRA-WIDE EXPANSIVE GRAND FRONTAL HORIZON CONSTRAINT: Camera MUST BE POSITIONED STRICTLY STRAIGHT-ON (0-degree yaw) at 118cm eye-level vantage with 24mm ultra-wide architectural prime lens! Two-point perspective with plumb vertical lines 100% straight. The living space MUST BE BREATHTAKINGLY EXPANSIVE AND OPEN: grand open-plan horizontal living-dining flat with soaring architectural cove ceiling. A large luxury designer area rug extends gracefully forward to anchor the foreground, completely eliminating vast empty wooden floor voids! Floor-to-ceiling panoramic glass windows on the left flood the room with lateral daylight, central living ensemble (hero sofa, coffee tables, matching recliner chair) is majestic and centered, and the open vista sweeps unobstructed into the luxury dining room on the right. FOR EVERY SHOT GROUP, ALL SOFA AND RECLINER FOOTRESTS MUST BE 100% RETRACTED AND CLOSED FLUSH in pristine showroom condition!" : ""}
-   ${isAngledHero ? "- CRITICAL 45-DEGREE 3+1 ENSEMBLE CONSTRAINT: Position camera at dynamic 40-to-45 degree side isometric angle in 4:3! Frame the COMPLETE 3+1 ENSEMBLE: BOTH the main three-seater sofa AND the matching accent chair alongside the coffee table MUST BE VISIBLE together in the scene! Strictly DO NOT crop out either piece of furniture, and DO NOT shoot flat from the front!" : ""}
-   ${isHeroSofaFocus ? hasHumanOccupant ? "- CRITICAL 3-SEATER SOFA FOCUS CONSTRAINT: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10-15 degree angle. Frame tightly on the HERO THREE-SEATER MAIN SOFA from Reference Image 1 with all motorized footrests completely retracted and closed under the base in standard showroom seating configuration, accompanied by the Laurent Black Gold dual marble coffee table in foreground! Background features luxury marble wall paneling with double arched illuminated shelves and indoor greenery from Reference Image 2. COMPLETELY CROP OUT AND EXCLUDE any separate side accent chair, single chair, or 3+1 ensemble arrangement!" : "- CRITICAL 3-SEATER SOFA FOCUS CONSTRAINT: 50mm portrait standard prime lens at 110cm eye-level height with subtle 10-15 degree angle. Frame tightly ONLY on the HERO THREE-SEATER MAIN SOFA from Reference Image 1 and Laurent Black Gold dual marble coffee table in foreground! ALL MOTORIZED FOOTRESTS MUST BE FULLY RETRACTED AND CLOSED in neat showroom posture! Background features luxury marble wall paneling with double arched illuminated shelves and indoor greenery. COMPLETELY CROP OUT AND EXCLUDE the separate side accent chair, single chair, or any 3+1 ensemble arrangement!" : ""}
-   ${isTwoThirdsHeroSofa ? hasHumanOccupant ? shotCode === "A04" ? "- CRITICAL 2/3 HERO SOFA COMPANION VIEW CONSTRAINT: 45mm portrait environmental prime lens at 110cm height with 25-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio! Frame approximately 2/3 of the primary hero motion sofa from Reference Image 1 (outer wide armrest, deep leather seating cushion, completely retracted flush footrest in standard closed configuration). Background features left sheer window daylight, tall indoor fiddle-leaf fig/rubber plant, and warm wood/marble paneling from Reference Image 2. STRICTLY ZERO side chair, ZERO coffee table obstruction!" : "- CRITICAL 2/3 HERO SOFA (RIGHT/WINE LOUNGE) CONSTRAINT: 45mm portrait environmental prime lens at 110cm height with 25-30 degree right three-quarters oblique perspective in 2:3 vertical aspect ratio! Frame approximately 2/3 of the primary hero motion sofa from Reference Image 1. The footrests strictly remain completely closed and tucked flush underneath. Focus on right armrest diamond-quilted craftsmanship with flush circular metal button, and background dark grey marble wall with illuminated ambient arched shelves from Reference Image 2! ZERO side chair, ZERO coffee table obstruction!" : "- CRITICAL 2/3 HERO SOFA PRODUCT CONSTRAINT: 45mm portrait environmental prime lens at 110cm height with 25-30 degree three-quarters oblique perspective in 2:3 vertical aspect ratio! Frame approximately 2/3 of the primary hero motion sofa from Reference Image 1 (outer wide armrest, deep leather seating cushion, completely retracted flush footrest in pristine showroom posture). Background features left sheer window daylight, tall indoor foliage, and luxury architectural wall from Reference Image 2. STRICTLY ZERO side chair, ZERO coffee table obstruction!" : ""}
-   ${isLivingEnsembleMid ? "- CRITICAL 16:9 ENSEMBLE LIVING CONSTRAINT: Frame in 16:9 widescreen capturing the core living ensemble: hero sofa in midground, luxury marble center coffee table and side table in foreground with styled tray/books, and subtle hint of side recliner. Harmonious multi-layered conversation circle!" : ""}
-   ${isZeroWallProfile ? `- CRITICAL ZERO-WALL CLEARANCE LATERAL PROFILE (WALL-MOUNTED LIVING ROOM DISPLAY - REFERENCE 4) CONSTRAINT: Position camera at 80-to-90 degree side profile at 90cm seated eye-level height in 16:9 widescreen! Showcase MANWAH signature ZERO-WALL CLEARANCE architecture: hero sofa from Reference Image 1 is positioned FLUSH against continuous solid backdrop wall (wood fluting panels & shelves) with virtually ZERO gap (<5cm flush alignment) against the wall! ALL functional recliners and footrests strictly remain completely CLOSED, fully retracted, and neatly tucked flush underneath the base in standard upright seated configuration.${hasHumanOccupant ? " Lady with white over-ear headphones listening to music," : " Pristine unoccupied showroom sofa in empty room with zero human presence,"} highlighting full side armrest diamond quilting, circular metal button, and panoramic window background from Reference Image 2!` : ""}
-   ${isReclinerMultiMode ? `- CRITICAL RECLINER 5-MODE FUNCTION SHOWCASE (OPEN SPACIOUS LIVING ROOM - REFERENCE 5) CONSTRAINT: Fixed 35-degree three-quarters isometric camera angle at 100cm eye-level seated height in 16:9 widescreen! Focus exclusively on the single MANWAH power recliner chair from Reference Image 1 gracefully positioned in the open spacious master living room zone on the custom designer area rug. Three-seater main sofa is off-center or excluded from frame, highlighting the recliner as an independent personal luxury sanctuary. Footrest and backrest strictly remain completely CLOSED in standard upright showroom posture.${hasHumanOccupant ? " Lady seated comfortably browsing tablet/iPad," : " Pristine unoccupied recliner chair in strictly empty room with zero human presence,"} diamond-quilted armrest, circular metal button, and left panoramic window daylight!` : ""}
-   ${isDiningSuite ? "- CRITICAL DINING SUITE ENSEMBLE (REFERENCE 1 VANTAGE) CONSTRAINT: 38mm architectural prime lens at 125cm standing eye-level height with subtle 15-degree oblique vantage in 16:9 widescreen! Capture the grand integrated dining suite: expansive luxury black Laurent gold marble dining table with 6 matching tailored leather dining chairs (two-tone beige & cognac), backdrop black credenza sideboard with lamp and art painting against marble wall, elegant mobile champagne bar cart on the right with glassware, and left floor-to-ceiling panoramic sheer window daylight with tall indoor plant! ZERO three-seater sofa in center!" : ""}
-   ${isFunctionalClosed ? "- CRITICAL CLOSED FUNCTIONAL MOTION MANDATE (EVERY SHOT GROUP): FOR EVERY SHOT GROUP, ALL SOFA AND CHAIR FUNCTIONAL MOTION MECHANISMS (MOTORIZED FOOTRESTS, EXTENDED LEG RESTS, RECLINERS) MUST REMAIN COMPLETELY CLOSED, FULLY RETRACTED, AND FLUSH UNDERNEATH! Absolutely DO NOT deploy, extend, or pop open any motorized footrests, leg rests, or recline backrests!" : ""}
-   ${isReclinerFocus && !isReclinerMultiMode ? isArmlessLoungeChair ? "- CRITICAL LOUNGE CHAIR CONSTRAINT: Frame around the modern ARMLESS LOUNGE CHAIR! Preserve its clean armless profile and stationary/swivel base. Strictly DO NOT add extended footrest, reclining motor buttons, or bulky armrests!" : "- CRITICAL RECLINER CONSTRAINT: Frame around the MANWAH RECLINER ARMCHAIR! Footrest and backrest MUST REMAIN FULLY CLOSED in upright showroom condition." : ""}
-   ${primaryProduct?.role === "sofa_2seat" ? "- CRITICAL TWO-SEATER PROPORTION & DETAIL FIDELITY: Maintain generous wide-body horizontal proportions and low-slung stance (strictly NOT tall, narrow, or squished). Preserve exact twin-unit seating division, contrasting brown welt cord piping trim along seat front and armrest edges, and vertical indent flutes on backrests." : ""}
-2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE.
-4. ARCHITECTURAL STYLE & COLOR TONE CONTINUITY: The room background (walls, ceiling, floor, stone and paneling) MUST strictly reflect the authentic ${styleName} design palette and materiality, completely distinct from foreground sofa colors.
-${allowedSecondaryInlines.length > 0 && !isHeroSofaFocus && !isTwoThirdsHeroSofa && !isZeroWallProfile && !isReclinerDedicatedShot && !isDiningSuite ? `5. MANDATORY MATCHING ENSEMBLE OVERRIDE:
-   - The side chair/accent seating MUST BE RENDERED IN ${allowedSecondaryInlines[0]?.colorEn} (${allowedSecondaryInlines[0]?.materialEn}) matching Reference Image 3+.
-   ${hasBrownSecondary ? "" : "- DO NOT RETAIN any old mismatched armchair from Reference Image 2!"}` : isHeroSofaFocus || isTwoThirdsHeroSofa || isZeroWallProfile ? `5. FOCUS EXCLUSIVELY ON PRIMARY HERO MOTION SOFA:
-   - In this shot (${shotCode}), prioritize framing tightly on the hero motion sofa from Reference Image 1.
-   - The separate single side chair should be cropped out or absent from the frame!` : isReclinerDedicatedShot ? `5. FOCUS EXCLUSIVELY ON PRIMARY RECLINER ARMCHAIR:
-   - In this shot (${shotCode}), prioritize framing exclusively on the power recliner armchair from Reference Image 1.
-   - The 3-seater main sofa should be cropped out or absent from the frame!` : isDiningSuite ? `5. FOCUS EXCLUSIVELY ON DINING SUITE ENSEMBLE:
-   - In this shot (${shotCode}), prioritize framing exclusively on the luxury dining table, chairs, credenza, and bar cart.
-   - The living room 3-seater main sofa should be cropped out or absent from the center frame!` : ""}
-
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}${isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, reclining sofa, reclined backrest, extended foot stool, deployed recliner, popped-out foot support, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00, " : ""}${primaryProduct?.role === "sofa_2seat" ? "three-seater sofa, 3 seating cushions, middle cushion, extra seat unit, tall and narrow sofa, vertically stretched couch, squished proportions, cramped seating width, miniature sofa, small sofa out of scale, compressed width, oversized vertical backrest, missing contrasting piping cord, bulky upright armrests, " : ""}${!hasHumanOccupant ? "people, human, person, man, woman, lady, girl, boy, child, children, baby, human model, models, occupants, crowd, human face, human hands, human body, human silhouette, distorted limbs, reclining sofa without people, unclosed leg rest, " : ""}${isFrontalPanorama ? "angled side view, diagonal perspective, tilted camera, oblique vantage, corner view, off-center shot, excessive empty wooden floor in foreground, vast barren foreground void, tiny distant furniture, blank flat ceiling, low oppressive ceiling, " : ""}${isDetailOrMacro ? "full room, wide room, entire sofa, distant room view, deep depth of field, sharp background, " : ""}${isAngledHero ? "flat frontal shot, straight-on view, cropping out side chair, cropping out main sofa, isolated single chair, " : ""}${isHeroSofaFocus ? "side chair, armchair, accent single chair, lounge chair, separate chair, 3+1 ensemble, extra chair, additional seating, camera centered on single accent chair, framing separate side chair, wide room panorama, cloning low-res sofa from master image, inpainting distant sofa, blurry sofa leather, " : ""}${isTwoThirdsHeroSofa ? "isolated single chair, separate accent armchair, single chair focus, full 100% wide sofa panorama, flat frontal shot, coffee table blocking foreground, cloning low-res sofa from master image, inpainting distant sofa, blurry sofa leather, " : ""}${isZeroWallProfile ? "gap between sofa and wall, detached sofa backrest, floating sofa off wall, large gap behind sofa, flat frontal view, distant room view, cloning low-res sofa from master image, inpainting distant sofa, " : ""}${isReclinerFocus ? isArmlessLoungeChair ? "bulky recliner footrest, thick armrests on armless chair, power motion mechanism, " : "" : isArmlessLoungeChair ? "thick armrests on armless chair, power motion mechanism, " : ""}${isReclinerDedicatedShot ? "three-seater sofa centered, 3-seater sofa in focus, wide living room shot, cloning low-res sofa from master image, inpainting distant sofa, " : ""}${isDiningSuite ? "three-seater sofa centered, main sofa occupying dining area, kitchen sink, cluttered dishes, distorted chair legs, " : ""}sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls, obstructed window frame, half wall half window background, conflicting vanishing points, floating furniture angle, mismatched ground plane vanishing lines, sofa placed sideways against room perspective, sofa cut in half by background wall seam, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, different sofa, wrong sofa color, ${brownNegativeFilter}mismatched chair color, altered architecture, people, human, faces`;
+Negative constraints: ${cleanNegativeConstraints}`;
       } else if (productInline) {
         const isArmlessLoungeChairA00 = secondaryInlines.some(
           (sec) => sec.product.role === "lounge_chair" || sec.product.functionCapable === false || sec.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.product.name)
         );
-        directivePrompt = `[HERO PRODUCT GROUND TRUTH ANCHOR & MATCHING ENSEMBLE - ZERO RE-INVENTION]
-REFERENCE IMAGE 1: Authentic product ground truth for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}).
-${secondaryReferencesText}
-
-STRICT COMMERCIAL MANDATES:
-1. The central hero furniture piece in the generated luxury room MUST FAITHFULLY AND ACCURATELY MATCH the sofa in Reference Image 1.
-${primaryProduct?.role === "sofa_2seat" ? `   - TWO-SEATER PROPORTION & DETAIL FIDELITY MANDATE:
-     * SEATING CAPACITY: Strictly a TWO-SEATER sofa (exactly 2 individual seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle seat cushion).
-     * HORIZONTAL STANCE & LOW-PROFILE PROPORTIONS: The sofa MUST HAVE a generously wide horizontal proportion and low-slung stance (2.1m wide presence, deep plush cushions). STRICTLY PREVENT the sofa from looking tall, narrow, cramped, or squished! Width must visibly dominate over height to anchor the luxury space.
-     * CONTRASTING PIPING CORD (WELTING): Faithful reproduction of the tailored contrasting brown/caramel welt cord piping running horizontally along the front edge seam of the seat cushions and along the curved outer contour of the armrests, matching Reference Image 1.
-     * VERTICAL BACKREST FLUTES: Each of the 2 backrest cushions features two vertical stitch indent lines dividing it into three plush ergonomic sections.
-     * STREAMLINED ARMRESTS: Elegant, gently flared low-profile armrests with French double-stitched trim and flush side motion buttons.` : ""}
-2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE.
-3. Match its specific color (${effectiveColor}), materials (${effectiveMaterial}), cushion tufting, armrest silhouette, and power recliner base.
-4. ARCHITECTURAL STYLE & COLOR ENVELOPE: The spatial shell (walls, flooring, ceiling, paneling, built-ins, and ambient room lighting) MUST be strictly dominated by the curated ${styleName} aesthetic palette. Balance the background walls naturally; DO NOT crowd the left or right side with overwhelming dark solid cabinetry or unbalanced claustrophobic blocks.
-5. SOFA-TO-ARCHITECTURE ALIGNMENT & CONTINUOUS BACKDROP:
-   - CONTINUOUS SOLID BACKDROP ANCHORAGE: The hero sofa MUST BE ANCHORED against a continuous, unified architectural feature wall (luxury stone slab or curated wood paneling) that spans behind the ENTIRE sofa.
-   - STRICTLY NO WINDOW-WALL SEAM OVERLAP: Absolutely DO NOT place the sofa half-against a wall cabinet and half-blocking a window! The sofa must NOT sit on the seam or transition between a solid wall and glass window.
-   - SIDE WINDOW DAYLIGHT: The panoramic floor-to-ceiling windows must be situated to the SIDE (flank) of the room, flooding the living ensemble with natural lateral daylight.
-   - ORTHOGONAL PERSPECTIVE ALIGNMENT: The sofa, coffee table, and area rug MUST align squarely with the room's architectural grid and wall plane, sharing harmonious vanishing points with the floor tiles and walls. Strictly prevent the sofa from sitting at an awkward or disconnected angle relative to the room geometry!
-${secondaryInlines.length > 0 ? `6. The matching side chair MUST FAITHFULLY MATCH Reference Image 2+ in ${secondaryInlines[0]?.colorEn} (${secondaryInlines[0]?.materialEn}).
-${isArmlessLoungeChairA00 ? "   - CRITICAL CHAIR ERGONOMIC LOCK: The matching side chair is strictly an ARMLESS LOUNGE CHAIR on a low-profile base. DO NOT render armrests, DO NOT render extended footrest, and DO NOT add electric recliner buttons!" : ""}
-   - ENSEMBLE CLUSTER & PROXIMITY: The matching side chair MUST BE PLACED IN CLOSE CONVERSATIONAL PROXIMITY alongside the main sofa around the central coffee table on the rug (intimate L-shaped or angled dialogue cluster). STRICTLY DO NOT push or drift the chair to the room perimeter, window edge, or far corners!` : ""}
-7. CAMERA, SPATIAL BALANCE & COMPOSITE CRAFTSMANSHIP: 
-   - Maintain eye-level standing camera height (135cm) with clean two-point architectural perspective and vertical plumb lines.
-   - BALANCED VERTICAL HEADROOM: Ensure generous architectural ceiling volume and ambient cove lighting are framed overhead, with harmonious 1:1 balance between ceiling and rug. DO NOT leave excessive empty rug void in the foreground.
-   - ALL FOOTRESTS CLOSED: Without human occupants, all sofa and chair motorized footrests MUST REMAIN COMPLETELY CLOSED and flush in showroom condition.
-   - COFFEE TABLE COMPOSITE CRAFTSMANSHIP LOCK: The living room center coffee table MUST feature genuine Italian Laurent Black Gold marble (Nero Portoro) or luxury sintered stone with polished crystalline high-gloss finish, 45-degree chamfered edge profiling with micro-radius safety bevels, organic non-repeating gold veins, and an architectural hairline brushed dark titanium alloy metal chassis. Strictly eliminate any cheap printed foil stickers, laminate fake stone wraps, or repetitive inkjet patterns!
-8. Place all pieces harmoniously into the following luxury architectural room:
+        directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
+VISUAL ASSET ANCHOR:
+- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.
+${primaryProduct?.role === "sofa_2seat" ? `   - TWO-SEATER PROPORTIONS: Strictly a TWO-SEATER sofa (exactly 2 seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle cushion). Generously wide horizontal proportion and low-slung stance (2.1m wide presence). Tailored contrasting welt cord piping along front edge and armrest contours.` : ""}
+${secondaryReferencesText ? `${secondaryReferencesText}
+` : ""}
+SPATIAL & CAMERA DIRECTIVE:
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, ${primaryProduct?.role === "sofa_2seat" ? "three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, vertically stretched couch, squished proportions, cramped seating width, miniature sofa, small sofa out of scale, compressed width, oversized vertical backrest, missing contrasting piping cord, bulky upright armrests, " : ""}${isArmlessLoungeChairA00 ? "bulky recliner footrest, deployed footrest on lounge chair, thick armrests on armless chair, power motion buttons, reclining mechanism, " : ""}sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls, obstructed window frame, half wall half window background, conflicting vanishing points, floating furniture angle, mismatched ground plane vanishing lines, sofa placed sideways against room perspective, sofa cut in half by background wall seam, asymmetrical split backdrop behind sofa, deployed footrest, extended footrest, open recliner mechanism, excessive empty rug void in foreground, cut-off ceiling, missing ceiling structure, lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance, crooked vertical lines, ground-level low shot, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces`;
+CORE INVARIANTS:
+- PERSPECTIVE & LIGHTING: Eye-level standing camera height (135cm) with clean two-point architectural perspective and plumb vertical lines. Soft natural daylight streaming through side panoramic floor-to-ceiling windows. Continuous solid architectural feature wall centered behind sofa.
+- SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
+- ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
+- COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
+- ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
+        const cleanNegativeConstraintsA00 = [
+          negativePrompt,
+          antiStickerNegatives,
+          "throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric pillow, blanket, clutter, floral armchair, patterned fabric chair, patchwork armchair",
+          "CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render",
+          "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap",
+          primaryProduct?.role === "sofa_2seat" ? "three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, squished proportions" : "",
+          isArmlessLoungeChairA00 ? "bulky recliner footrest, deployed footrest on lounge chair, thick armrests on armless chair, power motion buttons" : "",
+          "sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, crooked vertical lines, ground-level low shot",
+          "deployed footrest, extended footrest, open recliner mechanism, excessive empty rug void in foreground, cut-off ceiling",
+          "lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance",
+          "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces"
+        ].filter(Boolean).join(", ");
+        directivePrompt += `
+
+Negative constraints: ${cleanNegativeConstraintsA00}`;
       }
       const mappedAspectRatio = aspectRatio === "3:4" ? "3:4" : aspectRatio === "16:9" ? "16:9" : aspectRatio === "1:1" ? "1:1" : aspectRatio === "4:3" ? "4:3" : aspectRatio === "9:16" ? "9:16" : aspectRatio === "2:3" ? "2:3" : aspectRatio === "3:2" ? "3:2" : aspectRatio || "4:3";
-      console.log(
-        `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway: model=${targetModel}, res=${validResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
-      );
-      const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
-      const generationIntent = images.length > 0 ? "image_edit" : "text_to_image";
-      const timeoutMs = process.env.NODE_ENV === "test" ? 1200 : 3e5;
-      const gatewayRes = await fetch(gatewayUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-uuid": "system"
-        },
-        body: JSON.stringify({
-          prompt: directivePrompt,
-          model: targetModel,
-          aspectRatio: mappedAspectRatio,
-          resolution: validResolution,
-          seed: typeof input.seed === "number" ? input.seed : void 0,
-          images,
-          generationIntent
-        }),
-        signal: AbortSignal.timeout(timeoutMs)
-      });
-      const gatewayData = await gatewayRes.json();
-      let rawImageBuffer = null;
-      if (gatewayRes.ok && !gatewayData.error && gatewayData.success !== false) {
-        const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data || gatewayData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.length > 0) {
-          if (imgUrlOrBase64.startsWith("data:")) {
-            const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
-            rawImageBuffer = Buffer.from(base64Clean, "base64");
-          } else if (imgUrlOrBase64.startsWith("http://") || imgUrlOrBase64.startsWith("https://")) {
-            const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(6e4) });
-            if (fetched.ok) {
-              rawImageBuffer = Buffer.from(await fetched.arrayBuffer());
-            }
-          } else if (imgUrlOrBase64.length > 500) {
-            rawImageBuffer = Buffer.from(imgUrlOrBase64, "base64");
+      const isAutoFallback = input.autoModelFallback !== false;
+      primaryModel = targetModel;
+      const candidateModels = [primaryModel];
+      if (isAutoFallback) {
+        const fallbacks = [
+          "gemini-3.1-flash-image-preview",
+          "openai/gpt-image-2.5-flare-c",
+          "gpt-image-2-c"
+        ];
+        for (const fb of fallbacks) {
+          if (!candidateModels.includes(fb)) {
+            candidateModels.push(fb);
           }
         }
-      } else {
-        const errDetail = typeof gatewayData.error === "object" ? gatewayData.error?.message || JSON.stringify(gatewayData.error) : gatewayData.error || gatewayData.message || JSON.stringify(gatewayData);
-        cloudError = `\u4E91\u7AEF\u751F\u6210\u7F51\u5173\u8FD4\u56DE\u9519\u8BEF: ${errDetail}`;
-        console.warn(`[SpaceImageGenerationService] Gateway returned error:`, errDetail);
+      }
+      const attemptErrors = [];
+      let rawImageBuffer = null;
+      wasFallbackUsed = false;
+      const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
+      const generationIntent = images.length > 0 ? "image_edit" : "text_to_image";
+      for (let mIdx = 0; mIdx < candidateModels.length; mIdx++) {
+        const currentModelToAttempt = candidateModels[mIdx];
+        const currentResolution = currentModelToAttempt === "gemini-2.5-flash-image" || currentModelToAttempt === "gemini-2.5-flash" ? "1K" : validResolution;
+        console.log(
+          `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway (\u5C1D\u8BD5 ${mIdx + 1}/${candidateModels.length}): model=${currentModelToAttempt}, res=${currentResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
+        );
+        const timeoutMs = process.env.NODE_ENV === "test" ? 1200 : currentModelToAttempt.includes("gpt") ? 12e4 : 75e3;
         try {
-          import_fs22.default.appendFileSync("debug.log", `[SpaceImageGenerationService ERROR] ${errDetail}
-`);
-        } catch (e) {
+          const gatewayRes = await fetch(gatewayUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-uuid": "system"
+            },
+            body: JSON.stringify({
+              prompt: directivePrompt,
+              model: currentModelToAttempt,
+              aspectRatio: mappedAspectRatio,
+              resolution: currentResolution,
+              seed: typeof input.seed === "number" ? input.seed : void 0,
+              images,
+              generationIntent
+            }),
+            signal: AbortSignal.timeout(timeoutMs)
+          });
+          const gatewayData = await gatewayRes.json();
+          if (gatewayRes.ok && !gatewayData.error && gatewayData.success !== false) {
+            const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data || gatewayData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.length > 0) {
+              if (imgUrlOrBase64.startsWith("data:")) {
+                const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+                rawImageBuffer = Buffer.from(base64Clean, "base64");
+              } else if (imgUrlOrBase64.startsWith("http://") || imgUrlOrBase64.startsWith("https://")) {
+                const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(6e4) });
+                if (fetched.ok) {
+                  rawImageBuffer = Buffer.from(await fetched.arrayBuffer());
+                }
+              } else if (imgUrlOrBase64.length > 500) {
+                rawImageBuffer = Buffer.from(imgUrlOrBase64, "base64");
+              }
+            }
+          }
+          if (rawImageBuffer && rawImageBuffer.length > 0) {
+            wasFallbackUsed = currentModelToAttempt !== primaryModel;
+            usedProvider = gatewayData.provider || config.provider || "tiantoken";
+            usedModel = gatewayData.model || currentModelToAttempt;
+            provenance = "AI_ESTIMATED";
+            console.log(`[SpaceImageGenerationService] Successfully generated via ${usedProvider} (${usedModel}), bytes: ${rawImageBuffer.length}`);
+            break;
+          } else {
+            const errDetail = typeof gatewayData?.error === "object" ? gatewayData.error?.message || JSON.stringify(gatewayData.error) : gatewayData?.error || gatewayData?.message || "\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E";
+            attemptErrors.push({ model: currentModelToAttempt, error: String(errDetail) });
+            console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} gateway error:`, errDetail);
+          }
+        } catch (apiErr) {
+          const errMsg = apiErr?.name === "AbortError" ? "\u4E0A\u6E38\u8BF7\u6C42\u7F51\u7EDC\u8D85\u65F6" : apiErr?.message || "\u4E91\u7AEF\u7F51\u7EDC\u8BF7\u6C42\u5F02\u5E38";
+          attemptErrors.push({ model: currentModelToAttempt, error: errMsg });
+          console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} deferred: ${errMsg}`);
         }
       }
       if (rawImageBuffer && rawImageBuffer.length > 0) {
@@ -19099,53 +19133,13 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
           imageBuffer = rawImageBuffer;
           contentType = "image/png";
         }
-        usedProvider = gatewayData.provider || config.provider || "tiantoken";
-        usedModel = gatewayData.model || targetModel;
-        provenance = "AI_ESTIMATED";
-        console.log(`[SpaceImageGenerationService] Successfully generated via ${usedProvider} (${usedModel}), bytes: ${imageBuffer.length}`);
-      } else if (!cloudError) {
-        cloudError = "\u4E91\u7AEF\u751F\u56FE\u7F51\u5173\u672A\u89E3\u6790\u51FA\u6709\u6548\u56FE\u50CF\u6570\u636E\u6D41";
-      }
-    } catch (apiErr) {
-      cloudError = apiErr?.message || "\u4E91\u7AEF\u7F51\u7EDC\u8BF7\u6C42\u5F02\u5E38";
-      console.warn(`[SpaceImageGenerationService] Cloud image generation deferred: ${cloudError}.`);
-      try {
-        import_fs22.default.appendFileSync("debug.log", `[SpaceImageGenerationService EXCEPTION] ${cloudError}
-`);
-      } catch (e) {
-      }
-    }
-    let isFallbackTriggered = false;
-    if (!imageBuffer) {
-      isFallbackTriggered = true;
-      console.warn(`[SpaceImageGenerationService] \u4E91\u7AEF\u751F\u56FE\u53D7\u963B (${cloudError})\uFF0C\u4F18\u96C5\u964D\u7EA7\u4E3A\u9AD8\u4FDD\u771F\u771F\u503C\u5DE5\u7A0B\u5E95\u56FE\u4FDD\u969C\u6D41\u7A0B\u8FDE\u7EED\u63A8\u8FDB`);
-      try {
-        const rawColor = productColor || primaryProduct?.colors?.[0] || primaryProduct?.color || effectiveColor;
-        const svgBuffer = this.renderDeterministicSpatialAsset({
-          shotCode,
-          productName: effectiveProductName,
-          productColor: rawColor,
-          productRole: primaryProduct?.role,
-          roomName,
-          styleName,
-          camera: cameraSettings || { lensMm: 35, heightCm: 130, yawDeg: 0, pitchDeg: -2 },
-          variantIndex: input.variantIndex || 1,
-          variantTag: input.variantTag
-        });
-        if (objectKey.endsWith(".webp")) {
-          imageBuffer = await (0, import_sharp4.default)(svgBuffer).webp({ quality: 92 }).toBuffer();
-          contentType = "image/webp";
+      } else {
+        const errorText = attemptErrors.length > 0 ? attemptErrors.map((e) => `[${e.model}]: ${e.error}`).join("\uFF1B ") : cloudError || "\u4E0A\u6E38\u751F\u56FE\u63A5\u53E3\u672A\u54CD\u5E94";
+        if (!isAutoFallback) {
+          throw new Error(`\u4E91\u7AEF\u751F\u56FE\u53D7\u963B (${primaryModel}): ${attemptErrors[0]?.error || errorText}\u3002\u8BF7\u5728\u63A7\u5236\u9762\u677F\u5F00\u542F\u3010\u591A\u6A21\u578B\u6545\u969C\u81EA\u52A8\u8F6E\u6362\u3011\u5F00\u5173\u4EE5\u81EA\u52A8\u5207\u6362\u5907\u9009\u53EF\u7528\u6A21\u578B\u91CD\u8BD5\u3002`);
         } else {
-          imageBuffer = await (0, import_sharp4.default)(svgBuffer).png().toBuffer();
-          contentType = "image/png";
+          throw new Error(`\u5168\u90E8\u5019\u9009\u6A21\u578B\u5747\u53D7\u963B (\u5DF2\u5C1D\u8BD5: ${candidateModels.join(" -> ")}): ${errorText}\u3002\u8BF7\u68C0\u67E5\u7F51\u7EDC\u6216\u7A0D\u540E\u91CD\u65B0\u751F\u6210\u3002`);
         }
-        usedProvider = "deterministic_renderer";
-        usedModel = "manwah-spatial-color-truth-v3";
-        provenance = "SOLVER_RESOLVED";
-      } catch (detErr) {
-        throw new Error(
-          `PROVIDER UNAVAILABLE: \u56FE\u50CF\u751F\u6210\u672A\u54CD\u5E94\u4E14\u786E\u5B9A\u6027\u8D44\u4EA7\u751F\u6210\u5931\u8D25: ${detErr.message}`
-        );
       }
     }
     const sha256 = import_crypto20.default.createHash("sha256").update(imageBuffer).digest("hex");
@@ -19164,10 +19158,11 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
         productColor: effectiveColor
       }
     });
-    const readUrlRes = await this.storage.getSignedReadUrl(objectKey, 3600, "generated");
+    const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+    const warningNotice = wasFallbackUsed ? `\u4E3B\u9009\u6A21\u578B (${primaryModel}) \u54CD\u5E94\u53D7\u963B\uFF0C\u5DF2\u81EA\u52A8\u6545\u969C\u8F6C\u79FB\u81F3 (${usedModel}) \u6210\u529F\u751F\u6210\u771F\u5B9E\u5927\u56FE\uFF01` : void 0;
     return {
       objectKey,
-      imageUrl: readUrlRes?.url || `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
+      imageUrl: proxyUrl,
       provider: usedProvider,
       model: usedModel,
       bytes: imageBuffer.length,
@@ -19175,8 +19170,8 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
       contentType,
       provenance,
       productionTruth: true,
-      isFallback: isFallbackTriggered,
-      warningNotice: isFallbackTriggered ? `\u4E91\u7AEF\u751F\u56FE\u6A21\u578B\u670D\u52A1\u54CD\u5E94\u5F02\u5E38\uFF08${cloudError || "\u8BF7\u6C42\u8D85\u65F6\u6216 API Key \u672A\u5C31\u7EEA"}\uFF09\uFF0C\u5DF2\u81EA\u52A8\u4E3A\u60A8\u542F\u7528\u7A7A\u95F4\u7269\u7406\u771F\u503C\u5DE5\u7A0B\u5E95\u56FE\u4FDD\u969C\u6D41\u7A0B\u8FDE\u7EED\uFF0C\u60A8\u53EF\u968F\u65F6\u5728\u53F3\u4E0A\u89D2\u70B9\u51FB\u91CD\u65B0\u751F\u6210\u3002` : void 0
+      isFallback: wasFallbackUsed,
+      warningNotice
     };
   }
   /**
@@ -19437,7 +19432,7 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
 
 // scripts/gcs_diagnostic_self_check.ts
 var import_storage3 = require("@google-cloud/storage");
-var import_fs23 = __toESM(require("fs"), 1);
+var import_fs22 = __toESM(require("fs"), 1);
 var import_crypto21 = __toESM(require("crypto"), 1);
 async function runGcsDiagnosticCheck(customBucket, customProject) {
   const projectId = customProject || process.env.GCP_PROJECT_ID || "gen-lang-client-0557963301";
@@ -19526,7 +19521,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     results.authMethod = `GOOGLE_APPLICATION_CREDENTIALS (${process.env.GOOGLE_APPLICATION_CREDENTIALS})`;
     try {
-      const content = import_fs23.default.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf-8");
+      const content = import_fs22.default.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf-8");
       const parsed = JSON.parse(content);
       results.effectiveStorageIdentity = parsed.client_email || "from-key-file";
     } catch {
@@ -19545,7 +19540,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
     results.authMethod = `GCS_KEY_FILE (${process.env.GCS_KEY_FILE})`;
     storageOptions.keyFilename = process.env.GCS_KEY_FILE;
     try {
-      const content = import_fs23.default.readFileSync(process.env.GCS_KEY_FILE, "utf-8");
+      const content = import_fs22.default.readFileSync(process.env.GCS_KEY_FILE, "utf-8");
       const parsed = JSON.parse(content);
       results.effectiveStorageIdentity = parsed.client_email || "from-key-file";
     } catch {
@@ -19608,8 +19603,8 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   }
   const samplePath = ".data/videos/ws-default/test-canvas-003/vjob-1789096395593-bb7914a6/av-vid-1789096405682-ee9181/original.mp4";
   let sampleBuffer;
-  if (import_fs23.default.existsSync(samplePath)) {
-    sampleBuffer = import_fs23.default.readFileSync(samplePath).subarray(0, 32768);
+  if (import_fs22.default.existsSync(samplePath)) {
+    sampleBuffer = import_fs22.default.readFileSync(samplePath).subarray(0, 32768);
   } else {
     sampleBuffer = Buffer.from("TEST_DIAGNOSTIC_MP4_PAYLOAD_" + Date.now());
   }
@@ -20196,7 +20191,7 @@ router14.get("/api/canvases/assets/video", (req, res) => {
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
     const chunkSize = end - start + 1;
-    const file = import_fs24.default.createReadStream(filePath, { start, end });
+    const file = import_fs23.default.createReadStream(filePath, { start, end });
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Accept-Ranges": "bytes",
@@ -20210,7 +20205,7 @@ router14.get("/api/canvases/assets/video", (req, res) => {
       "Content-Type": "video/mp4",
       "Accept-Ranges": "bytes"
     });
-    import_fs24.default.createReadStream(filePath).pipe(res);
+    import_fs23.default.createReadStream(filePath).pipe(res);
   }
 });
 var videoRoutes_default = router14;
@@ -20219,7 +20214,7 @@ var videoRoutes_default = router14;
 var import_express15 = require("express");
 
 // server/services/storageManagementService.ts
-var import_fs25 = __toESM(require("fs"), 1);
+var import_fs24 = __toESM(require("fs"), 1);
 var import_path22 = __toESM(require("path"), 1);
 var StorageManagementService = class {
   static {
@@ -20339,8 +20334,8 @@ var StorageManagementService = class {
     }
     try {
       const storageFile = import_path22.default.join(this.DATA_DIR, "video_jobs.json");
-      if (import_fs25.default.existsSync(storageFile)) {
-        const raw = import_fs25.default.readFileSync(storageFile, "utf-8");
+      if (import_fs24.default.existsSync(storageFile)) {
+        const raw = import_fs24.default.readFileSync(storageFile, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed.jobs && Array.isArray(parsed.jobs)) {
           for (const [, j] of parsed.jobs) {
@@ -20367,20 +20362,20 @@ var StorageManagementService = class {
       console.warn("[StorageManagement] Failed to scan video jobs:", e);
     }
     try {
-      if (import_fs25.default.existsSync(this.DATA_DIR)) {
+      if (import_fs24.default.existsSync(this.DATA_DIR)) {
         const subDirs = ["canvases", "revisions", "projects", "product_dnas", "canvas_assets", "videos"];
         for (const sub of subDirs) {
           const folderPath = import_path22.default.join(this.DATA_DIR, sub);
-          if (import_fs25.default.existsSync(folderPath)) {
+          if (import_fs24.default.existsSync(folderPath)) {
             const scanDirRecursive = (dir) => {
-              const entries = import_fs25.default.readdirSync(dir, { withFileTypes: true });
+              const entries = import_fs24.default.readdirSync(dir, { withFileTypes: true });
               for (const entry of entries) {
                 const fullF = import_path22.default.join(dir, entry.name);
                 if (entry.isDirectory()) {
                   scanDirRecursive(fullF);
                 } else if (entry.isFile()) {
                   try {
-                    const stat = import_fs25.default.statSync(fullF);
+                    const stat = import_fs24.default.statSync(fullF);
                     localDiskItems.push({
                       fileName: entry.name,
                       folder: sub,
@@ -20424,6 +20419,79 @@ var StorageManagementService = class {
           }
         }
       }
+      const spaceStorageDir = import_path22.default.join(this.DATA_DIR, "space-storage");
+      if (import_fs24.default.existsSync(spaceStorageDir)) {
+        const scanSpaceStorage = (dir) => {
+          const entries = import_fs24.default.readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullF = import_path22.default.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              scanSpaceStorage(fullF);
+            } else if (entry.isFile()) {
+              try {
+                const stat = import_fs24.default.statSync(fullF);
+                const relKey = import_path22.default.relative(spaceStorageDir, fullF).replace(/\\/g, "/");
+                localDiskItems.push({
+                  fileName: entry.name,
+                  folder: "space-storage",
+                  fullPath: fullF,
+                  sizeBytes: stat.size,
+                  updatedAt: stat.mtime.toISOString()
+                });
+                const isImageOrVideo = /\.(webp|png|jpe?g|mp4|mov)$/i.test(entry.name);
+                if (isImageOrVideo) {
+                  storageAssets.push({
+                    id: `space_${relKey}`,
+                    bucket: "space-storage",
+                    name: entry.name,
+                    fullPath: relKey,
+                    sizeBytes: stat.size,
+                    mimeType: entry.name.endsWith(".webp") ? "image/webp" : entry.name.endsWith(".mp4") ? "video/mp4" : "image/jpeg",
+                    updatedAt: stat.mtime.toISOString(),
+                    publicUrl: `/api/space/storage/local-file?key=${encodeURIComponent(relKey)}`,
+                    category: "space_studio"
+                  });
+                }
+              } catch (e) {
+              }
+            }
+          }
+        };
+        scanSpaceStorage(spaceStorageDir);
+      }
+      const spaceProjectsDir = import_path22.default.join(this.DATA_DIR, "space-projects");
+      if (import_fs24.default.existsSync(spaceProjectsDir)) {
+        const pEntries = import_fs24.default.readdirSync(spaceProjectsDir);
+        for (const f of pEntries) {
+          if (f.endsWith(".json")) {
+            try {
+              const fullF = import_path22.default.join(spaceProjectsDir, f);
+              const stat = import_fs24.default.statSync(fullF);
+              const raw = import_fs24.default.readFileSync(fullF, "utf-8");
+              const parsed = JSON.parse(raw);
+              const pId = parsed.projectId || f.replace(".json", "");
+              const pName = parsed.summary?.productName || parsed.title || pId;
+              const generatedCount = parsed.summary?.generatedShotsCount || 0;
+              const cover = parsed.sceneMaster?.imageUrl || parsed.shots?.[0]?.revisions?.[0]?.imageUrl || parsed.products?.[0]?.referenceImages?.[0]?.publicUrl;
+              canvases.push({
+                id: pId,
+                title: parsed.title || `\u3010\u6444\u5F71\u753B\u518C\u3011${pName}`,
+                projectId: pId,
+                nodeCount: parsed.shots?.length || 9,
+                edgeCount: generatedCount,
+                updatedAt: parsed.updatedAt || stat.mtime.toISOString(),
+                createdAt: parsed.createdAt || stat.birthtime.toISOString(),
+                source: "disk",
+                type: "space_studio",
+                shotCount: parsed.shots?.length || 9,
+                coverImageUrl: cover,
+                sizeBytes: stat.size
+              });
+            } catch (e) {
+            }
+          }
+        }
+      }
     } catch (e) {
       console.warn("[StorageManagement] Failed to scan local .data directory:", e);
     }
@@ -20463,11 +20531,21 @@ var StorageManagementService = class {
         }
         try {
           const diskPath = import_path22.default.join(this.DATA_DIR, "canvases", `${cid}.json`);
-          if (import_fs25.default.existsSync(diskPath)) {
-            const stat = import_fs25.default.statSync(diskPath);
+          if (import_fs24.default.existsSync(diskPath)) {
+            const stat = import_fs24.default.statSync(diskPath);
             freedBytesEstimate += stat.size;
-            import_fs25.default.unlinkSync(diskPath);
+            import_fs24.default.unlinkSync(diskPath);
             deletedDiskFilesCount++;
+          }
+        } catch (e) {
+        }
+        try {
+          const spaceProjPath = import_path22.default.join(this.DATA_DIR, "space-projects", `${cid}.json`);
+          if (import_fs24.default.existsSync(spaceProjPath)) {
+            const stat = import_fs24.default.statSync(spaceProjPath);
+            freedBytesEstimate += stat.size;
+            import_fs24.default.unlinkSync(spaceProjPath);
+            deletedCanvasesCount++;
           }
         } catch (e) {
         }
@@ -20482,10 +20560,10 @@ var StorageManagementService = class {
         }
         try {
           const diskPath = import_path22.default.join(this.DATA_DIR, "revisions", `${rid}.json`);
-          if (import_fs25.default.existsSync(diskPath)) {
-            const stat = import_fs25.default.statSync(diskPath);
+          if (import_fs24.default.existsSync(diskPath)) {
+            const stat = import_fs24.default.statSync(diskPath);
             freedBytesEstimate += stat.size;
-            import_fs25.default.unlinkSync(diskPath);
+            import_fs24.default.unlinkSync(diskPath);
             deletedDiskFilesCount++;
           }
         } catch (e) {
@@ -20500,6 +20578,21 @@ var StorageManagementService = class {
         bucketMap.set(item.bucket, list);
       }
       for (const [bucket, paths] of bucketMap.entries()) {
+        if (bucket === "space-storage") {
+          for (const p of paths) {
+            try {
+              const fullF = import_path22.default.join(this.DATA_DIR, "space-storage", p);
+              if (import_fs24.default.existsSync(fullF)) {
+                const stat = import_fs24.default.statSync(fullF);
+                freedBytesEstimate += stat.size;
+                import_fs24.default.unlinkSync(fullF);
+                deletedStorageFilesCount++;
+              }
+            } catch (e) {
+            }
+          }
+          continue;
+        }
         try {
           for (let i = 0; i < paths.length; i += 50) {
             const chunk = paths.slice(i, i + 50);
@@ -20519,10 +20612,10 @@ var StorageManagementService = class {
       for (const df of options.diskFiles) {
         try {
           const fullP = import_path22.default.join(this.DATA_DIR, df.folder, df.fileName);
-          if (import_fs25.default.existsSync(fullP)) {
-            const stat = import_fs25.default.statSync(fullP);
+          if (import_fs24.default.existsSync(fullP)) {
+            const stat = import_fs24.default.statSync(fullP);
             freedBytesEstimate += stat.size;
-            import_fs25.default.unlinkSync(fullP);
+            import_fs24.default.unlinkSync(fullP);
             deletedDiskFilesCount++;
           }
         } catch (e) {
@@ -20543,17 +20636,22 @@ var StorageManagementService = class {
   static async purgeAll(scope) {
     const scan = await this.scanAll();
     const toDelete = {};
-    if (scope === "all" || scope === "canvases") {
-      toDelete.canvasIds = scan.canvases.map((c) => c.id);
-    }
-    if (scope === "all" || scope === "revisions") {
-      toDelete.revisionIds = scan.revisions.map((r) => r.id);
-    }
-    if (scope === "all" || scope === "storage_assets") {
-      toDelete.storageFiles = scan.storageAssets.map((s) => ({ bucket: s.bucket, path: s.fullPath }));
-    }
-    if (scope === "all" || scope === "disk") {
-      toDelete.diskFiles = scan.localDiskItems.map((d) => ({ folder: d.folder, fileName: d.fileName }));
+    if (scope === "space_studio") {
+      toDelete.canvasIds = scan.canvases.filter((c) => c.type === "space_studio").map((c) => c.id);
+      toDelete.storageFiles = scan.storageAssets.filter((s) => s.category === "space_studio").map((s) => ({ bucket: s.bucket, path: s.fullPath }));
+    } else {
+      if (scope === "all" || scope === "canvases") {
+        toDelete.canvasIds = scan.canvases.map((c) => c.id);
+      }
+      if (scope === "all" || scope === "revisions") {
+        toDelete.revisionIds = scan.revisions.map((r) => r.id);
+      }
+      if (scope === "all" || scope === "storage_assets") {
+        toDelete.storageFiles = scan.storageAssets.map((s) => ({ bucket: s.bucket, path: s.fullPath }));
+      }
+      if (scope === "all" || scope === "disk") {
+        toDelete.diskFiles = scan.localDiskItems.map((d) => ({ folder: d.folder, fileName: d.fileName }));
+      }
     }
     const res = await this.deleteItems(toDelete);
     return {
@@ -20635,7 +20733,7 @@ var storageManagementRoutes_default = router15;
 // server/routes/spaceStorageRoutes.ts
 var import_express16 = require("express");
 var import_zod3 = require("zod");
-var import_fs26 = __toESM(require("fs"), 1);
+var import_fs25 = __toESM(require("fs"), 1);
 var import_path23 = __toESM(require("path"), 1);
 var import_sharp5 = __toESM(require("sharp"), 1);
 var router16 = (0, import_express16.Router)();
@@ -20729,7 +20827,7 @@ router16.get(["/local-file", "/download"], async (req, res) => {
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("Cache-Control", "public, max-age=86400");
     const filePath = storage.getLocalFilePath(key);
-    if (filePath && import_fs26.default.existsSync(filePath)) {
+    if (filePath && import_fs25.default.existsSync(filePath)) {
       if (key.endsWith(".svg")) {
         res.setHeader("Content-Type", "image/svg+xml");
       } else if (key.endsWith(".webp")) {
@@ -20739,7 +20837,7 @@ router16.get(["/local-file", "/download"], async (req, res) => {
       } else if (key.endsWith(".png")) {
         res.setHeader("Content-Type", "image/png");
       }
-      const data = import_fs26.default.readFileSync(filePath);
+      const data = import_fs25.default.readFileSync(filePath);
       return res.end(data);
     }
     try {
@@ -20785,8 +20883,8 @@ router16.get("/export-image", async (req, res) => {
     }
     let sourceBuf = null;
     const filePath = storage.getLocalFilePath(key);
-    if (filePath && import_fs26.default.existsSync(filePath)) {
-      sourceBuf = import_fs26.default.readFileSync(filePath);
+    if (filePath && import_fs25.default.existsSync(filePath)) {
+      sourceBuf = import_fs25.default.readFileSync(filePath);
     } else {
       sourceBuf = await storage.getBuffer(key);
     }
@@ -20903,8 +21001,8 @@ var SEED_STYLES_FILE = import_path23.default.join(SEEDS_DIR, "space_scene_styles
 var GCS_MODELS_KEY = "assets/space_model_assets.json";
 var GCS_STYLES_KEY = "assets/space_scene_styles.json";
 function ensureDataDir2() {
-  if (!import_fs26.default.existsSync(DATA_DIR5)) {
-    import_fs26.default.mkdirSync(DATA_DIR5, { recursive: true });
+  if (!import_fs25.default.existsSync(DATA_DIR5)) {
+    import_fs25.default.mkdirSync(DATA_DIR5, { recursive: true });
   }
 }
 function extractObjectKeysFromData(obj, keys = /* @__PURE__ */ new Set()) {
@@ -20955,16 +21053,16 @@ router16.get("/models", async (_req, res) => {
       if (gcsBuf && gcsBuf.length > 2) {
         const parsed = JSON.parse(gcsBuf.toString("utf-8"));
         if (Array.isArray(parsed) && parsed.length > 0) {
-          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), "utf-8");
           return res.json({ success: true, data: parsed, source: "gcs" });
         }
       }
     } catch (gcsErr) {
       console.warn("[spaceStorageRoutes] GCS read models notice:", gcsErr.message);
     }
-    if (import_fs26.default.existsSync(MODELS_FILE)) {
+    if (import_fs25.default.existsSync(MODELS_FILE)) {
       try {
-        const content = import_fs26.default.readFileSync(MODELS_FILE, "utf-8");
+        const content = import_fs25.default.readFileSync(MODELS_FILE, "utf-8");
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return res.json({ success: true, data: parsed, source: "local_disk" });
@@ -20972,13 +21070,13 @@ router16.get("/models", async (_req, res) => {
       } catch (e) {
       }
     }
-    if (import_fs26.default.existsSync(SEED_MODELS_FILE)) {
+    if (import_fs25.default.existsSync(SEED_MODELS_FILE)) {
       try {
-        const seedContent = import_fs26.default.readFileSync(SEED_MODELS_FILE, "utf-8");
+        const seedContent = import_fs25.default.readFileSync(SEED_MODELS_FILE, "utf-8");
         const seedModels = JSON.parse(seedContent);
         if (Array.isArray(seedModels) && seedModels.length > 0) {
           console.log(`[spaceStorageRoutes] Loaded ${seedModels.length} seed model assets (built-in fallback)`);
-          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), "utf-8");
+          import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), "utf-8");
           (async () => {
             try {
               await storage.put({
@@ -21013,14 +21111,14 @@ router16.post("/models/sync", async (req, res) => {
     if (!Array.isArray(models)) {
       return res.status(400).json({ success: false, error: "Models payload must be an array" });
     }
-    if (import_fs26.default.existsSync(MODELS_FILE)) {
+    if (import_fs25.default.existsSync(MODELS_FILE)) {
       try {
-        import_fs26.default.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
+        import_fs25.default.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
       } catch (backupErr) {
         console.warn("[spaceStorageRoutes] backup error:", backupErr);
       }
     }
-    import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), "utf-8");
+    import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), "utf-8");
     console.log(`[spaceStorageRoutes] Successfully persisted ${models.length} model assets to disk at ${MODELS_FILE}`);
     let gcsSynced = false;
     try {
@@ -21062,16 +21160,16 @@ router16.get("/styles", async (_req, res) => {
       if (gcsBuf && gcsBuf.length > 2) {
         const parsed = JSON.parse(gcsBuf.toString("utf-8"));
         if (Array.isArray(parsed) && parsed.length > 0) {
-          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), "utf-8");
           return res.json({ success: true, data: parsed, source: "gcs" });
         }
       }
     } catch (gcsErr) {
       console.warn("[spaceStorageRoutes] GCS read styles notice:", gcsErr.message);
     }
-    if (import_fs26.default.existsSync(STYLES_FILE)) {
+    if (import_fs25.default.existsSync(STYLES_FILE)) {
       try {
-        const content = import_fs26.default.readFileSync(STYLES_FILE, "utf-8");
+        const content = import_fs25.default.readFileSync(STYLES_FILE, "utf-8");
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return res.json({ success: true, data: parsed, source: "local_disk" });
@@ -21079,13 +21177,13 @@ router16.get("/styles", async (_req, res) => {
       } catch (e) {
       }
     }
-    if (import_fs26.default.existsSync(SEED_STYLES_FILE)) {
+    if (import_fs25.default.existsSync(SEED_STYLES_FILE)) {
       try {
-        const seedContent = import_fs26.default.readFileSync(SEED_STYLES_FILE, "utf-8");
+        const seedContent = import_fs25.default.readFileSync(SEED_STYLES_FILE, "utf-8");
         const seedStyles = JSON.parse(seedContent);
         if (Array.isArray(seedStyles) && seedStyles.length > 0) {
           console.log(`[spaceStorageRoutes] Loaded ${seedStyles.length} seed scene styles (built-in fallback)`);
-          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), "utf-8");
+          import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), "utf-8");
           (async () => {
             try {
               await storage.put({
@@ -21117,13 +21215,13 @@ router16.post("/styles/sync", async (req, res) => {
     if (!Array.isArray(styles)) {
       return res.status(400).json({ success: false, error: "Styles payload must be an array" });
     }
-    if (import_fs26.default.existsSync(STYLES_FILE)) {
+    if (import_fs25.default.existsSync(STYLES_FILE)) {
       try {
-        import_fs26.default.copyFileSync(STYLES_FILE, STYLES_BACKUP_FILE);
+        import_fs25.default.copyFileSync(STYLES_FILE, STYLES_BACKUP_FILE);
       } catch {
       }
     }
-    import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), "utf-8");
+    import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), "utf-8");
     console.log(`[spaceStorageRoutes] \u2713 \u6210\u529F\u5C06 ${styles.length} \u4E2A\u573A\u666F\u98CE\u683C\u8D44\u4EA7\u6301\u4E45\u5316\u4FDD\u5B58\u81F3\u670D\u52A1\u7AEF\u78C1\u76D8`);
     let gcsSynced = false;
     try {
@@ -21153,6 +21251,36 @@ router16.post("/styles/sync", async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
+  }
+});
+router16.post("/projects/snapshot", (req, res) => {
+  try {
+    const payload = req.body;
+    if (!payload || !payload.projectId) {
+      return res.status(400).json({ success: false, error: "Missing projectId in snapshot" });
+    }
+    const projectsDir = import_path23.default.join(process.cwd(), ".data", "space-projects");
+    if (!import_fs25.default.existsSync(projectsDir)) {
+      import_fs25.default.mkdirSync(projectsDir, { recursive: true });
+    }
+    const filePath = import_path23.default.join(projectsDir, `${payload.projectId}.json`);
+    import_fs25.default.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    return res.json({ success: true, projectId: payload.projectId, path: filePath });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+router16.get("/projects/snapshot/:projectId", (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const filePath = import_path23.default.join(process.cwd(), ".data", "space-projects", `${projectId}.json`);
+    if (!import_fs25.default.existsSync(filePath)) {
+      return res.status(404).json({ success: false, error: "Project snapshot not found" });
+    }
+    const raw = import_fs25.default.readFileSync(filePath, "utf-8");
+    return res.json({ success: true, data: JSON.parse(raw) });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 var spaceStorageRoutes_default = router16;
@@ -21271,7 +21399,7 @@ var SpaceObjectKeyBuilder = class {
 };
 
 // server/services/spaceProductAnalysisService.ts
-var import_fs27 = __toESM(require("fs"), 1);
+var import_fs26 = __toESM(require("fs"), 1);
 var import_crypto23 = __toESM(require("crypto"), 1);
 var import_sharp6 = __toESM(require("sharp"), 1);
 var import_zod4 = require("zod");
@@ -21487,9 +21615,9 @@ var SpaceProductAnalysisService = class {
         }
       }
       if (!imageBuffer || imageBuffer.length < 50) {
-        if (typeof cleanBase64 === "string" && import_fs27.default.existsSync(cleanBase64)) {
+        if (typeof cleanBase64 === "string" && import_fs26.default.existsSync(cleanBase64)) {
           try {
-            imageBuffer = import_fs27.default.readFileSync(cleanBase64);
+            imageBuffer = import_fs26.default.readFileSync(cleanBase64);
           } catch {
           }
         }
@@ -21661,20 +21789,25 @@ var SpaceProductAnalysisService = class {
 6. \u89C6\u89C9\u771F\u503C\u4E0D\u53EF\u7BE1\u6539\u9501\u5B9A\u89C4\u5219 (lockedRules):
    - \u7ED9\u51FA 3~5 \u6761\u540E\u7EED\u5728\u7A7A\u95F4\u6BCD\u7248 A00 \u53CA\u5206\u955C A01~A08 \u6E32\u67D3\u4E2D\u5FC5\u987B 100% \u4FDD\u6301\u4E00\u81F4\u6027\u7684\u786C\u6027\u7269\u7406\u7EA6\u675F\u3002
 
-7. \u3010\u6781\u5176\u5173\u952E\uFF1A\u591A\u4EA7\u54C1\u591A\u5BB6\u5177\u89E3\u6784\u8BC6\u522B\u4E0E\u603B\u56FE\u5750\u6807\u6807\u8BB0 (Multi-Product Ensemble Disaggregation)\u3011:
-   - \u82E5\u753B\u9762\u662F\u4E00\u5F20\u7EC4\u5408\u5957\u88C5\u56FE\u3001\u5168\u666F\u5B9E\u62CD\u56FE\u6216\u5305\u542B\u591A\u4E2A\u4E0D\u540C\u5BB6\u5177\uFF08\u4F8B\u5982\u540C\u65F6\u51FA\u73B0\uFF1A\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u6C99\u53D1\u3001\u5355\u4EBA\u7535\u52A8\u8EBA\u6905\u3001\u65E0\u529F\u80FD\u4F11\u95F2\u77EE\u5355\u6905\u3001\u7535\u89C6\u67DC\u3001\u8336\u51E0\u3001\u9910\u684C\u6905\u7B49\uFF09\uFF1A
-   - \u4F60\u5FC5\u987B\u5728 "detectedProducts" \u6570\u7EC4\u4E2D\uFF0C\u5C06\u753B\u9762\u4E2D\u51FA\u73B0\u7684\u3010\u6BCF\u4E00\u4E2A\u72EC\u7ACB\u5BB6\u5177\u4EA7\u54C1\u3011\u5206\u522B\u62C6\u89E3\u51FA\u6765\uFF01
-   - \u5BF9\u4E8E\u6BCF\u4E2A\u62C6\u89E3\u4EA7\u54C1\u5206\u522B\u63D0\u4F9B\uFF1A
-     * "id": \u552F\u4E00\u5355\u54C1 ID (\u5982 "item-1", "item-2", "item-3")
-     * "name": \u51C6\u786E\u5355\u54C1\u89C4\u8303\u5168\u79F0 (\u5982 "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1", "\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905", "\u65E0\u6276\u624B\u4F11\u95F2\u65CB\u8F6C\u77EE\u5355\u6905", "\u6781\u7B80\u60AC\u6D6E\u5CA9\u677F\u7535\u89C6\u5730\u67DC", "\u6781\u7B80\u53CC\u62FC\u5706\u8336\u51E0")
-     * "role": \u89D2\u8272\u5206\u7C7B ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
-     * "priority": \u4E3B\u54C1\u6807 "primary"\uFF0C\u6B21\u54C1/\u642D\u914D\u5355\u6905\u6807 "secondary"\uFF0C\u67DC\u51E0\u9648\u8BBE\u6807 "decor"
-     * "functionCapable": true/false (\u5BF9\u4E8E\u5E26\u7535\u673A/\u5C55\u5F00\u811A\u6258\u7684\u529F\u80FD\u4F4D\u8BBE\u4E3A true\uFF1B\u5BF9\u4E8E\u65E0\u7535\u52A8\u529F\u80FD\u3001\u65E0\u811A\u6258\u7684\u4F11\u95F2\u5355\u6905 lounge_chair \u4E25\u683C\u8BBE\u4E3A false\uFF01)
-     * "dimensions": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u72EC\u7ACB\u7684\u771F\u5B9E\u6BEB\u7C73\u5C3A\u5BF8 (\u5982\u4E09\u4EBA\u4F4D\u5BBD3150\u6DF11080\u9AD8950\uFF0C\u4F11\u95F2\u77EE\u5355\u6905\u5BBD950\u6DF11000\u9AD8850\uFF0C\u5355\u4EBA\u8EBA\u6905\u5BBD980\u6DF11020\u9AD81050\uFF0C\u7535\u89C6\u67DC\u5BBD2000\u6DF1400\u9AD8450\uFF0C\u8336\u51E0\u5BBD1100\u6DF1700\u9AD8420)
-     * "colors": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u7684\u771F\u5B9E\u72EC\u7ACB\u8272\u5F69 (\u7981\u6B62\u6DF7\u6DC6\uFF0C\u4E3B\u6C99\u53D1\u5199\u4E3B\u6C99\u53D1\u8272\uFF0C\u5355\u6905\u5199\u5355\u6905\u8272\uFF0C\u5FE0\u5B9E\u53CD\u6620\u539F\u56FE\u8272\u9636\u660E\u5EA6)
-     * "materials": \u8BE5\u5BB6\u5177\u771F\u5B9E\u7684\u6750\u8D28\u5217\u8868
-     * "boundingBox": \u8BE5\u5BB6\u5177\u5728\u6574\u5F20\u8BC6\u522B\u603B\u56FE\u4E2D\u7684\u5F52\u4E00\u5316\u767E\u5206\u6BD4\u5750\u6807 (0~100 \u6574\u6570)\uFF0C\u683C\u5F0F: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}\uFF0C\u5206\u522B\u5BF9\u5E94\u9876\u90E8ymin\u3001\u5DE6\u4FA7xmin\u3001\u5E95\u90E8ymax\u3001\u53F3\u4FA7xmax\u3002
-     * "dossierSummary": \u8BE5\u5355\u54C1\u7684\u89C4\u683C\u6458\u8981\u3002
+7. \u3010\u6781\u5176\u5173\u952E\uFF1A\u5355\u54C1 vs \u7EC4\u5408\u56FE\u4E0E\u591A\u5BB6\u5177\u89E3\u6784\u51C6\u5219 (Multi-Product Ensemble Disaggregation)\u3011:
+   - \u3010\u4E25\u7981\u5BF9\u5355\u54C1\u8FDB\u884C\u66B4\u529B\u5207\u7247\u4E0E\u865A\u6784\u642D\u914D (NO VIOLENT SLICING & PURITY LOCK)\u3011:
+     * \u5FC5\u987B\u9996\u5148\u51C6\u786E\u5224\u5B9A\u5F53\u524D\u753B\u9762\u662F\u5426\u4E3A\u3010\u5355\u4EF6\u72EC\u7ACB\u4EA7\u54C1\u5C55\u793A\u56FE\u3011\uFF08\u4F8B\u5982\u4EC5\u5305\u542B\u5355\u5F20\u6C99\u53D1\u3001\u5355\u5F20\u4F11\u95F2\u6905\u3001\u5355\u5F20\u5E8A\u3001\u5355\u4E2A\u8336\u51E0\u6216\u5355\u4E2A\u7535\u89C6\u67DC\u7684\u767D\u5E95/\u5B9E\u62CD/\u6548\u679C\u56FE\u5C55\u793A\uFF09\u3002
+     * \u82E5\u753B\u9762\u786E\u4E3A\u3010\u5355\u4EF6\u5BB6\u5177\u5355\u54C1\u3011\uFF0C"detectedProducts" \u5FC5\u987B\u4E25\u683C\u8FD4\u56DE\u7A7A\u6570\u7EC4 []\uFF01
+     * \u3010\u7EDD\u5BF9\u4E25\u7981\u3011\u5C06\u540C\u4E00\u4EF6\u5355\u54C1\u7684\u4E0D\u540C\u7ED3\u6784\uFF08\u5982\u6C99\u53D1\u7684\u9760\u57AB\u3001\u6276\u624B\u3001\u62B1\u6795\u3001\u5750\u57AB\u76AE\u6599\u3001\u7535\u673A\u811A\u8E0F\uFF09\u9519\u8BEF\u62C6\u5206\u4E3A\u4E0D\u540C\u7684\u5BB6\u5177\u5355\u54C1\uFF01
+     * \u3010\u7EDD\u5BF9\u4E25\u7981\u3011\u51ED\u7A7A\u65E0\u4E2D\u751F\u6709\u634F\u9020\u753B\u9762\u4E2D\u4E0D\u5B58\u5728\u7684\u642D\u914D\u54C1\uFF08\u4F8B\u5982\u539F\u56FE\u53EA\u6709\u5355\u5F20\u4E09\u4EBA\u4F4D\u68D5\u8272\u6C99\u53D1\uFF0C\u7EDD\u5BF9\u4E25\u7981\u865A\u6784\u51FA\u767D\u8272\u5355\u4EBA\u8EBA\u6905\u3001\u9ED1\u8272\u5355\u6905\u6216\u8336\u51E0\uFF09\uFF01
+   - \u3010\u591A\u4EA7\u54C1\u7EC4\u5408\u56FE\u89E3\u6784\u6761\u4EF6\u3011:
+     * \u4EC5\u5F53\u539F\u56FE\u660E\u786E\u4E3A\u3010\u5305\u542B 2 \u4EF6\u53CA\u4EE5\u4E0A\u72EC\u7ACB\u7269\u7406\u5B9E\u4F53\u7684\u5BB6\u5177\u7EC4\u5408\u5957\u56FE/\u5B9E\u666F\u5BA2\u9910\u5385\u5C55\u5385\u3011\uFF08\u4F8B\u5982\u753B\u9762\u4E2D\u540C\u65F6\u6E05\u6670\u5B58\u5728\u7269\u7406\u5206\u79BB\u7684\u4E3B\u6C99\u53D1\u3001\u72EC\u7ACB\u7684\u5355\u4EBA\u4F11\u95F2\u6905\u3001\u72EC\u7ACB\u7684\u8336\u51E0\uFF09\u65F6\uFF0C\u624D\u5141\u8BB8\u5728 "detectedProducts" \u6570\u7EC4\u4E2D\u5206\u522B\u62C6\u89E3\u51FA\u8FD9\u4E9B\u5B9E\u4F53\u5BB6\u5177\u3002
+     * \u5BF9\u4E8E\u62C6\u89E3\u51FA\u7684\u5404\u5B9E\u4F53\u5BB6\u5177\u63D0\u4F9B\uFF1A
+       * "id": \u552F\u4E00\u5355\u54C1 ID (\u5982 "item-1", "item-2", "item-3")
+       * "name": \u51C6\u786E\u5355\u54C1\u89C4\u8303\u5168\u79F0 (\u5982 "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1", "\u65E0\u6276\u624B\u4F11\u95F2\u65CB\u8F6C\u77EE\u5355\u6905", "\u6781\u7B80\u60AC\u6D6E\u5CA9\u677F\u7535\u89C6\u5730\u67DC")
+       * "role": \u89D2\u8272\u5206\u7C7B ("sofa_3seat" / "sofa_2seat" / "recliner_1seat" / "lounge_chair" / "tv_console" / "coffee_table" / "dining_table" / "dining_chair" / "decor")
+       * "priority": \u4E3B\u54C1\u6807 "primary"\uFF0C\u6B21\u54C1/\u642D\u914D\u5355\u6905\u6807 "secondary"\uFF0C\u67DC\u51E0\u9648\u8BBE\u6807 "decor"
+       * "functionCapable": true/false (\u5BF9\u4E8E\u5E26\u7535\u673A/\u5C55\u5F00\u811A\u6258\u7684\u529F\u80FD\u4F4D\u8BBE\u4E3A true\uFF1B\u5BF9\u4E8E\u65E0\u7535\u52A8\u529F\u80FD\u3001\u65E0\u811A\u6258\u7684\u4F11\u95F2\u5355\u6905 lounge_chair \u4E25\u683C\u8BBE\u4E3A false\uFF01)
+       * "dimensions": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u72EC\u7ACB\u7684\u771F\u5B9E\u6BEB\u7C73\u5C3A\u5BF8
+       * "colors": \u8BE5\u5BB6\u5177\u81EA\u8EAB\u7684\u771F\u5B9E\u72EC\u7ACB\u8272\u5F69 (\u7981\u6B62\u6DF7\u6DC6\uFF0C\u4E3B\u6C99\u53D1\u5199\u4E3B\u6C99\u53D1\u8272\uFF0C\u5355\u6905\u5199\u5355\u6905\u8272\uFF0C\u5FE0\u5B9E\u53CD\u6620\u539F\u56FE\u8272\u9636\u660E\u5EA6)
+       * "materials": \u8BE5\u5BB6\u5177\u771F\u5B9E\u7684\u6750\u8D28\u5217\u8868
+       * "boundingBox": \u8BE5\u5BB6\u5177\u5728\u6574\u5F20\u8BC6\u522B\u603B\u56FE\u4E2D\u7684\u5F52\u4E00\u5316\u767E\u5206\u6BD4\u5750\u6807 (0~100 \u6574\u6570)\uFF0C\u683C\u5F0F: {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85}
+       * "dossierSummary": \u8BE5\u5355\u54C1\u7684\u89C4\u683C\u6458\u8981\u3002
 
 ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${userNotes}` : ""}
 
@@ -21707,34 +21840,7 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
   "dossierSummary": "\u9AD8\u7CBE\u5DE5\u4E1A\u7EA7\u4EA7\u54C1\u6863\u6848\uFF1A\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1\uFF0C\u914D\u5907\u5357\u7F8E\u534A\u82EF\u80FA\u5934\u5C42\u725B\u76AE\u3001\u5FB7\u56FD\u4F4E\u538B\u9759\u97F3\u53CC\u7535\u673A\u4E0E\u9AD8\u78B3\u94A2\u5408\u91D1\u4F38\u7F29\u9AA8\u67B6\uFF0C\u5C3A\u5BF83100\xD71080\xD7950mm\u3002",
   "readoutConfidence": 95,
   "explanation": "\u6DF1\u5EA6\u89E3\u6790\u5B8C\u6210\uFF0C\u5DF2\u6210\u529F\u63D0\u70BC\u6750\u8D28\u7EB9\u7406\u4E0E\u51E0\u4F55\u7279\u5F81",
-  "detectedProducts": [
-    {
-      "id": "item-1",
-      "name": "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1",
-      "sku": "MW-CH-9866-3S",
-      "role": "sofa_3seat",
-      "priority": "primary",
-      "dimensions": {"width": 3150, "depth": 1080, "height": 950},
-      "materials": ["\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)", "\u5FB7\u56FD\u53CC\u7535\u673A"],
-      "colors": ["\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"],
-      "adaptiveStyles": ["\u610F\u5F0F\u8F7B\u5962", "\u73B0\u4EE3\u6781\u7B80"],
-      "boundingBox": {"ymin": 20, "xmin": 30, "ymax": 65, "xmax": 85},
-      "dossierSummary": "\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1\uFF0C\u590D\u53E4\u6DF1\u6817\u68D5\uFF0C\u5C3A\u5BF83150\xD71080\xD7950mm\u3002"
-    },
-    {
-      "id": "item-2",
-      "name": "\u6781\u5730\u5976\u767D\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905",
-      "sku": "MW-CH-9866-1R",
-      "role": "recliner_1seat",
-      "priority": "secondary",
-      "dimensions": {"width": 980, "depth": 1020, "height": 1050},
-      "materials": ["\u6781\u5730\u5976\u767D\u5934\u5C42\u725B\u76AE", "\u96F6\u91CD\u529B\u4F38\u5C55\u673A\u6784"],
-      "colors": ["\u6781\u5730\u5976\u767D (Polar Off-White)"],
-      "adaptiveStyles": ["\u610F\u5F0F\u8F7B\u5962", "\u73B0\u4EE3\u6781\u7B80"],
-      "boundingBox": {"ymin": 22, "xmin": 75, "ymax": 70, "xmax": 98},
-      "dossierSummary": "\u6781\u5730\u5976\u767D\u5355\u4EBA\u7535\u52A8\u8EBA\u6905\uFF0C\u5C3A\u5BF8980\xD71020\xD71050mm\u3002"
-    }
-  ]
+  "detectedProducts": []
 }`
         });
         for (const ref of storedReferences) {
@@ -21814,9 +21920,47 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
     }
     const processedDetectedProducts = [];
     const rawDetected = Array.isArray(extracted?.detectedProducts) ? extracted.detectedProducts : [];
-    if (rawDetected.length > 0) {
-      for (let idx = 0; idx < rawDetected.length; idx++) {
-        const item = rawDetected[idx];
+    const isComponentOrOverlapping = (box1, box2) => {
+      const ymin = Math.max(box1.ymin, box2.ymin);
+      const xmin = Math.max(box1.xmin, box2.xmin);
+      const ymax = Math.min(box1.ymax, box2.ymax);
+      const xmax = Math.min(box1.xmax, box2.xmax);
+      if (ymax <= ymin || xmax <= xmin) return false;
+      const interArea = (ymax - ymin) * (xmax - xmin);
+      const area1 = Math.max(1, (box1.ymax - box1.ymin) * (box1.xmax - box1.xmin));
+      const area2 = Math.max(1, (box2.ymax - box2.ymin) * (box2.xmax - box2.xmin));
+      return interArea / Math.min(area1, area2) > 0.65;
+    };
+    const validDetected = rawDetected.filter((item) => {
+      const name = item.name || "";
+      if (/(扶手|靠垫|靠背|抱枕|座包|坐垫|头枕|底框|脚踏|局部|特写|面料|皮质|细节|按键|缝线)/i.test(name)) {
+        console.log(`[SpaceProductAnalysisService] \u8FC7\u6EE4\u5C40\u90E8\u6784\u4EF6\u8BEF\u5207\u7247: ${name}`);
+        return false;
+      }
+      return true;
+    });
+    const acceptedItems = [];
+    if (validDetected.length > 1) {
+      for (const item of validDetected) {
+        const safeBox = normalizeBoundingBox(item.boundingBox, masterMetaWidth, masterMetaHeight);
+        const boxW = safeBox.xmax - safeBox.xmin;
+        const boxH = safeBox.ymax - safeBox.ymin;
+        if (boxW < 6 || boxH < 6) continue;
+        const overlapsWithExisting = acceptedItems.some((accepted) => {
+          const acceptedBox = normalizeBoundingBox(accepted.boundingBox, masterMetaWidth, masterMetaHeight);
+          return isComponentOrOverlapping(safeBox, acceptedBox);
+        });
+        if (overlapsWithExisting) {
+          console.log(`[SpaceProductAnalysisService] \u8FC7\u6EE4\u91CD\u53E0\u5EA6\u8FC7\u9AD8\u7684\u540C\u6E90\u4F2A\u5207\u7247: ${item.name}`);
+          continue;
+        }
+        acceptedItems.push(item);
+      }
+    }
+    if (acceptedItems.length > 1) {
+      console.log(`[SpaceProductAnalysisService] \u786E\u8BA4\u4E0A\u4F20\u56FE\u4E3A\u591A\u4EA7\u54C1\u5B9E\u666F\u7EC4\u5408\uFF0C\u89E3\u6784\u51FA ${acceptedItems.length} \u6B3E\u72EC\u7ACB\u5BB6\u5177`);
+      for (let idx = 0; idx < acceptedItems.length; idx++) {
+        const item = acceptedItems[idx];
         const itemId = `item-${productId}-${idx + 1}`;
         let itemRole = item.role || (idx === 0 ? finalRole : "decor");
         const itemName = item.name || "";
@@ -21910,95 +22054,7 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
         });
       }
     } else {
-      const defaultSuiteItems = [
-        {
-          id: `item-${productId}-1`,
-          name: finalName,
-          sku: fallbackSku,
-          role: finalRole,
-          priority: "primary",
-          dimensions: finalDimensions,
-          materials: Array.isArray(extracted?.materials) && extracted.materials.length > 0 ? extracted.materials : ["\u5357\u7F8E\u8FDB\u53E3\u7279\u9009\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)"],
-          colors: Array.isArray(extracted?.colors) && extracted.colors.length > 0 ? extracted.colors : [detectedDominantColorName],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: extracted?.surfaceTexture || "\u7EC6\u817B\u5E73\u7EB9\u534A\u82EF\u80FA\u725B\u76AE",
-          functionCapable: typeof extracted?.functionCapable === "boolean" ? extracted.functionCapable : true,
-          boundingBox: { ymin: 20, xmin: 38, ymax: 65, xmax: 88 },
-          dossierSummary: `${finalName} \xB7 \u5C3A\u5BF8 ${finalDimensions.width}\xD7${finalDimensions.depth}\xD7${finalDimensions.height}mm`
-        },
-        {
-          id: `item-${productId}-2`,
-          name: "\u6781\u5730\u5976\u767D\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905",
-          sku: `MW-CH-${Math.floor(1e3 + Math.random() * 9e3)}-1R`,
-          role: "recliner_1seat",
-          priority: "secondary",
-          dimensions: { width: 980, depth: 1020, height: 1050 },
-          materials: ["\u6781\u5730\u5976\u767D\u5934\u5C42\u725B\u76AE", "\u96F6\u91CD\u529B\u65E0\u7EA7\u4F38\u5C55\u673A\u6784"],
-          colors: ["\u6781\u5730\u5976\u767D (Polar Off-White)"],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: "\u6781\u5730\u5976\u767D\u534A\u82EF\u80FA\u725B\u76AE\uFF0C\u7535\u52A8\u5C55\u5F00\u529F\u80FD\u6001",
-          functionCapable: true,
-          boundingBox: { ymin: 22, xmin: 75, ymax: 68, xmax: 98 },
-          dossierSummary: "\u6781\u5730\u5976\u767D\u5355\u4EBA\u7535\u52A8\u592A\u7A7A\u8231\u8EBA\u6905\uFF0C\u5C3A\u5BF8980\xD71020\xD71050mm"
-        },
-        {
-          id: `item-${productId}-3`,
-          name: "\u610F\u5F0F\u6781\u7B80\u5962\u77F3\u8336\u51E0\u7EC4",
-          sku: `MW-CT-${Math.floor(1e3 + Math.random() * 9e3)}-CT`,
-          role: "coffee_table",
-          priority: "secondary",
-          dimensions: { width: 1200, depth: 700, height: 420 },
-          materials: ["\u5929\u7136\u900F\u5149\u5962\u77F3\u53F0\u9762", "\u54D1\u5149\u9ED1\u949B\u91D1\u5C5E\u67B6"],
-          colors: ["\u66DC\u77F3\u6DF1\u7070", "\u9ED1\u949B\u91D1\u5C5E"],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: "\u5929\u7136\u5962\u77F3\u7EB9\u7406\u4E0E\u62C9\u4E1D\u91D1\u5C5E",
-          functionCapable: false,
-          boundingBox: { ymin: 52, xmin: 44, ymax: 76, xmax: 78 },
-          dossierSummary: "\u610F\u5F0F\u6781\u7B80\u5962\u77F3\u8336\u51E0\uFF0C\u5C3A\u5BF81200\xD7700\xD7420mm"
-        },
-        {
-          id: `item-${productId}-4`,
-          name: "\u6781\u7B80\u60AC\u6D6E\u5CA9\u677F\u7535\u89C6\u5730\u67DC",
-          sku: `MW-TV-${Math.floor(1e3 + Math.random() * 9e3)}-TV`,
-          role: "tv_console",
-          priority: "decor",
-          dimensions: { width: 2200, depth: 400, height: 450 },
-          materials: ["\u96EA\u5C71\u767D\u5CA9\u677F", "\u6DF1\u8272\u54D1\u5149\u70E4\u6F06\u67DC\u4F53"],
-          colors: ["\u6781\u5730\u767D", "\u66DC\u77F3\u9ED1"],
-          adaptiveStyles: finalAdaptiveStyles,
-          surfaceTexture: "\u9AD8\u786C\u5EA6\u8010\u78E8\u5CA9\u677F\u53F0\u9762",
-          functionCapable: false,
-          boundingBox: { ymin: 60, xmin: 45, ymax: 88, xmax: 92 },
-          dossierSummary: "\u6781\u7B80\u60AC\u6D6E\u7535\u89C6\u5730\u67DC\uFF0C\u5C3A\u5BF82200\xD7400\xD7450mm"
-        }
-      ];
-      for (const suiteItem of defaultSuiteItems) {
-        let cropBase64 = void 0;
-        if (masterBuffer) {
-          try {
-            const left = Math.max(0, Math.min(masterMetaWidth - 32, Math.round(suiteItem.boundingBox.xmin / 100 * masterMetaWidth)));
-            const top = Math.max(0, Math.min(masterMetaHeight - 32, Math.round(suiteItem.boundingBox.ymin / 100 * masterMetaHeight)));
-            const availW = Math.max(32, masterMetaWidth - left);
-            const availH = Math.max(32, masterMetaHeight - top);
-            const rawW = Math.round((suiteItem.boundingBox.xmax - suiteItem.boundingBox.xmin) / 100 * masterMetaWidth);
-            const rawH = Math.round((suiteItem.boundingBox.ymax - suiteItem.boundingBox.ymin) / 100 * masterMetaHeight);
-            const width = Math.max(32, Math.min(availW, rawW));
-            const height = Math.max(32, Math.min(availH, rawH));
-            const croppedBuffer = await (0, import_sharp6.default)(masterBuffer).extract({ left, top, width, height }).webp({ quality: 85 }).toBuffer();
-            cropBase64 = `data:image/webp;base64,${croppedBuffer.toString("base64")}`;
-          } catch (e) {
-          }
-        }
-        processedDetectedProducts.push({
-          ...suiteItem,
-          cropImageUrl: cropBase64 || sourceMasterImageUrl,
-          cropBase64,
-          sourceMasterImageUrl,
-          lockedRules: [
-            "\u4FDD\u6301\u8BE5\u5355\u54C1\u4E0E\u8BC6\u522B\u603B\u56FE\u4E2D\u7684\u76F8\u5BF9\u7A7A\u95F4\u6BD4\u4F8B\u4E0E\u6750\u8D28\u4E00\u81F4"
-          ]
-        });
-      }
+      console.log("[SpaceProductAnalysisService] \u4E0A\u4F20\u56FE\u4E3A\u5355\u4EF6\u4EA7\u54C1\uFF0C\u4E25\u683C\u4FDD\u6301\u7EAF\u51C0\u5355\u54C1\u6A21\u5F0F\uFF0C\u7981\u6B62\u66B4\u529B\u5207\u7247\u4E0E\u865A\u6784\u642D\u914D\u5957\u7EC4");
     }
     const finalProduct = {
       id: productId,
@@ -22198,7 +22254,8 @@ router17.post("/lock-master", async (req, res) => {
       objectKey,
       preferredModel: generationSettings?.model,
       resolution: generationSettings?.resolution,
-      seed: generationSettings?.seed
+      seed: generationSettings?.seed,
+      autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback
     });
     const metaBuffer = Buffer.from(
       JSON.stringify(
@@ -22705,6 +22762,7 @@ router18.post("/render-shot", async (req, res) => {
       preferredModel: generationSettings?.model,
       resolution: generationSettings?.resolution,
       seed: generationSettings?.seed,
+      autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,
@@ -22836,6 +22894,7 @@ router18.post("/confirm-production-truth", async (req, res) => {
   }
 });
 router18.post("/render-candidates", async (req, res) => {
+  let lockKey = null;
   try {
     const parsed = RenderShotSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -22859,10 +22918,10 @@ router18.post("/render-candidates", async (req, res) => {
     } = parsed.data;
     const shotId = req.body.shotId || `shot-${shotCode.toLowerCase()}`;
     const isHumanPass = Boolean(req.body.isHumanPass);
-    const lockKey = `${projectId}:${shotCode}:${isHumanPass ? "human" : "base"}`;
+    lockKey = `${projectId}:${shotCode}:${isHumanPass ? "human" : "base"}`;
     const now = Date.now();
     const existingLockTime = activeRenderingLocks.get(lockKey);
-    if (existingLockTime && now - existingLockTime < 4e3) {
+    if (existingLockTime && now - existingLockTime < 2e3) {
       console.warn(`[spaceShootRoutes] Debounced duplicate render request for ${lockKey}`);
       return res.status(429).json({
         success: false,
@@ -22971,6 +23030,7 @@ router18.post("/render-candidates", async (req, res) => {
             resolution: generationSettings?.resolution || req.body.resolution,
             functionalPositionState: generationSettings?.functionalPositionState || req.body.functionalPositionState || "closed",
             seed: typeof generationSettings?.seed === "number" ? generationSettings.seed + v.idx * 137 : void 0,
+            autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
             productName: effectiveProductName,
             productColor: effectiveProductColor,
             productMaterial: effectiveProductMaterial,
@@ -23006,7 +23066,11 @@ router18.post("/render-candidates", async (req, res) => {
             createdAt: (/* @__PURE__ */ new Date()).toISOString()
           };
         } catch (candErr) {
-          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation fallback:`, candErr?.message);
+          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation failed:`, candErr?.message);
+          const autoFallback = generationSettings?.autoModelFallback ?? req.body?.autoModelFallback;
+          if (autoFallback === false || v.idx === 1) {
+            throw candErr;
+          }
           const fallbackUrl = baseShotRef || effectiveSceneMasterRef || "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85";
           return {
             id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
@@ -23041,10 +23105,12 @@ router18.post("/render-candidates", async (req, res) => {
       error: err.message || "Failed to render candidates"
     });
   } finally {
-    const lockKey = `${req.body?.projectId}:${req.body?.shotCode}:${req.body?.isHumanPass ? "human" : "base"}`;
-    setTimeout(() => {
-      activeRenderingLocks.delete(lockKey);
-    }, 1500);
+    if (lockKey) {
+      const keyToRelease = lockKey;
+      setTimeout(() => {
+        activeRenderingLocks.delete(keyToRelease);
+      }, 1500);
+    }
   }
 });
 router18.post("/outpaint", async (req, res) => {
@@ -23070,7 +23136,8 @@ router18.post("/outpaint", async (req, res) => {
       originalScenePrompt,
       productName,
       productMaterial,
-      productColor
+      productColor,
+      cameraSettings
     } = req.body;
     if (!paddedImage) {
       return res.status(400).json({ success: false, error: "\u7F3A\u5C11\u5F85\u6269\u56FE\u7684\u539F\u56FE\u6216\u5EF6\u5C55\u5E95\u56FE (paddedImage)" });
@@ -23087,6 +23154,13 @@ router18.post("/outpaint", async (req, res) => {
     const directivePrompt = `[CRITICAL ARCHITECTURAL OUTPAINTING & PANORAMIC EXPANSION MANDATE]
 PRIMARY TASK:
 You are a master architectural lifestyle photographer. You are expanding the camera field of view outward (${directionDescription}) around the existing room scene in Reference Image 1.
+
+[OPTICAL SENSOR MARGIN EXPANSION - ZERO CAMERA MOVEMENT MANDATE (CRITICAL)]:
+1. OPTICAL PERSPECTIVE LOCK:
+   - The camera position (height, distance, optical horizon, pitch/yaw angle) and lens focal length ARE 100% FIXED${cameraSettings?.lensMm ? ` (Focal Length: ${cameraSettings.lensMm}mm, Lens Height: ${cameraSettings.heightCm || 115}cm)` : ""}.
+   - This is strictly an optical sensor frame expansion revealing what lies just outside the border, NOT a camera pull-back or focal zoom!
+   - The central unmasked portion of Reference Image 1 MUST REMAIN at 100% identical pixel scale, viewing elevation, and perspective angle.
+   - DO NOT flatten or change the perspective horizon! DO NOT zoom out or shrink the existing furniture!
 
 ORIGINAL SCENE TRUTH & INHERITED DNA:
 ${originalScenePrompt ? `- Original Scene Positive Prompt: ${originalScenePrompt}` : ""}
@@ -24085,7 +24159,7 @@ router19.post("/generate-human-revision", async (req, res) => {
     const effectiveProductMaterial = primaryProduct?.materials?.[0] || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
     const effectiveCurrentShotRef = baseShotReference?.imageUrl || baseShotReference?.objectKey;
     const narrativeDirective = sceneDirectives?.trim() ? `EXPLICIT HUMAN NARRATIVE & LIFESTYLE ACTION: "${sceneDirectives.trim()}". ` : "";
-    const positivePrompt = `MANWAH first-class luxury ${effectiveProductName} in ${effectiveProductColor}, penthouse living room, natural daylight, ${narrativeDirective}${assignments.length} family members seated comfortably: ${assignments.map((a) => `${a.humanAssetId} in ${a.poseId} posture on ${a.seatId} seat with ${a.footrestState} footrest`).join(", ")}, photorealistic 8k architectural interior commercial photography`;
+    const positivePrompt = `PHOTOREALISTIC HUMAN SEATING INSERTION (ZERO CAMERA DRIFT): Keep Reference Image 1 camera angle, framing, horizon, and furniture coordinates 100% fixed and frozen. ${narrativeDirective}${assignments.length} individuals naturally seated on the sofa: ${assignments.map((a) => `${a.humanAssetId} in ${a.poseId} posture on ${a.seatId} seat with ${a.footrestState} footrest`).join(", ")}, natural daylight interaction, authentic skin texture, realistic clothing folds and contact shadows`;
     const imageResult = await SpaceImageGenerationService.generateAndStore({
       projectId,
       shotCode,
@@ -24095,7 +24169,7 @@ router19.post("/generate-human-revision", async (req, res) => {
         name: a.name
       })),
       positivePrompt,
-      negativePrompt: "blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark",
+      negativePrompt: "camera drift, camera shift, zoomed in, zoomed out, shifted sofa, altered background, displaced furniture, blurry, distorted anatomy, floating furniture, displaced sofa, changed sofa color, watermark",
       aspectRatio: req.body.aspectRatio || "4:3",
       productName: effectiveProductName,
       productColor: effectiveProductColor,
@@ -24421,17 +24495,44 @@ function buildNormalizedImageResponse(images, context) {
 function normalizeGeminiImageResponse(raw, context) {
   const images = [];
   const finishReasons = [];
+  let collectedText = "";
   for (const candidate of Array.isArray(raw?.candidates) ? raw.candidates : []) {
     if (candidate?.finishReason) finishReasons.push(String(candidate.finishReason));
     for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
       const inlineData = part?.inlineData || part?.inline_data;
       if (inlineData?.data) {
         images.push({
-          mimeType: inlineData.mimeType || inlineData.mime_type || "image/png",
+          mimeType: inlineData.mimeType || inlineData.mime_type || "image/jpeg",
           data: inlineData.data
         });
+      } else if (part?.text) {
+        const textStr = String(part.text).trim();
+        if (textStr) {
+          collectedText += (collectedText ? " | " : "") + textStr;
+          const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/);
+          if (dataUrlMatch && dataUrlMatch[2].length > 100) {
+            images.push({
+              mimeType: dataUrlMatch[1],
+              data: dataUrlMatch[2]
+            });
+          } else {
+            const urlMatch = textStr.match(/https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp)/i);
+            if (urlMatch) {
+              images.push({
+                mimeType: "image/png",
+                data: urlMatch[0]
+              });
+            }
+          }
+        }
       }
     }
+  }
+  if (images.length === 0) {
+    if (collectedText) {
+      throw new Error(`\u4E0A\u6E38\u6A21\u578B\u672A\u8FD4\u56DE\u56FE\u7247\u6570\u636E\u6D41\uFF0C\u4EC5\u8FD4\u56DE\u4E86\u6587\u672C\u5185\u5BB9: "${collectedText.slice(0, 120)}${collectedText.length > 120 ? "..." : ""}"`);
+    }
+    throw new Error("\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E\u3002");
   }
   return buildNormalizedImageResponse(images, {
     ...context,
@@ -24720,7 +24821,7 @@ async function validateMask(maskValue, firstImage) {
 // server.ts
 function fileLog(msg) {
   try {
-    import_fs28.default.appendFileSync("debug.log", msg + "\n");
+    import_fs27.default.appendFileSync("debug.log", msg + "\n");
   } catch (e) {
   }
   console.log(msg);
@@ -25528,7 +25629,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           if (currentProvider === "tiantoken" && finalModel === "gpt-image-2") {
             finalModel = "gpt-image-2-c";
           }
-          let targetUrl = modelAdapter.buildEndpoint(currentBaseUrl, registeredModel, intent);
+          let targetUrl = modelAdapter.buildEndpoint(currentBaseUrl, { ...registeredModel, id: finalModel }, intent);
           let reqPayload = payload;
           let isMultipart = false;
           let formData = null;
@@ -26285,7 +26386,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
       }
     });
   });
-  const hasDist = import_fs28.default.existsSync(import_path24.default.join(process.cwd(), "dist", "index.html"));
+  const hasDist = import_fs27.default.existsSync(import_path24.default.join(process.cwd(), "dist", "index.html"));
   const isProduction = process.env.NODE_ENV === "production" || hasDist && process.env.NODE_ENV !== "development";
   if (!isProduction && process.env.DISABLE_VITE !== "true") {
     const { createServer: createViteServer } = await import("vite");

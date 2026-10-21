@@ -276,7 +276,20 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   ) || activeShot.revisions[activeShot.revisions.length - 1];
 
   const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
-  const localFileUrl = primaryKey ? `/api/space/storage/local-file?key=${encodeURIComponent(primaryKey)}` : undefined;
+  const extractedKey = primaryKey || (() => {
+    const url = currentRevision?.imageUrl || activeCandidate?.imageUrl || sceneMaster?.imageUrl;
+    if (!url || typeof url !== 'string') return undefined;
+    if (url.includes('storage.googleapis.com')) {
+      try {
+        const u = new URL(url);
+        const parts = u.pathname.split('/');
+        return parts.slice(2).join('/');
+      } catch {}
+    }
+    return undefined;
+  })();
+  const effectiveProxyKey = primaryKey || extractedKey;
+  const localFileUrl = effectiveProxyKey ? `/api/space/storage/local-file?key=${encodeURIComponent(effectiveProxyKey)}` : undefined;
 
   // 1. 严格版本类型与批次语义提取（判定是否包含人物/模特）
   const isRevisionHuman = Boolean(
@@ -331,11 +344,14 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     candidateBatch?.candidates?.some((c) => c.id === selectedCandidateId)
   );
 
-  const rawCandidateUrl =
-    (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
-    revisionFinalUrl ||
-    (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined) ||
-    localFileUrl;
+  const rawCandidateUrl = triedFallback
+    ? (localFileUrl || activeCandidate?.imageUrl || currentRevision?.imageUrl)
+    : (
+        (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
+        revisionFinalUrl ||
+        (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined) ||
+        localFileUrl
+      );
 
   const currentImageUrl =
     typeof rawCandidateUrl === 'string' && rawCandidateUrl.trim().length > 0
@@ -447,15 +463,17 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
   // 图像加载异常自动捕获与智能降级
   const handleImageError = () => {
-    if (!triedFallback && localFileUrl && currentImageUrl !== localFileUrl) {
-      console.warn('[SpaceStudioCanvas] External image URL failed, falling back to local storage proxy');
-      setTriedFallback(true);
-      setImageError(false);
-    } else {
-      console.error('[SpaceStudioCanvas] Image failed to load completely');
-      setImageError(true);
-      setImageLoaded(false);
+    if (!triedFallback) {
+      if (localFileUrl && currentImageUrl !== localFileUrl) {
+        console.warn('[SpaceStudioCanvas] Image URL failed or blocked, falling back to same-origin proxy:', localFileUrl);
+        setTriedFallback(true);
+        setImageError(false);
+        return;
+      }
     }
+    console.error('[SpaceStudioCanvas] Image failed to load completely');
+    setImageError(true);
+    setImageLoaded(false);
   };
 
   // Derive aspect ratio CSS classes (without hardcoded max-width barriers)
