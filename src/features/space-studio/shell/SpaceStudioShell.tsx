@@ -3142,13 +3142,69 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 删除指定的镜头历史生成版本
-  const handleDeleteRevision = (shotId: string, revisionId: string) => {
+  // 清除指定镜头的全部生成画面结果（恢复未出图状态）
+  const handleClearShotImage = useCallback((shotId: string) => {
     setShots((prev) =>
       prev.map((s) => {
         if (s.id !== shotId) return s;
-        if (s.revisions.length <= 1) return s; // 至少保留一个版本
+        if (s.templateCode === 'A00') {
+          setSceneMaster(null);
+          sceneMasterRef.current = null;
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('manwah_space_active_master');
+          }
+        }
+        return {
+          ...s,
+          currentRevisionId: undefined,
+          hasHumanPass: false,
+          status: 'draft',
+          revisions: []
+        };
+      })
+    );
+
+    // 同步清空该镜头的候选方案
+    setCandidateBatches((prev) => {
+      const copy = { ...prev };
+      delete copy[shotId];
+      return copy;
+    });
+    setSelectedCandidateIds((prev) => {
+      const copy = { ...prev };
+      delete copy[shotId];
+      return copy;
+    });
+
+    setFeedbackNotice({
+      type: 'info',
+      text: '已清除该镜头的生成画面结果，画面已恢复为待出图状态。'
+    });
+    setTimeout(() => setFeedbackNotice(null), 3000);
+  }, []);
+
+  // 删除指定的镜头历史生成版本（允许删除最后一个版本恢复未渲染状态）
+  const handleDeleteRevision = useCallback((shotId: string, revisionId: string) => {
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.id !== shotId) return s;
         const remaining = s.revisions.filter((r) => r.id !== revisionId);
+        if (remaining.length === 0) {
+          if (s.templateCode === 'A00') {
+            setSceneMaster(null);
+            sceneMasterRef.current = null;
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('manwah_space_active_master');
+            }
+          }
+          return {
+            ...s,
+            currentRevisionId: undefined,
+            hasHumanPass: false,
+            status: 'draft',
+            revisions: []
+          };
+        }
         const nextCurrentId = s.currentRevisionId === revisionId ? remaining[0].id : s.currentRevisionId;
         const currentRev = remaining.find((r) => r.id === nextCurrentId);
         const isHuman = currentRev?.revisionType === 'human' || currentRev?.id.includes('human');
@@ -3160,7 +3216,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         };
       })
     );
-  };
+  }, []);
 
   // 户型切换联动：自动重新适配空间蓝图并保持固定
   const handleSelectSpace = (space: SpacePreset) => {
@@ -3527,6 +3583,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           }}
           theme={theme}
           onOpenResetModal={() => setIsClearRecordsModalOpen(true)}
+          onClearCurrentShotImage={() => handleClearShotImage(activeShot.id)}
           hasGenerations={Boolean(sceneMaster || shots.some((s) => s.revisions && s.revisions.length > 0))}
         />
 

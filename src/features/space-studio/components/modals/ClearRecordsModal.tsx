@@ -83,10 +83,10 @@ export const ClearRecordsModal: React.FC<ClearRecordsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <span>清除当前页面记录 / 开始新作业</span>
+                <span>清除页面生成画面结果</span>
               </h2>
               <p className={`text-xs mt-0.5 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
-                重置当前工作台画面与生成历史，为您清理出一个干净专注的拍摄环境
+                清空当前页面上驻留的全部镜头出图与渲染画面，方便使用者开启全新的作业
               </p>
             </div>
           </div>
@@ -179,17 +179,17 @@ export const ClearRecordsModal: React.FC<ClearRecordsModalProps> = ({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">保留产品素材，仅清空生成记录</span>
+                    <span className="text-sm font-bold">清空全部生成画面结果（保留产品素材）</span>
                     <span
                       className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
                         isLight ? 'bg-amber-200/80 text-amber-900' : 'bg-amber-400/20 text-amber-300'
                       }`}
                     >
-                      推荐 · 便捷复拍
+                      推荐 · 重新出图
                     </span>
                   </div>
                   <p className={`text-xs mt-1 leading-relaxed ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>
-                    清空 A00 母版及全部 A01~A09 镜头当前生成的图像、历史版本与 4 候选方案。您已上传的沙发切片、色彩与材质参数将<b>完整保留</b>，方便立即更换空间风格或机位开启全新一组拍摄。
+                    清空 A00 母版及全部 A01~A09 镜头在页面上渲染出的<b>生成图像、历史版本与 4 方案候选池</b>，让页面完全恢复为干净的未出图状态。您已上传的沙发切片、色彩与材质参数将<b>完整保留</b>，方便立即开启全新一组拍摄。
                   </p>
                 </div>
               </div>
@@ -231,17 +231,17 @@ export const ClearRecordsModal: React.FC<ClearRecordsModalProps> = ({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold">彻底清空，开始全新空白工程</span>
+                    <span className="text-sm font-bold">彻底清空（清空画面 + 移除产品素材）</span>
                     <span
                       className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
                         isLight ? 'bg-rose-100 text-rose-800' : 'bg-rose-900/40 text-rose-300'
                       }`}
                     >
-                      换品新拍
+                      全新工程
                     </span>
                   </div>
                   <p className={`text-xs mt-1 leading-relaxed ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>
-                    清空所有镜头生成图与版本，并<b>移除已上传的产品素材</b>（恢复为系统初始标准模版），彻底重置为崭新未作业状态，适合为完全不同的一款全新家具开展作业。
+                    清空页面全部镜头生成画面结果，并<b>移除已上传的产品素材</b>（恢复为系统初始标准模版），彻底重置为崭新未作业状态，适合为完全不同的一款全新家具开展作业。
                   </p>
                 </div>
               </div>
@@ -301,12 +301,12 @@ export const ClearRecordsModal: React.FC<ClearRecordsModalProps> = ({
               ) : selectedOption === 'keep_products' ? (
                 <>
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>确认清空出图 (保留产品)</span>
+                  <span>确认清空生成画面 (保留产品)</span>
                 </>
               ) : (
                 <>
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>确认彻底重置工程</span>
+                  <span>确认彻底清空 (画面+素材)</span>
                 </>
               )}
             </button>

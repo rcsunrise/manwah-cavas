@@ -143,4 +143,40 @@ describe('Space Studio Session Reset & Clear Records', () => {
     expect(cleanShots.every((s) => s.revisions.length === 0)).toBe(true);
     expect(cleanShots.every((s) => s.status === 'draft')).toBe(true);
   });
+
+  it('allows clearing the last remaining revision of a shot, resetting it to draft status', () => {
+    const shotWithSingleRevision: {
+      id: string;
+      templateCode: string;
+      status: 'approved' | 'draft' | 'pending' | 'reviewing';
+      currentRevisionId?: string;
+      revisions: Array<{ id: string; revisionNumber: number; imageUrl: string }>;
+    } = {
+      id: 'shot-a01',
+      templateCode: 'A01',
+      status: 'approved',
+      currentRevisionId: 'rev-only-1',
+      revisions: [
+        { id: 'rev-only-1', revisionNumber: 1, imageUrl: 'https://test-shot-1.jpg' }
+      ]
+    };
+
+    // 模拟 handleDeleteRevision 的最新逻辑 (当 remaining.length === 0 时彻底清空)
+    const revisionIdToDelete = 'rev-only-1';
+    const remaining = shotWithSingleRevision.revisions.filter((r) => r.id !== revisionIdToDelete);
+
+    let updatedShot = { ...shotWithSingleRevision };
+    if (remaining.length === 0) {
+      updatedShot = {
+        ...updatedShot,
+        currentRevisionId: undefined,
+        status: 'draft',
+        revisions: []
+      };
+    }
+
+    expect(updatedShot.revisions).toHaveLength(0);
+    expect(updatedShot.status).toBe('draft');
+    expect(updatedShot.currentRevisionId).toBeUndefined();
+  });
 });

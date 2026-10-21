@@ -36,7 +36,8 @@ import {
   GripHorizontal,
   Tag,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -126,6 +127,7 @@ interface SpaceStudioCanvasProps {
 
   theme?: 'dark' | 'light';
   onOpenResetModal?: () => void;
+  onClearCurrentShotImage?: () => void;
   hasGenerations?: boolean;
 }
 
@@ -173,6 +175,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   currentPositivePrompt,
   theme = 'dark',
   onOpenResetModal,
+  onClearCurrentShotImage,
   hasGenerations
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -720,7 +723,27 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
         {/* Right: Tools & Aspect Ratio */}
         <div className="flex items-center gap-2">
-          {/* 清除记录 / 新建作业 快捷入口 */}
+          {/* 清除当前镜头生成画面结果 */}
+          {currentImageUrl && onClearCurrentShotImage && (
+            <button
+              onClick={() => {
+                if (window.confirm(`确定清除镜头 ${activeShot.templateCode} 当前的生成画面结果吗？清除后将恢复待出图状态。`)) {
+                  onClearCurrentShotImage();
+                }
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer shadow-2xs ${
+                isLight
+                  ? 'border-stone-200 bg-white hover:bg-rose-50 text-stone-600 hover:text-rose-700 hover:border-rose-300'
+                  : 'border-white/10 bg-black/40 hover:bg-rose-950/40 text-neutral-300 hover:text-rose-300 hover:border-rose-700/60'
+              }`}
+              title={`清除镜头 ${activeShot.templateCode} 当前渲染的生成画面结果`}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span className="hidden md:inline">清除当前画面</span>
+            </button>
+          )}
+
+          {/* 清空全部生成画面结果 / 新建作业 */}
           {onOpenResetModal && (
             <button
               onClick={onOpenResetModal}
@@ -729,10 +752,10 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   ? 'border-amber-300/80 bg-amber-50/90 hover:bg-amber-100/90 text-amber-900'
                   : 'border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
               }`}
-              title="清除当前页面生成记录，方便开始新作业"
+              title="清空页面上全部镜头的生成画面结果，方便开启新作业"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              <span className="hidden sm:inline">新建作业 / 清空记录</span>
+              <span className="hidden sm:inline">清空生成画面结果</span>
             </button>
           )}
 

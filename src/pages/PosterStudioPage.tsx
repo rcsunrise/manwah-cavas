@@ -658,7 +658,7 @@ export const PosterStudioPage: React.FC = () => {
             </div>
           )}
 
-          {/* 清除记录 / 新建作业 统一入口 */}
+          {/* 清除页面生成画面结果 / 新建作业 统一入口 */}
           <button
             onClick={handleTriggerReset}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 shadow-2xs ${
@@ -666,10 +666,10 @@ export const PosterStudioPage: React.FC = () => {
                 ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
                 : 'bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border-amber-700/60'
             }`}
-            title="清除当前平台页面上的生成记录，方便开始新作业"
+            title="清除当前平台页面上的生成画面结果，方便开始新作业"
           >
             <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-            <span>新建作业 / 清空记录</span>
+            <span>清空生成画面结果</span>
           </button>
 
           {/* 统一存储管理与历史工程弹窗按钮 */}
