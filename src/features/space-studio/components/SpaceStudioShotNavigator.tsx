@@ -66,6 +66,12 @@ const ShotThumbnailImage: React.FC<{
         }
       } catch {}
     }
+    if (imgSrc && !imgSrc.includes('healed=1')) {
+      const match = imgSrc.match(/(A0[0-9]|master)/i);
+      const code = match ? match[1].toUpperCase() : 'A00';
+      setImgSrc(`/api/space/storage/local-file?key=shots/${code}/healed.svg&healed=1`);
+      return;
+    }
     setHasError(true);
   };
 

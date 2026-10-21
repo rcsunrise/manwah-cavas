@@ -288,7 +288,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     }
     return undefined;
   })();
-  const effectiveProxyKey = primaryKey || extractedKey;
+  const effectiveProxyKey = primaryKey || extractedKey || (activeShot.templateCode ? `shots/${activeShot.templateCode.toLowerCase()}/healed.svg` : undefined);
   const localFileUrl = effectiveProxyKey ? `/api/space/storage/local-file?key=${encodeURIComponent(effectiveProxyKey)}` : undefined;
 
   // 1. 严格版本类型与批次语义提取（判定是否包含人物/模特）

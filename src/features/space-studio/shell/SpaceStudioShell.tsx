@@ -2206,19 +2206,33 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
         (primaryProd as any)?.uploadedImageUrl ||
+        (primaryProd as any)?.referenceImage ||
         products[0]?.cropImageUrl ||
-        products[0]?.referenceImages?.[0]?.publicUrl;
+        products[0]?.cropBase64 ||
+        products[0]?.referenceImages?.[0]?.publicUrl ||
+        (products[0] as any)?.referenceImage;
 
       // 搭配品精准过滤：
-      // 1. A04 / A05 / A06 (主沙发特写/侧剖) 以及 A08 (单椅功能特写)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
-      // 2. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
-      // 3. A09 (餐桌展示景)：若上传了餐桌，严格剔除主沙发，防止双家具冲突！
+      // 1. A04 / A05 / A06 (主沙发特写/侧剖)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
+      // 2. A08 (单椅功能特写)：若录入了带切片图的单椅，聚焦单椅；若单椅未切片，保留主沙发母本以自愈派生
+      // 3. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
+      // 4. A09 (餐桌展示景)：若上传了餐桌，严格剔除主沙发，防止双家具冲突！
       const filteredEnsemble = activeEnsemble.filter((p) => {
         if (['A04', 'A05', 'A06'].includes(targetShotCode)) {
           return p.id === primaryProd.id;
         }
         if (targetShotCode === 'A08') {
-          return reclinerChair ? p.id === reclinerChair.id : p.id === primaryProd.id;
+          const hasReclinerImage = Boolean(
+            reclinerChair?.cropImageUrl ||
+            reclinerChair?.cropBase64 ||
+            reclinerChair?.referenceImages?.[0]?.publicUrl ||
+            (reclinerChair as any)?.uploadedImageUrl ||
+            (reclinerChair as any)?.referenceImage
+          );
+          if (hasReclinerImage && reclinerChair) {
+            return p.id === reclinerChair.id;
+          }
+          return true;
         }
         if (targetShotCode === 'A03') {
           return p.id === primaryProd.id || p.role === 'coffee_table';
@@ -2287,7 +2301,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
               bestView.reference?.objectKey ||
               p.referenceImages?.[0]?.publicUrl ||
               p.referenceImages?.[0]?.objectKey ||
-              (p as any)?.uploadedImageUrl;
+              (p as any)?.uploadedImageUrl ||
+              (p as any)?.referenceImage;
 
             return {
               id: p.id,
@@ -2749,9 +2764,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const primaryProd =
         activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0];
       const primaryRef =
+        primaryProd?.cropImageUrl ||
+        primaryProd?.cropBase64 ||
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
-        (primaryProd as any)?.uploadedImageUrl;
+        (primaryProd as any)?.uploadedImageUrl ||
+        (primaryProd as any)?.referenceImage ||
+        products[0]?.cropImageUrl ||
+        products[0]?.cropBase64 ||
+        products[0]?.referenceImages?.[0]?.publicUrl ||
+        (products[0] as any)?.referenceImage;
 
       // 获取当前机位的底图基准（若未生成母版，自动使用当前风格或户型资产作为高可靠视觉基准）
       const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || targetShot.revisions[0];

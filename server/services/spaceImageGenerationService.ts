@@ -296,7 +296,15 @@ export class SpaceImageGenerationService {
     const diningProduct = (input.ensembleProducts || []).find(
       (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
     );
-    const hasDiningAsset = Boolean(diningProduct);
+    const hasDiningAsset = Boolean(
+      diningProduct && (
+        (diningProduct as any)?.cropImageUrl ||
+        (diningProduct as any)?.cropBase64 ||
+        (diningProduct as any)?.referenceImage ||
+        (diningProduct as any)?.uploadedImageUrl ||
+        (diningProduct as any)?.referenceImages?.[0]?.publicUrl
+      )
+    );
 
     if (shotCode === 'A09' && hasDiningAsset && diningProduct) {
       activePrimaryProduct = diningProduct;
@@ -304,8 +312,23 @@ export class SpaceImageGenerationService {
       const reclinerProduct = (input.ensembleProducts || []).find(
         (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
       ) || (input.ensembleProducts || []).find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
-      if (reclinerProduct) {
+      
+      const hasReclinerImage = Boolean(
+        reclinerProduct && (
+          (reclinerProduct as any)?.cropImageUrl ||
+          (reclinerProduct as any)?.cropBase64 ||
+          (reclinerProduct as any)?.referenceImage ||
+          (reclinerProduct as any)?.uploadedImageUrl ||
+          (reclinerProduct as any)?.referenceImages?.[0]?.publicUrl
+        )
+      );
+
+      if (reclinerProduct && hasReclinerImage) {
         activePrimaryProduct = reclinerProduct;
+      } else {
+        // 自愈降级：若单椅资产尚未上传独立切片，严格保留主沙发作为核心真值基准，
+        // 由后续摄影指令引导以主沙发皮革质感与缝线工艺为母本，生成同款头等舱定制单椅，杜绝空切片导致模型失败！
+        activePrimaryProduct = primaryProduct;
       }
     } else if (['A03', 'A04', 'A05', 'A06'].includes(shotCode)) {
       const hero3SeatProduct = (input.ensembleProducts || []).find(
@@ -316,15 +339,25 @@ export class SpaceImageGenerationService {
       }
     }
 
-    const effectiveProductImageRef = (activePrimaryProduct && activePrimaryProduct !== primaryProduct)
+    let effectiveProductImageRef = (activePrimaryProduct && activePrimaryProduct !== primaryProduct)
       ? ((activePrimaryProduct as any)?.cropImageUrl || (activePrimaryProduct as any)?.cropBase64 || (activePrimaryProduct as any)?.referenceImage || (activePrimaryProduct as any)?.uploadedImageUrl || activePrimaryProduct?.referenceImage || productReferenceImage)
       : (productReferenceImage || activePrimaryProduct?.referenceImage);
 
-    const [productInline, masterInline, shotInline] = await Promise.all([
+    // 平滑自愈保护：如果选出的 effectiveProductImageRef 为空，自动兜底为主沙发的 productReferenceImage 或 sceneMasterReferenceImage
+    if (!effectiveProductImageRef || (typeof effectiveProductImageRef === 'string' && effectiveProductImageRef.trim().length === 0)) {
+      effectiveProductImageRef = productReferenceImage || (primaryProduct as any)?.referenceImage || (primaryProduct as any)?.cropImageUrl || sceneMasterReferenceImage;
+    }
+
+    let [productInline, masterInline, shotInline] = await Promise.all([
       resolveImageInlineData(effectiveProductImageRef),
       resolveImageInlineData(sceneMasterReferenceImage),
       resolveImageInlineData(currentShotReferenceImage)
     ]);
+
+    // 关键防线：若 productInline 解析为 null 但 masterInline 存在，自动以 masterInline 借用为 productInline，确保大模型多模态指令必有物理基石
+    if (!productInline && masterInline) {
+      productInline = masterInline;
+    }
 
     // 收集人物参考图 (从 characterReferenceImages 或 selectedModels 中提取真实模特真值)
     const rawCharImages: string[] = [];
@@ -657,7 +690,9 @@ DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.\n\n`
         directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
 MULTI-VIEW ASSET ANCHOR:
 1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
-   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.
+${(shotCode === 'A08' && activePrimaryProduct === primaryProduct)
+  ? `   - [A08 SINGLE POWER RECLINER DERIVATION MANDATE]: Reference Image 1 provides the master genuine leather material (${effectiveMaterial}), precise color anchor (${effectiveColor}), and signature welt-piping craftsmanship for this suite. FOR THIS A08 SHOT, RENDER A MATCHING SINGLE-SEATER LUXURY POWER MOTION RECLINER ARMCHAIR in the three-quarters composition, 100% inheriting the exact leather grade, color tone, tufted pleating, and stitching DNA from Reference Image 1!`
+  : `   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.`}
    - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!
 2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
    - Inherit the architectural walls, fixed background walnut/stone layout, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
@@ -912,7 +947,7 @@ CORE INVARIANTS:
    * 确定性高保真空间母版底图渲染器
    * 动态映射产品的色彩真值 (干邑橙/暖灰/深鞍褐等)，输出真实符合 3:4 比例、摄影机光心、两点透视与敏华材质调性的工程底图
    */
-  private static renderDeterministicSpatialAsset(params: {
+  public static renderDeterministicSpatialAsset(params: {
     shotCode: string;
     productName: string;
     productColor?: string;

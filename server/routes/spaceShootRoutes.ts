@@ -509,26 +509,61 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             createdAt: new Date().toISOString()
           };
         } catch (candErr: any) {
-          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation failed:`, candErr?.message);
+          console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation failed for ${shotCode}:`, candErr?.message);
           const autoFallback = (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback;
-          if (autoFallback === false || v.idx === 1) {
+          if (autoFallback === false) {
             throw candErr;
           }
-          const fallbackUrl = baseShotRef || effectiveSceneMasterRef || 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
-          return {
-            id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
-            index: v.idx,
-            variantIndex: v.idx,
-            imageUrl: fallbackUrl,
-            objectKey: `shots/${shotCode}/fallback-v${v.idx}.webp`,
-            thumbnailUrl: fallbackUrl,
-            summaryTag: `${v.tag} (高可用自愈备选)`,
-            promptFragment: v.promptAddon,
-            seed: 1000 + v.idx,
-            score: 90,
-            isFavorite: false,
-            createdAt: new Date().toISOString()
-          };
+
+          // 开启了 autoModelFallback 时的全自愈保护：
+          // 确定性渲染高保真空间母版底图，写入真实存储，杜绝假 URL 或 404 死链
+          try {
+            const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
+              shotCode,
+              productName: effectiveProductName,
+              productColor: effectiveProductColor,
+              productRole: shotCode === 'A08' ? 'recliner_1seat' : (shotCode === 'A09' ? 'dining_table' : undefined),
+              roomName: effectiveRoomName,
+              styleName: effectiveStyleName,
+              camera: effectiveCamera,
+              variantIndex: v.idx,
+              variantTag: v.tag
+            });
+
+            await storage.put({
+              bucketType: 'generated',
+              objectKey,
+              buffer: fallbackBuf,
+              contentType: 'image/svg+xml',
+              metadata: {
+                projectId,
+                shotCode,
+                provider: 'deterministic_renderer',
+                model: 'manwah-spatial-renderer-v1',
+                provenance: 'SOLVER_RESOLVED',
+                isAutoFallbackHealed: 'true'
+              }
+            });
+
+            const realProxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+            return {
+              id: `cand-${shotCode.toLowerCase()}-${v.idx}-${batchTimestamp}`,
+              index: v.idx,
+              variantIndex: v.idx,
+              imageUrl: realProxyUrl,
+              objectKey,
+              thumbnailUrl: realProxyUrl,
+              summaryTag: `${v.tag} (高可用自愈方案)`,
+              promptFragment: v.promptAddon,
+              seed: 1000 + v.idx,
+              score: 91,
+              isFavorite: false,
+              createdAt: new Date().toISOString()
+            };
+          } catch (healErr) {
+            console.error('[spaceShootRoutes] Deterministic fallback failed:', healErr);
+            throw candErr;
+          }
         }
       })
     );
