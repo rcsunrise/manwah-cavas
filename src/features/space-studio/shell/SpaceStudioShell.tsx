@@ -95,6 +95,7 @@ import { PlanScreenItem } from '../../../services/posterStudioService';
 import { TemplateId } from '../../../types/posterTemplate';
 import { SeatAssignment } from '../../../types/spaceStudio';
 import { SpaceStudioPersistenceService } from '../../../services/spaceStudioPersistenceService';
+import { ClearRecordsModal } from '../components/modals/ClearRecordsModal';
 
 interface SpaceStudioShellProps {
   projectId?: string;
@@ -479,6 +480,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     return false;
   });
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+
+  // 清除当前页面生成记录与开启新作业弹窗状态
+  const [isClearRecordsModalOpen, setIsClearRecordsModalOpen] = useState<boolean>(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
 
   // 动态同步画布打标与当前场景关联的真实产品套组 (告别静态假数据坐标偏离)
   useEffect(() => {
@@ -1688,6 +1693,116 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       setSelectedCandidateIds((prev) => ({ ...prev, [shotId]: batch.candidates[0].id }));
     };
   }, []);
+
+  // 清除当前页面生成记录与开启新作业核心逻辑
+  const handleClearCurrentRecords = useCallback((keepProducts: boolean = true) => {
+    // 1. 重置 shots 为初始干净模版 (深度拷贝，彻底抹除 revisions 与生成状态)
+    const cleanShots: ShotInstance[] = DEFAULT_SHOTS.map((s) => ({
+      ...s,
+      revisions: [],
+      status: 'draft',
+      currentRevisionId: undefined,
+      hasHumanPass: false
+    }));
+    setShots(cleanShots);
+    setActiveShotId('shot-a00');
+
+    // 2. 清空空间母版与引用
+    setSceneMaster(null);
+    sceneMasterRef.current = null;
+
+    // 3. 清空方案候选池与历史批次
+    setCandidateBatches({});
+    setRevisionCandidateBatches({});
+    setSelectedCandidateIds({});
+
+    // 4. 重置正在进行的任务与渲染队列
+    setCurrentJob(null);
+    setRenderingShotIds([]);
+    setIsGeneratingAll(false);
+    setIsGeneratingMaster(false);
+    setIsRenderingHuman(false);
+    setIsOutpainting(false);
+
+    // 5. 若选择彻底清空，同时移除已上传产品
+    let targetProducts = products;
+    let targetSpace = selectedSpace;
+    let targetStyle = selectedStyle;
+    let targetBlueprint = blueprint;
+
+    if (!keepProducts) {
+      targetProducts = INITIAL_MANWAH_PRODUCTS;
+      targetSpace = SPACE_PROTOTYPES[0];
+      targetStyle = STYLE_PRESETS[0];
+      targetBlueprint = PlacementEngine.generateStandardBlueprint({
+        spacePreset: SPACE_PROTOTYPES[0],
+        products: INITIAL_MANWAH_PRODUCTS
+      });
+
+      setProducts(targetProducts);
+      setSelectedSpace(targetSpace);
+      setSelectedStyle(targetStyle);
+      setBlueprint(targetBlueprint);
+    }
+
+    // 6. 清理浏览器持久化存储（localStorage & IndexedDB & 活跃母版）
+    SpaceStudioPersistenceService.clearActiveProjectSnapshot(projectId, { keepProducts });
+
+    // 7. 立即落盘干净的初始快照，防止防抖定时器复写
+    const primaryProduct = targetProducts.find((p) => p.priority === 'primary') || targetProducts[0];
+    const productName = primaryProduct?.name || '功能沙发';
+
+    SpaceStudioPersistenceService.saveSnapshot({
+      projectId,
+      title: `【摄影画册】${productName}`,
+      products: targetProducts,
+      shots: cleanShots,
+      sceneMaster: null,
+      candidateBatches: {},
+      selectedCandidateIds: {},
+      activeShotId: 'shot-a00',
+      selectedSpaceId: targetSpace?.id,
+      selectedStyleId: targetStyle?.id,
+      blueprint: targetBlueprint,
+      summary: {
+        productName,
+        productColor: primaryProduct?.colors?.[0],
+        uploadedProductsCount: targetProducts.length,
+        generatedShotsCount: 0,
+        hasMaster: false,
+        totalRevisionsCount: 0
+      }
+    });
+
+    // 8. 给予明确的操作反馈
+    setFeedbackNotice({
+      type: 'success',
+      text: keepProducts
+        ? '已清空全部镜头生成记录与候选方案，已为您保留上传的产品素材。可立即开始新作业！'
+        : '已彻底重置工作台，清空全部出图记录与素材，工程已恢复为全新初始状态。'
+    });
+
+    setTimeout(() => {
+      setFeedbackNotice(null);
+    }, 4500);
+  }, [projectId, products, selectedSpace, selectedStyle, blueprint]);
+
+  // 全局事件监听：支持外层顶栏（如 PosterStudioPage）统一触发重置弹窗或直接清除
+  useEffect(() => {
+    const handleOpenModal = () => setIsClearRecordsModalOpen(true);
+    const handleDirectReset = (e: any) => {
+      const keepProducts = e.detail?.keepProducts !== false;
+      handleClearCurrentRecords(keepProducts);
+    };
+
+    window.addEventListener('space_studio_open_reset_modal', handleOpenModal);
+    window.addEventListener('space_studio_reset_request', handleDirectReset);
+
+    return () => {
+      window.removeEventListener('space_studio_open_reset_modal', handleOpenModal);
+      window.removeEventListener('space_studio_reset_request', handleDirectReset);
+    };
+  }, [handleClearCurrentRecords]);
 
   // 构造并保存单候选方案（纯真实结果，杜绝混入与产品无关的样板假图）
   const buildAndSetCandidateBatch = (targetShot: ShotInstance, primaryUrl: string, primaryKey?: string) => {
@@ -3411,6 +3526,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             }
           }}
           theme={theme}
+          onOpenResetModal={() => setIsClearRecordsModalOpen(true)}
+          hasGenerations={Boolean(sceneMaster || shots.some((s) => s.revisions && s.revisions.length > 0))}
         />
 
         {/* Right Resizer Handle */}
@@ -3559,6 +3676,45 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           }}
           onConfirmProductionTruth={handleConfirmProductionTruth}
         />
+      )}
+
+      {/* 7. Clear Records / Reset Session Modal */}
+      {isClearRecordsModalOpen && (
+        <ClearRecordsModal
+          isOpen={isClearRecordsModalOpen}
+          onClose={() => setIsClearRecordsModalOpen(false)}
+          onConfirmClear={handleClearCurrentRecords}
+          summary={{
+            productName: products.find((p) => p.priority === 'primary')?.name || products[0]?.name,
+            productsCount: products.length,
+            generatedShotsCount: shots.filter((s) => s.revisions && s.revisions.length > 0).length,
+            totalShotsCount: shots.length,
+            totalRevisionsCount: shots.reduce((acc, s) => acc + (s.revisions?.length || 0), 0),
+            hasMaster: Boolean(sceneMaster?.imageUrl)
+          }}
+          theme={theme}
+        />
+      )}
+
+      {/* 8. Top Toast Notification */}
+      {feedbackNotice && (
+        <div
+          className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-bold border shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 duration-200 ${
+            feedbackNotice.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-950/40'
+              : 'bg-stone-800 text-stone-100 border-stone-700 shadow-black/50'
+          }`}
+          role="status"
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+          <span>{feedbackNotice.text}</span>
+          <button
+            onClick={() => setFeedbackNotice(null)}
+            className="ml-2 hover:opacity-80 cursor-pointer text-white/90 text-sm"
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

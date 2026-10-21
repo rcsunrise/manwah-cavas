@@ -125,6 +125,8 @@ interface SpaceStudioCanvasProps {
   currentJob?: GenerationJob | null;
 
   theme?: 'dark' | 'light';
+  onOpenResetModal?: () => void;
+  hasGenerations?: boolean;
 }
 
 export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
@@ -169,7 +171,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   productName,
   productMaterial,
   currentPositivePrompt,
-  theme = 'dark'
+  theme = 'dark',
+  onOpenResetModal,
+  hasGenerations
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
@@ -716,6 +720,22 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
         {/* Right: Tools & Aspect Ratio */}
         <div className="flex items-center gap-2">
+          {/* 清除记录 / 新建作业 快捷入口 */}
+          {onOpenResetModal && (
+            <button
+              onClick={onOpenResetModal}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition cursor-pointer shadow-2xs ${
+                isLight
+                  ? 'border-amber-300/80 bg-amber-50/90 hover:bg-amber-100/90 text-amber-900'
+                  : 'border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
+              }`}
+              title="清除当前页面生成记录，方便开始新作业"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="hidden sm:inline">新建作业 / 清空记录</span>
+            </button>
+          )}
+
           {/* Resolution Badge & Dropdown */}
           <div className="relative">
             <button

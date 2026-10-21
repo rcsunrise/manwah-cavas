@@ -32,7 +32,8 @@ import {
   Settings,
   Camera,
   Database,
-  LayoutGrid
+  LayoutGrid,
+  RotateCcw
 } from 'lucide-react';
 import { StorageManagerModal } from '../components/creative-canvas/StorageManagerModal';
 import { UserBadge } from '../components/common/UserBadge';
@@ -72,6 +73,7 @@ export const PosterStudioPage: React.FC = () => {
 
   // 2. UI State
   const [showStorageModal, setShowStorageModal] = useState<boolean>(false);
+  const [showPosterResetConfirm, setShowPosterResetConfirm] = useState<boolean>(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
   const [isGeneratingCurrent, setIsGeneratingCurrent] = useState<boolean>(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
@@ -494,6 +496,34 @@ export const PosterStudioPage: React.FC = () => {
     }
   };
 
+  // 触发清空记录与新建作业
+  const handleTriggerReset = () => {
+    if (studioMode === 'space') {
+      window.dispatchEvent(new CustomEvent('space_studio_open_reset_modal'));
+    } else {
+      setShowPosterResetConfirm(true);
+    }
+  };
+
+  const handleConfirmPosterReset = () => {
+    const defaultPlan = createDefaultNinePlan({
+      productName: 'MANWAH 智能电动功能沙发',
+      category: '真皮多功能沙发',
+      materials: ['甄选南美进口头层牛皮', '德国超静音低压电机', '七区人体工学承托']
+    });
+    setScreens(defaultPlan);
+    setCompositions(
+      Object.fromEntries(defaultPlan.map((screen) => [screen.screenIndex, buildPosterComposition(screen)]))
+    );
+    setActiveScreenIndex(1);
+    dbService.deleteDraft('manwah_poster_studio_draft').catch(() => {});
+    setShowPosterResetConfirm(false);
+    setGenerationNotice({
+      type: 'success',
+      message: '全案海报生成记录已清空，已重置为全新 9 屏排版模版，可开始新的海报作业。'
+    });
+  };
+
   return (
     <div
       className={`flex flex-col w-screen h-screen overflow-hidden select-none font-sans transition-colors ${
@@ -628,6 +658,20 @@ export const PosterStudioPage: React.FC = () => {
             </div>
           )}
 
+          {/* 清除记录 / 新建作业 统一入口 */}
+          <button
+            onClick={handleTriggerReset}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 shadow-2xs ${
+              isLight
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border-amber-700/60'
+            }`}
+            title="清除当前平台页面上的生成记录，方便开始新作业"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span>新建作业 / 清空记录</span>
+          </button>
+
           {/* 统一存储管理与历史工程弹窗按钮 */}
           <button
             onClick={() => setShowStorageModal(true)}
@@ -735,6 +779,59 @@ export const PosterStudioPage: React.FC = () => {
         onClose={() => setShowStorageModal(false)}
         currentCanvasId={handoff?.canvasId || undefined}
       />
+
+      {/* 7. POSTER RESET CONFIRM MODAL */}
+      {showPosterResetConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowPosterResetConfirm(false);
+          }}
+        >
+          <div
+            className={`w-full max-w-md rounded-2xl border shadow-2xl p-6 ${
+              isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-[#181920] border-white/10 text-stone-100'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  isLight ? 'bg-amber-100 text-amber-800' : 'bg-amber-500/20 text-amber-400'
+                }`}
+              >
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">清空当前海报记录 / 开始新作业</h3>
+                <p className={`text-xs mt-0.5 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                  重置 9 屏详情页排版与生成结果
+                </p>
+              </div>
+            </div>
+
+            <p className={`text-xs mt-4 leading-relaxed ${isLight ? 'text-stone-600' : 'text-neutral-300'}`}>
+              确定要清空当前工作台页面上的海报生成记录与排版草稿吗？重置后页面将恢复为初始 9 屏标准企划模版，方便您开始全新产品的海报制作。
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowPosterResetConfirm(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                  isLight ? 'border-stone-200 hover:bg-stone-100 text-stone-700' : 'border-white/10 hover:bg-white/10 text-neutral-300'
+                }`}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmPosterReset}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-md transition cursor-pointer"
+              >
+                确认清空并新建作业
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

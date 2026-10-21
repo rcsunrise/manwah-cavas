@@ -296,6 +296,35 @@ export class SpaceStudioPersistenceService {
   }
 
   /**
+   * 清除当前活跃摄影工程的生成记录与本地持久化快照，方便使用者开启全新作业
+   * @param projectId 当前工程 ID
+   * @param options.keepProducts 是否保留已上传的产品素材，默认 true
+   */
+  static clearActiveProjectSnapshot(
+    projectId?: string,
+    options: { keepProducts?: boolean } = { keepProducts: true }
+  ): void {
+    if (typeof window === 'undefined') return;
+
+    try {
+      if (projectId && projectId !== 'new') {
+        localStorage.removeItem(`space_studio_project_${projectId}`);
+        dbService.deleteDraft(`space_studio_snapshot_${projectId}`).catch(() => {});
+      }
+      localStorage.removeItem(ACTIVE_PROJECT_KEY);
+      dbService.deleteDraft('space_studio_active_project').catch(() => {});
+      localStorage.removeItem('manwah_space_active_master');
+
+      if (!options.keepProducts) {
+        localStorage.removeItem(RECENT_PRODUCTS_KEY);
+        dbService.deleteDraft('space_studio_recent_products_full').catch(() => {});
+      }
+    } catch (e) {
+      console.error('[SpaceStudioPersistence] clearActiveProjectSnapshot error:', e);
+    }
+  }
+
+  /**
    * 内部方法：同步维护空间摄影工程索引目录
    */
   private static updateIndexEntry(snapshot: SpaceStudioProjectSnapshot, sizeBytes: number) {
