@@ -1278,7 +1278,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                           isLight ? 'bg-white border-amber-300 text-stone-800' : 'bg-black/50 border-white/10 text-neutral-200'
                         }`}
                       >
-                        <option value="" disabled>-- 切换其他影棚动作模板 (共5套) --</option>
+                        <option value="" disabled>-- 切换其他影棚动作模板 (A00~A09 共16套) --</option>
                         {STUDIO_CHOREOGRAPHY_TEMPLATES.map(t => (
                           <option key={t.id} value={t.id}>
                             {t.targetShotCode}: {t.name} ({t.count}人)

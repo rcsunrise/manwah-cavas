@@ -360,10 +360,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {STUDIO_CHOREOGRAPHY_TEMPLATES.map((tpl) => {
-                  const isCurrentShotMatch =
-                    currentShotCode &&
-                    (tpl.targetShotCode === currentShotCode ||
-                      (tpl.id === 'studio-tpl-05' && (currentShotCode === 'A01' || currentShotCode === 'A07')));
+                  const isCurrentShotMatch = Boolean(currentShotCode && tpl.targetShotCode === currentShotCode);
 
                   return (
                     <div

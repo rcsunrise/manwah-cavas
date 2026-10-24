@@ -70,33 +70,45 @@ describe('镜头与模特关联与实拍照上传 (Shot Photo Upload & Model Bin
 
   describe('1. 镜头与模特选择及动作匹配的参数映射', () => {
     it('每个标准机位（A01~A09）均有精准对应的影棚动作模版与人数', () => {
+      const a00Tpl = getRecommendedStudioTemplate('A00');
+      expect(a00Tpl.id).toBe('studio-tpl-a00'); // 空间母版 6人
+      expect(a00Tpl.count).toBe(6);
+
+      const a01Tpl = getRecommendedStudioTemplate('A01');
+      expect(a01Tpl.id).toBe('studio-tpl-a01'); // 空间主全景 6人
+      expect(a01Tpl.count).toBe(6);
+
       const a02Tpl = getRecommendedStudioTemplate('A02');
-      expect(a02Tpl.id).toBe('studio-tpl-04'); // 精英主座 3:4
-      expect(a02Tpl.count).toBe(1);
+      expect(a02Tpl.id).toBe('studio-tpl-a02'); // 45° 3+1 成套欢聚大合影 6人
+      expect(a02Tpl.count).toBe(6);
 
       const a03Tpl = getRecommendedStudioTemplate('A03');
-      expect(a03Tpl.id).toBe('studio-tpl-a03'); // 3人位主沙发家庭焦点
+      expect(a03Tpl.id).toBe('studio-tpl-a03'); // 3人位主沙发家庭焦点 3人
       expect(a03Tpl.count).toBe(3);
 
       const a04Tpl = getRecommendedStudioTemplate('A04');
-      expect(a04Tpl.id).toBe('studio-tpl-a04'); // 2/3主沙发亲子自拍
+      expect(a04Tpl.id).toBe('studio-tpl-a04'); // 2/3主沙发亲子自拍 2人
       expect(a04Tpl.count).toBe(2);
 
       const a05Tpl = getRecommendedStudioTemplate('A05');
-      expect(a05Tpl.id).toBe('studio-tpl-a05'); // 2/3主沙发私享微醺
+      expect(a05Tpl.id).toBe('studio-tpl-a05'); // 2/3主沙发私享微醺 1人
       expect(a05Tpl.count).toBe(1);
 
       const a06Tpl = getRecommendedStudioTemplate('A06');
-      expect(a06Tpl.id).toBe('studio-tpl-a07'); // 零靠墙闭合侧景
+      expect(a06Tpl.id).toBe('studio-tpl-a06'); // 零靠墙闭合侧景 1人
       expect(a06Tpl.count).toBe(1);
 
       const a07Tpl = getRecommendedStudioTemplate('A07');
-      expect(a07Tpl.id).toBe('studio-tpl-03'); // 地毯茶几松弛品茗
+      expect(a07Tpl.id).toBe('studio-tpl-a07'); // 沙发茶几组群中景 2人
       expect(a07Tpl.count).toBe(2);
 
       const a08Tpl = getRecommendedStudioTemplate('A08');
-      expect(a08Tpl.id).toBe('studio-tpl-a08-01'); // 单椅五档深度睡眠模式
+      expect(a08Tpl.id).toBe('studio-tpl-a08-01'); // 单椅五档深度睡眠模式 1人
       expect(a08Tpl.count).toBe(1);
+
+      const a09Tpl = getRecommendedStudioTemplate('A09');
+      expect(a09Tpl.id).toBe('studio-tpl-a09'); // 餐厅配套温馨家宴 6人
+      expect(a09Tpl.count).toBe(6);
     });
 
     it('根据机位模版自动匹配已有模特资产库角色，生成槽位参数', () => {
@@ -288,13 +300,13 @@ describe('镜头与模特关联与实拍照上传 (Shot Photo Upload & Model Bin
       const baseShotImage = currentRev?.imageUrl;
       expect(baseShotImage).toBe(realShotPhotoUrl);
 
-      // 2. 验证结合 A02 专属的模特与动作参数进行生成
+      // 2. 验证结合 A02 专属的模特与动作参数进行生成 (45° 3+1 成套欢聚大合影 6人)
       const a02Layout = getRecommendedStudioTemplate(shotWithRealPhoto.templateCode);
       const assignedSlots = mapStudioSlotsToAssignments(a02Layout, MOCK_MODELS);
 
-      expect(assignedSlots.length).toBe(1);
-      expect(assignedSlots[0].positionDesc).toContain('主沙发');
-      expect(assignedSlots[0].modelId).toBe('model-father-01');
+      expect(assignedSlots.length).toBe(6);
+      expect(assignedSlots.some((s) => s.positionDesc.includes('主沙发'))).toBe(true);
+      expect(assignedSlots.some((s) => s.positionDesc.includes('单椅'))).toBe(true);
     });
   });
 });
