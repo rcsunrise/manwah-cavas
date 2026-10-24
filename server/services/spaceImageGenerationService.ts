@@ -256,6 +256,13 @@ export class SpaceImageGenerationService {
   private static storage = GcsAssetStorage.getInstance();
 
   /**
+   * 辅助方法：解析图片引用为 inlineData 格式
+   */
+  public static async resolveImageInline(imageRef?: string): Promise<{ mimeType: string; data: string } | null> {
+    return resolveImageInlineData(imageRef);
+  }
+
+  /**
    * 核心方法：为 Space Studio 生成并存储真实图像资产
    */
   public static async generateAndStore(input: SpaceGenerateImageInput): Promise<SpaceGenerateImageResult> {
