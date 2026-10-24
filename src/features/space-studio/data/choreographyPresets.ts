@@ -559,10 +559,11 @@ export function getRecommendedStudioTemplate(shotCode?: string): StudioChoreogra
   if (upper === 'A04') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a04') || STUDIO_CHOREOGRAPHY_TEMPLATES[1]; // 2/3主沙发亲子自拍
   if (upper === 'A05') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a05') || STUDIO_CHOREOGRAPHY_TEMPLATES[2]; // 2/3主沙发私享微醺
   if (upper === 'A06') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a07') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 零靠墙闭合侧景静享音乐
-  if (upper === 'A07') return STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 沙发茶几组群中景 / 社交聚会
+  if (upper === 'A07') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-03') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 沙发茶几组群中景 / 夫妻席地微醺品茗
   if (upper === 'A08') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-a08-01') || STUDIO_CHOREOGRAPHY_TEMPLATES[0]; // 单椅五档深度睡眠/零重力舒享
   if (upper === 'A02') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-04') || STUDIO_CHOREOGRAPHY_TEMPLATES[3]; // 精英主座 3:4
   if (upper === 'A01' || upper === 'A09') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-05') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 三代同堂全景 / 餐客全景
+  if (upper === 'A00') return STUDIO_CHOREOGRAPHY_TEMPLATES.find((t) => t.id === 'studio-tpl-05') || STUDIO_CHOREOGRAPHY_TEMPLATES[4]; // 空间母版全家福
   return STUDIO_CHOREOGRAPHY_TEMPLATES[0];
 }
 
@@ -579,9 +580,18 @@ export function mapStudioSlotsToAssignments(
     let matchedModel: ModelAsset | undefined;
 
     if (availableModels.length > 0) {
-      // 1. 精确匹配角色角色标签
+      const targetRole = slotTpl.defaultRole;
+      const isRoleMatch = (mRole?: string) => {
+        if (!mRole) return false;
+        const tRole = targetRole as string;
+        if ((tRole === 'girl' || tRole === 'daughter') && (mRole === 'girl' || mRole === 'daughter')) return true;
+        if ((tRole === 'boy' || tRole === 'son') && (mRole === 'boy' || mRole === 'son')) return true;
+        return false;
+      };
+
+      // 1. 精确匹配角色类型标签（支持 girl/daughter、boy/son 别名对齐）
       matchedModel = availableModels.find(
-        (m) => m.roleType === slotTpl.defaultRole && (slotTpl.gender ? m.gender === slotTpl.gender : true)
+        (m) => isRoleMatch(m.roleType) && (slotTpl.gender ? m.gender === slotTpl.gender : true)
       );
 
       // 2. 次级匹配性别或年龄组

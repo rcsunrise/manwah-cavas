@@ -83,6 +83,7 @@ import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
 import { STANDARD_SHOT_TEMPLATES, getShotTemplateByCode } from '../data/shotTemplates';
+import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
 import { ValidationEngine } from '../engine/validationEngine';
 import { RevisionGraphModal } from '../components/RevisionGraphModal';
@@ -113,15 +114,15 @@ const DEFAULT_SHOTS: ShotInstance[] = [
     name: '空间母版 (Scene Master)',
     aspectRatio: '4:3',
     camera: {
-      lensMm: 35,
-      heightCm: 135,
+      lensMm: 26,
+      heightCm: 130,
       yawDeg: 0,
       pitchDeg: -1,
       rollDeg: 0,
       target: { type: 'product', id: 'p1' },
       framing: 'wide',
-      mustInclude: ['hero_sofa', 'coffee_table', 'ceiling_architecture', 'balanced_living_ensemble'],
-      mustExclude: ['human', 'drifting_isolated_chair', 'excessive_empty_rug']
+      mustInclude: ['hero_sofa', 'coffee_table', 'ceiling_architecture', 'balanced_living_ensemble', 'wide_bay_vista'],
+      mustExclude: ['human', 'drifting_isolated_chair', 'excessive_empty_rug', 'isolated_center_pillar', 'narrow_tunnel_walls']
     },
     intent: {
       intentCode: 'SI-01',
@@ -1134,6 +1135,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           e.preventDefault();
           e.stopPropagation();
 
+          // 若复制的是单张照片且当前未聚焦于产品编辑 Tab，优先将其作为当前激活镜头的实拍照片导入
+          if (imageFiles.length === 1 && activeRailTab !== 'product') {
+            handleUploadShotPhoto(activeShot.id, imageFiles[0]);
+            return;
+          }
+
           let count = 0;
           imageFiles.forEach((file) => {
             const reader = new FileReader();
@@ -1553,32 +1560,78 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     'nsfw, low quality, deformed anatomy, blurry, distorted furniture, extra limbs, watermark'
   );
 
-  // 人物编排器 Human Layout 状态 (4人 / 6人 / 自定义) - 支持管理员标准持久化保存
-  const [humanLayout, setHumanLayout] = useState<HumanLayoutConfig>(() => {
-    const savedStandard = spaceAssetLibraryService.getStandardHumanLayout();
-    return savedStandard || {
-      mode: '4',
-      characterCount: 4,
-      disallowExtraCharacters: true,
-      slots: DEFAULT_4_HUMAN_SLOTS
-    };
+  // 镜头与模特关联配置字典：每个镜头独立维护一组对应的模特选择以及动作匹配参数录入
+  const [shotHumanLayouts, setShotHumanLayouts] = useState<Record<string, HumanLayoutConfig>>(() => {
+    return initialSnapshot?.shotHumanLayouts || {};
   });
-  const [isRenderingHuman, setIsRenderingHuman] = useState<boolean>(false);
+
   const [availableModels, setAvailableModels] = useState<ModelAsset[]>(() =>
     spaceAssetLibraryService.getModels()
   );
+
+  // 依据镜头编号智能获取该镜头的专属模特与动作参数（若未自定义则依据影棚动作模版矩阵自动匹配已有模特库）
+  const getShotHumanLayout = useCallback(
+    (
+      shotCode: string,
+      modelsList: ModelAsset[] = availableModels,
+      layoutsDict: Record<string, HumanLayoutConfig> = shotHumanLayouts
+    ): HumanLayoutConfig => {
+      if (layoutsDict[shotCode]) {
+        return layoutsDict[shotCode];
+      }
+      const tpl = getRecommendedStudioTemplate(shotCode);
+      const slots = mapStudioSlotsToAssignments(tpl, modelsList);
+      return {
+        mode: tpl.mode,
+        characterCount: slots.length,
+        disallowExtraCharacters: true,
+        slots
+      };
+    },
+    [availableModels, shotHumanLayouts]
+  );
+
+  // 人物编排器 Human Layout 状态 (4人 / 6人 / 自定义) - 默认激活当前镜头专属匹配的模特配置
+  const [humanLayout, setHumanLayout] = useState<HumanLayoutConfig>(() => {
+    const initCode = activeShot?.templateCode || 'A00';
+    if (initialSnapshot?.shotHumanLayouts?.[initCode]) {
+      return initialSnapshot.shotHumanLayouts[initCode];
+    }
+    const savedStandard = spaceAssetLibraryService.getStandardHumanLayout();
+    if (savedStandard) return savedStandard;
+
+    const models = spaceAssetLibraryService.getModels();
+    const tpl = getRecommendedStudioTemplate(initCode);
+    const slots = mapStudioSlotsToAssignments(tpl, models);
+    return {
+      mode: tpl.mode,
+      characterCount: slots.length,
+      disallowExtraCharacters: true,
+      slots
+    };
+  });
+  const [isRenderingHuman, setIsRenderingHuman] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 3800);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMessage]);
 
   // 异步加载 IndexedDB 中的标准人物编排与资产变更监听
   useEffect(() => {
     let isMounted = true;
     spaceAssetLibraryService.loadStandardHumanLayoutAsync().then((std) => {
-      if (isMounted && std) {
+      if (isMounted && std && !initialSnapshot?.shotHumanLayouts?.[activeShot?.templateCode || 'A00']) {
         setHumanLayout(std);
       }
     });
 
     const handleAssetsChange = () => {
-      setAvailableModels(spaceAssetLibraryService.getModels());
+      const updatedModels = spaceAssetLibraryService.getModels();
+      setAvailableModels(updatedModels);
     };
 
     window.addEventListener('manwah_space_assets_changed', handleAssetsChange);
@@ -1586,11 +1639,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       isMounted = false;
       window.removeEventListener('manwah_space_assets_changed', handleAssetsChange);
     };
-  }, []);
+  }, [activeShot]);
 
-  // 更新并持久化保存人物编排标准配置
+  // 更新当前镜头专属的模特选择及动作匹配参数，并同步持久化
   const handleUpdateHumanLayout = (next: HumanLayoutConfig) => {
     setHumanLayout(next);
+    setShotHumanLayouts((prev) => ({
+      ...prev,
+      [activeShot.templateCode]: next
+    }));
     spaceAssetLibraryService.saveStandardHumanLayout(next);
   };
 
@@ -1624,6 +1681,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       selectedSpaceId: selectedSpace?.id,
       selectedStyleId: selectedStyle?.id,
       blueprint,
+      shotHumanLayouts: {
+        ...shotHumanLayouts,
+        ...(activeShot ? { [activeShot.templateCode]: humanLayout } : {})
+      },
       summary: {
         productName,
         productColor: primaryProduct?.colors?.[0],
@@ -1641,9 +1702,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     candidateBatches,
     selectedCandidateIds,
     activeShotId,
+    activeShot,
     selectedSpace,
     selectedStyle,
-    blueprint
+    blueprint,
+    shotHumanLayouts,
+    humanLayout
   ]);
 
   useEffect(() => {
@@ -1766,6 +1830,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           }
           return merged;
         });
+      }
+
+      // 5. 增量补全镜头与模特关联字典 shotHumanLayouts
+      if (asyncSnapshot.shotHumanLayouts && Object.keys(asyncSnapshot.shotHumanLayouts).length > 0) {
+        setShotHumanLayouts((prev) => ({
+          ...asyncSnapshot.shotHumanLayouts,
+          ...prev
+        }));
       }
     }).catch((e) => {
       console.warn('[SpaceStudioShell] loadSnapshotAsync notice:', e);
@@ -2285,12 +2357,35 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             colorCode: primaryProd?.colors?.[0] || '标准色',
             referenceImage: primaryRef
           },
-          sceneMasterReference: effectiveSceneMaster
-            ? {
-                objectKey: effectiveSceneMaster.objectKey,
-                imageUrl: effectiveSceneMaster.imageUrl
-              }
-            : undefined,
+          ...(() => {
+            if (targetShotCode === 'A00') {
+              return { sceneMasterReference: undefined, referenceShotCode: undefined };
+            }
+            const a01Shot = shots.find((s) => s.templateCode === 'A01');
+            const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
+            const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
+
+            // 当 A01 空间主大场景已生成时，所有衍生镜头 (A02 45°全景, A03 三人位主景等) 优先继承 A01 作为权威现场基准
+            if (targetShotCode !== 'A01' && hasA01Image && a01Rev) {
+              return {
+                sceneMasterReference: {
+                  objectKey: a01Rev.objectKey,
+                  imageUrl: a01Rev.imageUrl
+                },
+                referenceShotCode: 'A01'
+              };
+            }
+
+            return {
+              sceneMasterReference: effectiveSceneMaster
+                ? {
+                    objectKey: effectiveSceneMaster.objectKey,
+                    imageUrl: effectiveSceneMaster.imageUrl
+                  }
+                : undefined,
+              referenceShotCode: 'A00'
+            };
+          })(),
           productReferenceImage: primaryRef,
           ensembleProducts: filteredEnsemble.map((p) => {
             const bestView = ShootCompiler.selectBestProductReferenceForShot(p, targetShot.templateCode);
@@ -2685,6 +2780,143 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setActiveShotId(newShot.id);
   };
 
+  // 📷 单独为特定镜头上传实拍摄影照片（支持本地文件选择与剪贴板粘贴）
+  const handleUploadShotPhoto = useCallback(
+    async (targetShotId: string, fileOrDataUrl: File | string, fileName?: string) => {
+      const targetShot = shots.find((s) => s.id === targetShotId) || activeShot;
+      if (!targetShot) return;
+
+      let dataUrl = '';
+      if (typeof fileOrDataUrl === 'string') {
+        dataUrl = fileOrDataUrl;
+      } else {
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve((e.target?.result as string) || '');
+          reader.onerror = reject;
+          reader.readAsDataURL(fileOrDataUrl);
+        });
+      }
+
+      if (!dataUrl) return;
+
+      const revId = `rev-upload-${Date.now()}`;
+      const objectKey = `shots/${targetShot.templateCode}/user_truth_${Date.now()}.png`;
+
+      // 异步尝试将图片写入后端本地存储以保障跨生命周期访问
+      try {
+        if (dataUrl.startsWith('data:')) {
+          const base64Data = dataUrl.split(',')[1];
+          if (base64Data) {
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            fetch(`/api/space/storage/local-upload?key=${encodeURIComponent(objectKey)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'image/png' },
+              body: byteArray
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn('[SpaceStudioShell] Uploading shot image warning:', err);
+      }
+
+      const newRevision: ShotRevision = {
+        id: revId,
+        shotId: targetShot.id,
+        revisionNumber: (targetShot.revisions?.length || 0) + 1,
+        objectKey,
+        imageUrl: dataUrl,
+        promptSnapshotId: `upload-${Date.now()}`,
+        status: 'approved',
+        revisionType: 'scene',
+        label: '实拍摄影图',
+        metaSummary: `摄影实拍镜头导入 (${targetShot.templateCode})`,
+        provenance: 'PROVIDED',
+        productionTruth: true,
+        isUserUploaded: true,
+        createdAt: new Date().toISOString()
+      } as any;
+
+      setShots((prev) =>
+        prev.map((s) => {
+          if (s.id !== targetShot.id) return s;
+          const currentRevs = s.revisions || [];
+          return {
+            ...s,
+            status: 'passed',
+            currentRevisionId: revId,
+            isUserUploadedPhoto: true,
+            revisions: [...currentRevs, newRevision]
+          } as any;
+        })
+      );
+
+      // 若为 A00 空间母版，一并更新母版基准
+      if (targetShot.templateCode === 'A00') {
+        setSceneMaster((prev) => ({
+          id: prev?.id || `master-user-${Date.now()}`,
+          projectId,
+          objectKey,
+          imageUrl: dataUrl,
+          isLocked: true,
+          lockedAt: new Date().toISOString(),
+          locks: {
+            productIdentity: true,
+            placement: true,
+            architecture: true,
+            style: true,
+            material: true,
+            lighting: true,
+            camera: true,
+            human: false
+          },
+          promptSnapshotId: revId
+        }));
+      }
+
+      // 自动切换为当前镜头
+      if (activeShotId !== targetShot.id) {
+        setActiveShotId(targetShot.id);
+      }
+
+      setToastMessage(
+        `已成功导入【${targetShot.templateCode} ${targetShot.name}】拍摄镜头照片！底图已就绪，可直接在右侧编排模特并生成入座。`
+      );
+    },
+    [shots, activeShot, activeShotId, projectId]
+  );
+
+  const handlePasteShotPhoto = useCallback(
+    async (targetShotId: string = activeShot.id) => {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.read) {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith('image/')) {
+                const blob = await item.getType(type);
+                const ext = type.split('/')[1] || 'png';
+                const file = new File([blob], `clipboard_shot_${Date.now()}.${ext}`, { type });
+                await handleUploadShotPhoto(targetShotId, file);
+                return;
+              }
+            }
+          }
+        }
+        alert('剪贴板中未检测到图片，请先在电脑上复制照片后，再点击粘贴');
+      } catch (err: any) {
+        console.warn('[SpaceStudioShell] Clipboard paste error:', err);
+        alert('请直接使用键盘快捷键 Ctrl+V 粘贴照片到当前镜头');
+      }
+    },
+    [activeShot, handleUploadShotPhoto]
+  );
+
   // 03 HUMAN 阶段：基于当前镜头生成人物版 (锁空间、锁产品、锁家具摆位、锁风格、锁 Camera，只新增人物)
   const handleRenderHumanPass = async (targetShot: ShotInstance = activeShot) => {
     if (isRenderingHuman) {
@@ -2726,7 +2958,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     try {
       const allModels = spaceAssetLibraryService.getModels();
       setAvailableModels(allModels);
-      const compiledHuman = spaceAssetLibraryService.compileHumanLayoutPrompt(humanLayout, allModels);
+      // 提取目标镜头专属关联的模特选择与动作参数（若未自定义则自动匹配推荐模板）
+      const activeTargetHumanLayout =
+        shotHumanLayouts[targetShot.templateCode] ||
+        (targetShot.id === activeShot.id
+          ? humanLayout
+          : getShotHumanLayout(targetShot.templateCode, allModels));
+      const compiledHuman = spaceAssetLibraryService.compileHumanLayoutPrompt(
+        activeTargetHumanLayout,
+        allModels
+      );
 
       const activeEnsemble = products.filter(
         (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
@@ -2777,6 +3018,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       // 获取当前机位的底图基准（若未生成母版，自动使用当前风格或户型资产作为高可靠视觉基准）
       const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || targetShot.revisions[0];
+      const isBaseUploaded = Boolean(
+        currentRev?.provenance === 'PROVIDED' ||
+        currentRev?.label?.includes('实拍') ||
+        (currentRev as any)?.isUserUploaded ||
+        (targetShot as any)?.isUserUploadedPhoto
+      );
+
       const baseShotImage = currentRev?.imageUrl || 
         (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) || 
         sceneMaster?.imageUrl ||
@@ -2802,11 +3050,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionNumber: (targetShot.revisions.length || 0) + 1,
           candidateCount: 1,
           isHumanPass: true,
-          roomName: selectedSpace.name.split(' (')[0],
-          spaceCode: selectedSpace.code,
-          styleName: selectedStyle.name.split(' (')[0],
-          styleCode: selectedStyle.code,
-          spacePreset: {
+          preserveBasePhotoOnly: isBaseUploaded,
+          roomName: isBaseUploaded ? '实拍原图环境' : selectedSpace.name.split(' (')[0],
+          spaceCode: isBaseUploaded ? 'custom_photo' : selectedSpace.code,
+          styleName: isBaseUploaded ? '实拍原画质感' : selectedStyle.name.split(' (')[0],
+          styleCode: isBaseUploaded ? 'custom_photo' : selectedStyle.code,
+          spacePreset: isBaseUploaded ? undefined : {
             id: selectedSpace.id,
             code: selectedSpace.code,
             name: selectedSpace.name,
@@ -2814,7 +3063,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             signatureFeatures: selectedSpace.signatureFeatures,
             promptFragments: selectedSpace.promptFragments
           },
-          stylePreset: {
+          stylePreset: isBaseUploaded ? undefined : {
             id: selectedStyle.id,
             code: selectedStyle.code,
             name: selectedStyle.name,
@@ -2824,16 +3073,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           },
           baseShotReferenceImage: baseShotImage,
           currentShotReferenceImage: baseShotImage,
-          humanLayout,
+          humanLayout: activeTargetHumanLayout,
           selectedModels: (() => {
-            const assignedIds = humanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
+            const assignedIds = activeTargetHumanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
             const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
-            return matched.length > 0 ? matched : allModels.slice(0, humanLayout.characterCount);
+            return matched.length > 0 ? matched : allModels.slice(0, activeTargetHumanLayout.characterCount);
           })(),
           characterReferenceImages: (() => {
-            const assignedIds = humanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
+            const assignedIds = activeTargetHumanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
             const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
-            const targetList = matched.length > 0 ? matched : allModels.slice(0, humanLayout.characterCount);
+            const targetList = matched.length > 0 ? matched : allModels.slice(0, activeTargetHumanLayout.characterCount);
             return targetList
               .map((m) => ({
                 modelId: m.id,
@@ -2852,14 +3101,37 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             colorCode: primaryProd?.colors?.[0] || '标准色',
             referenceImage: primaryRef
           },
-          sceneMasterReference: sceneMaster
-            ? {
-                objectKey: sceneMaster.objectKey,
-                imageUrl: sceneMaster.imageUrl
-              }
-            : undefined,
+          ...(() => {
+            if (targetShot.templateCode === 'A00' || isBaseUploaded) {
+              return { sceneMasterReference: undefined, referenceShotCode: undefined };
+            }
+            const a01Shot = shots.find((s) => s.templateCode === 'A01');
+            const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
+            const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
+
+            // 批量衍生时，除 A00/A01 以外的所有衍生镜头 (A02, A03 等) 优先继承 A01 成果图
+            if (targetShot.templateCode !== 'A01' && hasA01Image && a01Rev) {
+              return {
+                sceneMasterReference: {
+                  objectKey: a01Rev.objectKey,
+                  imageUrl: a01Rev.imageUrl
+                },
+                referenceShotCode: 'A01'
+              };
+            }
+
+            return {
+              sceneMasterReference: sceneMaster
+                ? {
+                    objectKey: sceneMaster.objectKey,
+                    imageUrl: sceneMaster.imageUrl
+                  }
+                : undefined,
+              referenceShotCode: 'A00'
+            };
+          })(),
           productReferenceImage: primaryRef,
-          ensembleProducts: activeEnsemble.map((p) => ({
+          ensembleProducts: isBaseUploaded ? [] : activeEnsemble.map((p) => ({
             id: p.id,
             sku: p.sku,
             role: p.role,
@@ -2876,9 +3148,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           generationSettings: activeSettings,
           promptSnapshot: {
             ...baseCompiled,
-            positivePrompt: `${compiledHuman.positivePrompt}, ${baseCompiled.positivePrompt}`,
-            negativePrompt: `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
-            isHumanPass: true
+            positivePrompt: isBaseUploaded
+              ? `${compiledHuman.positivePrompt}, photo ground truth inpainting, keep all existing room architecture, backdrop walls, lighting, windows, flooring, and furniture in Reference Image 1 100% frozen and untouched, photorealistically seat real human model(s)`
+              : `${compiledHuman.positivePrompt}, ${baseCompiled.positivePrompt}`,
+            negativePrompt: isBaseUploaded
+              ? `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions, altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style`
+              : `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
+            isHumanPass: true,
+            preserveBasePhotoOnly: isBaseUploaded
           }
         })
       });
@@ -2916,8 +3193,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           promptSnapshotId: 'base-spatial-ground-truth',
           status: 'approved',
           revisionType: 'scene',
-          label: 'v1 · 空间家具纯场景',
-          metaSummary: '空间硬装与沙发骨架基准 (无人物)',
+          label: isBaseUploaded ? '实拍摄影原图' : 'v1 · 空间家具纯场景',
+          metaSummary: isBaseUploaded ? '用户上传实拍照片 (保留不变)' : '空间硬装与沙发骨架基准 (无人物)',
           score: {
             productIdentity: 98,
             placement: 98,
@@ -2945,8 +3222,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         promptSnapshotId: initialCandidate.id,
         status: 'approved',
         revisionType: 'human',
-        label: `v${nextRevNum} · ${humanLayout.characterCount}人模特入座方案`,
-        metaSummary: `模特自然落座 · 零形变商用精修`,
+        label: isBaseUploaded
+          ? `v${nextRevNum} · 实拍底图${humanLayout.characterCount}人模特方案`
+          : `v${nextRevNum} · ${humanLayout.characterCount}人模特入座方案`,
+        metaSummary: isBaseUploaded
+          ? '实拍底图绝对保真 · 仅添加模特'
+          : `模特自然落座 · 零形变商用精修`,
         score: {
           productIdentity: 96,
           placement: 97,
@@ -3227,7 +3508,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       if (selectedRev) {
         setSceneMaster((prev) => {
           const updated: SceneMaster = prev
-            ? { ...prev, imageUrl: selectedRev.imageUrl || prev.imageUrl, objectKey: selectedRev.objectKey || prev.objectKey }
+            ? { ...prev, imageUrl: selectedRev.imageUrl || prev.imageUrl, objectKey: selectedRev.objectKey || prev.objectKey, promptSnapshotId: selectedRev.id }
             : {
                 id: `master-${selectedSpace.code.toLowerCase()}`,
                 projectId: 'manwah-noble-space-01',
@@ -3248,8 +3529,30 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
                 promptSnapshotId: selectedRev.id
               };
           sceneMasterRef.current = updated;
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('manwah_space_active_master', JSON.stringify(updated));
+            } catch (e) {
+              console.warn(e);
+            }
+          }
           return updated;
         });
+
+        setFeedbackNotice({
+          type: 'success',
+          text: `⭐ 已将【${selectedRev.label || '当前版本'}】标记为全案母版基准，后续镜头将以此为三维物理参考`
+        });
+        setTimeout(() => setFeedbackNotice(null), 3000);
+      }
+    } else if (targetShot?.templateCode === 'A01') {
+      const selectedRev = targetShot.revisions.find((r) => r.id === revisionId);
+      if (selectedRev) {
+        setFeedbackNotice({
+          type: 'info',
+          text: `⭐ 已选定【${selectedRev.label || '当前版本'}】作为大场景衍生基准 (A02~A09 优先参考本场景)`
+        });
+        setTimeout(() => setFeedbackNotice(null), 3000);
       }
     }
   };
@@ -3290,17 +3593,26 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
     setFeedbackNotice({
       type: 'info',
-      text: '已清除该镜头的生成画面结果，画面已恢复为待出图状态。'
+      text: '已清除该镜头的全部生成画面结果，画面已恢复为待出图状态。'
     });
     setTimeout(() => setFeedbackNotice(null), 3000);
   }, []);
 
-  // 删除指定的镜头历史生成版本（允许删除最后一个版本恢复未渲染状态）
+  // 删除指定的镜头历史生成版本（允许删除任意不理想版本，自动无缝切换至有效版本）
   const handleDeleteRevision = useCallback((shotId: string, revisionId: string) => {
+    let deletedLabel = '';
+    let remainingCount = 0;
+
     setShots((prev) =>
       prev.map((s) => {
         if (s.id !== shotId) return s;
+        const deletedRev = s.revisions.find((r) => r.id === revisionId);
+        if (deletedRev) {
+          deletedLabel = deletedRev.label || `v${deletedRev.revisionNumber}`;
+        }
         const remaining = s.revisions.filter((r) => r.id !== revisionId);
+        remainingCount = remaining.length;
+
         if (remaining.length === 0) {
           if (s.templateCode === 'A00') {
             setSceneMaster(null);
@@ -3317,9 +3629,52 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             revisions: []
           };
         }
+
         const nextCurrentId = s.currentRevisionId === revisionId ? remaining[0].id : s.currentRevisionId;
         const currentRev = remaining.find((r) => r.id === nextCurrentId);
         const isHuman = currentRev?.revisionType === 'human' || currentRev?.id.includes('human');
+
+        // 如果是 A00 空间母版且删除了当前母版基准，自动将剩余的有效版本提升为新母版基准
+        if (s.templateCode === 'A00' && currentRev) {
+          setSceneMaster((oldMaster) => {
+            const updated: SceneMaster = oldMaster
+              ? {
+                  ...oldMaster,
+                  imageUrl: currentRev.imageUrl || oldMaster.imageUrl,
+                  objectKey: currentRev.objectKey || oldMaster.objectKey,
+                  promptSnapshotId: currentRev.id
+                }
+              : {
+                  id: `master-${selectedSpace.code.toLowerCase()}`,
+                  projectId: 'manwah-noble-space-01',
+                  objectKey: currentRev.objectKey || `scene-masters/master-${selectedSpace.code.toLowerCase()}/master.webp`,
+                  imageUrl: currentRev.imageUrl,
+                  isLocked: true,
+                  lockedAt: new Date().toISOString(),
+                  locks: {
+                    productIdentity: true,
+                    placement: true,
+                    architecture: true,
+                    style: true,
+                    material: true,
+                    lighting: true,
+                    camera: true,
+                    human: false
+                  },
+                  promptSnapshotId: currentRev.id
+                };
+            sceneMasterRef.current = updated;
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('manwah_space_active_master', JSON.stringify(updated));
+              } catch (e) {
+                console.warn(e);
+              }
+            }
+            return updated;
+          });
+        }
+
         return {
           ...s,
           currentRevisionId: nextCurrentId,
@@ -3328,7 +3683,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         };
       })
     );
-  }, []);
+
+    setFeedbackNotice({
+      type: 'info',
+      text: remainingCount === 0
+        ? `已彻底删除版本【${deletedLabel || '指定版本'}】，镜头恢复待出图状态`
+        : `已成功删除不理想版本【${deletedLabel || '指定版本'}】（剩余 ${remainingCount} 个有效版本）`
+    });
+    setTimeout(() => setFeedbackNotice(null), 3000);
+  }, [selectedSpace.code]);
 
   // 户型切换联动：自动重新适配空间蓝图并保持固定
   const handleSelectSpace = (space: SpacePreset) => {
@@ -3696,7 +4059,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           theme={theme}
           onOpenResetModal={() => setIsClearRecordsModalOpen(true)}
           onClearCurrentShotImage={() => handleClearShotImage(activeShot.id)}
+          onUploadShotPhoto={(file) => handleUploadShotPhoto(activeShot.id, file)}
+          onPasteShotPhoto={() => handlePasteShotPhoto(activeShot.id)}
           hasGenerations={Boolean(sceneMaster || shots.some((s) => s.revisions && s.revisions.length > 0))}
+          autoModelFallback={computeConfig.autoModelFallback !== false}
+          onEnableAutoFallback={() => handleUpdateComputeConfig({ autoModelFallback: true })}
         />
 
         {/* Right Resizer Handle */}
@@ -3768,6 +4135,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           negativePrompt={negativePrompt}
           onChangeNegativePrompt={setNegativePrompt}
           theme={theme}
+          selectedStyle={selectedStyle}
+          selectedSpace={selectedSpace}
           width={rightPanelWidth}
           isCollapsed={isRightCollapsed}
           onToggleCollapse={() => setIsRightCollapsed(!isRightCollapsed)}
@@ -3796,11 +4165,32 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         sceneMaster={sceneMaster}
         activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
         onCancelRendering={handleCancelRendering}
+        onUploadShotPhoto={handleUploadShotPhoto}
+        onPasteShotPhoto={handlePasteShotPhoto}
+        shotHumanLayouts={shotHumanLayouts}
         onSelectShot={(idx) => {
           const target = shots[idx];
           if (!target) return;
+
+          // 1. 保存前一个镜头的专属模特与动作参数录入
+          if (activeShot) {
+            setShotHumanLayouts((prev) => ({
+              ...prev,
+              [activeShot.templateCode]: humanLayout
+            }));
+          }
+
+          // 2. 调出并激活目标镜头专属的一组模特选择及动作匹配参数（若未自定义则依据影棚模版自动匹配已有模特库）
+          const targetLayout = getShotHumanLayout(target.templateCode, availableModels, {
+            ...shotHumanLayouts,
+            ...(activeShot ? { [activeShot.templateCode]: humanLayout } : {})
+          });
+          setHumanLayout(targetLayout);
+
+          // 3. 激活新镜头 ID
           setActiveShotId(target.id);
-          // 影棚实拍商业对齐：全量镜头（A00~A09）按画面规划与商业构图意图自动自适应长宽比例
+
+          // 4. 影棚实拍商业对齐：全量镜头（A00~A09）按画面规划与商业构图意图自动自适应长宽比例
           const tpl = getShotTemplateByCode(target.templateCode);
           const plannedRatio: ImageAspectRatio =
             (tpl?.recommendedAspectRatio as ImageAspectRatio) || target.aspectRatio || '4:3';
@@ -3887,6 +4277,22 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           <button
             onClick={() => setFeedbackNotice(null)}
             className="ml-2 hover:opacity-80 cursor-pointer text-white/90 text-sm"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 text-black border border-amber-400 shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 duration-200"
+          role="status"
+        >
+          <Sparkles className="w-4 h-4 text-black shrink-0" />
+          <span>{toastMessage}</span>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="ml-2 hover:opacity-80 cursor-pointer text-black/80 text-sm font-bold"
           >
             ×
           </button>

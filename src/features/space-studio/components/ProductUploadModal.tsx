@@ -5,7 +5,8 @@ import {
   ProductAsset,
   ProductRole,
   ProductReference,
-  DisaggregatedProductItem
+  DisaggregatedProductItem,
+  WholeSceneEnsembleDossier
 } from '../../../types/spaceStudio';
 import { dbService } from '../../../services/dbService';
 import {
@@ -31,7 +32,12 @@ import {
   FileText,
   Boxes,
   Crosshair,
-  CheckCheck
+  CheckCheck,
+  Grid,
+  ChevronDown,
+  ChevronUp,
+  Layout,
+  Sofa
 } from 'lucide-react';
 
 const PRESET_STYLES = ['意式轻奢', '现代极简', '奶油原木', '法式复古', '侘寂原力', '轻奢高定', '新中式', '原木风'];
@@ -83,6 +89,15 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
+
+  // 独立录入模式切换：'whole_scene' (整套全景场景资产识别·整体入库置入) | 'single_slice' (单品与切片分割)
+  const [entryMode, setEntryMode] = useState<'whole_scene' | 'single_slice'>(
+    (initialProduct as any)?.isSceneEnsembleSuite ? 'whole_scene' : 'whole_scene'
+  );
+  const [sceneEnsembleDossier, setSceneEnsembleDossier] = useState<WholeSceneEnsembleDossier | null>(
+    (initialProduct as any)?.sceneEnsembleDossier || null
+  );
+  const [isAnalyzingEnsemble, setIsAnalyzingEnsemble] = useState<boolean>(false);
 
   // 读数结果状态（可编辑）
   const [name, setName] = useState<string>(initialProduct?.name || '');
@@ -1118,6 +1133,108 @@ interface CanvasDraftPayload {
     }
   };
 
+  // 独立全套场景资产多模态分析处理函数
+  const handleExtractSceneEnsemble = async (overrideImages?: UploadedImageItem[]) => {
+    const targetImages = overrideImages || uploadedImages;
+    if (targetImages.length === 0) {
+      setAnalysisError('请先上传至少一张全景客厅或客餐厅实拍参考图');
+      return;
+    }
+
+    setIsAnalyzingEnsemble(true);
+    setAnalysisError(null);
+    setPasteFeedback('正在启动整套空间资产多模态解析（沙发、茶几、地毯、柜体、餐区、软装）...');
+
+    try {
+      const preparedImages = await Promise.all(
+        targetImages.map(async (img) => {
+          if (img.base64 && !img.base64.startsWith('data:image/')) {
+            const b64 = await convertUrlToBase64(img.base64);
+            return { ...img, base64: b64 };
+          }
+          return img;
+        })
+      );
+      setUploadedImages(preparedImages);
+
+      const payload = {
+        projectId,
+        images: preparedImages.map((img) => ({
+          base64: img.base64,
+          type: img.type,
+          fileName: img.name
+        })),
+        userNotes: userNotes.trim() || undefined
+      };
+
+      const res = await fetch('/api/space/build/analyze-scene-ensemble', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || '整套场景识别失败，请检查网络');
+      }
+
+      setSceneEnsembleDossier(json.dossier);
+      setPasteFeedback('✓ 已成功识别整套全景场景资产（沙发组、茶几、地毯、边柜、展示柜、软装等），可一键整套入库！');
+    } catch (err: any) {
+      console.error('[ProductUploadModal] Scene ensemble extract error:', err);
+      setAnalysisError(err.message || '整套场景多模态识别发生异常');
+    } finally {
+      setIsAnalyzingEnsemble(false);
+    }
+  };
+
+  // 保存整套场景组合资产（整体入库与置入）
+  const handleSaveWholeSceneEnsemble = () => {
+    if (!sceneEnsembleDossier) return;
+
+    const masterImage = uploadedImages[0]?.base64 || sceneEnsembleDossier.sourceImageUrl || '';
+    const ensembleProduct: ProductAsset = {
+      id: `prod-ens-${sceneEnsembleDossier.id || Date.now()}`,
+      sku: sceneEnsembleDossier.sku || `MW-ENS-${Math.floor(1000 + Math.random() * 9000)}`,
+      name: sceneEnsembleDossier.name || '敏华芝华仕·大平层现代奢华全景会客套组 (全案整体资产)',
+      role: 'sofa_3seat',
+      priority: 'primary',
+      identityLock: 'strict',
+      dimensions: {
+        width: 3200,
+        depth: 1080,
+        height: 950
+      },
+      materials: [
+        sceneEnsembleDossier.sofaSuite?.mainSofa?.material || '南美进口头层半苯胺牛皮',
+        sceneEnsembleDossier.carpetRug?.material || '高密羊毛混纺艺术地毯',
+        sceneEnsembleDossier.coffeeTables?.items?.[0]?.material || '天然大理石岩板'
+      ],
+      colors: sceneEnsembleDossier.dominantColors || ['复古深栗棕', '浅米白'],
+      surfaceTexture: '全案多品类协同材质：半苯胺真皮、大理石冰裂肌理、北美黑胡桃木纹与高密羊毛短绒',
+      functionCapable: true,
+      referenceImages: uploadedImages.map((img, idx) => ({
+        id: `ens-ref-${idx + 1}`,
+        type: img.type,
+        objectKey: `scene-ensembles/${projectId}/${sceneEnsembleDossier.id}/ref_${idx + 1}.webp`,
+        publicUrl: img.base64,
+        verified: true
+      })),
+      adaptiveStyles: sceneEnsembleDossier.adaptiveStyles || ['现代美式都会宅', '意式轻奢'],
+      isEnsembleIncluded: true,
+      readoutConfidence: sceneEnsembleDossier.readoutConfidence || 96,
+      dossierSummary: sceneEnsembleDossier.dossierSummary,
+      dossierGeneratedAt: sceneEnsembleDossier.generatedAt || new Date().toISOString(),
+      sourceMasterImageUrl: masterImage,
+      lockedRules: sceneEnsembleDossier.placementDirectives?.visualInvariants || [],
+      isSceneEnsembleSuite: true,
+      sceneEnsembleDossier: sceneEnsembleDossier
+    };
+
+    onSaveProduct(ensembleProduct);
+    onClose();
+  };
+
   // 添加材质标签
   const handleAddMaterial = () => {
     if (newMaterialInput.trim()) {
@@ -1383,12 +1500,44 @@ interface CanvasDraftPayload {
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* 核心模式切换器 */}
+            <div className="flex items-center p-0.5 bg-stone-200/80 rounded-xl border border-stone-300">
+              <button
+                type="button"
+                onClick={() => setEntryMode('whole_scene')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  entryMode === 'whole_scene'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+                title="直接识别整景：沙发、茶几、地毯、餐边柜、展示柜、餐桌椅、软装挂画摆件，作为整套组合资产整体入库置入"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>整套场景资产识别 (整体置入)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMode('single_slice')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  entryMode === 'single_slice'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+                title="单图拆分模式：将画面中的单品框选切片解构为多个分散单品"
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>单品与切片分割</span>
+              </button>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200/60 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 主体两栏布局 */}
@@ -1599,8 +1748,8 @@ interface CanvasDraftPayload {
                     </select>
                   </div>
 
-                  {/* 多产品边界框 (Bounding Box HUD) - 针对总图视角 (Front 视角或第一张参考图) */}
-                  {!isAnalyzing && detectedProducts && detectedProducts.length > 0 && activeImageIndex === 0 && (
+                  {/* 多产品边界框 (Bounding Box HUD) - 仅在「单品与切片分割」模式下展示 */}
+                  {!isAnalyzing && entryMode === 'single_slice' && detectedProducts && detectedProducts.length > 0 && activeImageIndex === 0 && (
                     <div className="absolute inset-0 pointer-events-none z-15">
                       {detectedProducts.map((item, idx) => {
                         const isSelected = selectedProductIndex === idx;
@@ -1720,8 +1869,8 @@ interface CanvasDraftPayload {
                   </button>
                 </div>
 
-                {/* 识别总图多产品解构栏 (Ensemble Disaggregation Bar) */}
-                {detectedProducts && detectedProducts.length > 1 && (
+                {/* 识别总图多产品解构栏 (仅在单品与切片分割模式下展示) */}
+                {entryMode === 'single_slice' && detectedProducts && detectedProducts.length > 1 && (
                   <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300/80 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
@@ -1829,60 +1978,93 @@ interface CanvasDraftPayload {
               </div>
             )}
 
-            {/* AI 智能识别与生成产品档案核心操作块 */}
+            {/* AI 智能识别核心操作块 (依据 entryMode 切换独立场景模式或单品切片模式) */}
             <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 shadow-xs flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 font-bold text-stone-900 text-xs">
                   <Sparkles className="w-4 h-4 text-amber-600 animate-pulse" />
-                  <span>AI 智能识别与生成产品档案</span>
+                  <span>
+                    {entryMode === 'whole_scene'
+                      ? '整套场景资产独立识别模块'
+                      : 'AI 智能识别与生成产品档案'}
+                  </span>
                 </div>
-                {confidenceScore !== null ? (
+                {(entryMode === 'whole_scene' ? sceneEnsembleDossier?.readoutConfidence : confidenceScore) ? (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono font-bold">
-                    置信度 {confidenceScore}%
+                    置信度 {entryMode === 'whole_scene' ? sceneEnsembleDossier?.readoutConfidence : confidenceScore}%
                   </span>
                 ) : (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-mono font-medium">
-                    视觉大模型
+                    {entryMode === 'whole_scene' ? '全景要素模型' : '单品视觉模型'}
                   </span>
                 )}
               </div>
 
               <p className="text-[11px] text-stone-600 leading-relaxed">
-                上传家具图片后，基于 Gemini 多模态自动测算长宽高、皮质肌理、机械五金结构与物理真值，生成可直接投产的空间产品档案。
+                {entryMode === 'whole_scene'
+                  ? '区别于单品切割：直接识别全景大图中的沙发组、茶几、地毯、餐边柜、展示柜、餐桌椅、软装挂画摆件，作为整套组合资产整体入库置入。'
+                  : '上传家具图片后，基于 Gemini 多模态自动测算长宽高、皮质肌理、机械五金结构与物理真值，生成可直接投产的空间产品档案。'}
               </p>
 
               <button
                 type="button"
-                onClick={() => handleExtractProductDna()}
-                disabled={isAnalyzing || uploadedImages.length === 0}
+                onClick={() => {
+                  if (entryMode === 'whole_scene') {
+                    handleExtractSceneEnsemble();
+                  } else {
+                    handleExtractProductDna();
+                  }
+                }}
+                disabled={
+                  (entryMode === 'whole_scene' ? isAnalyzingEnsemble : isAnalyzing) ||
+                  uploadedImages.length === 0
+                }
                 className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all select-none ${
-                  isAnalyzing
+                  (entryMode === 'whole_scene' ? isAnalyzingEnsemble : isAnalyzing)
                     ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-stone-950 font-black shadow-lg shadow-amber-500/30 ring-2 ring-amber-400 animate-pulse cursor-wait'
                     : uploadedImages.length === 0
                     ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-amber-600 via-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-amber-900/15 ring-2 ring-amber-400/40 cursor-pointer active:scale-[0.99]'
                 }`}
               >
-                {isAnalyzing ? (
-                  <>
-                    <RotateCw className="w-4 h-4 animate-spin text-stone-950 shrink-0" />
-                    <span className="font-mono font-black text-stone-950">
-                      AI 深度识别中 · {(elapsedMs / 1000).toFixed(1)}s
-                    </span>
-                    <span className="text-[10px] text-stone-900 opacity-90 truncate hidden sm:inline font-sans">
-                      ({analysisStage.slice(0, 18)}...)
-                    </span>
-                  </>
-                ) : confidenceScore !== null || dossierSummary ? (
-                  <>
-                    <RotateCw className="w-4 h-4 text-amber-200" />
-                    <span>🔄 重新 AI 识别并刷新产品档案</span>
-                  </>
+                {entryMode === 'whole_scene' ? (
+                  isAnalyzingEnsemble ? (
+                    <>
+                      <RotateCw className="w-4 h-4 animate-spin text-stone-950 shrink-0" />
+                      <span className="font-mono font-black text-stone-950">
+                        场景多要素解析中 (沙发·茶几·地毯·柜体·软装)...
+                      </span>
+                    </>
+                  ) : sceneEnsembleDossier ? (
+                    <>
+                      <RotateCw className="w-4 h-4 text-amber-200" />
+                      <span>🔄 重新识别整套全景场景资产</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-200" />
+                      <span>✨ AI 一键全景识别 (沙发·茶几·地毯·柜体·软装)</span>
+                    </>
+                  )
                 ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-amber-200" />
-                    <span>✨ AI 智能识别 · 一键生成产品档案</span>
-                  </>
+                  isAnalyzing ? (
+                    <>
+                      <RotateCw className="w-4 h-4 animate-spin text-stone-950 shrink-0" />
+                      <span className="font-mono font-black text-stone-950">
+                        AI 深度识别中 · {(elapsedMs / 1000).toFixed(1)}s
+                      </span>
+                    </>
+                  ) : confidenceScore !== null || dossierSummary ? (
+                    <>
+                      <RotateCw className="w-4 h-4 text-amber-200" />
+                      <span>🔄 重新 AI 识别并刷新单品档案</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-200" />
+                      <span>✨ AI 智能识别 · 一键生成产品档案</span>
+                    </>
+                  )
                 )}
               </button>
             </div>
@@ -1931,36 +2113,469 @@ interface CanvasDraftPayload {
 
           {/* 右栏：产品信息读数仪表盘与规格编辑 (7 cols) */}
           <div className="md:col-span-7 p-5 flex flex-col gap-3.5 overflow-y-auto">
-            {/* 1. 顶部标题栏 */}
-            <div className="flex items-center justify-between pb-2 border-b border-stone-200 shrink-0">
-              <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>产品真值读数仪表盘 (Physical Truth Readout)</span>
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsTextPasteModalOpen(true)}
-                  className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-medium flex items-center gap-1 transition shadow-2xs cursor-pointer active:scale-95"
-                  title="粘贴包含尺寸/型号/面料/颜色的规格文案，智能解析并自动填入表单"
-                >
-                  <FileText className="w-3 h-3 text-amber-700" />
-                  <span>粘贴文本规格</span>
-                </button>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
-                  规格与几何不变量
-                </span>
-              </div>
-            </div>
+            {entryMode === 'whole_scene' ? (
+              /* ========== 整套场景资产专属识别看板 ========== */
+              <div className="flex flex-col gap-3.5">
+                {/* 1. 顶部全案标题与状态 */}
+                <div className="flex items-center justify-between pb-2 border-b border-stone-200 shrink-0">
+                  <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    <span>整套场景资产识别看板 (Whole Scene Ensemble)</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {sceneEnsembleDossier ? (
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        置信度 {sceneEnsembleDossier.readoutConfidence}%
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-mono">
+                        独立整景模块 · 7大空间要素
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-            {/* 2. AI 产品档案状态看板 */}
-            <div className={`p-3 rounded-xl border transition-all relative overflow-hidden shrink-0 ${
-              isAnalyzing
-                ? 'bg-gradient-to-br from-amber-500/15 via-cyan-500/10 to-amber-500/5 border-amber-400 shadow-sm ring-1 ring-amber-400/40'
-                : dossierSummary || confidenceScore !== null
-                ? 'bg-gradient-to-br from-amber-50/80 via-white to-stone-50 border-amber-300/80 shadow-2xs'
-                : 'bg-stone-50/80 border-stone-200'
-            }`}>
+                {/* 2. 状态A：多模态解构扫描中 */}
+                {isAnalyzingEnsemble && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-400 shadow-sm flex flex-col gap-3 animate-pulse">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RotateCw className="w-4 h-4 animate-spin text-amber-600" />
+                        <span className="font-bold text-stone-900 text-xs">
+                          Gemini 2.5 场景多模态多要素正在并行识别解构...
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">
+                        分析中
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 text-[11px] text-stone-600">
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>🛋️ 解析沙发布局（3+2+1 / 围合形态、真皮质感与功能位）</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>☕ 测算茶几几组几何形制（天然大理石岩板、金属边几）</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>🧶 提取通铺地毯水墨/抽象纹理与空间铺设范围</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>🗄️ 识别餐边低矮地柜、展示柜壁龛与客餐厅延展套组</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span>🖼️ 提炼背景奢石挂画、艺术灯光与协同置入指令</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-amber-200 rounded-full overflow-hidden mt-1">
+                      <div className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 animate-[progress_1.5s_ease-in-out_infinite]" />
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. 状态B：尚未识别时的引导卡片 */}
+                {!isAnalyzingEnsemble && !sceneEnsembleDossier && (
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-stone-50 via-amber-50/30 to-stone-100 border border-dashed border-amber-300 flex flex-col items-center text-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-400/40 flex items-center justify-center text-amber-700 shadow-2xs">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div className="max-w-md">
+                      <h3 className="font-bold text-stone-900 text-sm">
+                        整套场景资产直接识别录入
+                      </h3>
+                      <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                        告别将沙发、茶几、地毯一块一块截图切割的繁琐单品流程。直接识别全景会客空间，自动提炼 7 大要素组合参数，一键整体入库入参，在 8~10 米大开间母版中无缝协同置入。
+                      </p>
+                    </div>
+
+                    {/* 7大核心要素网格速览 */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-2">
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🛋️</span> 沙发套组
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">围合组合·头等舱</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>☕</span> 茶几几组
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">岩板大几·金属角几</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🧶</span> 艺术地毯
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">全域通铺·水墨肌理</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🗄️</span> 边柜展示柜
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">餐边地柜·立面壁龛</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🪑</span> 餐桌椅套
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">客餐厅延展配套</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🖼️</span> 软装挂画
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">奢石主墙·艺术壁灯</div>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white border border-stone-200/80 text-left shadow-2xs col-span-2">
+                        <div className="text-[11px] font-bold text-stone-800 flex items-center gap-1">
+                          <span>🎯</span> 整体置入指令
+                        </div>
+                        <div className="text-[10px] text-stone-500 mt-0.5">协同 Prompt 与不可破坏视觉不变量</div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleExtractSceneEnsemble()}
+                      disabled={uploadedImages.length === 0}
+                      className={`mt-2 py-2.5 px-6 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition active:scale-98 cursor-pointer ${
+                        uploadedImages.length === 0
+                          ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-400/40 shadow-amber-900/15'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-200" />
+                      <span>{uploadedImages.length === 0 ? '请先在左侧上传全景效果图' : '✨ 立即识别整套场景多要素'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* 4. 状态C：已识别出的整套场景多要素卡片系统 */}
+                {!isAnalyzingEnsemble && sceneEnsembleDossier && (
+                  <div className="flex flex-col gap-3">
+                    {/* 4.1 全案套组基本信息 */}
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 shadow-2xs flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider font-mono">
+                          全案套组名称与空间归属
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-mono font-medium">
+                          {sceneEnsembleDossier.ensembleCategory}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                        <div className="sm:col-span-8">
+                          <input
+                            type="text"
+                            value={sceneEnsembleDossier.name}
+                            onChange={(e) =>
+                              setSceneEnsembleDossier({ ...sceneEnsembleDossier, name: e.target.value })
+                            }
+                            placeholder="全案套组名称"
+                            className="w-full text-xs font-bold p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden bg-white shadow-2xs"
+                          />
+                        </div>
+                        <div className="sm:col-span-4">
+                          <input
+                            type="text"
+                            value={sceneEnsembleDossier.sku}
+                            onChange={(e) =>
+                              setSceneEnsembleDossier({ ...sceneEnsembleDossier, sku: e.target.value })
+                            }
+                            placeholder="套组 SKU/编码"
+                            className="w-full text-xs font-mono p-2 rounded-xl border border-stone-200 focus:border-amber-500 focus:outline-hidden bg-white shadow-2xs"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-stone-600 bg-white/70 p-2.5 rounded-xl border border-stone-200/60 leading-relaxed">
+                        {sceneEnsembleDossier.dossierSummary}
+                      </p>
+                      {sceneEnsembleDossier.dominantColors && sceneEnsembleDossier.dominantColors.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                          <span className="text-[10px] text-stone-500 font-medium">主色调:</span>
+                          {sceneEnsembleDossier.dominantColors.map((col, cIdx) => (
+                            <span
+                              key={cIdx}
+                              className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200"
+                            >
+                              {col}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4.2 要素 1：🛋️ 沙发组合 */}
+                    <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-2">
+                      <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                        <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                          <Sofa className="w-3.5 h-3.5 text-amber-600" />
+                          <span>1. 沙发组合 (Sofa Suite)</span>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 font-medium">
+                          {sceneEnsembleDossier.sofaSuite?.seatingConfiguration || '围合组合'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-600 leading-relaxed">
+                        {sceneEnsembleDossier.sofaSuite?.description}
+                      </div>
+                      {sceneEnsembleDossier.sofaSuite?.mainSofa && (
+                        <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200/80 flex flex-col gap-1.5 text-[11px]">
+                          <div className="flex items-center justify-between font-bold text-stone-800">
+                            <span>主沙发：{sceneEnsembleDossier.sofaSuite.mainSofa.name}</span>
+                            <span className="font-mono text-[10px] bg-stone-200/70 px-1.5 py-0.5 rounded text-stone-700">
+                              {sceneEnsembleDossier.sofaSuite.mainSofa.seats}人座 · {sceneEnsembleDossier.sofaSuite.mainSofa.dimensions || '3200×1080×950mm'}
+                            </span>
+                          </div>
+                          <div className="text-stone-500 text-[10px] flex items-center gap-2">
+                            <span>材质: <strong className="text-stone-700">{sceneEnsembleDossier.sofaSuite.mainSofa.material}</strong></span>
+                            <span>色彩: <strong className="text-stone-700">{sceneEnsembleDossier.sofaSuite.mainSofa.color}</strong></span>
+                          </div>
+                          {sceneEnsembleDossier.sofaSuite.mainSofa.features && sceneEnsembleDossier.sofaSuite.mainSofa.features.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                              {sceneEnsembleDossier.sofaSuite.mainSofa.features.map((feat, fIdx) => (
+                                <span
+                                  key={fIdx}
+                                  className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-200"
+                                >
+                                  {feat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {sceneEnsembleDossier.sofaSuite?.reclinerChairs && sceneEnsembleDossier.sofaSuite.reclinerChairs.length > 0 && (
+                        <div className="text-[10px] text-stone-500 flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-amber-900">配备单人功能椅:</span>
+                          {sceneEnsembleDossier.sofaSuite.reclinerChairs.map((rec, rIdx) => (
+                            <span key={rIdx} className="px-2 py-0.5 rounded bg-stone-100 border border-stone-200 text-stone-700">
+                              {rec.name} ({rec.material} · {rec.color})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4.3 要素 2：☕ 茶几几组 */}
+                    <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-2">
+                      <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                        <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                          <span>☕</span>
+                          <span>2. 茶几几组 (Coffee Tables Group)</span>
+                        </span>
+                        <span className="text-[10px] text-stone-400 font-mono">
+                          {sceneEnsembleDossier.coffeeTables?.items?.length || 0} 件几具
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-600 leading-relaxed">
+                        {sceneEnsembleDossier.coffeeTables?.description}
+                      </div>
+                      {sceneEnsembleDossier.coffeeTables?.items && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                          {sceneEnsembleDossier.coffeeTables.items.map((tb, tIdx) => (
+                            <div key={tIdx} className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 text-[10px] flex flex-col gap-0.5">
+                              <span className="font-bold text-stone-800">{tb.name}</span>
+                              <span className="text-stone-500">材质：{tb.material}</span>
+                              <span className="text-stone-400">造型：{tb.shape} · {tb.finish}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4.4 要素 3：🧶 通铺艺术地毯 */}
+                    <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-2">
+                      <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                        <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-amber-600" />
+                          <span>3. 通铺艺术地毯 (Carpet & Area Rug)</span>
+                        </span>
+                        <span className="text-[10px] text-stone-400 font-mono">
+                          {sceneEnsembleDossier.carpetRug?.material}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-stone-600 leading-relaxed">
+                        {sceneEnsembleDossier.carpetRug?.description}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[10px] p-2 rounded-xl bg-stone-50 border border-stone-200/80">
+                        <div>
+                          <span className="text-stone-400">纹理肌理：</span>
+                          <span className="font-medium text-stone-700">{sceneEnsembleDossier.carpetRug?.pattern}</span>
+                        </div>
+                        <div>
+                          <span className="text-stone-400">铺设范围：</span>
+                          <span className="font-medium text-stone-700">{sceneEnsembleDossier.carpetRug?.coverageScope}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4.5 要素 4 & 5：🗄️ 餐边柜与展示柜壁龛 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* 餐边柜/矮柜 */}
+                      <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                          <span className="font-bold text-stone-900 text-xs flex items-center gap-1">
+                            <Boxes className="w-3.5 h-3.5 text-amber-600" />
+                            <span>4. 餐边矮柜</span>
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                            sceneEnsembleDossier.credenzaSideboard?.presence
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-stone-100 text-stone-400'
+                          }`}>
+                            {sceneEnsembleDossier.credenzaSideboard?.presence ? '已识别' : '未包含'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-stone-600 leading-relaxed">
+                          {sceneEnsembleDossier.credenzaSideboard?.description || '画面中无独立餐边矮柜'}
+                        </div>
+                        {sceneEnsembleDossier.credenzaSideboard?.presence && (
+                          <div className="text-[9px] text-stone-500">
+                            材质：{sceneEnsembleDossier.credenzaSideboard.material}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 展示柜/壁龛 */}
+                      <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                          <span className="font-bold text-stone-900 text-xs flex items-center gap-1">
+                            <Layout className="w-3.5 h-3.5 text-amber-600" />
+                            <span>5. 展示柜/壁龛</span>
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                            sceneEnsembleDossier.displayCabinet?.presence
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-stone-100 text-stone-400'
+                          }`}>
+                            {sceneEnsembleDossier.displayCabinet?.presence ? '已识别' : '未包含'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-stone-600 leading-relaxed">
+                          {sceneEnsembleDossier.displayCabinet?.description || '画面中未包含独立壁龛'}
+                        </div>
+                        {sceneEnsembleDossier.displayCabinet?.presence && (
+                          <div className="text-[9px] text-stone-500">
+                            材质灯光：{sceneEnsembleDossier.displayCabinet.material} · {sceneEnsembleDossier.displayCabinet.lightingStyle}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 4.6 要素 6 & 7：🪑 客餐厅餐桌椅 与 🖼️ 软装挂画摆件 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* 餐桌与餐椅 */}
+                      <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                          <span className="font-bold text-stone-900 text-xs flex items-center gap-1">
+                            <span>🪑</span>
+                            <span>6. 客餐厅餐桌椅</span>
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                            sceneEnsembleDossier.diningSuite?.presence
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-stone-100 text-stone-400'
+                          }`}>
+                            {sceneEnsembleDossier.diningSuite?.presence ? '已识别' : '未包含'}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-stone-600 leading-relaxed">
+                          {sceneEnsembleDossier.diningSuite?.description || '未展示独立餐厅餐台'}
+                        </div>
+                      </div>
+
+                      {/* 软装挂画与摆件 */}
+                      <div className="p-3.5 rounded-2xl bg-white border border-stone-200 shadow-2xs flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between border-b border-stone-100 pb-1.5">
+                          <span className="font-bold text-stone-900 text-xs flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                            <span>7. 软装挂画与艺术摆件</span>
+                          </span>
+                          <span className="text-[9px] text-stone-400 font-mono">
+                            高定配饰
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-stone-600 leading-relaxed">
+                          {sceneEnsembleDossier.softDecor?.description}
+                        </div>
+                        <div className="space-y-0.5 text-[9px] text-stone-500 pt-0.5">
+                          <div>墙面/背景：{sceneEnsembleDossier.softDecor?.wallArt}</div>
+                          <div>氛围灯光：{sceneEnsembleDossier.softDecor?.lighting}</div>
+                          <div>造景/花艺：{sceneEnsembleDossier.softDecor?.greenery}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4.7 要素 8：🎯 全套协同置入指令 */}
+                    <div className="p-3.5 rounded-2xl bg-stone-900 text-stone-100 shadow-md flex flex-col gap-2">
+                      <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
+                        <span className="font-bold text-amber-300 text-xs flex items-center gap-1.5">
+                          <CheckCheck className="w-4 h-4 text-amber-400" />
+                          <span>全案协同置入指令 (Scene Cohesion Directives)</span>
+                        </span>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                          大模型母版生成注入
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-stone-300 font-mono bg-black/40 p-2.5 rounded-xl border border-stone-800 leading-relaxed select-text">
+                        {sceneEnsembleDossier.placementDirectives?.holisticLayoutPrompt}
+                      </div>
+                      {sceneEnsembleDossier.placementDirectives?.visualInvariants && (
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          <span className="text-[9px] text-amber-400 font-bold">不可破坏设计真值:</span>
+                          {sceneEnsembleDossier.placementDirectives.visualInvariants.map((inv, iIdx) => (
+                            <span
+                              key={iIdx}
+                              className="text-[9px] px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700 font-mono"
+                            >
+                              ✓ {inv}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ========== 原有单品与切片分割表单 ========== */
+              <>
+                {/* 1. 顶部标题栏 */}
+                <div className="flex items-center justify-between pb-2 border-b border-stone-200 shrink-0">
+                  <span className="font-bold text-stone-900 text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>产品真值读数仪表盘 (Physical Truth Readout)</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsTextPasteModalOpen(true)}
+                      className="text-[10px] px-2.5 py-1 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-medium flex items-center gap-1 transition shadow-2xs cursor-pointer active:scale-95"
+                      title="粘贴包含尺寸/型号/面料/颜色的规格文案，智能解析并自动填入表单"
+                    >
+                      <FileText className="w-3 h-3 text-amber-700" />
+                      <span>粘贴文本规格</span>
+                    </button>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-mono">
+                      规格与几何不变量
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. AI 产品档案状态看板 */}
+                <div className={`p-3 rounded-xl border transition-all relative overflow-hidden shrink-0 ${
+                  isAnalyzing
+                    ? 'bg-gradient-to-br from-amber-500/15 via-cyan-500/10 to-amber-500/5 border-amber-400 shadow-sm ring-1 ring-amber-400/40'
+                    : dossierSummary || confidenceScore !== null
+                    ? 'bg-gradient-to-br from-amber-50/80 via-white to-stone-50 border-amber-300/80 shadow-2xs'
+                    : 'bg-stone-50/80 border-stone-200'
+                }`}>
               {isAnalyzing && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-cyan-400 to-amber-500 animate-pulse" />
               )}
@@ -2592,21 +3207,42 @@ interface CanvasDraftPayload {
                 </div>
               </label>
             </div>
-          </div>
-        </div>
+          </>
+        )}
+      </div>
+    </div>
 
         {/* 底部 Footer 控制条 */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-stone-200 bg-[#FAF8F5] shrink-0">
           <div className="text-[11px] text-stone-500 flex items-center gap-2">
-            <span>
-              {uploadedImages.length > 0
-                ? `已准备好 ${uploadedImages.length} 视角真值数据`
-                : '请先上传产品图片'}
-            </span>
-            {detectedProducts && detectedProducts.length > 1 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold">
-                已解构出 {detectedProducts.length} 款组合单品
+            {entryMode === 'whole_scene' ? (
+              <span className="flex items-center gap-1.5">
+                {sceneEnsembleDossier ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-stone-800">
+                      已就绪：整套场景全要素资产 ({sceneEnsembleDossier.name})
+                    </span>
+                  </>
+                ) : uploadedImages.length > 0 ? (
+                  '已载入全景参考图，点击左侧「AI 一键全景识别」直接提取全套空间要素'
+                ) : (
+                  '请先上传全景客厅或客餐厅参考图'
+                )}
               </span>
+            ) : (
+              <>
+                <span>
+                  {uploadedImages.length > 0
+                    ? `已准备好 ${uploadedImages.length} 视角真值数据`
+                    : '请先上传产品图片'}
+                </span>
+                {detectedProducts && detectedProducts.length > 1 && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold">
+                    已解构出 {detectedProducts.length} 款组合单品
+                  </span>
+                )}
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -2616,27 +3252,45 @@ interface CanvasDraftPayload {
             >
               取消
             </button>
-            {detectedProducts && detectedProducts.length > 1 && (
+            {entryMode === 'whole_scene' ? (
               <button
                 type="button"
-                onClick={handleBatchSaveAllDetected}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-md transition flex items-center gap-1.5 ring-2 ring-amber-400/40 cursor-pointer"
+                onClick={handleSaveWholeSceneEnsemble}
+                disabled={!sceneEnsembleDossier}
+                className={`px-5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md ${
+                  sceneEnsembleDossier
+                    ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-400/40 shadow-amber-900/20 active:scale-[0.98]'
+                    : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                }`}
               >
-                <Boxes className="w-3.5 h-3.5" />
-                <span>一键全套入库 (共 {detectedProducts.length} 款)</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>一键整套全案资产入库 (整体置入)</span>
               </button>
+            ) : (
+              <>
+                {detectedProducts && detectedProducts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleBatchSaveAllDetected}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-md transition flex items-center gap-1.5 ring-2 ring-amber-400/40 cursor-pointer"
+                  >
+                    <Boxes className="w-3.5 h-3.5" />
+                    <span>一键全套入库 (共 {detectedProducts.length} 款)</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleConfirmSave}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>
+                    {detectedProducts && detectedProducts.length > 1
+                      ? `保存当前单品 (#${selectedProductIndex + 1})`
+                      : '保存并加入空间产品库'}
+                  </span>
+                </button>
+              </>
             )}
-            <button
-              onClick={handleConfirmSave}
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>
-                {detectedProducts && detectedProducts.length > 1
-                  ? `保存当前单品 (#${selectedProductIndex + 1})`
-                  : '保存并加入空间产品库'}
-              </span>
-            </button>
           </div>
         </div>
       </div>

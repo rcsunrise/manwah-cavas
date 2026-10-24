@@ -78,6 +78,37 @@ router.post('/analyze-product', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/space/build/analyze-scene-ensemble
+ * 独立场景整套资产多模态结构化识别接口：
+ * 直接识别沙发组、茶几、地毯、餐边柜、展示柜、餐桌椅、软装挂画摆件等全要素，
+ * 整体生成并作为组合资产入库与置入
+ */
+router.post('/analyze-scene-ensemble', async (req: Request, res: Response) => {
+  try {
+    const parsed = AnalyzeProductRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid scene ensemble payload',
+        details: parsed.error.issues
+      });
+    }
+
+    const userId = (req as any).user?.id || 'system';
+    const result = await SpaceProductAnalysisService.analyzeWholeSceneEnsemble(parsed.data, userId);
+
+    return res.json(result);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to analyze whole scene ensemble';
+    console.error('[spaceBuildRoutes] analyze-scene-ensemble error:', err);
+    return res.status(500).json({
+      success: false,
+      error: message
+    });
+  }
+});
+
 
 const LockSceneMasterSchema = z.object({
   projectId: z.string().min(1),

@@ -114,27 +114,29 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
     defaultCamera: {
       lensMm: 50,
       heightCm: 95,
-      yawDeg: 0,
+      yawDeg: -20,
       pitchDeg: 0,
       rollDeg: 0,
       target: { type: 'product', id: 'primary_sofa' },
       framing: 'product',
       mustInclude: [
         'three_seater_sofa',
-        'symmetrical_marble_backdrop_axis',
-        'dual_curved_sconce_midline',
-        'sofa_leather_texture',
-        'foreground_coffee_table'
+        'subtle_oblique_three_quarters_perspective',
+        'dual_nesting_coffee_table',
+        'pristine_leather_surface',
+        'feature_marble_backdrop_wall'
       ],
       mustExclude: [
+        'flat_frontal_mugshot',
+        'straight_on_camera',
         'separate_accent_single_chair',
         'side_armchair',
         'lounge_chair',
-        'angled_view',
+        'cluttered_throw_pillows',
         'deployed_footrests_when_no_human'
       ]
     },
-    description: '焦段 50mm 标准视平，机位高度 95cm（与靠背齐平略低，仰角 0°），纯 0° 正视对称中轴，4:3 横构图，展现 C位三人位主沙发的挺拔体量感与对称高级感，严格排除侧边单椅。'
+    description: '焦段 50mm 人文标准镜头，机位高度 95-105cm，左前方 15°~25° 微侧斜透视（Yaw: -20°），4:3 横构图，展现 C位三人位主沙发的 3D 立体轮廓、扶手厚实弧度与开阔客餐厅通透纵深，纯净真皮质感，严格排除侧边单椅。'
   },
   {
     id: 'tpl-a04',
@@ -392,9 +394,9 @@ export const SCENE_MASTER_TEMPLATE: ShotTemplate = {
   id: 'tpl-a00',
   code: 'A00',
   name: '空间母版 (Scene Master)',
-  alignmentSample: 'Studio Sample Architectural Master Foundation / 35mm Frontal Baseline',
+  alignmentSample: 'Studio Sample Architectural Master Foundation / 26mm Ultra-Wide Frontal Baseline',
   studioCategory: '权威基准·空间母版统领全景',
-  workflowRole: '35mm 建筑级基准·统领全屋空间硬装与光影基线',
+  workflowRole: '26mm 建筑超广角基准·大平层全开间空间硬装与采光统领',
   recommendedAspectRatio: '4:3',
   intent: {
     intentCode: 'SI-01',
@@ -402,11 +404,11 @@ export const SCENE_MASTER_TEMPLATE: ShotTemplate = {
     productDominancePct: 50,
     backgroundSuppression: 'low',
     maxOcclusionPct: 5,
-    description: '全景确立空间户型、建筑硬装材质、落地大窗采光与敏华家具的核心基准，统领后续 A01~A09 所有机位。'
+    description: '全景确立 8~10米大横厅户型、贯通式奢石护墙板硬装、大落地窗全景采光与敏华家具大全套的核心基准，统领后续所有机位。'
   },
   defaultCamera: {
-    lensMm: 35,
-    heightCm: 135,
+    lensMm: 26,
+    heightCm: 130,
     yawDeg: 0,
     pitchDeg: -1,
     rollDeg: 0,
@@ -414,18 +416,19 @@ export const SCENE_MASTER_TEMPLATE: ShotTemplate = {
     framing: 'wide',
     mustInclude: [
       'strictly_straight_on_frontal_view',
-      'centered_marble_backdrop_wall_axis',
+      'expansive_full_span_luxury_backdrop_wall',
       'panoramic_full_height_left_window',
-      'complete_3_plus_1_sofa_ensemble',
-      'white_matte_cylindrical_planter_anchor'
+      'complete_grand_living_furniture_ensemble',
+      'architectural_deep_floor_plane_perspective'
     ],
     mustExclude: [
-      'angled_side_perspective',
-      'excessive_ceiling_void',
+      'isolated_center_pillar',
+      'freestanding_partition_wall',
+      'cramped_narrow_room',
       'deployed_footrests_when_no_human'
     ]
   },
-  description: '焦段 35mm 人文广角镜头，机位高度 135cm，0° 正视对称基线，横向 4:3 画幅，统领全案空间母版。'
+  description: '焦段 26mm 建筑超广角镜头，机位高度 130cm，0° 正视对称基线，8~10米大开间横厅视野，横向 4:3 画幅，统领全案空间母版。'
 };
 
 /**

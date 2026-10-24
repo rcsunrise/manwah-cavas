@@ -1376,13 +1376,16 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           const normalizedInitialError = normalizeProviderError(initialErr, { provider, model });
           const errMsg = normalizedInitialError.message;
           const isHybrid = routingMode === 2;
-          const shouldFallback = ['timeout', 'rate_limited', 'upstream_unavailable'].includes(normalizedInitialError.category);
+          const isAuthOrChannelError = 
+            normalizedInitialError.category === 'authentication' ||
+            /unauthorized|invalid token|model_price_error|no available channel/i.test(errMsg);
+          const shouldFallback = ['timeout', 'rate_limited', 'upstream_unavailable'].includes(normalizedInitialError.category) || isAuthOrChannelError;
 
-          if ((provider === 'vectorengine' || baseUrl.includes('vectorengine')) && (shouldFallback || (isHybrid && normalizedInitialError.retryable))) {
+          if (shouldFallback || (isHybrid && normalizedInitialError.retryable)) {
             const fallback = await getFallbackConfig(deptId, method1Key);
 
-            if (fallback && fetchResult === undefined) {
-              console.log(`[O&M: Fallback Activated] VectorEngine failed (${errMsg}). Retrying with fallback provider ${fallback.provider} (${fallback.baseUrl})...`);
+            if (fallback && fetchResult === undefined && (fallback.provider !== provider || fallback.apiKey !== apiKey)) {
+              console.log(`[O&M: Fallback Activated] 主通道 ${provider} 调用失败 (${errMsg})。正在自动无缝切换至备用通道 ${fallback.provider} (${fallback.baseUrl})...`);
               usedProvider = fallback.provider;
               try {
                 const fetchRes = await doFetch(fallback.baseUrl, fallback.apiKey!, fallback.provider);
@@ -1390,11 +1393,11 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                 actualModelUsed = fetchRes.actualModel;
               } catch (fallbackErr: any) {
                 const normalizedFallbackError = normalizeProviderError(fallbackErr, { provider: fallback.provider, model });
-                console.error(`[O&M: Fallback Failed] Fallback ${fallback.provider} also failed: ${normalizedFallbackError.message}`);
+                console.error(`[O&M: Fallback Failed] 备用通道 ${fallback.provider} 亦失败: ${normalizedFallbackError.message}`);
                 throw normalizedFallbackError;
               }
             } else {
-              console.error(`[O&M: Fallback Skipped] VectorEngine failed (${errMsg}) and no valid fallback API key was found.`);
+              console.error(`[O&M: Fallback Skipped] 通道 ${provider} 失败 (${errMsg}) 且未找到可用的其他备用 API key。`);
               throw normalizedInitialError;
             }
           } else {
@@ -1997,9 +2000,10 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
   });
 
-  // 生产环境与静态资源托管判定：如果运行在 production 模式或 dist/index.html 存在且非显式开发模式
+  // 生产环境与静态资源托管判定：只有显式设定 NODE_ENV === 'production' 且 dist/index.html 存在时才作为纯生产静态托管
+  // 其余本地开发环境（如 npm run dev / tsx server.ts）优先启动 Vite 实时热重载，避免遗留 dist 导致前端代码更新失效
   const hasDist = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'));
-  const isProduction = process.env.NODE_ENV === 'production' || (hasDist && process.env.NODE_ENV !== 'development');
+  const isProduction = process.env.NODE_ENV === 'production' && hasDist;
 
   if (!isProduction && process.env.DISABLE_VITE !== 'true') {
     const { createServer: createViteServer } = await import('vite');

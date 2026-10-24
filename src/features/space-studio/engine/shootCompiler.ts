@@ -16,6 +16,10 @@ import {
   resolveCompositeMaterialDna
 } from './materialDnaTranslator';
 import { compileStyleDnaToEnglish } from './stylePaletteTranslator';
+import {
+  compileSpaceTopology,
+  compileStyleArchitecturalFinishes
+} from './spaceTopologyEngine';
 import { STANDARD_SHOT_TEMPLATES } from '../data/shotTemplates';
 
 export interface CompileShotPromptInput {
@@ -259,7 +263,10 @@ export class ShootCompiler {
     );
 
     let cleanProductName = '';
-    if (primaryProduct?.role === 'sofa_2seat') {
+    if (primaryProduct?.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier) {
+      const ens = primaryProduct.sceneEnsembleDossier;
+      cleanProductName = `coordinated luxury whole-scene living ensemble (${ens.name}) featuring [Sofa Suite: ${ens.sofaSuite?.description || 'leather sofa ensemble'}], [Tables: ${ens.coffeeTables?.description || 'marble center table'}], [Area Rug: ${ens.carpetRug?.description || 'expansive wool rug'}], [Cabinetry: ${ens.credenzaSideboard?.presence ? ens.credenzaSideboard.description : 'curated low-profile credenza'}], and [Decor: ${ens.softDecor?.description || 'warm sconces and botanicals'}] in ${primaryColorEn}`;
+    } else if (primaryProduct?.role === 'sofa_2seat') {
       cleanProductName = `generous wide-body two-seater power motion sofa in ${primaryColorEn} (${primaryMaterialEn}), featuring a wide horizontal stance and low-profile deep cushions with EXACTLY TWO wide seating cushions, contrasting brown piping trim along front edge and armrest contours, and TWO backrest sections (twin 2-unit seating division, strictly NOT a three-seater sofa, strictly NOT tall or narrow)`;
     } else if (primaryProduct?.role === 'sofa_3seat' || isHeroSofaDedicatedShot) {
       cleanProductName = `luxury three-seater power motion sofa in ${primaryColorEn} (${primaryMaterialEn})`;
@@ -375,21 +382,42 @@ export class ShootCompiler {
       }).filter(Boolean).join(', ');
       const ensembleClause = secondaryEnsembleDesc ? `, alongside the coordinated ensemble suite: [${secondaryEnsembleDesc}]` : '';
 
+      const spaceTopology = compileSpaceTopology(spacePreset);
+      const styleFinishes = compileStyleArchitecturalFinishes(stylePreset);
+
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A00 SCENE MASTER FOUNDATION (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm architectural baseline at ${camera.heightCm}cm height establishing the full spatial envelope of ${spacePreset.name} with ${ceilingStr}. Unify ${stylePreset.name} luxury interior finishes with the hero ${cleanProductName} anchored securely parallel against a continuous solid backdrop wall${ensembleClause}, side daylight windows, establishing authoritative visual ground truth.`;
+        shotMandate = `[SHOT MANDATE - A00 SCENE MASTER FOUNDATION (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm ultra-wide architectural baseline at ${camera.heightCm}cm height capturing the distinctive room topology of ${spacePreset.name} (${spacePreset.code}) with ${ceilingStr}. ${spaceTopology.topologyDirective} FOCAL WALL ARCHITECTURE: ${spaceTopology.architecturalFocalWall}. ELEVATION & FLOORING: ${spaceTopology.flooringTopology}. CEILING ARCHITECTURE: ${spaceTopology.ceilingStructure}. LIGHTING & APERTURE: ${spaceTopology.windowAndOutdoorView}. Unify ${stylePreset.name} luxury interior finishes: ${styleFinishes.styleWallMoldingDirective} (${styleFinishes.styleMaterialPalette}) with the hero ${cleanProductName}${ensembleClause}, establishing authoritative visual ground truth for the room.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A00 SCENE MASTER FOUNDATION]: 35mm architectural baseline at ${camera.heightCm}cm standing eye-level height establishing the full spatial envelope of ${spacePreset.name} with ${ceilingStr}. Unify ${stylePreset.name} luxury interior finishes with the hero ${cleanProductName} anchored securely parallel against a continuous solid backdrop wall${ensembleClause}, side daylight windows, establishing the authoritative visual ground truth for all subsequent shots.`;
+        shotMandate = `[SHOT MANDATE - A00 SCENE MASTER FOUNDATION]: 26mm ultra-wide architectural baseline at ${camera.heightCm}cm standing eye-level height capturing the distinctive room topology of ${spacePreset.name} (${spacePreset.code}) with ${ceilingStr}. ${spaceTopology.topologyDirective} FOCAL WALL ARCHITECTURE: ${spaceTopology.architecturalFocalWall}. ELEVATION & FLOORING: ${spaceTopology.flooringTopology}. CEILING ARCHITECTURE: ${spaceTopology.ceilingStructure}. LIGHTING & APERTURE: ${spaceTopology.windowAndOutdoorView}. Unify ${stylePreset.name} luxury interior finishes: ${styleFinishes.styleWallMoldingDirective} (${styleFinishes.styleMaterialPalette}) with the hero ${cleanProductName}${ensembleClause}, establishing the authoritative visual ground truth for all subsequent shots.`;
       }
+      negativeFramingConstraints.push(
+        ...spaceTopology.negativeConstraints,
+        ...styleFinishes.styleNegativeRules,
+        'isolated center pillar',
+        'freestanding partition wall',
+        'floating divider column',
+        'narrow dividing post',
+        'claustrophobic narrow room',
+        'cramped small room',
+        'boxy enclosed room',
+        'narrow bay width',
+        'split room partition'
+      );
     } else if (shot.templateCode === 'A01') {
       const footrestMandate = isHumanPassActive
         ? 'with primary motion seat deployed for relaxed human occupancy'
         : 'with all motorized footrests on BOTH main sofa AND accent single chair strictly 100% CLOSED, RETRACTED FLUSH, and locked in pristine showroom condition';
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm environmental architectural lens at ${camera.heightCm}cm eye-level height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with vertical plumb lines strictly straight. Architectural panorama capturing expansive open-plan horizontal living-dining flow: soaring cove-lit ceiling volume, full-span floor-to-ceiling panoramic glass windows on the left flank flooding space with 6000K cool daylight strictly preserving spatial master A00 daylight orientation, centered marble backdrop wall axis, complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring the living ensemble into foreground alongside the white matte cylindrical planter coordinate origin. The vista extends smoothly into integrated dining area on right without empty foreground barrenness.`;
+        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm environmental architectural lens at ${camera.heightCm}cm eye-level height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with vertical plumb lines strictly straight. Architectural panorama capturing expansive open-plan horizontal living-dining flow: soaring cove-lit ceiling volume, full-span floor-to-ceiling panoramic glass windows on the flank flooding space with soft daylight strictly preserving spatial master A00 daylight orientation, continuous full-span luxury backdrop wall across the wide room span (strictly NO center dividing pillar), complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring the living ensemble into foreground alongside the white matte cylindrical planter coordinate origin. The vista extends smoothly into integrated dining area on right without empty foreground barrenness.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Studio Sample 35mm Grand Horizon)]: 35mm humanistic wide prime lens at 115cm eye-level standing/seated height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with perfectly vertical plumb lines. Centered architectural panorama capturing expansive open-plan living-dining flow: soaring cove-lit ceiling volume, full floor-to-ceiling panoramic glass window wall on left flank flooding space with 6000K cool daylight strictly matching spatial master A00 daylight orientation, centered marble backdrop wall axis, complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring foreground alongside the white matte cylindrical planter coordinate origin. The open horizon extends seamlessly to right-side luxury dining suite with majestic spatial balance.`;
+        shotMandate = `[SHOT MANDATE - A01 GRAND FRONTAL ARCHITECTURAL PANORAMA (Studio Sample 26mm Grand Horizon)]: 26mm architectural ultra-wide prime lens at 120cm eye-level standing/seated height with STRICT 0-DEGREE STRAIGHT-ON FRONTAL AXIS in 4:3 horizontal aspect ratio. Two-point perspective with perfectly vertical plumb lines. Centered architectural panorama capturing expansive open-plan living-dining flow across 8-10 meter horizontal width: soaring cove-lit ceiling volume, full floor-to-ceiling panoramic glass window wall on left flank flooding space with soft daylight strictly matching spatial master A00 daylight orientation, continuous full-span luxury backdrop wall (strictly NO center dividing pillar), complete 3+1 hero furniture suite (${cleanProductName}, designer coffee table, side chair, ${footrestMandate}), and generous luxury area rug anchoring foreground alongside the white matte cylindrical planter coordinate origin. The open horizon extends seamlessly to right-side luxury dining suite with majestic spatial balance.`;
       }
       negativeFramingConstraints.push(
+        'isolated center pillar',
+        'freestanding partition wall',
+        'floating divider column',
+        'cramped room',
+        'narrow field of view',
         'angled side shot',
         'diagonal camera view',
         'tilted perspective',
@@ -397,8 +425,6 @@ export class ShootCompiler {
         'side isometric angle',
         'oblique camera',
         'corner view',
-        'cramped room',
-        'narrow field of view',
         'excessive empty wooden floor in foreground',
         'vast barren foreground floor void',
         'tiny distant furniture',
@@ -415,49 +441,83 @@ export class ShootCompiler {
     } else if (shot.templateCode === 'A02') {
       const sofaPostureMandate = isHumanPassActive
         ? 'luxury three-seater main sofa with family relaxation posture'
-        : 'luxury three-seater main sofa with all motorized footrests completely closed and retracted in showroom posture';
+        : 'luxury three-seater main sofa in pristine showroom posture with 1-2 curated decorative cushions';
       const perspectiveShiftDirective = `[MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE]
-Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
-DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.`;
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW!
+DO NOT CENTER THE SOFA ON A SYMMETRICAL HORIZONTAL AXIS!
+FOR SHOT A02, THE CAMERA MUST PHYSICALLY SWING 40-45 DEGREES TO THE FRONT-LEFT CORNER VANTAGE POINT!
+The 3-seater main sofa is oriented along a 45-degree diagonal receding from left-front to back-right into the room depth, showing rich 3D armrest curvature, deep seating cushion volume, and side perspective.
+The single recliner armchair is positioned in the foreground-left near the panoramic window, angled inward at 90 degrees toward the main sofa in an intimate conversational salon.
+The luxury marble background focal wall recedes diagonally with strong 2-point perspective vanishing lines, not a flat horizontal wall!`;
+
+      const ensemble3Plus1LayoutDirective = `[STRICT 3+1 CONVERSATIONAL SALON CHOREOGRAPHY]:
+Capture complete 3+1 furniture ensemble with genuine conversational depth:
+1. THREE-SEATER MAIN SOFA: Positioned at midground right, backed against the luxury stone/wood focal wall, oriented along the 45-degree diagonal receding into room depth. Supple leather, three generous seating cushions, ${sofaPostureMandate}.
+2. MATCHING ACCENT RECLINER ARMCHAIR: Positioned at foreground left near the panoramic floor-to-ceiling window, facing inward toward the main sofa in a 90-degree conversational L-shape. COMFORT ERGONOMIC POSTURE: Its motorized footrest is smoothly deployed into a relaxed comfort contour, showcasing peak First-Class relaxation.
+3. DUAL NESTING CENTER COFFEE TABLES: Placed in the conversational center between sofa and armchair on the area rug, featuring a higher black side pedestal nested with a lower dark marble/glass table, styled with an artisan wooden box and subtle greenery.
+4. CONTEMPORARY GEOMETRIC AREA RUG: Expansive light ivory/warm greige geometric wool rug cleanly anchoring both sofas and coffee table on the warm wood plank flooring.
+5. INDOOR BOTANICAL: An elegant tall fiddle-leaf fig tree stands between the recliner armchair and the panoramic window.
+6. OPEN-PLAN VISTA: The vista to the right extends smoothly into the deep background open-plan dining zone (dark marble dining table and leather dining chairs), establishing majestic architectural depth.`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${perspectiveShiftDirective}
-${camera.lensMm}mm lens at ${camera.heightCm}cm height, angled ${camera.yawDeg} degrees in 4:3 horizontal aspect ratio. Capture complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one cohesive living environment with dynamic diagonal perspective depth, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
+${camera.lensMm}mm lens at ${camera.heightCm}cm height, angled ${camera.yawDeg} degrees in 4:3 horizontal aspect ratio.
+${ensemble3Plus1LayoutDirective}
+Dynamic diagonal perspective depth, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
       } else {
         shotMandate = `[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW (Studio Sample 45mm 3+1 Living Ensemble)]:
 ${perspectiveShiftDirective}
-45mm standard-wide prime lens at 115cm height with dynamic 40-to-45 degree side isometric perspective in 4:3 horizontal aspect ratio. Capture complete 3+1 furniture ensemble: ${sofaPostureMandate}, matching accent side chair, and center coffee table together in one unified spatial composition with rich perspective depth against architectural luxury backdrop, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
+45mm standard-wide prime lens at 115cm height with dynamic 40-to-45 degree side isometric perspective in 4:3 horizontal aspect ratio.
+${ensemble3Plus1LayoutDirective}
+Rich perspective depth against architectural luxury backdrop, floor diagonal vanishing lines, left-side window daylight sheen, and white matte cylindrical planter anchor.`;
+      }
+      negativeFramingConstraints.push(
+        'flat frontal mugshot',
+        'flat frontal view',
+        'straight-on camera',
+        'straight-on frontal view',
+        'symmetrical center sofa',
+        'horizontal sofa parallel to screen',
+        'front-facing sofa',
+        'facing directly forward',
+        'flat 1-point perspective',
+        'mugshot view',
+        'zero perspective depth',
+        'tight single product crop',
+        'cropping out matching side chair',
+        'cropping out main sofa',
+        'isolated single chair',
+        'boxy closed small room',
+        'missing coffee table',
+        'missing rug',
+        'cramped narrow space',
+        'center dividing pillar'
+      );
+    } else if (shot.templateCode === 'A03') {
+      const footrestMandate = isHumanPassActive
+        ? 'with outer motorized footrests gently deployed and backrest reclined supporting parents and daughter relaxing in genuine warm family leisure'
+        : 'with all motorized footrests and recliners completely RETRACTED AND CLOSED flush in pristine showroom condition (strictly NO deployed footrests, smooth uncluttered cushions)';
+      
+      const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
+- HERO SEATING ASSET: Strictly construct the hero sofa from the isolated 3-seater product asset ground truth (3 seating cushions, horizontal division, supple genuine leather, flared comfort armrests). Clean pristine surface without oversized fuzzy throw cushions.
+- SPATIAL & PERSPECTIVE ANCHOR: Lock the architectural feature wall (dark stone marble + vertical wood paneling + dual curved floating wall shelves), window daylight from left, and warm wood flooring. DO NOT render a flat frontal mugshot! Position camera at front-left with subtle 15-to-25 degree three-quarters oblique perspective.`;
+
+      if (isCameraCustomized) {
+        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
+${linkageDirective}
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Centered directly on hero three-seater main sofa ${footrestMandate}, accompanied by dual nesting coffee tables in foreground on geometric rug, aligned against architectural marble/wood backdrop wall and dual curved wall shelves, with left-side side table and floor tree, and right vista opening into dining zone. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single recliner, or 3+1 ensemble arrangement!`;
+      } else {
+        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample 50mm Standard Focus)]:
+${linkageDirective}
+Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with sofa backrest, 0° tilt) with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Frame tightly and comfortably around hero three-seater main sofa ${footrestMandate}, showcasing its 3D depth, flared armrest profile, and genuine leather sheen. Foreground features dual nesting coffee tables (black square pedestal + lower marble/glass table with artisan wooden box and minimal plant) on the geometric area rug. Deep contact AO shadows ground the sofa and table. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
       }
       negativeFramingConstraints.push(
         'flat frontal mugshot',
         'straight-on camera',
         'symmetrical center sofa',
         'facing directly forward',
-        'tight single product crop',
-        'cropping out matching side chair',
-        'cropping out main sofa',
-        'isolated single chair'
-      );
-    } else if (shot.templateCode === 'A03') {
-      const footrestMandate = isHumanPassActive
-        ? 'with outer motorized footrests gently deployed and backrest reclined supporting parents and daughter relaxing in genuine warm family leisure'
-        : 'with all motorized footrests and recliners completely RETRACTED AND CLOSED flush in pristine showroom condition';
-      
-      const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
-- HERO SEATING ASSET: Strictly construct the hero sofa from the isolated 3-seater product asset ground truth (3 seating cushions, horizontal division, supple leather, flared comfort armrests). DO NOT inpaint or clone downscaled sofa pixels from any master panoramic image.
-- SPATIAL & PLACEMENT ANCHOR: Lock the exact architectural room envelope, wall finishes, natural window daylight, and placement grid strictly from the spatial scene master A00. Maintain 100% architectural continuity with zero newly invented background elements!`;
-
-      if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
-${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Centered directly on hero three-seater main sofa ${footrestMandate}, accompanied by center coffee table in foreground, aligned with symmetrical marble backdrop wall axis and dual curved sconces midline. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out and exclude any separate side accent chair, lounge chair, or 3+1 ensemble arrangement!`;
-      } else {
-        shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample 50mm Standard Focus)]:
-${linkageDirective}
-Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with sofa backrest, 0° tilt) with STRICT 0-DEGREE SYMMETRICAL FRONTAL AXIS in 4:3 horizontal aspect ratio. Frame tightly and comfortably ONLY around hero three-seater main sofa ${footrestMandate}, accompanied by center coffee table in foreground, aligned with symmetrical marble backdrop wall axis and dual curved sconces midline. Deep contact AO shadows ground the sofa and table. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
-      }
-      negativeFramingConstraints.push(
+        'stiff mugshot view',
         'side chair',
         'accent chair',
         'armchair',
@@ -466,7 +526,8 @@ Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with s
         '3+1 ensemble',
         'extra chair',
         'additional seating',
-        'angled view',
+        'cluttered throw pillows',
+        'giant fuzzy cushions',
         'wide empty room panorama',
         'far distant vantage',
         'camera centered on single accent chair',
@@ -474,7 +535,10 @@ Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with s
         'cloning low-res sofa from master image',
         'inpainting distant sofa',
         'different room background',
-        'altered wall finish'
+        'altered wall finish',
+        'boxy closed small room',
+        'missing coffee table',
+        'center dividing pillar'
       );
     } else if (shot.templateCode === 'A04') {
       const footrestMandate = isHumanPassActive
@@ -603,16 +667,29 @@ Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with
         'wooden wall of shelves'
       );
     } else if (shot.templateCode === 'A07') {
+      const linkageDirective = `[DUAL-TRACK LINKAGE: SOFA & COFFEE TABLE ENSEMBLE WITHIN MASTER SPATIAL ANCHOR]
+- HERO ENSEMBLE ASSET: Inherit the primary sofa and dual nesting marble coffee tables from product ground truth, highlighting the 450mm vs 400mm golden height drop.
+- SPATIAL & DEPTH ANCHOR: Lock the architectural background, geometric area rug, and left window daylight strictly from spatial master A00. Use 55mm medium telephoto perspective to compress depth, creating an intimate conversation grouping without wide empty voids.`;
+
       if (isCameraCustomized) {
-        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00.`;
+        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
+${linkageDirective}
+${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00.`;
       } else {
-        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Studio Sample 55mm Medium Ensemble)]: 55mm medium telephoto prime lens at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
+        shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Studio Sample 55mm Medium Ensemble)]:
+${linkageDirective}
+55mm medium telephoto prime lens at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
       }
       negativeFramingConstraints.push(
+        'wide empty room panorama',
+        'tiny distant coffee table',
+        'flat frontal mugshot',
+        'vast empty foreground',
+        'floating furniture',
+        'disconnected coffee table',
         'far distance view',
         'wide empty room',
         'messy foreground',
-        'flat frontal mugshot',
         'night',
         'nighttime',
         'dark room',
@@ -819,10 +896,17 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       : [];
 
     // 空间户型建筑特征全面解构 (Architecture DNA)
+    const spaceTopologyGlobal = compileSpaceTopology(spacePreset);
+    const styleFinishesGlobal = compileStyleArchitecturalFinishes(stylePreset);
     const spaceFragments = spacePreset.promptFragments || [];
     const spaceArchitectureClauses = [
       `space prototype anchor: ${spacePreset.name} (${spacePreset.code})`,
       spacePreset.ceilingHeight ? `${spacePreset.ceilingHeight}m soaring architectural ceiling headroom` : '',
+      spaceTopologyGlobal.topologyDirective,
+      `focal wall architecture: ${spaceTopologyGlobal.architecturalFocalWall}`,
+      `flooring & elevation topology: ${spaceTopologyGlobal.flooringTopology}`,
+      `ceiling structure: ${spaceTopologyGlobal.ceilingStructure}`,
+      `window & landscape aperture: ${spaceTopologyGlobal.windowAndOutdoorView}`,
       ...spaceFragments,
       ...(spacePreset.signatureFeatures ? spacePreset.signatureFeatures.map((f) => `architectural feature: ${f}`) : [])
     ].filter(Boolean);
@@ -832,10 +916,12 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
     const styleFragments = stylePreset.promptFragments || [];
     const styleClauses = [
       `design style harmony: ${stylePreset.name} aesthetic`,
-      ...styleFragments,
+      styleFinishesGlobal.styleWallMoldingDirective,
       `spatial color harmony: ${styleDna.dominantColorTone}`,
       `architectural finishes: ${styleDna.materialFinishes}`,
-      `ambient lighting: ${styleDna.atmosphericLighting}`
+      `curated architectural materiality: ${styleFinishesGlobal.styleMaterialPalette}`,
+      `ambient lighting: ${styleFinishesGlobal.styleAtmosphericLighting}`,
+      ...styleFragments
     ].filter(Boolean);
 
     const sceneMasterHeritage = [
@@ -901,6 +987,8 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       'mismatched wall colors, wrong architectural palette, generic sterile white room without intended style color tone, garish neon colors',
       'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
       ...(camera.mustExclude || []),
+      ...spaceTopologyGlobal.negativeConstraints,
+      ...styleFinishesGlobal.styleNegativeRules,
       ...(stylePreset.negativeRules || [])
     ].filter(Boolean).join(', ');
 

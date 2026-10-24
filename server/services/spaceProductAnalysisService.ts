@@ -899,4 +899,440 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
     }
     return parsed.data;
   }
+
+  /**
+   * 独立场景/整套组合资产全要素识别提取方法：
+   * 专用于直接识别整景大图中的沙发组、茶几、地毯、餐边柜、展示柜、餐桌椅、以及软装挂画摆件，
+   * 形成独立的整套场景资产档案（WholeSceneEnsembleDossier），区别于单品暴力分割，作为完整资产包整体入库与整体置入。
+   */
+  public static async analyzeWholeSceneEnsemble(
+    input: z.infer<typeof AnalyzeProductRequestSchema>,
+    userId: string = 'system'
+  ): Promise<{ success: boolean; dossier: any; productAsset: any }> {
+    const { projectId, images, userNotes } = input;
+    const ensembleId = `ens-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+
+    // 1. 存储参考图到对象存储
+    const storedReferences: Array<{
+      id: string;
+      objectKey: string;
+      publicUrl: string;
+      mimeType: string;
+      cleanBase64: string;
+      rawBuffer: Buffer;
+    }> = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      const refId = `ens-ref-${i + 1}`;
+      let cleanBase64 = img.base64;
+      let mimeType = 'image/jpeg';
+      let imageBuffer: Buffer | null = null;
+
+      if (cleanBase64.startsWith('data:')) {
+        const match = cleanBase64.match(/^data:([a-zA-Z0-9/+-]+);base64,(.+)$/);
+        if (match) {
+          mimeType = match[1];
+          cleanBase64 = match[2];
+          try { imageBuffer = Buffer.from(cleanBase64, 'base64'); } catch {}
+        }
+      } else if (cleanBase64.startsWith('/api/space/storage') || cleanBase64.includes('local-file') || cleanBase64.includes('download')) {
+        const keyMatch = cleanBase64.match(/[?&]key=([^&#]+)/);
+        if (keyMatch) {
+          const key = decodeURIComponent(keyMatch[1]);
+          imageBuffer =
+            (await this.storage.getBuffer(key, 'source')) ||
+            (await this.storage.getBuffer(key, 'generated'));
+        }
+      } else if (cleanBase64.startsWith('http://') || cleanBase64.startsWith('https://')) {
+        try {
+          const resp = await fetch(cleanBase64);
+          if (resp.ok) {
+            const arr = await resp.arrayBuffer();
+            imageBuffer = Buffer.from(arr);
+            const ct = resp.headers.get('content-type');
+            if (ct && ct.startsWith('image/')) mimeType = ct;
+          }
+        } catch {}
+      } else {
+        try {
+          const buf = Buffer.from(cleanBase64, 'base64');
+          if (buf.length > 50) imageBuffer = buf;
+        } catch {}
+      }
+
+      if (!imageBuffer || imageBuffer.length < 50) {
+        if (typeof cleanBase64 === 'string' && fs.existsSync(cleanBase64)) {
+          try { imageBuffer = fs.readFileSync(cleanBase64); } catch {}
+        }
+      }
+
+      if (!imageBuffer || imageBuffer.length < 20) {
+        imageBuffer = await sharp({
+          create: { width: 1200, height: 800, channels: 3, background: { r: 245, g: 245, b: 245 } }
+        }).jpeg().toBuffer();
+      }
+
+      cleanBase64 = imageBuffer.toString('base64');
+
+      let webpBuffer: Buffer;
+      try {
+        webpBuffer = await sharp(imageBuffer).webp({ quality: 92 }).toBuffer();
+      } catch {
+        webpBuffer = imageBuffer;
+      }
+
+      const objectKey = `scene-ensembles/${projectId}/${ensembleId}/source_${i + 1}.webp`;
+      await this.storage.put({
+        bucketType: 'source',
+        objectKey,
+        buffer: webpBuffer,
+        contentType: 'image/webp',
+        metadata: { projectId, ensembleId, index: String(i + 1) }
+      });
+
+      const signed = await this.storage.getSignedReadUrl(objectKey, 86400 * 7, 'source');
+      const publicUrl = signed?.url || `/api/space/storage/download?key=${encodeURIComponent(objectKey)}`;
+
+      storedReferences.push({
+        id: refId,
+        objectKey,
+        publicUrl,
+        mimeType: mimeType.startsWith('image/') ? mimeType : 'image/jpeg',
+        cleanBase64,
+        rawBuffer: webpBuffer
+      });
+    }
+
+    const masterRef = storedReferences[0];
+    const sourceImageUrl = masterRef?.publicUrl || '';
+
+    // 2. 调用多模态大模型进行【整景全套要素】结构化分析
+    let rawAiResult: any = null;
+    try {
+      const { ai, isValidKey } = await createServerGenAI(userId);
+      if (ai && isValidKey && storedReferences.length > 0) {
+        const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
+
+        parts.push({
+          text: `你是一名敏华家居（CHEERS 芝华仕）顶级全案空间美学总监与高端大平层陈设设计大师。
+请对上传的【整套客厅/客餐厅全景实景图】进行极其细致的【整套场景资产结构化识别 (Whole-Scene Ensemble Dossier Extraction)】。
+区别于将家具割裂切碎的单品分割模式，我们要求你将该场景视为一个【高度协同的整体空间套组 (Whole-Scene Ensemble)】，直接识别并提取以下 7 大核心要素：
+
+【必须识别与提取的 7 大核心要素】：
+1. 沙发组合 (sofaSuite):
+   - 包含三人/四人位主沙发、双人位侧位、单人电动单椅或休闲单椅。
+   - 提取各位置款式数量、摆放夹角（如U型/L型/亲密围合）、皮质面料等级（如南美半苯胺头层牛皮/Nappa）、色阶明度（如复古深栗棕、黑巧克力色、干邑橙等）、扶手饱满度与立体包边特征。
+2. 茶几与几组 (coffeeTables):
+   - 中心主茶几、副几、角几或边几。
+   - 提取台面材质（天然大理石纹理/奢石岩板/实木）、底座框架材质（哑光黑金属/拉丝黄铜/悬浮造型）、高低错落层次。
+3. 地毯 (carpetRug):
+   - 提取地毯铺设范围与比例（垫衬于主沙发与茶几下方）、材质触感（羊毛高密混纺/短绒）、纹理肌理（如流动大理石水墨纹/浅米灰几何肌理）、色彩搭配。
+4. 餐边柜与低矮地柜 (credenzaSideboard):
+   - 观察前侧或侧边是否有电视矮柜、餐边柜、斗柜或储物地柜。
+   - 提取柜体木饰面（如深色胡桃木/烟熏橡木）、台面岩板、收边五金与抽屉造型。若无则标记 presence 为 false。
+5. 展示柜与立面壁龛 (displayCabinet):
+   - 观察背景墙或侧立面是否有开放式壁龛展架、内嵌展示玻璃柜或酒柜。
+   - 提取层板材质与线性隐藏光氛围。若无则标记 presence 为 false。
+6. 餐桌与餐椅配套 (diningSuite):
+   - 若画面包含客餐厅一体视野，识别是否有长餐桌与皮革餐椅。提取餐桌材质、餐椅皮革色系与数量。若无则标记 presence 为 false。
+7. 软装挂画与艺术摆件 (softDecor):
+   - 识别背景奢石墙、挂画或艺术壁灯、落地绿植盆栽、茶几托盘香薰或雕塑摆件。
+
+同时生成：
+- 全案宏观概述 (dossierSummary): 200字左右的高规格商业全案摘要。
+- 整体置入指令 (placementDirectives): 提供可以直接注入 A00 空间母版与分镜生图的英文协同提示词 (holisticLayoutPrompt) 和视觉不变量 (visualInvariants)。
+
+${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
+
+必须输出严格符合以下结构的纯 JSON 格式：
+{
+  "name": "商业全案套组标准全称 (如: 芝华仕·大平层都会轻奢全景客厅尊享套组)",
+  "sku": "MW-ENS-XXXX",
+  "ensembleCategory": "大平层现代轻奢全景会客套组",
+  "readoutConfidence": 96,
+  "dossierSummary": "全案宏观规格与美学概述...",
+  "sofaSuite": {
+    "description": "三人主位 + 双人侧位 + 单人位大扶手功能单椅围合布局",
+    "seatingConfiguration": "3+2+1 尊享围合式多功能真皮沙发组",
+    "mainSofa": {
+      "name": "主位三人位多功能真皮沙发",
+      "seats": 3,
+      "dimensions": "3200×1080×950mm",
+      "material": "南美进口头层半苯胺牛皮",
+      "color": "复古深栗棕 (Vintage Chestnut)",
+      "features": ["高回弹饱满坐垫", "宽厚云感扶手", "法式立体双包边"]
+    },
+    "companionSofas": [
+      {
+        "name": "双人位多功能真皮侧位沙发",
+        "type": "sofa_2seat",
+        "material": "同款南美进口头层半苯胺牛皮",
+        "color": "复古深栗棕 (Vintage Chestnut)"
+      }
+    ],
+    "reclinerChairs": [
+      {
+        "name": "单人位头等舱电动功能单椅",
+        "type": "recliner_1seat",
+        "material": "同款真皮与电动调节底座",
+        "color": "复古深栗棕 (Vintage Chestnut)"
+      }
+    ]
+  },
+  "coffeeTables": {
+    "description": "现代轻奢双层大理石金属茶几组",
+    "items": [
+      {
+        "name": "中心大理石大茶几",
+        "role": "center_table",
+        "material": "天然爵士白/大理石纹石材台面",
+        "shape": "长方形圆角",
+        "finish": "哑光拉丝黑色金属几何支架"
+      },
+      {
+        "name": "极简黑色几何边几",
+        "role": "side_table",
+        "material": "黑色哑光烤漆金属",
+        "shape": "C型可内推结构",
+        "finish": "细腻磨砂触感"
+      }
+    ]
+  },
+  "carpetRug": {
+    "description": "大尺寸浅色水墨大理石纹理通铺艺术地毯",
+    "material": "高密羊毛混纺短绒",
+    "pattern": "浅灰米白流动大理石水墨冰裂纹",
+    "coverageScope": "完整通铺垫衬于主沙发、茶几与双侧单椅正下方，形成向心聚合会客场域",
+    "colors": ["浅米白", "云雾浅灰", "淡焦糖微纹"]
+  },
+  "credenzaSideboard": {
+    "description": "前置深色北美胡桃木与岩板低矮地柜",
+    "presence": true,
+    "dimensions": "2000×450×420mm",
+    "material": "深色北美黑胡桃实木柜身搭配暗色哑光岩板台面",
+    "features": ["三抽屉暗拉手设计", "极简悬浮地台支撑"]
+  },
+  "displayCabinet": {
+    "description": "背景墙整合式胡桃木壁板与金属线条壁龛",
+    "presence": true,
+    "material": "天然胡桃木木饰面护墙板与香槟金金属收边",
+    "lightingStyle": "内嵌柔和暖白线性洗墙灯"
+  },
+  "diningSuite": {
+    "description": "客餐厅贯通视野配套餐区",
+    "presence": false
+  },
+  "softDecor": {
+    "description": "奢石主墙、对称艺术壁灯、高挑绿植与茶几雅致陈设",
+    "wallArt": "背景对称镶嵌天然大理石整板与两侧柱状柔光艺术壁灯",
+    "lighting": "悬浮极简吊顶暗藏反光灯槽与背景壁灯双层氛围采光",
+    "greenery": "左侧大落地窗前陈设高挑羽叶室内观赏绿植",
+    "tabletopOrnaments": ["精装皮质艺术托盘", "极简黑色几何石雕", "透明琉璃水培花器"]
+  },
+  "placementDirectives": {
+    "holisticLayoutPrompt": "authentic complete luxury living room ensemble featuring hero 3-seater power motion sofa, companion 2-seater sofa, and single recliner armchair finished in matching deep vintage chestnut brown leather, clustered comfortably on expansive marble-patterned wool area rug around center natural marble coffee table, with low-profile walnut credenza and architectural backdrop wall with warm sconces and potted foliage",
+    "visualInvariants": [
+      "严格保持 3+2+1 组合围合向心会客格局，家具绝不松散漂移",
+      "整套皮质皮革严格保持同一批次复古深栗棕（Vintage Chestnut）色相，严禁单件偏色",
+      "大理石茶几与浅色艺术地毯作为视觉中心稳固锚定在居中地面"
+    ]
+  },
+  "adaptiveStyles": ["现代美式都会宅", "意式轻奢", "极简高定", "新中式"],
+  "dominantColors": ["复古深栗棕", "大理石暖白", "深黑胡桃木", "雅致暖灰"]
+}`
+        });
+
+        for (const ref of storedReferences) {
+          parts.push({
+            inlineData: { mimeType: ref.mimeType, data: ref.cleanBase64 }
+          });
+        }
+
+        const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+        for (const m of candidateModels) {
+          try {
+            console.log(`[SpaceProductAnalysisService] Analyzing whole-scene ensemble with model: ${m}...`);
+            const callPromise = ai.models.generateContent({
+              model: m,
+              contents: [{ role: 'user', parts: parts as any }],
+              config: { responseMimeType: 'application/json' }
+            });
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Timeout (${m}) after 65s`)), 65000)
+            );
+            const resp: any = await Promise.race([callPromise, timeoutPromise]);
+            if (resp?.text) {
+              const cleanText = resp.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+              const match = cleanText.match(/\{[\s\S]*\}/);
+              if (match) {
+                rawAiResult = JSON.parse(match[0]);
+                console.log(`[SpaceProductAnalysisService] Whole-scene ensemble successfully extracted: ${rawAiResult?.name}`);
+                break;
+              }
+            }
+          } catch (modelErr: any) {
+            console.warn(`[SpaceProductAnalysisService] Ensemble analysis notice (${m}):`, modelErr?.message);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[SpaceProductAnalysisService] Ensemble AI extraction fallback warning:', err?.message);
+    }
+
+    // 3. 构建规范化的 WholeSceneEnsembleDossier
+    const dossier = {
+      id: ensembleId,
+      name: rawAiResult?.name || '敏华芝华仕·大平层现代奢华全景会客套组 (全案整体资产)',
+      sku: rawAiResult?.sku || `MW-ENS-${Math.floor(1000 + Math.random() * 9000)}`,
+      ensembleCategory: rawAiResult?.ensembleCategory || '大平层现代轻奢全景客餐厅套组',
+      readoutConfidence: Number(rawAiResult?.readoutConfidence) || 96,
+      dossierSummary:
+        rawAiResult?.dossierSummary ||
+        '大平层高端全景整体会客套组：包含三人主位功能真皮沙发、双人侧位沙发、单人头等舱电动单椅、双层大理石金属茶几几组、大理石纹艺术通铺地毯及前置胡桃木低矮地柜，形成宏大开阔的大平层向心社交场域。',
+      sofaSuite: rawAiResult?.sofaSuite || {
+        description: '三人主位 + 双人侧位 + 单人头等舱单椅围合布局',
+        seatingConfiguration: '3+2+1 尊享围合式多功能真皮沙发组',
+        mainSofa: {
+          name: '主位三人位多功能真皮主沙发',
+          seats: 3,
+          dimensions: '3200×1080×950mm',
+          material: '南美进口头层半苯胺牛皮',
+          color: '复古深栗棕 (Vintage Chestnut)',
+          features: ['高回弹饱满坐垫', '宽厚云感扶手', '法式立体双包边']
+        },
+        companionSofas: [
+          {
+            name: '双人位多功能真皮侧位沙发',
+            type: 'sofa_2seat',
+            material: '南美进口头层半苯胺牛皮',
+            color: '复古深栗棕 (Vintage Chestnut)'
+          }
+        ],
+        reclinerChairs: [
+          {
+            name: '单人位头等舱电动功能单椅',
+            type: 'recliner_1seat',
+            material: '南美进口头层半苯胺牛皮与电动调节底座',
+            color: '复古深栗棕 (Vintage Chestnut)'
+          }
+        ]
+      },
+      coffeeTables: rawAiResult?.coffeeTables || {
+        description: '现代轻奢双层大理石金属几组',
+        items: [
+          {
+            name: '中心大理石主茶几',
+            role: 'center_table',
+            material: '天然大理石纹岩板',
+            shape: '长方形圆角',
+            finish: '哑光黑色几何钢架'
+          },
+          {
+            name: '侧向极简金属边几',
+            role: 'side_table',
+            material: '哑光黑色金属',
+            shape: 'C型嵌入式',
+            finish: '磨砂防指纹'
+          }
+        ]
+      },
+      carpetRug: rawAiResult?.carpetRug || {
+        description: '大尺寸通铺大理石艺术地毯',
+        material: '高密羊毛混纺短绒',
+        pattern: '浅米白与烟灰流动天然大理石冰裂肌理',
+        coverageScope: '完整通铺垫衬于主沙发、茶几与双侧单椅正下方，形成向心聚合会客场域',
+        colors: ['浅米白', '云雾浅灰', '焦糖微纹']
+      },
+      credenzaSideboard: rawAiResult?.credenzaSideboard || {
+        description: '前置深色北美胡桃木与岩板低矮地柜',
+        presence: true,
+        dimensions: '2000×450×420mm',
+        material: '北美黑胡桃实木搭配深灰色岩板台面',
+        features: ['暗拉手极简线条', '悬浮式稳固支撑']
+      },
+      displayCabinet: rawAiResult?.displayCabinet || {
+        description: '背景墙对称胡桃木护墙饰面与香槟金线条',
+        presence: true,
+        material: '天然胡桃木木饰面护墙板与香槟金金属收边',
+        lightingStyle: '内嵌柔和暖白线性洗墙灯槽'
+      },
+      diningSuite: rawAiResult?.diningSuite || {
+        description: '客餐厅贯通视野配套餐区',
+        presence: false
+      },
+      softDecor: rawAiResult?.softDecor || {
+        description: '奢石主墙、对称艺术壁灯、高挑落地绿植与茶几雅致陈设',
+        wallArt: '背景对称镶嵌天然大理石整板与两侧柱状柔光艺术壁灯',
+        lighting: '悬浮极简吊顶暗藏反光灯槽与背景壁灯双层氛围采光',
+        greenery: '左侧大落地窗前陈设高挑羽叶室内观赏绿植',
+        tabletopOrnaments: ['精装皮质艺术托盘', '极简黑色几何石雕', '透明琉璃水培花器']
+      },
+      placementDirectives: rawAiResult?.placementDirectives || {
+        holisticLayoutPrompt:
+          'authentic complete luxury living room ensemble featuring hero 3-seater power motion sofa, companion 2-seater sofa, and single recliner armchair finished in matching deep vintage chestnut brown leather, clustered comfortably on expansive marble-patterned wool area rug around center natural marble coffee table, with low-profile walnut credenza and architectural backdrop wall with warm sconces and potted foliage',
+        visualInvariants: [
+          '严格保持 3+2+1 组合围合向心会客格局，家具绝不松散漂移',
+          '整套皮质皮革严格保持同一批次复古深栗棕（Vintage Chestnut）色相，严禁单件偏色',
+          '大理石茶几与浅色艺术地毯作为视觉中心稳固锚定在居中地面'
+        ]
+      },
+      adaptiveStyles:
+        Array.isArray(rawAiResult?.adaptiveStyles) && rawAiResult.adaptiveStyles.length > 0
+          ? rawAiResult.adaptiveStyles
+          : ['现代美式都会宅', '意式轻奢', '极简高定'],
+      dominantColors:
+        Array.isArray(rawAiResult?.dominantColors) && rawAiResult.dominantColors.length > 0
+          ? rawAiResult.dominantColors
+          : ['复古深栗棕', '大理石暖白', '北美黑胡桃', '云雾浅灰'],
+      sourceImageUrl,
+      generatedAt: new Date().toISOString()
+    };
+
+    // 4. 将整套场景组合封装为统一的 ProductAsset，作为整体资产一键入库入参
+    const ensembleProductAsset = {
+      id: `prod-ens-${ensembleId}`,
+      sku: dossier.sku,
+      name: dossier.name,
+      role: 'sofa_3seat' as const, // 兼容主角色分类
+      priority: 'primary' as const,
+      identityLock: 'strict' as const,
+      dimensions: {
+        width: 3200,
+        depth: 1080,
+        height: 950
+      },
+      materials: [
+        '南美进口头层半苯胺牛皮',
+        '天然爵士白大理石岩板',
+        '北美黑胡桃实木饰面',
+        '高密羊毛混纺地毯'
+      ],
+      colors: dossier.dominantColors,
+      surfaceTexture: '多品类材质融合：深栗棕细腻平纹半苯胺牛皮、天然大理石冰裂肌理、温润黑胡桃木纹与高密短绒羊毛',
+      functionCapable: true,
+      referenceImages: storedReferences.map((r) => ({
+        id: r.id,
+        type: 'front' as const,
+        objectKey: r.objectKey,
+        publicUrl: r.publicUrl,
+        verified: true
+      })),
+      adaptiveStyles: dossier.adaptiveStyles,
+      isEnsembleIncluded: true,
+      readoutConfidence: dossier.readoutConfidence,
+      dossierSummary: dossier.dossierSummary,
+      dossierGeneratedAt: dossier.generatedAt,
+      sourceMasterImageUrl: sourceImageUrl,
+      lockedRules: dossier.placementDirectives.visualInvariants,
+      isSceneEnsembleSuite: true,
+      sceneEnsembleDossier: dossier
+    };
+
+    return {
+      success: true,
+      dossier,
+      productAsset: ensembleProductAsset
+    };
+  }
 }

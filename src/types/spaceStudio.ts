@@ -53,6 +53,97 @@ export interface DisaggregatedProductItem {
   dossierSummary?: string;
 }
 
+export interface WholeSceneEnsembleDossier {
+  id: string;
+  name: string;
+  sku?: string;
+  ensembleCategory: string; // 如 "大平层现代轻奢全景客餐厅套组"
+  readoutConfidence: number;
+  dossierSummary: string; // 宏观全案概述
+
+  // 1. 沙发组合 (Sofa Suite)
+  sofaSuite: {
+    description: string;
+    seatingConfiguration: string; // e.g. "三人主位 + 双人侧位 + 单人电动头等舱 围合式组合"
+    mainSofa: {
+      name: string;
+      seats: number;
+      dimensions?: string;
+      material: string;
+      color: string;
+      features: string[];
+    };
+    companionSofas?: Array<{ name: string; type: string; material: string; color: string }>;
+    reclinerChairs?: Array<{ name: string; type: string; material: string; color: string }>;
+  };
+
+  // 2. 茶几/几组 (Coffee & Accent Tables)
+  coffeeTables: {
+    description: string;
+    items: Array<{
+      name: string;
+      role: 'center_table' | 'side_table' | 'corner_table';
+      material: string;
+      shape: string;
+      finish: string;
+    }>;
+  };
+
+  // 3. 地毯 (Carpet & Area Rug)
+  carpetRug: {
+    description: string;
+    material: string;
+    pattern: string;
+    coverageScope: string;
+    colors: string[];
+  };
+
+  // 4. 餐边柜/矮柜 (Credenza & Sideboard)
+  credenzaSideboard: {
+    description: string;
+    presence: boolean;
+    dimensions?: string;
+    material: string;
+    features: string[];
+  };
+
+  // 5. 展示柜/壁龛/立面柜 (Display Cabinets & Vitrines)
+  displayCabinet: {
+    description: string;
+    presence: boolean;
+    material: string;
+    lightingStyle: string;
+  };
+
+  // 6. 餐桌与餐椅 (Dining Table & Chairs)
+  diningSuite: {
+    description: string;
+    presence: boolean;
+    table?: { name: string; material: string; shape: string };
+    chairs?: { name: string; material: string; count: number };
+  };
+
+  // 7. 软装挂画与艺术摆件 (Soft Furnishings & Decors)
+  softDecor: {
+    description: string;
+    wallArt: string;
+    lighting: string;
+    greenery: string;
+    tabletopOrnaments: string[];
+  };
+
+  // 协同入参生成指令 (Prompt Generation Injection)
+  placementDirectives: {
+    holisticLayoutPrompt: string;
+    visualInvariants: string[];
+  };
+
+  adaptiveStyles: string[];
+  dominantColors: string[];
+  sourceImageUrl: string;
+  generatedAt: string;
+}
+
 export interface ProductAsset {
   id: string;
   sku?: string;
@@ -84,6 +175,9 @@ export interface ProductAsset {
   cropImageUrl?: string;
   cropBase64?: string;
   detectedProducts?: DisaggregatedProductItem[];
+  // 整套场景组合资产独立支持 (Whole Scene Ensemble Dossier)
+  isSceneEnsembleSuite?: boolean;
+  sceneEnsembleDossier?: WholeSceneEnsembleDossier;
 }
 
 // 2. SPACE PROTOTYPE & PRESET (BUILD)

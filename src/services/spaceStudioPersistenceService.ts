@@ -12,7 +12,7 @@ import {
   SceneMaster,
   PlacementBlueprint
 } from '../types/spaceStudio';
-import { ShotCandidateBatch } from '../types/spaceAssetLibrary';
+import { ShotCandidateBatch, HumanLayoutConfig } from '../types/spaceAssetLibrary';
 import { dbService } from './dbService';
 
 export interface SpaceStudioProjectSnapshot {
@@ -29,6 +29,7 @@ export interface SpaceStudioProjectSnapshot {
   selectedSpaceId?: string;
   selectedStyleId?: string;
   blueprint?: PlacementBlueprint;
+  shotHumanLayouts?: Record<string, HumanLayoutConfig>;
   summary: {
     productName: string;
     productColor?: string;

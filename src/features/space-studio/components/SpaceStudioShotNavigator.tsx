@@ -10,6 +10,8 @@ import {
   GripHorizontal,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Minimize2,
   Layers,
   History,
@@ -17,10 +19,15 @@ import {
   Trash2,
   X,
   Users,
-  Home
+  Home,
+  Upload,
+  Clipboard,
+  Image as ImageIcon
 } from 'lucide-react';
 import { ShotInstance, SceneMaster, ImageAspectRatio, IMAGE_ASPECT_SPECS } from '../../../types/spaceStudio';
+import { HumanLayoutConfig } from '../../../types/spaceAssetLibrary';
 import { getShotTemplateByCode } from '../data/shotTemplates';
+import { getRecommendedStudioTemplate } from '../data/choreographyPresets';
 
 interface SpaceStudioShotNavigatorProps {
   shots: ShotInstance[];
@@ -32,6 +39,9 @@ interface SpaceStudioShotNavigatorProps {
   onBatchRenderAll?: () => void;
   isGeneratingAll?: boolean;
   onCancelRendering?: (shotId?: string) => void;
+  onUploadShotPhoto?: (shotId: string, file: File) => void;
+  onPasteShotPhoto?: (shotId: string) => void;
+  shotHumanLayouts?: Record<string, HumanLayoutConfig>;
   theme?: 'dark' | 'light';
 }
 
@@ -105,6 +115,9 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   onBatchRenderAll,
   isGeneratingAll,
   onCancelRendering,
+  onUploadShotPhoto,
+  onPasteShotPhoto,
+  shotHumanLayouts = {},
   theme = 'dark'
 }) => {
   const isLight = theme === 'light';
@@ -114,9 +127,108 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   const startHeightRef = useRef(HEIGHT_DEFAULT);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // 文件上传与剪贴板粘贴引用
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const targetUploadShotIdRef = useRef<string | null>(null);
+  const [dragOverShotId, setDragOverShotId] = useState<string | null>(null);
+
+  const activeShot = shots[activeShotIndex] || shots[0];
+
+  const triggerUploadForShot = (shotId: string) => {
+    targetUploadShotIdRef.current = shotId;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetId = targetUploadShotIdRef.current || activeShot?.id;
+    if (file && targetId && onUploadShotPhoto) {
+      onUploadShotPhoto(targetId, file);
+    }
+  };
+
+  const handlePasteForShot = async (shotId: string) => {
+    if (onPasteShotPhoto) {
+      onPasteShotPhoto(shotId);
+      return;
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              const ext = type.split('/')[1] || 'png';
+              const file = new File([blob], `shot_paste_${Date.now()}.${ext}`, { type });
+              if (onUploadShotPhoto) {
+                onUploadShotPhoto(shotId, file);
+                return;
+              }
+            }
+          }
+        }
+      }
+      alert('剪贴板中未检测到图片，请先在电脑上复制照片后，再点击粘贴');
+    } catch (err: any) {
+      console.warn('[SpaceStudioShotNavigator] clipboard read failed:', err);
+      alert('请使用键盘快捷键 Ctrl+V 直接粘贴实拍照片');
+    }
+  };
+
   // 镜头历史生成版本浮层交互状态 (默认对包含多版本的当前激活镜头展开，用户可自由切换/关闭)
   const [openHistoryShotId, setOpenHistoryShotId] = useState<string | null>(null);
   const [closedHistoryShotIds, setClosedHistoryShotIds] = useState<Set<string>>(new Set());
+
+  // 镜头横向滚动条引用与自动居中
+  const stripScrollRef = useRef<HTMLDivElement>(null);
+  const shotCardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    if (!stripScrollRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = stripScrollRef.current;
+    setCanScrollLeft(scrollLeft > 6);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+  }, []);
+
+  useEffect(() => {
+    const el = stripScrollRef.current;
+    if (!el) return;
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    window.addEventListener('resize', updateScrollState);
+    return () => {
+      el.removeEventListener('scroll', updateScrollState);
+      window.removeEventListener('resize', updateScrollState);
+    };
+  }, [updateScrollState, shots.length]);
+
+  // 当激活镜头切换时，平滑居中显示当前镜头
+  useEffect(() => {
+    const targetEl = shotCardRefs.current[activeShotIndex];
+    if (targetEl && stripScrollRef.current) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [activeShotIndex]);
+
+  // 将垂直滚轮平滑映射为横向滚动
+  const handleWheelScroll = (e: React.WheelEvent) => {
+    if (!stripScrollRef.current) return;
+    if (e.deltaY !== 0) {
+      stripScrollRef.current.scrollLeft += e.deltaY * 0.9;
+    }
+  };
+
+  const handleScrollBy = (dir: 'left' | 'right') => {
+    if (!stripScrollRef.current) return;
+    const offset = dir === 'left' ? -260 : 260;
+    stripScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+  };
 
   const isCollapsed = height <= HEIGHT_COLLAPSED + 10;
 
@@ -230,14 +342,51 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
       </div>
 
       {/* Main Content Row */}
-      <div className="flex-1 flex items-center justify-between gap-3 px-4 min-h-0 relative">
-        {/* 1. Left Label */}
-        <div className={`flex items-center gap-2 shrink-0 text-xs font-semibold px-2 ${isLight ? 'text-stone-700' : 'text-stone-300'}`}>
-          <Camera className="w-4 h-4 text-amber-500" />
-          <span className="whitespace-nowrap">画册镜头导航</span>
-          <span className={`text-[10px] font-mono ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>
-            ({readyCount}/09 镜头就绪)
+      <div className="flex-1 flex items-center justify-between gap-2.5 px-3 min-h-0 relative">
+        {/* 1. Left Label & Quick Real-shot Ingestion Tools (精简紧凑) */}
+        <div className={`flex items-center gap-1.5 shrink-0 text-xs font-semibold px-0.5 ${isLight ? 'text-stone-700' : 'text-stone-300'}`}>
+          <Camera className="w-3.5 h-3.5 text-amber-500" />
+          <span className="whitespace-nowrap font-bold">画册机位</span>
+          <span className={`text-[10px] font-mono px-1 py-0.2 rounded ${isLight ? 'text-stone-500 bg-stone-200/60' : 'text-stone-400 bg-stone-800'}`}>
+            {readyCount}/9
           </span>
+
+          {/* 针对选定镜头上传拍摄照片的专属功能按钮组 */}
+          {!isCollapsed && (
+            <div className="flex items-center gap-1 ml-0.5">
+              <button
+                type="button"
+                onClick={() => triggerUploadForShot(activeShot.id)}
+                className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500/90 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black text-[10px] font-bold transition shadow-xs flex items-center gap-1 cursor-pointer active:scale-95 whitespace-nowrap"
+                title={`为当前选中的【${activeShot?.templateCode || '当前'}】镜头单独上传实拍照片（支持本地 JPG/PNG/WebP 与拖拽）`}
+              >
+                <Upload className="w-2.5 h-2.5 text-black stroke-[2.5]" />
+                <span>传拍摄</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePasteForShot(activeShot.id)}
+                className={`p-1 rounded-lg border text-[10px] font-semibold transition flex items-center gap-0.5 cursor-pointer active:scale-95 ${
+                  isLight
+                    ? 'border-amber-300 bg-amber-50/70 hover:bg-amber-100 text-amber-900'
+                    : 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300'
+                }`}
+                title={`从剪贴板一键粘贴拍摄照片到当前【${activeShot?.templateCode || '当前'}】镜头 (或直接按 Ctrl+V)`}
+              >
+                <Clipboard className="w-3 h-3 text-amber-500" />
+              </button>
+            </div>
+          )}
+
+          {/* 隐藏的原生文件上传 Input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/jpg"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+
           {isCollapsed && (
             <button
               onClick={cycleUp}
@@ -248,79 +397,134 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
           )}
         </div>
 
-        {/* 2. 9 Shot Thumbnail Cards */}
+        {/* 2. 9 Shot Thumbnail Cards with Wheel Horizontal Scroll & Smooth Chevrons */}
         {showThumbnails && (
-          <div className="flex items-center gap-2.5 overflow-x-auto py-1 scrollbar-none max-w-full flex-1 min-w-0">
-            {shots.map((shot, idx) => {
-              const isActive = idx === activeShotIndex;
-              const currentRev = shot.revisions.find((r) => r.id === shot.currentRevisionId) || shot.revisions[shot.revisions.length - 1];
-              const fallbackRev = shot.revisions.slice().reverse().find((r) => r.imageUrl && r.imageUrl.trim().length > 0);
-              const effectiveRevImage = currentRev?.imageUrl && currentRev.imageUrl.trim().length > 0 ? currentRev.imageUrl : fallbackRev?.imageUrl;
-              const previewImage = idx === 0 ? sceneMaster?.imageUrl || effectiveRevImage : effectiveRevImage;
+          <div className="relative flex-1 min-w-0 flex items-center mx-1">
+            {/* 左平滑翻页微调按钮 */}
+            {canScrollLeft && (
+              <button
+                type="button"
+                onClick={() => handleScrollBy('left')}
+                className={`absolute -left-1.5 z-30 p-1 rounded-full shadow-lg border transition-all cursor-pointer backdrop-blur-md ${
+                  isLight
+                    ? 'bg-white/95 text-stone-700 hover:bg-white border-stone-200 shadow-stone-300'
+                    : 'bg-stone-800/95 text-stone-200 hover:bg-stone-700 border-stone-700 shadow-black'
+                }`}
+                title="向左滚动镜头"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
 
-              // 是否对当前 Shot 展开垂直向上历史版本面板
-              const shouldShowHistory = shot.revisions.length > 1 && (
-                openHistoryShotId === shot.id || (isActive && !closedHistoryShotIds.has(shot.id) && openHistoryShotId === null)
-              );
+            {/* 卡片水平滑动容器 (支持滚轮上下滑动直接横向位移) */}
+            <div
+              ref={stripScrollRef}
+              onWheel={handleWheelScroll}
+              className="flex items-center gap-2 overflow-x-auto py-1 px-1 scrollbar-none max-w-full flex-1 min-w-0 scroll-smooth"
+            >
+              {shots.map((shot, idx) => {
+                const isActive = idx === activeShotIndex;
+                const currentRev = shot.revisions.find((r) => r.id === shot.currentRevisionId) || shot.revisions[shot.revisions.length - 1];
+                const fallbackRev = shot.revisions.slice().reverse().find((r) => r.imageUrl && r.imageUrl.trim().length > 0);
+                const effectiveRevImage = currentRev?.imageUrl && currentRev.imageUrl.trim().length > 0 ? currentRev.imageUrl : fallbackRev?.imageUrl;
+                const previewImage = idx === 0 ? sceneMaster?.imageUrl || effectiveRevImage : effectiveRevImage;
 
-              let statusBadge = (
-                <span
-                  className={`flex items-center gap-1 text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                    isLight ? 'text-stone-500 bg-stone-100' : 'text-stone-400 bg-stone-800'
-                  }`}
-                >
-                  <Clock className="w-2 h-2" /> 未生成
-                </span>
-              );
+                // 是否对当前 Shot 展开垂直向上历史版本面板
+                const shouldShowHistory = shot.revisions.length > 1 && (
+                  openHistoryShotId === shot.id || (isActive && !closedHistoryShotIds.has(shot.id) && openHistoryShotId === null)
+                );
 
-              if (shot.status === 'generating') {
-                statusBadge = (
-                  <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded font-mono">
-                    <RefreshCw className="w-2 h-2 animate-spin" />
-                    <span>生成中</span>
-                    {onCancelRendering && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCancelRendering(shot.id);
-                        }}
-                        className="ml-0.5 text-rose-500 hover:text-rose-400 font-bold hover:scale-125 transition cursor-pointer"
-                        title="打断此镜头渲染"
-                      >
-                        ✕
-                      </button>
-                    )}
+                let statusBadge = (
+                  <span
+                    className={`flex items-center gap-1 text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                      isLight ? 'text-stone-500 bg-stone-100' : 'text-stone-400 bg-stone-800'
+                    }`}
+                  >
+                    <Clock className="w-2 h-2" /> 未生成
                   </span>
                 );
-              } else if (previewImage && shot.hasHumanPass) {
-                statusBadge = (
-                  <span className="flex items-center gap-1 text-[9px] text-purple-400 bg-purple-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
-                    <CheckCircle2 className="w-2 h-2" /> 已添模特
-                  </span>
-                );
-              } else if (previewImage) {
-                statusBadge = (
-                  <span className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
-                    <CheckCircle2 className="w-2 h-2" /> 待添模特
-                  </span>
-                );
-              }
 
-              const template = getShotTemplateByCode(shot.templateCode);
-              const calibratedName = template?.name || shot.name;
-              const shotRatio: ImageAspectRatio =
-                shot.aspectRatio || (template?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
+                if (shot.status === 'generating') {
+                  statusBadge = (
+                    <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded font-mono">
+                      <RefreshCw className="w-2 h-2 animate-spin" />
+                      <span>生成中</span>
+                      {onCancelRendering && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCancelRendering(shot.id);
+                          }}
+                          className="ml-0.5 text-rose-500 hover:text-rose-400 font-bold hover:scale-125 transition cursor-pointer"
+                          title="打断此镜头渲染"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  );
+                } else if (previewImage && shot.hasHumanPass) {
+                  statusBadge = (
+                    <span className="flex items-center gap-1 text-[9px] text-purple-400 bg-purple-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
+                      <CheckCircle2 className="w-2 h-2" /> 已添模特
+                    </span>
+                  );
+                } else if (previewImage) {
+                  statusBadge = (
+                    <span className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
+                      <CheckCircle2 className="w-2 h-2" /> 待添模特
+                    </span>
+                  );
+                }
 
-              return (
-                <motion.div
-                  key={shot.id}
-                  onClick={() => onSelectShot(idx)}
+                const template = getShotTemplateByCode(shot.templateCode);
+                const calibratedName = template?.name || shot.name;
+                const shotRatio: ImageAspectRatio =
+                  shot.aspectRatio || (template?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
+
+                // 关联模特与动作参数提取
+                const boundLayout = shotHumanLayouts[shot.templateCode];
+                const recTpl = getRecommendedStudioTemplate(shot.templateCode);
+                const modelCount = boundLayout ? boundLayout.slots.length : recTpl.count;
+                const modelSummary = boundLayout
+                  ? `${modelCount}人模特`
+                  : `${recTpl.count}人·${recTpl.badge.split('·')[0].trim()}`;
+
+                const isDragTarget = dragOverShotId === shot.id;
+
+                return (
+                  <motion.div
+                    key={shot.id}
+                    ref={(el) => { shotCardRefs.current[idx] = el; }}
+                    onClick={() => onSelectShot(idx)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'copy';
+                    if (dragOverShotId !== shot.id) setDragOverShotId(shot.id);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (dragOverShotId === shot.id) setDragOverShotId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverShotId(null);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && file.type.startsWith('image/') && onUploadShotPhoto) {
+                      onUploadShotPhoto(shot.id, file);
+                    }
+                  }}
                   whileHover={{ y: -2 }}
                   whileTap={{ scale: 0.98 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
-                  className={`relative flex flex-col items-center p-1.5 rounded-xl cursor-pointer transition-colors duration-200 shrink-0 ${cardWidth} border ${
-                    isActive
+                  className={`relative group/card flex flex-col items-center p-1.5 rounded-xl cursor-pointer transition-colors duration-200 shrink-0 ${cardWidth} border ${
+                    isDragTarget
+                      ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400 shadow-xl'
+                      : isActive
                       ? isLight
                         ? 'bg-white border-amber-500 shadow-sm'
                         : 'bg-stone-800 border-amber-500 shadow-lg'
@@ -329,6 +533,14 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                       : 'bg-stone-900/80 border-stone-800 hover:border-stone-700 hover:bg-stone-800/60'
                   }`}
                 >
+                  {/* 拖拽释放蒙层提示 */}
+                  {isDragTarget && (
+                    <div className="absolute inset-0 z-30 rounded-xl bg-amber-500/90 text-black flex flex-col items-center justify-center p-1 text-center font-bold text-[10px] animate-pulse pointer-events-none">
+                      <Upload className="w-5 h-5 mb-0.5 stroke-[2.5]" />
+                      <span>松手导入拍摄照</span>
+                    </div>
+                  )}
+
                   {isActive && (
                     <motion.div
                       layoutId="activeShotNodeIndicator"
@@ -390,7 +602,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                         </button>
                       </div>
 
-                      {/* 垂直堆叠卡片列表 (用户手绘的两个向上方框) */}
+                      {/* 垂直堆叠卡片列表 */}
                       <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-0.5 scrollbar-thin">
                         {shot.revisions.map((rev, revIdx) => {
                           const isCurrentActive = rev.id === shot.currentRevisionId || (!shot.currentRevisionId && revIdx === 0);
@@ -453,13 +665,15 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                                       点击切换
                                     </span>
                                   )}
-                                  {shot.revisions.length > 1 && !isCurrentActive && onDeleteRevision && (
+                                  {shot.revisions.length > 1 && onDeleteRevision && (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        onDeleteRevision(shot.id, rev.id);
+                                        if (window.confirm(`确定删除版本【${rev.label || `v${rev.revisionNumber}`}】吗？\n\n删除后其他版本完好保留。`)) {
+                                          onDeleteRevision(shot.id, rev.id);
+                                        }
                                       }}
-                                      className="p-1 rounded hover:bg-red-500/20 text-neutral-500 hover:text-red-400 opacity-0 group-hover/rev:opacity-100 transition cursor-pointer"
+                                      className="p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400 opacity-0 group-hover/rev:opacity-100 transition cursor-pointer"
                                       title="删除此版本"
                                     >
                                       <Trash2 className="w-2.5 h-2.5" />
@@ -479,7 +693,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
 
                   {/* Thumbnail Container */}
                   <div
-                    className={`relative w-full ${cardAspect} rounded-lg overflow-hidden mb-1.5 border flex items-center justify-center transition-transform duration-300 ${
+                    className={`relative w-full ${cardAspect} rounded-lg overflow-hidden mb-1 border flex items-center justify-center transition-transform duration-300 ${
                       isLight ? 'bg-stone-100 border-stone-200' : 'bg-stone-950 border-stone-800'
                     }`}
                   >
@@ -514,6 +728,33 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                         {shotRatio}
                       </span>
                     </div>
+
+                    {/* 悬浮快捷实拍上传/粘贴操作按钮条 */}
+                    <div className="absolute inset-x-1 bottom-1 z-20 flex items-center justify-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity duration-200 bg-black/75 backdrop-blur-xs py-0.5 rounded-md">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerUploadForShot(shot.id);
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-black text-[8px] font-bold flex items-center gap-0.5 transition active:scale-95 cursor-pointer shadow-xs"
+                        title="上传本地拍摄镜头照片"
+                      >
+                        <Upload className="w-2.5 h-2.5" />
+                        <span>上传拍摄</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePasteForShot(shot.id);
+                        }}
+                        className="p-0.5 rounded bg-white/20 hover:bg-white/30 text-white text-[8px] transition active:scale-95 cursor-pointer"
+                        title="粘贴剪贴板照片 (Ctrl+V)"
+                      >
+                        <Clipboard className="w-2.5 h-2.5 text-amber-300" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Title & Status */}
@@ -528,12 +769,36 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                     </span>
                   </div>
 
-                  <div className="w-full mt-1 flex justify-start">
-                    {statusBadge}
+                  {/* 状态微标与当前镜头绑定的模特/动作参数微标 */}
+                  <div className="w-full mt-1 flex items-center justify-between gap-1">
+                    <div>{statusBadge}</div>
+                    <span
+                      className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 truncate max-w-[65px]"
+                      title={`镜头预设模特与动作：${recTpl.name} (${modelCount}人)`}
+                    >
+                      {modelSummary}
+                    </span>
                   </div>
                 </motion.div>
               );
             })}
+            </div>
+
+            {/* 右平滑翻页微调按钮 */}
+            {canScrollRight && (
+              <button
+                type="button"
+                onClick={() => handleScrollBy('right')}
+                className={`absolute -right-1.5 z-30 p-1 rounded-full shadow-lg border transition-all cursor-pointer backdrop-blur-md ${
+                  isLight
+                    ? 'bg-white/95 text-stone-700 hover:bg-white border-stone-200 shadow-stone-300'
+                    : 'bg-stone-800/95 text-stone-200 hover:bg-stone-700 border-stone-700 shadow-black'
+                }`}
+                title="向右滚动镜头"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
 

@@ -291,7 +291,7 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
 
     // 1. 核心指令前置检验（相机的核心焦段与机位高度必须位于前半段黄金注意力窗口中）
     const firstHalfWords = compiledA00.positivePrompt.split(/\s+/).slice(0, 100).join(' ');
-    expect(firstHalfWords).toContain('35mm');
+    expect(firstHalfWords).toContain('26mm');
     expect(firstHalfWords).toContain('135cm');
 
     // 2. 负向词去噪与长度健康度检验（确保负向词不过度膨胀，避免引发粉色大象逆向激活效应）

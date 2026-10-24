@@ -55,6 +55,8 @@ export interface SpaceGenerateImageInput {
   productMaterial?: string;
   roomName?: string;
   styleName?: string;
+  spacePreset?: any;
+  stylePreset?: any;
   cameraSettings?: {
     lensMm: number;
     heightCm: number;
@@ -66,7 +68,8 @@ export interface SpaceGenerateImageInput {
   primaryProduct?: SpaceProductIdentityInput;
   ensembleProducts?: SpaceProductIdentityInput[];
   productReferenceImage?: string;
-  sceneMasterReferenceImage?: string; // A00 空间母版图
+  sceneMasterReferenceImage?: string; // A00 空间母版图 或 A01 大场景基准图
+  referenceShotCode?: string; // 标识基准参考图来源于哪个镜头，例如 'A01' 或 'A00'
   currentShotReferenceImage?: string; // 当前机位底图 (用于 Human 植入等连续渲染)
   isHumanPass?: boolean;
   humanLayout?: any;
@@ -79,6 +82,7 @@ export interface SpaceGenerateImageInput {
   variantTag?: string;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
+  preserveBasePhotoOnly?: boolean;
 }
 
 export interface SpaceGenerateImageResult {
@@ -550,21 +554,24 @@ export class SpaceImageGenerationService {
           }
         }
 
-        if (productInline) {
-          images.push({
-            data: `data:${productInline.mimeType};base64,${productInline.data}`,
-            mimeType: productInline.mimeType,
-            role: 'primary_product'
-          });
-        }
+        // 核心保真机制：当 preserveBasePhotoOnly 开启时，禁止塞入外部产品/搭配品去重绘原图！
+        if (!input.preserveBasePhotoOnly) {
+          if (productInline) {
+            images.push({
+              data: `data:${productInline.mimeType};base64,${productInline.data}`,
+              mimeType: productInline.mimeType,
+              role: 'primary_product'
+            });
+          }
 
-        // 注入搭配产品参考图 (仅注入允许的搭配品)
-        for (const secItem of pushedSecondaryInlines) {
-          images.push({
-            data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
-            mimeType: secItem.inline.mimeType,
-            role: 'secondary_product'
-          });
+          // 注入搭配产品参考图 (仅注入允许的搭配品)
+          for (const secItem of pushedSecondaryInlines) {
+            images.push({
+              data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
+              mimeType: secItem.inline.mimeType,
+              role: 'secondary_product'
+            });
+          }
         }
       } else {
         if (productInline) {
@@ -624,8 +631,32 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
       ).join(', ');
 
       if (isHumanPass || shotInline) {
-        // 模式 A: 模特植入 (Human Pass)：强制原图机位零漂移，家具绝对不位移，仅将人物自然坐入
-        directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
+        if (input.preserveBasePhotoOnly) {
+          // 模式 A-1: 单镜头实拍底图保真模特植入 (Photo Ground Truth Inpainting)
+          // 绝对保真：彻底杜绝任何全局户型、预设美学或硬装色彩对用户上传原图的干扰
+          directivePrompt = `[CRITICAL MANDATE: PHOTO GROUND TRUTH INPAINTING - 100% PRESERVE ORIGINAL ROOM AND SEAT REAL HUMAN MODELS]
+PRIMARY OBJECTIVE:
+Reference Image 1 is an AUTHENTIC USER-UPLOADED PHOTOGRAPH of the living room and furniture.
+Your task is EXCLUSIVELY to insert the designated real human model(s) into the sofa shown in Reference Image 1.
+
+[ABSOLUTE INVARIANCE MANDATE - ZERO BACKGROUND & ZERO STYLE DRIFT]:
+1. 100% PRESERVE AND KEEP UNCHANGED all existing background elements, architecture, walls, wall colors, lighting, windows, ceiling, flooring, and all furniture positions, silhouettes, and fabric/leather textures in Reference Image 1.
+2. DO NOT apply any foreign interior style, new wall cladding, stone textures, or decorative changes. DO NOT re-grade colors or change ambient daylighting.
+3. INPAINTING ONLY: Photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with realistic body weight, fabric folds, and authentic contact ambient occlusion shadows on the seating cushions.
+
+${charInlines.length > 0 ? `REFERENCE IMAGE 2${charInlines.length > 1 ? ' & 3' : ''}: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ''}
+
+STRICT OCCUPANCY & COMPOSITION RULES:
+1. The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with relaxed posture and realistic body contact.
+2. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS.
+3. Keep all existing furniture functional mechanisms intact and closed unless specified.
+
+${positivePrompt}
+
+Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+        } else {
+          // 模式 A-2: 模特植入 (Human Pass)：强制原图机位零漂移，家具绝对不位移，仅将人物自然坐入
+          directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
 PRIMARY OBJECTIVE:
 You are an architectural lifestyle photographer. You MUST photorealistically insert real human models into the room shown in Reference Image 1.
 DO NOT LEAVE THE ROOM EMPTY. DO NOT RETURN AN EMPTY ROOM.
@@ -656,6 +687,7 @@ ${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicate
 ${positivePrompt}
 
 Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}${isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开, ' : ''}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+        }
       } else if (productInline && masterInline) {
         // 模式 B: A01~A08 衍生镜头生图：确立“机位与景别第一性原则”，同时坚决锁定 A00 母版硬装与窗景背景一致性
         const isFrontalPanorama = shotCode === 'A01' || (positivePrompt.includes('GRAND FRONTAL') || positivePrompt.includes('正大视角'));
@@ -681,24 +713,229 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiSticke
         const hasBrownSecondary = allowedSecondaryInlines.some(sec => /brown|caramel|amber|espresso/i.test(sec.colorEn));
         const brownNegativeFilter = hasBrownSecondary ? '' : 'brown recliner, brown armchair, ';
 
+        const isReferenceA01 = input.referenceShotCode === 'A01';
         const a02PerspectiveShiftClause = (shotCode === 'A02' || isAngledHero)
-          ? `[MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE]
-Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
-DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.\n\n`
+          ? `[MANDATORY PERSPECTIVE SHIFT & 3+1 CHOREOGRAPHY: 45° THREE-QUARTERS OBLIQUE ANGLE]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the frontal baseline.'}
+FOR SHOT A02, YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE FRONT-LEFT VANTAGE POINT (standing near the panoramic window, shooting diagonally across to the back-right)!
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW!
+DO NOT CENTER THE SOFA SYMMETRICALLY!
+
+[MANDATORY 3+1 CONVERSATIONAL LIVING ENSEMBLE CHOREOGRAPHY]:
+Capture the cohesive conversational salon layout matching the luxury lifestyle reference:
+1. THREE-SEATER MAIN SOFA: Located at midground right, backed against the luxury stone/wood focal wall, oriented at 45° diagonal angle. Supple genuine leather, three distinct seating cushions, with 1-2 curated throw cushions.
+2. MATCHING 1-SEATER POWER MOTION RECLINER ARMCHAIR: Located at foreground left near the panoramic window flank, angled inward toward the main sofa in a 90-degree conversational L-shape. COMFORT ERGONOMIC POSTURE: Its motorized footrest is gracefully deployed into a relaxed comfort contour (as shown in reference design), highlighting peak First-Class relaxation!
+3. DUAL NESTING CENTER COFFEE TABLES: Positioned on the area rug between sofa and armchair. Featuring a higher black square side pedestal nested with a lower dark marble/glass table, styled with an artisan wooden box and minimal greenery.
+4. CONTEMPORARY GEOMETRIC AREA RUG: Expansive light ivory/warm greige geometric wool rug cleanly anchoring both sofas and coffee table on the warm wood plank flooring.
+5. INDOOR BOTANICAL: An elegant tall fiddle-leaf fig tree stands between the recliner armchair and the panoramic window.
+6. OPEN-PLAN VISTA: The vista to the right extends smoothly into the deep background open-plan dining zone (dark marble dining table and leather dining chairs), establishing majestic architectural depth.\n\n`
           : '';
 
-        directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
+        const a03PerspectiveClause = (shotCode === 'A03' || isHeroSofaFocus)
+          ? `[MANDATORY HERO 3-SEATER PERSPECTIVE & COMPOSITION: SUBTLE THREE-QUARTERS OBLIQUE ANGLE]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A03:
+- SUBTLE 15-25 DEGREE OBLIQUE PERSPECTIVE: The camera is stationed at the front-left vantage point (near the panoramic window), shooting toward the 3-seater hero sofa with a subtle 15-to-25 degree three-quarters oblique perspective. DO NOT RENDER A FLAT STRAIGHT-ON FRONTAL MUGSHOT! Show the dynamic 3D depth, the flare of the left armrest, and the deep seating cushion volume.
+- 100% FOCUS ON HERO 3-SEATER SOFA: Completely crop out, exclude, and bypass ANY separate single armchair, recliner chair, or 3+1 ensemble arrangement. The 3-seater sofa is the ONLY seating piece in the frame!
+- PRISTINE LEATHER SURFACE: Zero cluttered oversized cushions or furry pillows. The seating cushions and backrests remain clean, smooth, and uncluttered, showcasing the pure luxury of genuine semi-aniline leather.
+- FOREGROUND NESTING COFFEE TABLES: The dual nesting coffee table ensemble (black square pedestal + lower dark marble/glass table with artisan wooden box and subtle greenery) sits in the foreground on the geometric area rug, angled naturally without blocking the main sofa seating cushions.
+- LEFT-SIDE FLANK: An elegant side table and tall fiddle-leaf fig tree stand near the left panoramic window flank.
+- BACKGROUND ENVELOPE: Hero sofa is backed against the luxury marble/wood accent feature wall with its signature dual tiered curved luminous floating shelves. The space to the right opens smoothly into the deep background open-plan dining area.\n\n`
+          : '';
+
+        const a04PerspectiveClause = (shotCode === 'A04')
+          ? `[MANDATORY 2/3 HERO SOFA COMPANION PERSPECTIVE & COMPOSITION: 3:4 VERTICAL PORTRAIT]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A04:
+- 3:4 VERTICAL COMPOSITION & -15° DOWNWARD TILT: The camera is stationed at 140cm standing eye-level height with a -15 degree downward pitch looking down onto the living area rug stage in 3:4 vertical portrait aspect ratio.
+- 2/3 SOFA LIFESTYLE CROP: Frame approximately 2/3 of the three-seater hero motion sofa (focusing on the outer left armrest and deep seating cushions). The remaining 1/3 of the sofa and the rest of the room are naturally cropped out. DO NOT zoom out or shrink the sofa to fit the entire width into the vertical frame!
+- NATURAL PLAY STAGE: Foreground play rug stage bathed in left window sheer curtain daylight, white matte cylindrical planter anchor.
+- ZERO SIDE CHAIR: Completely crop out, exclude, and bypass any separate single armchair or recliner chair.\n\n`
+          : '';
+
+        const a05PerspectiveClause = (shotCode === 'A05')
+          ? `[MANDATORY 2/3 HERO SOFA PRIVATE LOUNGE PERSPECTIVE & COMPOSITION: 3:4 VERTICAL PORTRAIT]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A05:
+- 3:4 VERTICAL COMPOSITION & +28° RIGHT ANGLE: The camera is positioned at 95cm seated eye-level height (0° tilt) with a +28 degree right oblique perspective in 3:4 vertical portrait aspect ratio.
+- 2/3 SOFA CRAFTSMANSHIP CROP: Frame approximately 2/3 of the three-seater hero motion sofa, tightly capturing the right outer armrest with signature diamond quilting, circular metal motion buttons, brass closure strip anchor, and warm 3000K ambient wall sconce from Reference Image 2.
+- EXCLUDE SEPARATE CHAIRS: Strictly crop out any separate single armchair or distant room clutter. Strictly DO NOT invent unreferenced bookcases or wall niches!\n\n`
+          : '';
+
+        const a06PerspectiveClause = (shotCode === 'A06' || isZeroWallProfile)
+          ? `[MANDATORY ZERO-WALL CLEARANCE LATERAL PROFILE: 88° PURE SIDE PROFILE]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A06:
+- 88° PURE LATERAL SIDE PROFILE: The camera is stationed on the side flank (85-to-90 degree orthogonal profile) at 90cm seated eye-level height in 4:3 horizontal aspect ratio. Two-point perspective with strictly plumb vertical lines.
+- ZERO-WALL CLEARANCE FUNCTION: Showcase MANWAH signature ZERO-WALL CLEARANCE technology in living room setting: hero sofa is positioned flush against the solid architectural feature wall with virtually zero gap (<5cm flush alignment)!
+- PRISTINE CLOSED POSTURE: Motorized footrests strictly retracted and tucked flush under the base; backrest upright in standard closed showroom posture. Full side armrest profile highlights diamond quilting craftsmanship.\n\n`
+          : '';
+
+        const a07PerspectiveClause = (shotCode === 'A07' || isLivingEnsembleMid)
+          ? `[MANDATORY ENSEMBLE LIVING PERSPECTIVE & DEPTH COMPRESSION: 55mm MEDIUM GROUPING]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A07:
+- 55mm MEDIUM TELEPHOTO COMPRESSION: Camera at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio.
+- INTIMATE CONVERSATIONAL GROUPING: Medium living ensemble grouping tightly framing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground, highlighting the golden height drop between 450mm marble table and 400mm sofa seat.
+- DEEP GROUNDING: Strong contact AO shadows ground furniture on the geometric area rug with soft side window daylight and 3000K ambient ceiling glow.\n\n`
+          : '';
+
+        const a08PerspectiveClause = (shotCode === 'A08' || isReclinerMultiMode)
+          ? `[MANDATORY RECLINER 5-MODE PERSPECTIVE & HERO INVERSION: 50mm GOLDEN DIAGONAL]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A08:
+- 100% FOCUS ON SINGLE POWER RECLINER ARMCHAIR: The single power motion recliner armchair is the 80% HERO PRODUCT in this shot! The 3-seater main sofa must be completely removed from center stage (pushed off-frame or distant background blur).
+- 50mm GOLDEN DIAGONAL PERSPECTIVE: Camera at 95cm seated eye-level height with fixed 35-to-40 degree golden diagonal perspective in 4:3 horizontal aspect ratio.
+- DEDICATED LIVING ROOM SANCTUARY: Positioned comfortably on the tailored geometric area rug in the open, spacious living room from Reference Image 2, capturing window daylight shadow boundary, leather sheen, and deep contact AO shadows. Strictly FORBID moving the chair into a hallway or door frame!\n\n`
+          : '';
+
+        const a09PerspectiveClause = (shotCode === 'A09' || isDiningSuite)
+          ? `[MANDATORY DINING SUITE PERSPECTIVE & SPATIAL PIVOT: 40mm ARCHITECTURAL VISTA]
+${isReferenceA01 ? 'Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master).' : 'Reference Image 2 is the scene baseline.'}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A09:
+- SPATIAL PIVOT TO DINING SUITE: Camera axis is shifted to center on the luxury dining zone with 0-degree symmetrical frontal axis in 4:3 horizontal aspect ratio at 115cm standing eye-level height.
+- HERO DINING SUITE: Expansive luxury Italian dining table with matching tailored leather dining chairs, architectural credenza sideboard, and modern bar cart, bathed in authentic natural window daylight.
+- LIVING SOFA OFF-CENTER: The three-seater living room sofa MUST NOT occupy center stage; dining suite takes 75%+ visual prominence.\n\n`
+          : '';
+
+        let ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
+   - Inherit the architectural walls, background geometry and finishes, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!`;
+
+        if (isReferenceA01) {
+          if (shotCode === 'A02' || isAngledHero) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL & FINISH DNA ONLY - STRICTLY DO NOT COPY CAMERA ANGLE):
+   - Reference Image 2 provides the authentic room materials (marble focal wall, ceiling lighting, floor tiles, daylight color) and furniture leather color tone.
+   - PERSPECTIVE ANGLE DECOUPLING: Reference Image 2 is a 0-degree straight-on frontal view. FOR SHOT A02, YOU MUST COMPLETELY DISCARD THE FRONTAL CAMERA ANGLE OF REFERENCE IMAGE 2 and rotate the camera 45° to the front-left corner! Render the exact same room and furniture ensemble, but seen from a dynamic 45-degree three-quarters diagonal vantage point!`;
+          } else if (shotCode === 'A03' || isHeroSofaFocus) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (GRAND LIVING SCENE MASTER - AUTHORITATIVE GROUND TRUTH - STRICTLY EXCLUDE SINGLE CHAIR):
+   - Reference Image 2 establishes the absolute visual ground truth for the room architecture (marble/wood feature wall, dual curved sconces/shelves, floor tiles, window daylight) AND the exact genuine leather grade and color tone for the 3-seater sofa.
+   - CAMERA & COMPOSITION DECOUPLING: Reference Image 2 is a 0-degree frontal 3+1 panorama. In Shot A03, you are framing the EXACT SAME 3-seater hero sofa from Reference Image 2 from a subtle 15-25 degree front-left three-quarters angle, with 100% focus on the 3-seater sofa alone! Completely crop out and exclude the single chair!`;
+          } else if (shotCode === 'A04') {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+   - Reference Image 2 provides authentic room finishes and sofa leather color tone.
+   - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A04, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE SOFA AT A -15° DOWNWARD TILT! Completely discard the wide horizontal perspective of Reference Image 2!`;
+          } else if (shotCode === 'A05') {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+   - Reference Image 2 provides authentic room finishes and sofa leather color tone.
+   - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A05, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE RIGHT SOFA ARMREST AT A +28° RIGHT ANGLE! Completely discard the frontal landscape composition of Reference Image 2!`;
+          } else if (shotCode === 'A06' || isZeroWallProfile) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM WALL FINISHES ONLY - STRICTLY DO NOT COPY 0-DEGREE FRONTAL ANGLE):
+   - Reference Image 2 shows the room from the front.
+   - PERSPECTIVE DECOUPLING: FOR SHOT A06, YOU MUST PHYSICALLY ROTATE THE CAMERA 88° TO CAPTURE A PURE LATERAL PROFILE showing the sofa flush against the backdrop wall with <5cm zero-wall clearance! Discard the 0° frontal view of Reference Image 2!`;
+          } else if (shotCode === 'A07' || isLivingEnsembleMid) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM FINISHES & COFFEE TABLE REFERENCE - COMPRESS DEPTH):
+   - Inherit room finishes, area rug, and coffee table designs from Reference Image 2.
+   - PERSPECTIVE DECOUPLING: Use 55mm medium telephoto compression to bring the coffee table and sofa into a tight, cohesive conversational group, eliminating wide empty gaps from Reference Image 2!`;
+          } else if (shotCode === 'A08' || isReclinerMultiMode) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM ENVIRONMENT ONLY - COMPLETE HERO INVERSION):
+   - Reference Image 2 provides the luxury room architecture, flooring, and window daylight.
+   - HERO SUBJECT INVERSION: In Reference Image 2, the 3-seater sofa was centered. FOR SHOT A08, YOU MUST REMOVE THE 3-SEATER SOFA FROM CENTER STAGE AND FRAME THE SINGLE RECLINER ARMCHAIR AS THE 80% HERO PRODUCT in golden diagonal perspective!`;
+          } else if (shotCode === 'A09' || isDiningSuite) {
+            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (OPEN-PLAN ARCHITECTURAL GROUND TRUTH - CAMERA SHIFT):
+   - Reference Image 2 provides open-plan room finishes and daylight.
+   - CAMERA SHIFT: In Reference Image 2, the camera was centered on the living room sofa. FOR SHOT A09, SHIFT THE CAMERA AXIS TO CENTER ON THE INTEGRATED DINING SUITE, without the living sofa blocking center frame!`;
+          }
+        }
+
+        let specificShotTopMandate = '';
+        if (shotCode === 'A02' || isAngledHero) {
+          specificShotTopMandate = `[CRITICAL CAMERA ROTATION MANDATE FOR SHOT A02: 45° THREE-QUARTERS OBLIQUE ANGLE]
+ATTENTION GENERATOR: DO NOT COPY THE STRAIGHT-ON FRONTAL ANGLE OR SYMMETRICAL COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is a straight-on frontal view, but SHOT A02 MUST BE A DRAMATIC 45-DEGREE CORNER THREE-QUARTERS OBLIQUE PERSPECTIVE!
+The camera is physically stationed at the front-left corner near the panoramic window, shooting diagonally 40-45 degrees toward the back-right.
+1. THREE-SEATER MAIN SOFA: MUST NOT BE HORIZONTAL TO THE SCREEN! It must be oriented along the 45-degree diagonal receding into the depth of the room. Show the deep dimensional volume of the front armrest, cushion depth, and side contour.
+2. SINGLE RECLINER ARMCHAIR: Positioned prominently in the FOREGROUND-LEFT near the window, facing inward towards the 3-seater sofa at a 90-degree conversational angle.
+3. DUAL NESTING COFFEE TABLES: Located between sofa and armchair on the rug, showing clear diagonal perspective foreshortening.
+4. BACKGROUND FOCAL WALL: MUST RECEDE DIAGONALLY with strong two-point perspective vanishing lines from left to right, NOT a flat wall parallel to the frame!
+STRICTLY FORBIDDEN: Any straight-on, flat, frontal view, or symmetrical sofa placement!\n\n`;
+        } else if (shotCode === 'A03' || isHeroSofaFocus) {
+          specificShotTopMandate = `[CRITICAL CAMERA & COMPOSITION MANDATE FOR SHOT A03: 15°-25° SUBTLE OBLIQUE & 100% THREE-SEATER SOLO FOCUS]
+ATTENTION GENERATOR: DO NOT COPY THE 0-DEGREE STRAIGHT-ON FRONTAL ANGLE OR THE 3+1 ENSEMBLE LAYOUT OF REFERENCE IMAGE 2!
+Reference Image 2 is a wide frontal 3+1 panorama containing a separate single chair, but SHOT A03 MUST BE A TIGHT 50mm COMMERCIAL FOCUS ON THE 3-SEATER HERO SOFA ALONE!
+1. THREE-SEATER MAIN SOFA IS THE SOLE HERO SEATING PIECE: Completely crop out, bypass, and EXCLUDE any separate single armchair, recliner chair, or 3+1 ensemble arrangement from Reference Image 2! The 3-seater sofa must occupy 75%+ of the frame.
+2. SUBTLE 15-25 DEGREE OBLIQUE PERSPECTIVE: The camera is stationed at the front-left vantage point with a subtle 15-to-25 degree three-quarters oblique perspective. DO NOT RENDER A FLAT STRAIGHT-ON FRONTAL MUGSHOT! Show the dynamic 3D depth, the flare of the front-left armrest, and cushion depth.
+3. FOREGROUND DUAL COFFEE TABLES: Black square pedestal nested with dark lower marble/glass table sits in foreground on geometric rug without blocking sofa seating cushions.
+STRICTLY FORBIDDEN: Rendering any side single armchair, rendering flat 0° frontal mugshot, or centering a symmetrical horizontal sofa!\n\n`;
+        } else if (shotCode === 'A04') {
+          specificShotTopMandate = `[CRITICAL FRAMING & ORIENTATION MANDATE FOR SHOT A04: 3:4 VERTICAL PORTRAIT & 2/3 SOFA LIFESTYLE CROP]
+ATTENTION GENERATOR: DO NOT COPY THE HORIZONTAL LANDSCAPE ORIENTATION OR FULL ROOM COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide horizontal landscape (A01). DO NOT SQUEEZE THE ENTIRE LIVING ROOM INTO THIS VERTICAL 3:4 FRAME!
+1. 3:4 VERTICAL ASPECT RATIO & MICRO-DOWNWARD TILT: The camera is stationed at 140cm standing eye-level height with a -15 degree downward pitch looking down onto the living area rug stage in 3:4 vertical portrait aspect ratio.
+2. TIGHT 2/3 SOFA CROP: Frame approximately 2/3 of the three-seater hero motion sofa (outer left armrest and wide seating cushion depth). The remaining 1/3 of the sofa and the rest of the room are naturally cropped out! DO NOT shrink or zoom out to fit the whole sofa.
+3. EXCLUDE SECONDARY FURNITURE: Completely crop out any separate single armchair, and ensure the foreground coffee table does NOT block the front seating stage.
+STRICTLY FORBIDDEN: Squeezing the entire room or entire sofa into the 3:4 vertical frame, horizontal wide-angle perspectives, or flat frontal views!\n\n`;
+        } else if (shotCode === 'A05') {
+          specificShotTopMandate = `[CRITICAL FRAMING & CRAFTSMANSHIP MANDATE FOR SHOT A05: 3:4 VERTICAL PORTRAIT & 2/3 SOFA LUXURY CROP]
+ATTENTION GENERATOR: DO NOT COPY THE HORIZONTAL LANDSCAPE ORIENTATION OR FULL ROOM COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide horizontal landscape (A01). DO NOT SQUEEZE THE ENTIRE LIVING ROOM INTO THIS VERTICAL 3:4 FRAME!
+1. 3:4 VERTICAL ASPECT RATIO & RIGHT-FLANK ANGLE: The camera is positioned at 95cm seated eye-level height with a +28 degree right oblique perspective in 3:4 vertical portrait aspect ratio.
+2. TIGHT 2/3 SOFA CROP: Frame approximately 2/3 of the three-seater hero motion sofa, tightly capturing the right outer armrest with signature diamond quilting, circular metal motion buttons, brass closure strip anchor, and warm 3000K ambient wall sconce from Reference Image 2.
+3. EXCLUDE SECONDARY FURNITURE: Completely crop out any separate single armchair or distant room clutter. Strictly DO NOT invent unreferenced bookcases or wall niches!
+STRICTLY FORBIDDEN: Squeezing the entire room or entire sofa into the 3:4 vertical frame, or flat frontal mugshot views!\n\n`;
+        } else if (shotCode === 'A06' || isZeroWallProfile) {
+          specificShotTopMandate = `[CRITICAL ORTHOGONAL ROTATION MANDATE FOR SHOT A06: 88° PURE LATERAL PROFILE & ZERO-WALL CLEARANCE]
+ATTENTION GENERATOR: DO NOT COPY THE 0-DEGREE STRAIGHT-ON FRONTAL ANGLE OF REFERENCE IMAGE 2!
+Reference Image 2 is a 0-degree straight-on frontal view, but SHOT A06 MUST BE AN 88-DEGREE PURE LATERAL SIDE PROFILE VIEW!
+The camera is stationed on the side flank (85° to 90° orthogonal profile) at 90cm seated eye-level height.
+1. ZERO-WALL CLEARANCE ARCHITECTURE: The hero sofa is backed flush against the continuous solid living room marble/wood feature wall from Reference Image 2 with virtually ZERO gap (<5cm flush alignment), demonstrating MANWAH signature zero-wall space-saving technology!
+2. STRICTLY CLOSED SHOWROOM POSTURE: All motorized footrests are completely retracted and tucked underneath the base; the backrest is upright in standard closed form.
+3. PURE SIDE PROFILE: Showcase full side armrest silhouette with diamond-quilted craftsmanship and neat bottom chassis.
+STRICTLY FORBIDDEN: Frontal angle, 45-degree angle, sofa detached from back wall with large gap, or deployed footrests!\n\n`;
+        } else if (shotCode === 'A07' || isLivingEnsembleMid) {
+          specificShotTopMandate = `[CRITICAL DEPTH COMPRESSION MANDATE FOR SHOT A07: 55mm MEDIUM ENSEMBLE COMPOSITION]
+ATTENTION GENERATOR: DO NOT COPY THE DISTANT ULTRA-WIDE-ANGLE PERSPECTIVE OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide panoramic vista (26-35mm) where the coffee table and sofa appear far apart and surrounded by empty floor space.
+1. 55mm TELEPHOTO DEPTH COMPRESSION: The camera uses a 55mm medium telephoto lens at 95cm height with a -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio.
+2. INTIMATE LIVING CONVERSATION GROUPING: Compress depth to bring the dual nesting marble coffee tables into an intimate, cohesive foreground relationship with the hero sofa in the midground, clearly showcasing the golden height drop (450mm table vs 400mm sofa seat).
+3. GEOMETRIC RUG & AO SHADOWS: Strong contact AO shadows ground the furniture tightly on the geometric area rug.
+STRICTLY FORBIDDEN: Far distant wide-angle views, empty barren foregrounds, or flat frontal 0-degree mugshots!\n\n`;
+        } else if (shotCode === 'A08' || isReclinerMultiMode) {
+          specificShotTopMandate = `[CRITICAL HERO INVERSION MANDATE FOR SHOT A08: DEDICATED SINGLE POWER RECLINER SHOWCASE]
+ATTENTION GENERATOR: DO NOT COPY THE THREE-SEATER CENTERED COMPOSITION OF REFERENCE IMAGE 2!
+In Reference Image 2 (A01), the three-seater sofa dominates the center of the frame, while the single recliner is a minor side accent.
+FOR SHOT A08, THE HERO SUBJECT IS 100% INVERTED: THE SINGLE POWER RECLINER ARMCHAIR IS THE 80% HERO PRODUCT!
+1. THREE-SEATER MAIN SOFA MUST VACATE CENTER STAGE: The 3-seater sofa must be completely out of frame or pushed to distant soft background blur. IT MUST NOT BE IN THE CENTER!
+2. DEDICATED RECLINER SHOWCASE: The matching single power recliner armchair sits majestically in the spacious, open living room of Reference Image 2 on the tailored area rug, framed at a 35-to-40 degree golden diagonal perspective.
+3. INHERIT LEATHER & FINISH DNA: 100% inherit the genuine leather grade, color tone, and welt piping craftsmanship from Reference Image 1, set against the authentic living room finishes and window daylight of Reference Image 2.
+STRICTLY FORBIDDEN: Centering the three-seater sofa, blocking the recliner with other furniture, or moving the recliner into a narrow hallway/corridor!\n\n`;
+        } else if (shotCode === 'A09' || isDiningSuite) {
+          specificShotTopMandate = `[CRITICAL SPATIAL PIVOT MANDATE FOR SHOT A09: DINING SUITE INTEGRATED LIFESTYLE VISTA]
+ATTENTION GENERATOR: DO NOT COPY THE LIVING ROOM SOFA CENTERED COMPOSITION OF REFERENCE IMAGE 2!
+In Reference Image 2 (A01), the camera is centered on the living room sofa, while the dining area is in the far right background.
+FOR SHOT A09, PIVOT THE CAMERA AXIS TO CENTER ON THE INTEGRATED DINING SUITE:
+1. HERO DINING SUITE IS THE VISUAL CENTER: The camera axis is centered on the luxury dining table ensemble (luxury Italian black marble dining table, coordinated leather dining chairs, credenza sideboard, and mobile bar cart).
+2. LIVING ROOM SOFA MUST NOT OCCUPY CENTER STAGE: The living room sofa is shifted out of the central axis, allowing the dining suite to take 75%+ visual dominance.
+3. OPEN-PLAN ARCHITECTURAL HARMONY: Bathed in the authentic window daylight and architectural finishes strictly continuous with Reference Image 2.
+STRICTLY FORBIDDEN: Keeping the three-seater living sofa in the center of the frame, or copying the living room centered framing of Reference Image 2!\n\n`;
+        }
+
+        directivePrompt = `${specificShotTopMandate}[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
 MULTI-VIEW ASSET ANCHOR:
 1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
 ${(shotCode === 'A08' && activePrimaryProduct === primaryProduct)
   ? `   - [A08 SINGLE POWER RECLINER DERIVATION MANDATE]: Reference Image 1 provides the master genuine leather material (${effectiveMaterial}), precise color anchor (${effectiveColor}), and signature welt-piping craftsmanship for this suite. FOR THIS A08 SHOT, RENDER A MATCHING SINGLE-SEATER LUXURY POWER MOTION RECLINER ARMCHAIR in the three-quarters composition, 100% inheriting the exact leather grade, color tone, tufted pleating, and stitching DNA from Reference Image 1!`
   : `   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.`}
-   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!
-2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
-   - Inherit the architectural walls, background geometry and finishes, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
+${(shotCode === 'A02' || isAngledHero)
+  ? `   - MANDATORY PERSPECTIVE RE-ORIENTATION: Reference Image 2 shows the sofa from a 0-degree straight-on frontal view. For Shot A02, you MUST re-render the sofa and living room from a 45-degree diagonal three-quarters perspective, NOT from the flat frontal angle of Reference Image 2!`
+  : (shotCode === 'A03' && isReferenceA01)
+  ? `   - MANDATORY SUBTLE ANGLE ADJUSTMENT: Re-render from a subtle 15-25 degree oblique angle, 100% focusing on the 3-seater sofa and completely excluding the single chair.`
+  : (shotCode === 'A04' && isReferenceA01)
+  ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the hero sofa in 3:4 vertical composition at a -15° downward tilt.`
+  : (shotCode === 'A05' && isReferenceA01)
+  ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the right sofa armrest in 3:4 vertical composition at a +28° right angle.`
+  : (shotCode === 'A06' && isReferenceA01)
+  ? `   - MANDATORY 88° LATERAL ROTATION: Rotate camera 88° to capture the sofa's pure side profile flush against the back wall (<5cm gap).`
+  : (shotCode === 'A07' && isReferenceA01)
+  ? `   - MANDATORY 55mm MEDIUM GROUPING: Frame the sofa and coffee table in tight medium composition with depth compression.`
+  : (shotCode === 'A08' && isReferenceA01)
+  ? `   - MANDATORY RECLINER HERO FOCUS: Center and frame the matching single power recliner armchair as the hero piece, removing the 3-seater sofa from center stage.`
+  : (shotCode === 'A09' && isReferenceA01)
+  ? `   - MANDATORY DINING VISTA ALIGNMENT: Focus on dining suite or open-plan continuous vista.`
+  : '   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!'}
+${ref2EnsembleDirective}
 
 CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
-${a02PerspectiveShiftClause}${positivePrompt}
+${a02PerspectiveShiftClause}${a03PerspectiveClause}${a04PerspectiveClause}${a05PerspectiveClause}${a06PerspectiveClause}${a07PerspectiveClause}${a08PerspectiveClause}${a09PerspectiveClause}${positivePrompt}
 ${secondaryReferencesText ? `\nMATCHING ENSEMBLE:\n${secondaryReferencesText}\n` : ''}
 CORE INVARIANTS:
 - FOUR INVARIANCE PILLARS:
@@ -708,18 +945,25 @@ CORE INVARIANTS:
   4. Deep physical contact AO grounding all furniture legs and chassis firmly onto the area rug.
 - OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines (tilt = 0°). Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
-- CLOSED SHOWROOM POSTURE: ${isFunctionalClosed ? 'All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base.' : 'Motion mechanism may be deployed as specified.'}`;
+- SHOWROOM POSTURE: ${shotCode === 'A02' ? 'Main sofa motorized footrests strictly remain closed and flush. The matching single recliner armchair may have its motorized footrest comfortably extended into ergonomic contour as in reference.' : (isFunctionalClosed ? 'All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base.' : 'Motion mechanism may be deployed as specified.')}`;
 
         const cleanNegativeConstraints = [
           negativePrompt,
           antiStickerNegatives,
-          (shotCode === 'A02' || isAngledHero) ? 'flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward' : '',
+          (shotCode === 'A02' || isAngledHero) ? 'flat frontal view, straight-on camera, straight-on frontal view, symmetrical center sofa, horizontal sofa parallel to screen, front-facing sofa, flat 1-point perspective, mugshot view, zero perspective depth, copying frontal composition of reference 2, boxy closed small room, missing coffee table, missing rug, cramped narrow space, center dividing pillar' : '',
+          (shotCode === 'A03' || isHeroSofaFocus) ? 'flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward, stiff mugshot view, side chair, accent chair, armchair, lounge chair, single chair, 3+1 ensemble, extra chair, additional seating, cluttered throw pillows, giant fuzzy cushions, boxy closed small room, missing coffee table, center dividing pillar' : '',
+          shotCode === 'A04' ? 'full horizontal panorama, entire living room in frame, wide angle vista, isolated single chair, coffee table blocking front, 1-point perspective frontal view, miniature sofa squeezed in frame, flipped room' : '',
+          shotCode === 'A05' ? 'full horizontal panorama, entire room in frame, distant furniture, wide angle panorama, isolated single chair, built-in bookshelf, bookcase, library wall, flat frontal view, arched shelves' : '',
+          (shotCode === 'A06' || isZeroWallProfile) ? 'flat frontal view, 0-degree straight-on view, front-facing sofa, 45-degree corner view, detached sofa from wall, large gap between sofa and wall, deployed footrest, open recliner mechanism, office, library shelves, bookshelf' : '',
+          (shotCode === 'A07' || isLivingEnsembleMid) ? 'wide empty room panorama, tiny distant coffee table, flat frontal mugshot, vast empty foreground, floating furniture, disconnected coffee table' : '',
+          (shotCode === 'A08' || isReclinerMultiMode) ? 'three-seater sofa centered in frame, three-seater sofa blocking recliner, flat frontal living room view, copying A01 composition, hallway, corridor, entryway, door frame, white door frame' : '',
+          (shotCode === 'A09' || isDiningSuite) ? 'three-seater sofa centered in frame, living room sofa dominating image, kitchen sink, cramped room, copying A01 living room composition' : '',
           'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
           'double sofas, ghost sofa, overlapping couches, morphing furniture',
           'different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room',
           'crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines',
           'deformed sofa, generic boxy sofa, distorted proportions, wrong color',
-          isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托' : '',
+          (isFunctionalClosed && shotCode !== 'A02') ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托' : '',
           !hasHumanOccupant ? 'people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs' : '',
           brownNegativeFilter,
           'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo'
@@ -734,7 +978,76 @@ CORE INVARIANTS:
           (sec.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.product.name))
         );
 
+        const combinedContext = `${input.roomName || ''} ${input.spacePreset?.code || ''} ${input.spacePreset?.name || ''} ${input.styleName || ''} ${input.stylePreset?.code || ''} ${input.stylePreset?.name || ''} ${positivePrompt}`;
+
+        const isSunken = /下沉|sunken|N-R04/i.test(combinedContext);
+        const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedContext);
+        const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedContext);
+        const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedContext);
+
+        const isAmerican = /美式|american|US-01|US-02/i.test(combinedContext);
+        const isFrench = /法式|parisian|haussmann|EU-01/i.test(combinedContext);
+        const isItalian = /意式|italian|milanese|IT-01/i.test(combinedContext);
+
+        let topologyMandateA00 = '';
+        const topologyNegativesA00: string[] = [];
+
+        if (isSunken) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: 45CM SUNKEN CONVERSATION PIT WITH PERIMETER STEPS & FIREPLACE]
+1. SUNKEN CONVERSATION PIT: The central living lounge seating zone MUST BE CLEARLY STEPPED DOWN 40-45CM BELOW THE SURROUNDING UPPER FLOOR LEVEL. Visible, clean perimeter stone steps wrap around the sunken lounge area. The sofa, carpet, and coffee table sit recessed inside this conversation sanctuary.
+2. TRAVERTINE STONE FIREPLACE: In the center background feature wall, there MUST be a monumental natural honed travertine limestone wall with an integrated horizontal modern linear fireplace hearth showing visible dancing live orange fire flames.
+3. ABSOLUTE TOPOLOGY MANDATE: STRICTLY FORBID flat one-level floor without steps! STRICTLY FORBID room without fireplace!`;
+          topologyNegativesA00.push(
+            'flat floor without steps',
+            'flat single-level floor',
+            'absence of sunken pit',
+            'no steps around living room',
+            'missing fireplace',
+            'no fireplace',
+            'missing fire hearth'
+          );
+        } else if (isDuplex) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: MONUMENTAL 6.2M DOUBLE-HEIGHT SOARING VOID]
+1. SOARING 6.2M DOUBLE HEIGHT: Dramatic double-height vertical volume with a two-story continuous feature wall.
+2. CHANDELIER & SCULPTURAL STAIRS: High-altitude modern sculptural pendant chandelier hanging in the void, with background revealing interior glass zen garden and floating curved stairs.`;
+          topologyNegativesA00.push('low ceiling', 'standard 3m ceiling', 'flat standard apartment', 'missing double height ceiling void');
+        } else if (isPavilion) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: ORIENTAL ZEN WATER GARDEN VILLA PAVILION]
+1. WATER MIRROR & PINE VIEW: Full-span uninterrupted panoramic glass wall looking out directly to an outdoor serene water mirror reflection pool with a sculptural Japanese pine bonsai tree and limestone boulders.`;
+          topologyNegativesA00.push('urban skyscraper view', 'street level view', 'blocked garden view');
+        } else if (isPenthouse) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: HIGH-ALTITUDE SKYLINE PENTHOUSE SALON]
+1. METROPOLIS SKYLINE: Majestic 4.2m ceiling with soaring floor-to-ceiling panoramic glass curtain wall overlooking high-altitude metropolis skyscraper skyline and sunset golden hour clouds.`;
+          topologyNegativesA00.push('ground floor view', 'street level view', 'garden outside window');
+        }
+
+        let styleMandateA00 = '';
+        const styleNegativesA00: string[] = [];
+
+        if (isAmerican) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: MODERN AMERICAN METROPOLITAN]
+1. PICTURE-FRAME WALL PANEL MOLDINGS & WAINSCOTING: The background and side walls MUST feature authentic classic modern American picture-frame wall moldings and elegant wainscoting (crisp rectangular architectural wall frames with shadow relief moldings in warm oat greige #E6DFD5 and rich dark walnut millwork).
+2. FINISHES: Warm brushed brass wall sconces, plaster ceiling crown moldings, and solid American dark walnut joinery.
+3. ABSOLUTE PROHIBITION: STRICTLY FORBID modern flat sterile drywall, strictly forbid flat featureless white slabs without wall moldings!`;
+          styleNegativesA00.push(
+            'cold flat sterile drywall',
+            'modern plain white slab without moldings',
+            'sterile white clinic walls',
+            'flat bare drywall without panel frames'
+          );
+        } else if (isFrench) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: PARISIAN HAUSSMANNIAN BOISERIE]
+1. FRENCH BOISERIE & CARVED MOLDINGS: Walls feature delicate French boiserie panel moldings, carved plaster wall cornices, and pale oak herringbone parquet flooring.`;
+          styleNegativesA00.push('dark heavy industrial concrete', 'flat modern drywall without moldings');
+        } else if (isItalian) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: MILANESE ARCHITECTURAL LUXURY]
+1. ROMAN TRAVERTINE & SMOKED WALNUT: Continuous full-span honed porous Roman travertine stone slabs and rich smoked dark walnut joinery, ultra-slim dark brushed titanium metal profiles, minimalist recessed reveal shadow gaps.`;
+          styleNegativesA00.push('traditional decorative moldings', 'rustic country wood', 'cheap plastic laminate');
+        }
+
         directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
+${topologyMandateA00 ? `${topologyMandateA00}\n` : ''}
+${styleMandateA00 ? `${styleMandateA00}\n` : ''}
 VISUAL ASSET ANCHOR:
 - REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.
 ${primaryProduct?.role === 'sofa_2seat' ? `   - TWO-SEATER PROPORTIONS: Strictly a TWO-SEATER sofa (exactly 2 seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle cushion). Generously wide horizontal proportion and low-slung stance (2.1m wide presence). Tailored contrasting welt cord piping along front edge and armrest contours.` : ''}
@@ -743,7 +1056,7 @@ SPATIAL & CAMERA DIRECTIVE:
 ${positivePrompt}
 
 CORE INVARIANTS:
-- PERSPECTIVE & LIGHTING: Eye-level standing camera height (135cm) with clean two-point architectural perspective and plumb vertical lines. Soft natural daylight streaming through side panoramic floor-to-ceiling windows. Continuous solid architectural feature wall centered behind sofa.
+- PERSPECTIVE & ARCHITECTURE: Ultra-wide architectural camera perspective with plumb vertical lines (26mm field of view). Faithfully manifest the distinctive architectural room topology, ceiling headroom, lighting atmosphere, and tailored interior wall materiality specified in the Spatial & Camera Directive.
 - SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
 - ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
@@ -752,6 +1065,8 @@ CORE INVARIANTS:
         const cleanNegativeConstraintsA00 = [
           negativePrompt,
           antiStickerNegatives,
+          ...topologyNegativesA00,
+          ...styleNegativesA00,
           'throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric pillow, blanket, clutter, floral armchair, patterned fabric chair, patchwork armchair',
           'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
           'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap',

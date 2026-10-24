@@ -145,7 +145,9 @@ router.post('/render-shot', async (req: Request, res: Response) => {
     const effectiveProductColor = productDNA?.colorCode || '干邑暖橙 (Cognac Amber)';
     const effectiveProductMaterial = productDNA?.leatherType || '南美进口头层牛皮 (半苯胺)';
     const effectiveProductRef = productReferenceImage || (productDNA as any)?.referenceImage;
-    const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    // A00 镜头为空间母版自身基准，重新生成或初创时绝不可传入旧母版作为背景真值锁死，否则会导致户型与美学风格无法生效
+    const effectiveSceneMasterRef = shotCode === 'A00' ? undefined : (sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey);
+    const referenceShotCode = (req.body as any)?.referenceShotCode || (sceneMasterReference as any)?.referenceShotCode;
 
     const positivePrompt = promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode} luxury ${effectiveProductName} in ${effectiveProductColor}`;
     const negativePrompt = promptSnapshot?.negativePrompt || '';
@@ -153,6 +155,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
     const imageResult = await SpaceImageGenerationService.generateAndStore({
       projectId,
       shotCode,
+      referenceShotCode,
       positivePrompt,
       negativePrompt,
       aspectRatio: generationSettings?.aspectRatio || '4:3',
@@ -366,7 +369,12 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const effectiveProductColor = productDNA?.colorCode || '干邑暖橙 (Cognac Amber)';
     const effectiveProductMaterial = productDNA?.leatherType || '南美进口头层牛皮 (半苯胺)';
     const effectiveProductRef = productReferenceImage || (productDNA as any)?.referenceImage;
-    const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    // 关键架构防线：A00 空间母版是整个空间与硬装的母体基准，渲染 A00 时绝对禁止传入旧母版作为背景参考图！
+    // 否则大模型会被强制锁定上一张旧母版的大理石和窗景（Zero background drift），导致用户切换户型（如壁炉下沉厅）和风格（如美式/法式）时无法生效！
+    const effectiveSceneMasterRef = shotCode === 'A00'
+      ? undefined
+      : (sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey);
+    const referenceShotCode = (req.body as any)?.referenceShotCode || (sceneMasterReference as any)?.referenceShotCode;
 
     const effectiveStyleName =
       (req.body as any).styleName ||
@@ -457,11 +465,14 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
 
         const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
 
+        const preserveBasePhotoOnly = Boolean((req.body as any).preserveBasePhotoOnly);
+
         try {
           const imageResult = await SpaceImageGenerationService.generateAndStore({
             projectId,
             shotCode,
             isHumanPass,
+            preserveBasePhotoOnly,
             humanLayout,
             selectedModels,
             characterReferenceImages,
@@ -484,10 +495,13 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             },
             ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
             productReferenceImage: effectiveProductRef,
+            referenceShotCode,
             sceneMasterReferenceImage: effectiveSceneMasterRef,
             currentShotReferenceImage: baseShotRef,
             roomName: effectiveRoomName,
             styleName: effectiveStyleName,
+            spacePreset: (req.body as any).spacePreset,
+            stylePreset: (req.body as any).stylePreset,
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
@@ -516,25 +530,51 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           }
 
           // 开启了 autoModelFallback 时的全自愈保护：
-          // 确定性渲染高保真空间母版底图，写入真实存储，杜绝假 URL 或 404 死链
           try {
-            const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
-              shotCode,
-              productName: effectiveProductName,
-              productColor: effectiveProductColor,
-              productRole: shotCode === 'A08' ? 'recliner_1seat' : (shotCode === 'A09' ? 'dining_table' : undefined),
-              roomName: effectiveRoomName,
-              styleName: effectiveStyleName,
-              camera: effectiveCamera,
-              variantIndex: v.idx,
-              variantTag: v.tag
-            });
+            let finalBuffer: Buffer | null = null;
+            let finalContentType = 'image/webp';
+
+            if (baseShotRef) {
+              const inlineShot = await SpaceImageGenerationService.resolveImageInline(baseShotRef);
+              if (inlineShot && inlineShot.data) {
+                const rawBaseBuf = Buffer.from(inlineShot.data, 'base64');
+                try {
+                  finalBuffer = await sharp(rawBaseBuf).webp({ quality: 90 }).toBuffer();
+                  finalContentType = 'image/webp';
+                } catch {
+                  finalBuffer = rawBaseBuf;
+                  finalContentType = inlineShot.mimeType || 'image/jpeg';
+                }
+              }
+            }
+
+            if (!finalBuffer) {
+              const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
+                shotCode,
+                productName: effectiveProductName,
+                productColor: effectiveProductColor,
+                productRole: shotCode === 'A08' ? 'recliner_1seat' : (shotCode === 'A09' ? 'dining_table' : undefined),
+                roomName: effectiveRoomName,
+                styleName: effectiveStyleName,
+                camera: effectiveCamera,
+                variantIndex: v.idx,
+                variantTag: v.tag
+              });
+
+              try {
+                finalBuffer = await sharp(fallbackBuf).webp({ quality: 90 }).toBuffer();
+                finalContentType = 'image/webp';
+              } catch {
+                finalBuffer = fallbackBuf;
+                finalContentType = 'image/svg+xml';
+              }
+            }
 
             await storage.put({
               bucketType: 'generated',
               objectKey,
-              buffer: fallbackBuf,
-              contentType: 'image/svg+xml',
+              buffer: finalBuffer,
+              contentType: finalContentType,
               metadata: {
                 projectId,
                 shotCode,
@@ -553,7 +593,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
               imageUrl: realProxyUrl,
               objectKey,
               thumbnailUrl: realProxyUrl,
-              summaryTag: `${v.tag} (高可用自愈方案)`,
+              summaryTag: baseShotRef ? '实拍底图保真 (云端故障·已保留原图)' : `${v.tag} (高可用自愈方案)`,
               promptFragment: v.promptAddon,
               seed: 1000 + v.idx,
               score: 91,

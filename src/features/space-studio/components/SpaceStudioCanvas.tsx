@@ -35,9 +35,14 @@ import {
   ChevronDown,
   GripHorizontal,
   Tag,
+  X,
   XCircle,
+  Trash2,
+  Compass,
+  Upload,
+  Clipboard,
   AlertTriangle,
-  Trash2
+  MoreHorizontal
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -129,6 +134,10 @@ interface SpaceStudioCanvasProps {
   onOpenResetModal?: () => void;
   onClearCurrentShotImage?: () => void;
   hasGenerations?: boolean;
+  onUploadShotPhoto?: (file: File) => void;
+  onPasteShotPhoto?: () => void;
+  autoModelFallback?: boolean;
+  onEnableAutoFallback?: () => void;
 }
 
 export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
@@ -141,6 +150,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   isGenerating,
   onGenerateCurrent,
   onCancelRendering,
+  onUploadShotPhoto,
+  onPasteShotPhoto,
   renderingShotCode,
   onOutpaint,
   isOutpainting = false,
@@ -176,7 +187,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   theme = 'dark',
   onOpenResetModal,
   onClearCurrentShotImage,
-  hasGenerations
+  hasGenerations,
+  autoModelFallback,
+  onEnableAutoFallback
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
@@ -184,8 +197,24 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   const [isResDropdownOpen, setIsResDropdownOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isOutpaintingMode, setIsOutpaintingMode] = useState(false);
   const [imageAspect, setImageAspect] = useState<number | null>(null);
+
+  // 点击外部自动收起所有顶部下拉面板
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#space-studio-top-hud')) {
+        setIsDownloadMenuOpen(false);
+        setIsResDropdownOpen(false);
+        setIsRatioDropdownOpen(false);
+        setIsMoreMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // 视口交互状态：自由缩放 (Zoom) 与光标平移 (Pan)
   const [zoom, setZoom] = useState<number>(1.0);
@@ -345,13 +374,19 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     candidateBatch?.candidates?.some((c) => c.id === selectedCandidateId)
   );
 
+  const hasAnyActualImage = Boolean(
+    (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
+    revisionFinalUrl ||
+    (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined)
+  );
+
   const rawCandidateUrl = triedFallback
     ? (localFileUrl || activeCandidate?.imageUrl || currentRevision?.imageUrl)
     : (
         (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
         revisionFinalUrl ||
         (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined) ||
-        localFileUrl
+        (hasAnyActualImage ? localFileUrl : undefined)
       );
 
   const currentImageUrl =
@@ -628,160 +663,166 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
         isLight ? 'bg-[#F2EFE9]' : 'bg-[#0f1118]'
       } ${isFullscreen ? 'fixed inset-0 z-50 p-4' : ''}`}
     >
-      {/* 1. TOP FLOATING HUD BAR */}
+      {/* 1. TOP FLOATING HUD BAR (精致流线型布局，无横向溢出，绝对定位不被裁切) */}
       <div
         id="space-studio-top-hud"
-        className={`h-12 border-b backdrop-blur-md px-3 sm:px-5 flex items-center justify-between z-20 shrink-0 transition-colors gap-2 overflow-x-auto no-scrollbar ${
-          isLight ? 'bg-white/95 border-stone-200 text-stone-800 shadow-2xs' : 'bg-[#161822]/90 border-white/10 text-stone-100'
+        className={`h-12 border-b backdrop-blur-md px-3 sm:px-4 flex items-center justify-between z-30 shrink-0 transition-colors gap-2 overflow-visible relative ${
+          isLight ? 'bg-white/95 border-stone-200 text-stone-800 shadow-2xs' : 'bg-[#161822]/95 border-white/10 text-stone-100'
         }`}
       >
-        {/* Left: Active Shot Tag */}
-        <div className="flex items-center gap-2 min-w-0 shrink-0">
-          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs whitespace-nowrap shrink-0 ${
+        {/* 左侧：镜头标识与状态 */}
+        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs whitespace-nowrap shrink-0 ${
             isLight ? 'bg-stone-50 border-stone-200 text-stone-900 shadow-2xs font-medium' : 'bg-black/40 border-white/10 text-white'
           }`}>
             <span className={`font-mono font-bold ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>{activeShot.templateCode}</span>
             <span className={isLight ? 'text-stone-300' : 'text-neutral-500'}>·</span>
-            <span className="font-semibold max-w-[140px] sm:max-w-[220px] md:max-w-[300px] truncate" title={activeShot.name}>{activeShot.name}</span>
+            <span className="font-semibold max-w-[100px] sm:max-w-[160px] md:max-w-[220px] truncate" title={activeShot.name}>{activeShot.name}</span>
           </div>
 
-          <span className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
-            isLight ? 'bg-stone-100/90 border-stone-200 text-stone-600' : 'bg-black/20 border-white/5 text-neutral-400'
-          }`}>
-            <span>{activeShot.camera.lensMm}mm</span>
-            <span>·</span>
-            <span>{activeShot.camera.heightCm}cm 黄金机位</span>
-            <span>·</span>
-            <span className={`font-semibold ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>黄金分割构图</span>
+          <span
+            className={`hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+              isLight ? 'bg-stone-100/90 border-stone-200 text-stone-600' : 'bg-black/20 border-white/5 text-neutral-400'
+            }`}
+            title={`${activeShot.camera.lensMm}mm 焦段 · ${activeShot.camera.heightCm}cm 黄金视高 · 构图基准`}
+          >
+            <span>{activeShot.templateCode === 'A00' ? 26 : activeShot.camera.lensMm}mm</span>
           </span>
 
-          {activeShot.templateCode !== 'A00' && sceneMaster?.isLocked && (
-            <span className={`hidden md:inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium whitespace-nowrap shrink-0 ${
-              isLight ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-emerald-300 bg-emerald-950/60 border-emerald-800/60'
-            }`}>
-              <ShieldCheck className={`w-3 h-3 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`} />
-              <span>A00 空间与家具世界已锁定</span>
-            </span>
-          )}
-
+          {/* 紧凑状态微章 */}
           {isFailed ? (
-            <span className={`flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full border font-semibold whitespace-nowrap shrink-0 ${
+            <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap shrink-0 ${
               isLight ? 'text-rose-800 bg-rose-50 border-rose-300' : 'text-rose-400 bg-rose-950/60 border-rose-800/60'
             }`}>
-              <AlertCircle className="w-2.5 h-2.5" /> 生成失败/异常
+              <AlertCircle className="w-2.5 h-2.5" /> 失败
             </span>
           ) : currentImageUrl && !imageError ? (
             <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap shrink-0 ${
               isLight ? 'text-emerald-800 bg-emerald-50 border-emerald-300' : 'text-emerald-400 bg-emerald-950/60 border-emerald-800/60'
             }`}>
-              <CheckCircle2 className="w-2.5 h-2.5" /> 渲染完成
+              <CheckCircle2 className="w-2.5 h-2.5" /> 完成
             </span>
           ) : isGenerating ? (
-            <span className={`flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full animate-pulse font-semibold border whitespace-nowrap shrink-0 ${
+            <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full animate-pulse font-semibold border whitespace-nowrap shrink-0 ${
               isLight ? 'text-amber-900 bg-amber-100 border-amber-300' : 'text-amber-300 bg-amber-500/20 border-amber-500/40'
             }`}>
-              <RefreshCw className="w-2.5 h-2.5 animate-spin" /> 正在生成 4 候选...
+              <RefreshCw className="w-2.5 h-2.5 animate-spin" /> 生成中
             </span>
-          ) : (
-            <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${
-              isLight ? 'text-stone-500 bg-stone-100 border-stone-200' : 'text-neutral-400 bg-black/30 border-white/10'
-            }`}>
-              待渲染
-            </span>
-          )}
+          ) : null}
+        </div>
 
-          {/* 镜头生成历史版本快速切换条 (同镜头多版本秒级切换对比) */}
+        {/* 中间：多版本快速切换分段胶囊（紧凑平铺，告别横向拖动，版本悬停即带叉号） */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {activeShot.revisions.length > 1 && (
-            <div className={`hidden md:flex items-center gap-1 px-1.5 py-0.5 rounded-lg border text-xs whitespace-nowrap shrink-0 ${
+            <div className={`flex items-center gap-1 p-0.5 rounded-xl border text-xs whitespace-nowrap shrink-0 ${
               isLight ? 'bg-stone-100/90 border-stone-200 shadow-2xs' : 'bg-black/40 border-white/10'
             }`}>
-              <span className="text-[10px] text-amber-500 font-bold flex items-center gap-0.5 px-1 whitespace-nowrap shrink-0">
-                <History className="w-3 h-3" />
-                <span>历史版本({activeShot.revisions.length}):</span>
-              </span>
-              {activeShot.revisions.map((rev, revIdx) => {
-                const isSelected = rev.id === activeShot.currentRevisionId || (!activeShot.currentRevisionId && revIdx === 0);
-                const isHuman = rev.revisionType === 'human' || rev.id.includes('human');
-                const isOutpaint = rev.id.includes('outpaint') || rev.label?.includes('扩图');
-                return (
-                  <button
-                    key={rev.id}
-                    onClick={() => onSelectRevision?.(activeShot.id, rev.id)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
-                      isSelected
-                        ? isHuman
-                          ? 'bg-purple-600 text-white shadow-xs'
-                          : isOutpaint
-                          ? 'bg-cyan-600 text-white shadow-xs'
-                          : 'bg-amber-500 text-black shadow-xs'
-                        : isLight ? 'text-stone-600 hover:bg-stone-200' : 'text-neutral-400 hover:text-white hover:bg-white/10'
-                    }`}
-                    title={`${rev.label || `版本 ${rev.revisionNumber}`} (点击切换当前视图)`}
-                  >
-                    {isOutpaint ? <Maximize2 className="w-2.5 h-2.5" /> : isHuman ? <Users className="w-2.5 h-2.5" /> : <Layers className="w-2.5 h-2.5" />}
-                    <span className="whitespace-nowrap">{isOutpaint ? '扩图版' : isHuman ? '人物版' : '纯空间'} (v{rev.revisionNumber || (activeShot.revisions.length - revIdx)})</span>
-                  </button>
-                );
-              })}
+              <div className="flex items-center gap-0.5">
+                {activeShot.revisions.map((rev, revIdx) => {
+                  const isSelected = rev.id === activeShot.currentRevisionId || (!activeShot.currentRevisionId && revIdx === 0);
+                  const isHuman = rev.revisionType === 'human' || rev.id.includes('human');
+                  const isOutpaint = rev.id.includes('outpaint') || rev.label?.includes('扩图');
+                  const isUpload = rev.provenance === 'PROVIDED' || rev.label?.includes('实拍');
+                  const revName = isUpload ? '实拍' : isOutpaint ? '扩图' : isHuman ? '人物' : '空间';
+                  const revNum = rev.revisionNumber || (activeShot.revisions.length - revIdx);
+                  const isMasterBenchmark = activeShot.templateCode === 'A00' && isSelected;
+
+                  return (
+                    <div
+                      key={rev.id}
+                      className={`group relative flex items-center rounded-lg text-[10px] font-bold transition whitespace-nowrap shrink-0 ${
+                        isSelected
+                          ? isHuman
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : isOutpaint
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : 'bg-amber-500 text-stone-950 shadow-xs ring-1 ring-amber-400'
+                          : isLight
+                          ? 'bg-white hover:bg-stone-200 text-stone-700 border border-stone-200/80'
+                          : 'bg-white/5 hover:bg-white/15 text-neutral-300 border border-white/5'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSelectRevision?.(activeShot.id, rev.id)}
+                        className="pl-2 pr-1.5 py-1 flex items-center gap-1 cursor-pointer"
+                        title={`${rev.label || `版本 v${revNum}`} (点击切换)`}
+                      >
+                        {isMasterBenchmark ? (
+                          <Star className="w-2.5 h-2.5 text-stone-950 fill-stone-950 shrink-0" />
+                        ) : isHuman ? (
+                          <Users className="w-2.5 h-2.5" />
+                        ) : (
+                          <Layers className="w-2.5 h-2.5" />
+                        )}
+                        <span>{revName} v{revNum}</span>
+                      </button>
+
+                      {/* 悬停快捷删除单个版本 */}
+                      {activeShot.revisions.length > 1 && onDeleteRevision && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`确定删除版本【${rev.label || `${revName} v${revNum}`}】吗？`)) {
+                              onDeleteRevision(activeShot.id, rev.id);
+                            }
+                          }}
+                          className={`pr-1.5 pl-0.5 py-1 opacity-60 hover:opacity-100 transition cursor-pointer ${
+                            isSelected ? 'text-stone-950 hover:text-red-700' : 'text-stone-400 hover:text-red-500'
+                          }`}
+                          title="删除此版本"
+                        >
+                          <X className="w-2.5 h-2.5 hover:scale-125 transition-transform" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               {/* 前后对比按钮 */}
               <button
                 onClick={() => setIsCompareMode(!isCompareMode)}
-                className={`ml-1 px-2 py-0.5 rounded text-[10px] font-bold border transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                   isCompareMode
                     ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
-                    : isLight ? 'border-stone-300 text-stone-700 hover:bg-stone-200' : 'border-white/10 text-neutral-300 hover:bg-white/10'
+                    : isLight ? 'border-stone-300 bg-white text-stone-700 hover:bg-stone-200' : 'border-white/10 text-neutral-300 hover:bg-white/10'
                 }`}
-                title="同镜头前后版本对比模式（纯空间 vs 人物入座）"
+                title="同镜头前后版本对比模式"
               >
                 <Columns className="w-2.5 h-2.5 shrink-0" />
-                <span className="whitespace-nowrap">{isCompareMode ? '退出对比' : '前后对比'}</span>
+                <span className="whitespace-nowrap">{isCompareMode ? '退出对比' : '对比'}</span>
               </button>
             </div>
           )}
         </div>
 
-        {/* Right: Tools & Aspect Ratio */}
+        {/* 右侧：规格切换、核心导出与工具菜单 */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* 清除当前镜头生成画面结果 */}
-          {currentImageUrl && onClearCurrentShotImage && (
-            <button
-              onClick={() => {
-                if (window.confirm(`确定清除镜头 ${activeShot.templateCode} 的当前生成画面吗？清除后将恢复待出图状态。`)) {
-                  onClearCurrentShotImage();
-                }
-              }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0 shadow-2xs ${
-                isLight
-                  ? 'border-stone-200 bg-white hover:bg-rose-50 text-stone-600 hover:text-rose-700 hover:border-rose-300'
-                  : 'border-white/10 bg-black/40 hover:bg-rose-950/40 text-neutral-300 hover:text-rose-300 hover:border-rose-700/60'
-              }`}
-              title={`清除镜头 ${activeShot.templateCode} 当前渲染的生成画面结果`}
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-              <span className="whitespace-nowrap">清除画面</span>
-            </button>
-          )}
-
-          {/* Resolution Badge & Dropdown */}
+          {/* 出图精度 (Resolution) 下拉胶囊 */}
           <div className="relative shrink-0">
             <button
-              onClick={() => setIsResDropdownOpen(!isResDropdownOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono transition cursor-pointer whitespace-nowrap shrink-0 ${
+              onClick={() => {
+                setIsResDropdownOpen(!isResDropdownOpen);
+                setIsRatioDropdownOpen(false);
+                setIsDownloadMenuOpen(false);
+                setIsMoreMenuOpen(false);
+              }}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-mono transition cursor-pointer whitespace-nowrap shrink-0 ${
                 isLight
                   ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-800 shadow-2xs'
                   : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-200'
               }`}
               title="切换当前镜头出图精度 (Resolution)"
             >
-              <span className="font-bold text-amber-500 font-mono whitespace-nowrap">{resolution}</span>
-              <span className={`text-[10px] whitespace-nowrap ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
-                {calculateRenderDimensions(aspectRatio, resolution).text.replace(' px', '')}
-              </span>
+              <span className="font-bold text-amber-500 font-mono">{resolution}</span>
+              <ChevronDown className="w-3 h-3 opacity-60" />
             </button>
 
             {isResDropdownOpen && (
-              <div className={`absolute right-0 top-full mt-1 w-52 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 ${
-                isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-[#161822] border-white/15 text-neutral-200'
+              <div className={`absolute right-0 top-full mt-2 w-48 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 ${
+                isLight ? 'bg-white border-stone-200 text-stone-800 ring-1 ring-black/5' : 'bg-[#181a24] border-white/15 text-neutral-200 ring-1 ring-white/10'
               }`}>
                 <div className={`px-2 py-1 text-[10px] font-semibold border-b ${isLight ? 'border-stone-100 text-stone-400' : 'border-white/10 text-neutral-400'}`}>
                   选择出图精度 (Resolution)
@@ -815,11 +856,16 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             )}
           </div>
 
-          {/* Aspect Ratio Selector */}
+          {/* 画幅比例下拉胶囊 */}
           <div className="relative shrink-0">
             <button
-              onClick={() => setIsRatioDropdownOpen(!isRatioDropdownOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono transition cursor-pointer whitespace-nowrap shrink-0 ${
+              onClick={() => {
+                setIsRatioDropdownOpen(!isRatioDropdownOpen);
+                setIsResDropdownOpen(false);
+                setIsDownloadMenuOpen(false);
+                setIsMoreMenuOpen(false);
+              }}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-mono transition cursor-pointer whitespace-nowrap shrink-0 ${
                 isLight
                   ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-800 shadow-2xs'
                   : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-200'
@@ -827,12 +873,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               title="切换画幅比例"
             >
               <Ratio className={`w-3.5 h-3.5 shrink-0 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} />
-              <span className="whitespace-nowrap">{IMAGE_ASPECT_SPECS[aspectRatio]?.label || aspectRatio}</span>
+              <span className="font-mono">{aspectRatio}</span>
+              <ChevronDown className="w-3 h-3 opacity-60" />
             </button>
 
             {isRatioDropdownOpen && (
-              <div className={`absolute right-0 top-full mt-1 w-56 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 ${
-                isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-[#161822] border-white/15 text-neutral-200'
+              <div className={`absolute right-0 top-full mt-2 w-52 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 ${
+                isLight ? 'bg-white border-stone-200 text-stone-800 ring-1 ring-black/5' : 'bg-[#181a24] border-white/15 text-neutral-200 ring-1 ring-white/10'
               }`}>
                 <div className={`px-2 py-1 text-[10px] font-semibold border-b ${isLight ? 'border-stone-100 text-stone-400' : 'border-white/10 text-neutral-400'}`}>
                   选择摄影画幅规格
@@ -864,82 +911,87 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             )}
           </div>
 
-          {/* Download Button with Format Options */}
+          {/* 核心操作：导出原图（高对比度设计，点击箭头展开规格面板，绝不被遮挡） */}
           {currentImageUrl && !imageError && (
             <div className="relative shrink-0">
-              <div className="flex items-center">
+              <div className="flex items-center shadow-xs rounded-lg overflow-hidden border border-amber-500/40">
                 <button
                   onClick={() => handleDownloadFullResolution('jpg')}
                   disabled={isDownloading}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-l-lg border transition cursor-pointer text-xs font-medium whitespace-nowrap shrink-0 disabled:opacity-50 ${
-                    isLight
-                      ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 shadow-2xs'
-                      : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-300 hover:text-white'
-                  }`}
-                  title="下载高保真画册原图 (JPEG 98% 超清品质)"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold transition cursor-pointer text-xs whitespace-nowrap shrink-0 disabled:opacity-50"
+                  title="直接下载高保真画册原图 (JPEG 98% 超清品质)"
                 >
                   {isDownloading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                   ) : (
-                    <Download className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <Download className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
                   )}
-                  <span className="hidden sm:inline font-mono text-[11px] whitespace-nowrap">导出原图</span>
+                  <span className="font-mono text-xs whitespace-nowrap">导出原图</span>
                 </button>
 
                 <button
-                  onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
+                  onClick={() => {
+                    setIsDownloadMenuOpen(!isDownloadMenuOpen);
+                    setIsResDropdownOpen(false);
+                    setIsRatioDropdownOpen(false);
+                    setIsMoreMenuOpen(false);
+                  }}
                   disabled={isDownloading}
-                  className={`px-1.5 py-1 rounded-r-lg border-y border-r transition cursor-pointer text-xs disabled:opacity-50 ${
-                    isLight
-                      ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-600 hover:text-stone-900 shadow-2xs'
-                      : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-300 hover:text-white'
-                  }`}
-                  title="选择导出格式与品质"
+                  className="px-1.5 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 border-l border-amber-600/30 transition cursor-pointer text-xs disabled:opacity-50"
+                  title="选择导出格式与品质规格"
                 >
-                  <ChevronDown className="w-3.5 h-3.5" />
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isDownloadMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
+              {/* 下拉面板：z-50，置于最顶层，彻底解决遮挡问题 */}
               {isDownloadMenuOpen && (
-                <div className={`absolute right-0 top-full mt-1 w-64 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 ${
-                  isLight ? 'bg-white border-stone-200 text-stone-800' : 'bg-[#161822] border-white/15 text-neutral-200'
+                <div className={`absolute right-0 top-full mt-2 w-72 border rounded-2xl shadow-2xl p-2 z-50 space-y-1.5 animate-in fade-in slide-in-from-top-2 duration-150 ${
+                  isLight ? 'bg-white border-stone-200 text-stone-800 ring-1 ring-black/5' : 'bg-[#181a24] border-white/15 text-neutral-200 ring-1 ring-white/10'
                 }`}>
-                  <div className={`px-2 py-1 text-[10px] font-semibold border-b ${isLight ? 'border-stone-100 text-stone-400' : 'border-white/10 text-neutral-400'}`}>
-                    选择原图导出规格
+                  <div className={`px-2 py-1 text-[11px] font-bold border-b flex items-center justify-between ${
+                    isLight ? 'border-stone-100 text-stone-500' : 'border-white/10 text-neutral-400'
+                  }`}>
+                    <span>选择原图导出规格</span>
+                    <span className="text-[10px] font-mono opacity-60">真实物理尺寸</span>
                   </div>
 
                   <button
                     onClick={() => handleDownloadFullResolution('jpg')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
-                      isLight ? 'hover:bg-amber-50 text-stone-800' : 'hover:bg-amber-500/10 text-neutral-200'
+                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between transition cursor-pointer border ${
+                      isLight ? 'hover:bg-amber-50/80 border-transparent hover:border-amber-200 text-stone-800' : 'hover:bg-amber-500/10 border-transparent hover:border-amber-500/30 text-neutral-200'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <FileImage className="w-4 h-4 text-amber-500 shrink-0" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
+                        <FileImage className="w-4 h-4" />
+                      </div>
                       <div>
-                        <div className="font-bold flex items-center gap-1">
-                          <span>超清 JPEG (推荐)</span>
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-500 font-mono">98% 质量</span>
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>超清 JPEG</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono font-bold">98% 品质 (推荐)</span>
                         </div>
-                        <div className="text-[10px] opacity-60">体积约 3~6 MB · 保持真实物理尺寸</div>
+                        <div className="text-[10px] opacity-60 mt-0.5">体积约 3~6 MB · 保持真实物理尺寸</div>
                       </div>
                     </div>
                   </button>
 
                   <button
                     onClick={() => handleDownloadFullResolution('png')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition cursor-pointer ${
-                      isLight ? 'hover:bg-amber-50 text-stone-800' : 'hover:bg-amber-500/10 text-neutral-200'
+                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between transition cursor-pointer border ${
+                      isLight ? 'hover:bg-emerald-50/80 border-transparent hover:border-emerald-200 text-stone-800' : 'hover:bg-emerald-500/10 border-transparent hover:border-emerald-500/30 text-neutral-200'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-4 h-4" />
+                      </div>
                       <div>
-                        <div className="font-bold flex items-center gap-1">
+                        <div className="font-bold flex items-center gap-1.5">
                           <span>无损原画 PNG</span>
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-500 font-mono">100% 无损</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold">100% 原始位图</span>
                         </div>
-                        <div className="text-[10px] opacity-60">体积约 8~18 MB · 工业印刷级无损</div>
+                        <div className="text-[10px] opacity-60 mt-0.5">体积约 8~18 MB · 工业印刷级无损</div>
                       </div>
                     </div>
                   </button>
@@ -948,11 +1000,11 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             </div>
           )}
 
-          {/* Maximize Canvas / Toggle Candidates Button */}
+          {/* 方案抽屉快捷展开/收起按钮 */}
           {candidateBatch && candidateBatch.candidates.length > 0 && (
             <button
               onClick={toggleCollapseBatchDrawer}
-              className={`px-2 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 text-xs whitespace-nowrap shrink-0 ${
+              className={`px-2 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1 text-xs whitespace-nowrap shrink-0 ${
                 isBatchDrawerCollapsed
                   ? isLight
                     ? 'border-amber-400 bg-amber-100 text-amber-900 font-bold shadow-xs'
@@ -964,45 +1016,80 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               title={isBatchDrawerCollapsed ? '展开精修方案抽屉' : '收起方案抽屉以最大化主视窗'}
             >
               {isBatchDrawerCollapsed ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronUp className="w-3.5 h-3.5 shrink-0" />}
-              <span className="hidden sm:inline text-[11px] whitespace-nowrap">
-                {isBatchDrawerCollapsed ? '展开方案' : '最大化主图'}
-              </span>
+              <span className="text-[11px] whitespace-nowrap">方案({candidateBatch.candidates.length})</span>
             </button>
           )}
 
-          {/* Product Annotations 1~14 Toggle Button */}
+          {/* 空间打标（若有） */}
           {annotations && annotations.length > 0 && (
             <button
               onClick={onToggleShowAnnotations}
-              className={`px-2 py-1 rounded-lg border transition cursor-pointer flex items-center gap-1.5 text-xs whitespace-nowrap shrink-0 ${
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
                 showAnnotations
-                  ? isLight
-                    ? 'border-rose-400 bg-rose-50 text-rose-900 font-bold shadow-xs'
-                    : 'border-rose-500/50 bg-rose-950/40 text-rose-300 font-bold shadow-xs'
-                  : isLight
-                  ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 shadow-2xs'
-                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-300 hover:text-white'
+                  ? isLight ? 'border-rose-400 bg-rose-50 text-rose-900 shadow-xs' : 'border-rose-500/50 bg-rose-950/40 text-rose-300 shadow-xs'
+                  : isLight ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 shadow-2xs' : 'border-white/10 bg-black/40 text-neutral-300'
               }`}
-              title={showAnnotations ? '隐藏 1~14 产品标注' : '显示 1~14 全案产品交互标注与视锥联动'}
+              title={showAnnotations ? '隐藏产品标注' : `显示产品标注 (${annotations.length})`}
             >
-              <Tag className={`w-3.5 h-3.5 shrink-0 ${showAnnotations ? 'text-rose-500' : 'text-amber-500'}`} />
-              <span className="hidden sm:inline text-[11px] whitespace-nowrap">
-                空间打标 ({annotations.length})
-              </span>
+              <Tag className={`w-3.5 h-3.5 ${showAnnotations ? 'text-rose-500' : 'text-amber-500'}`} />
             </button>
           )}
 
-          {/* Fullscreen Button */}
+          {/* 更多功能下拉收纳菜单（收纳清空全部版本等低频操作，避免横向挤爆工具栏） */}
+          <div className="relative shrink-0">
+            <button
+              onClick={() => {
+                setIsMoreMenuOpen(!isMoreMenuOpen);
+                setIsDownloadMenuOpen(false);
+                setIsResDropdownOpen(false);
+                setIsRatioDropdownOpen(false);
+              }}
+              className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                isLight
+                  ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 shadow-2xs'
+                  : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-300 hover:text-white'
+              }`}
+              title="更多操作"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+
+            {isMoreMenuOpen && (
+              <div className={`absolute right-0 top-full mt-2 w-52 border rounded-xl shadow-2xl p-1.5 z-50 space-y-1 animate-in fade-in duration-150 ${
+                isLight ? 'bg-white border-stone-200 text-stone-800 ring-1 ring-black/5' : 'bg-[#181a24] border-white/15 text-neutral-200 ring-1 ring-white/10'
+              }`}>
+                {currentImageUrl && onClearCurrentShotImage && (
+                  <button
+                    onClick={() => {
+                      setIsMoreMenuOpen(false);
+                      const msg = activeShot.revisions.length > 1
+                        ? `确定清空镜头 ${activeShot.templateCode} 的全部 ${activeShot.revisions.length} 个生成版本吗？`
+                        : `确定清除镜头 ${activeShot.templateCode} 的生成画面吗？`;
+                      if (window.confirm(msg)) {
+                        onClearCurrentShotImage();
+                      }
+                    }}
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span>清空本镜头所有版本</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 全屏品鉴按钮 */}
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className={`p-1.5 rounded-lg border transition cursor-pointer ${
               isLight
-                ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 hover:text-stone-900 shadow-2xs'
+                ? 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700 shadow-2xs'
                 : 'border-white/10 bg-black/40 hover:bg-black/60 text-neutral-300 hover:text-white'
             }`}
             title={isFullscreen ? '退出全屏' : '全屏品鉴'}
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
@@ -1298,7 +1385,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   <p className={`text-[11px] leading-relaxed text-left ${isLight ? 'text-stone-600' : 'text-neutral-400'}`}>
                     💡 <strong>故障容灾提示：</strong>若当前选定模型网络超时或上游接口不可用，可在右侧控制面板开启<strong className="text-amber-500 font-bold">【多模型故障自动轮换 (Auto-Fallback)】</strong>，系统将在主模型失败时自动顺延轮换（Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2 系列）。
                   </p>
-                  <div className="flex items-center gap-2.5 pt-1">
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                     <button
                       onClick={onGenerateCurrent}
                       className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
@@ -1306,9 +1393,22 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>立即重试生成</span>
                     </button>
+                    {autoModelFallback === false && onEnableAutoFallback && (
+                      <button
+                        onClick={() => {
+                          onEnableAutoFallback();
+                          setTimeout(() => onGenerateCurrent(), 50);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                        title="开启自动轮换并自动重试备选高可用模型"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>开启自动轮换并重试</span>
+                      </button>
+                    )}
                   </div>
                 </div>
-              ) : imageError ? (
+              ) : (imageError && currentImageUrl) ? (
                 <div className="flex flex-col items-center justify-center p-8 text-center space-y-3 max-w-sm">
                   <div className="w-12 h-12 rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-400 flex items-center justify-center">
                     <AlertCircle className="w-6 h-6" />
@@ -1317,7 +1417,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   <p className={`text-[11px] leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
                     当前画面图像无法加载（可能网络连接超时或资源失效）。您可以重新生成，或清除当前异常记录恢复初始状态。
                   </p>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                     <button
                       onClick={onGenerateCurrent}
                       className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
@@ -1325,6 +1425,44 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>重新生成当前画面</span>
                     </button>
+                    {onUploadShotPhoto && (
+                      <>
+                        <input
+                          id="canvas-upload-shot-input"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) onUploadShotPhoto(file);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('canvas-upload-shot-input')?.click()}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                          title="上传摄影师实拍的镜头照片，上传后可立即添加模特"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>上传拍摄照片 (+添模特)</span>
+                        </button>
+                      </>
+                    )}
+                    {onPasteShotPhoto && (
+                      <button
+                        type="button"
+                        onClick={onPasteShotPhoto}
+                        className={`px-3 py-2 rounded-xl border text-xs font-semibold transition flex items-center gap-1 cursor-pointer active:scale-95 ${
+                          isLight
+                            ? 'border-purple-300 bg-purple-50/70 text-purple-900 hover:bg-purple-100'
+                            : 'border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20'
+                        }`}
+                        title="从剪贴板粘贴实拍照片 (Ctrl+V)"
+                      >
+                        <Clipboard className="w-3 h-3 text-purple-400" />
+                        <span>粘贴照片</span>
+                      </button>
+                    )}
                     {onClearCurrentShotImage && (
                       <button
                         onClick={onClearCurrentShotImage}

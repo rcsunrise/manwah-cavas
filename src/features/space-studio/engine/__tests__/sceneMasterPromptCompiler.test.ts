@@ -21,14 +21,14 @@ describe('SceneMasterPromptCompiler (G2 A00 Master Spec)', () => {
     });
 
     expect(result.positivePrompt).toContain('MANWAH');
-    expect(result.positivePrompt).toContain('35mm');
+    expect(result.positivePrompt).toContain('26mm');
     expect(result.positivePrompt).toContain('Hasselblad');
     expect(result.positivePrompt).toContain(spacePreset.name);
     expect(result.positivePrompt).toContain(stylePreset.name);
 
-    // Ensure camera DNA is eye-level medium lens
-    expect(result.cameraSettings.lensMm).toBe(35);
-    expect(result.cameraSettings.heightCm).toBe(135);
+    // Ensure camera DNA is eye-level ultra-wide lens
+    expect(result.cameraSettings.lensMm).toBe(26);
+    expect(result.cameraSettings.heightCm).toBe(130);
     expect(result.cameraSettings.yawDeg).toBe(0);
 
     // Negative prompt must suppress plastic CGI and people in master pass
@@ -37,9 +37,10 @@ describe('SceneMasterPromptCompiler (G2 A00 Master Spec)', () => {
     expect(result.negativePrompt).toContain('watermark');
 
     // Architectural sofa-to-wall continuous backdrop and orthogonal perspective
-    expect(result.positivePrompt).toContain('continuous solid architectural backdrop');
-    expect(result.positivePrompt).toContain('side panoramic floor-to-ceiling window');
+    expect(result.positivePrompt).toContain('continuous full-span architectural feature wall');
+    expect(result.positivePrompt).toContain('panoramic glass curtain wall');
     expect(result.positivePrompt).toContain('strict orthogonal architectural grid alignment');
+    expect(result.negativePrompt).toContain('isolated center pillar');
     expect(result.negativePrompt).toContain('sofa overlapping window and wall seam');
     expect(result.negativePrompt).toContain('crooked sofa angle');
     expect(result.negativePrompt).toContain('mismatched perspective alignment');

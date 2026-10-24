@@ -402,8 +402,8 @@ export function resolveCompositeMaterialDna(rawMat?: string, contextRole?: strin
   if (/头层牛皮|真皮|半苯胺|全苯胺|牛皮|小牛皮|leather|saddle/i.test(lower)) {
     return {
       materialEn: 'genuine top-grain semi-aniline cowhide leather',
-      craftsmanshipDirective: 'authentic natural grain with delicate micro-porous texture, soft supple leather drape with natural ergonomic tension folds, artisanal French double-stitched piping running along outer contours',
-      antiStickerNegative: 'fake bonded leather, synthetic pleather, peeling plastic finish, overly uniform artificial grain'
+      craftsmanshipDirective: 'authentic natural grain with delicate micro-porous texture, soft supple leather drape with natural ergonomic tension folds, rich organic leather luster under natural window illumination, delicate French double-stitched piping running along outer contours, luxurious tactile sheen (strictly NOT dull dusty grey, strictly NOT plastic artificial gloss)',
+      antiStickerNegative: 'fake bonded leather, synthetic pleather, peeling plastic finish, overly uniform artificial grain, plastic shiny reflection'
     };
   }
 

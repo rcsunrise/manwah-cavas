@@ -9,24 +9,25 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
     name: '通透横厅大平层 (Open Horizontal Flat)',
     propertyType: 'flat',
     layoutType: 'horizontal',
-    ceilingHeight: 3.2,
+    ceilingHeight: 3.5,
     zones: [
       { id: 'living_zone', name: '客厅会客区', primaryAxis: 'x', coveragePercentage: 60 },
       { id: 'balcony_zone', name: '全景景观阳台区', primaryAxis: 'x', coveragePercentage: 20 },
       { id: 'transition_zone', name: '过道走廊过渡区', primaryAxis: 'y', coveragePercentage: 20 }
     ],
     signatureFeatures: [
-      '开敞横向延展大横厅',
-      '全画幅无遮挡落地窗',
-      '极简无主灯悬浮吊顶',
-      '大理石通铺地坪'
+      '超宽 8~10 米开间横向延展大横厅',
+      '全景连续贯通式奢石与木饰面主背景墙',
+      '全画幅无遮挡落地大窗',
+      '大理石通铺地坪与宏大开阔视野'
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'architectural luxury open horizontal penthouse flat',
-      '3.2m high ceiling with seamless warm linear cove lighting',
-      'full-span floor-to-ceiling glass wall revealing skyline daylight',
-      'polished light greige porcelain stone flooring'
+      'architectural luxury grand open horizontal penthouse salon with expansive 8-10 meters bay width',
+      '3.5m high ceiling with seamless warm linear cove lighting and generous headroom',
+      'continuous full-span bookmatched marble and natural wood architectural backdrop wall spanning the full horizontal width, strictly NO center dividing pillar',
+      'full-span floor-to-ceiling glass wall revealing soft natural skyline daylight',
+      'polished light greige porcelain stone flooring with deep room perspective'
     ]
   },
   {
@@ -35,7 +36,7 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
     name: '端厅双景都会平层 (Dual-Aspect Corner Flat)',
     propertyType: 'flat',
     layoutType: 'double_living',
-    ceilingHeight: 3.4,
+    ceilingHeight: 3.6,
     zones: [
       { id: 'corner_living', name: '双面采光主客厅', primaryAxis: 'x', coveragePercentage: 55 },
       { id: 'dining_zone', name: '开放式奢石西厨餐区', primaryAxis: 'y', coveragePercentage: 30 },
@@ -43,15 +44,15 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
     ],
     signatureFeatures: [
       '270° 双向采光转角全景幕墙',
-      '奢石岛台餐客一体化',
-      '温润木饰面护墙板'
+      '超宽大横厅大平层全开间视野',
+      '温润木饰面与贯通奢石护墙板'
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'corner high-rise residence with 270-degree dual-aspect panorama',
-      'integrated open living and marble island dining area',
-      'natural rift-cut white oak architectural wall paneling',
-      'diffused volumetric morning sunlight pouring in'
+      'corner high-rise luxury residence with 270-degree dual-aspect panorama and expansive 8-meter open salon width',
+      'grand continuous architectural wall paneling combining bookmatched luxury stone and warm rift-cut oak',
+      'capacious open living floor plane effortlessly hosting a complete multi-piece seating arrangement',
+      'diffused volumetric morning sunlight pouring in through floor-to-ceiling glass'
     ]
   },
   {
@@ -68,15 +69,15 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
     ],
     signatureFeatures: [
       '6.2米挑高通天竖厅与大型艺术吊灯',
-      '室内绿意天井景观',
+      '超宽 8~10 米开间与开阔庭院全景',
       '艺术旋转雕塑楼梯背景'
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'majestic 6.2m double-height duplex architectural hall',
-      'dramatic monumental limestone feature wall',
-      'sculptural floating spiral staircase in subtle soft-focus background',
-      'tall floor-to-ceiling glass looking out to private courtyard foliage'
+      'majestic 6.2m double-height duplex architectural hall with expansive 8-10 meters panoramic bay width',
+      'continuous full-span dramatic monumental limestone feature wall across the wide backdrop, strictly uninterrupted and pillar-free',
+      'sculptural floating spiral staircase in subtle soft-focus side background',
+      'soaring floor-to-ceiling glass wall looking out to expansive private courtyard greenery and sky'
     ]
   },
   {
@@ -92,16 +93,17 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
       { id: 'terrace_zone', name: '水景露台过渡区', primaryAxis: 'x', coveragePercentage: 10 }
     ],
     signatureFeatures: [
-      '下沉 45cm 环抱温馨社交沙龙区',
-      '整面天然石灰华真火壁炉',
-      '温润大地色微水泥与羊毛地毯'
+      '超宽 8~10 米开间大尺度奢阔下沉社交沙龙',
+      '整面连续贯通天然石灰华与木饰面主背景',
+      '全画幅落地景观窗与温润大地色微水泥羊毛地毯'
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'intimate architect-designed sunken conversation living pit',
-      'honed travertine linear fireplace focal wall with soft ambient flame',
-      'plush custom wool area rug framing the seating sanctuary',
-      'warm recessed warm architectural lighting'
+      'expansive architect-designed luxury sunken conversation salon with generous 8-10 meters bay width and deep perspective',
+      'continuous full-span honed travertine and rift-cut oak architectural feature wall spanning the entire horizontal backdrop, strictly uninterrupted and free of dividing pillars or narrow alcoves',
+      'soaring full-height panoramic glass curtain wall bringing in abundant soft natural daylight',
+      'plush custom seamless wool area rug grounding the expansive seating ensemble with ample spatial breathing room',
+      'warm linear recessed architectural cove reveals'
     ]
   },
   {
@@ -117,15 +119,16 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
       { id: 'garden_veranda', name: '无边水景连廊', primaryAxis: 'x', coveragePercentage: 15 }
     ],
     signatureFeatures: [
-      '超宽无柱开间全景视野',
+      '超宽 8~10 米无柱开间全景视野',
       '东方留白与西式现代家具融合',
       '室外松柏水镜微景观映衬'
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'expansive luxury villa pavilion salon with column-free panorama',
-      'seamless boundary between indoor living and tranquil water garden outside',
-      'clean minimalist dark bronze metal profiles and serene limestone floors'
+      'monumental luxury villa pavilion salon with expansive 8-10 meters column-free horizontal panorama',
+      'continuous full-span architectural feature wall with clean minimalist dark bronze profiles and serene natural stone',
+      'seamless boundary between expansive indoor living and tranquil water garden outside through uninterrupted floor-to-ceiling glass',
+      'deep room perspective effortlessly hosting full luxury furniture ensemble'
     ]
   },
   {
@@ -147,9 +150,10 @@ export const SPACE_PROTOTYPES: SpacePreset[] = [
     ],
     referenceObjectKeys: [],
     promptFragments: [
-      'high-altitude penthouse salon above the city clouds',
-      '4.2m ceiling with grand architectural proportions',
-      'warm golden-hour afternoon light sweeping across the interior',
+      'high-altitude penthouse salon above the city clouds with grand 8-10 meters horizontal room span',
+      '4.2m ceiling with grand architectural proportions and deep floor plane vista',
+      'continuous full-span dark polished marble and brushed bronze architectural wall design across the background',
+      'warm golden-hour afternoon light sweeping across the grand expansive interior',
       'exclusive dark polished marble and brushed bronze accents'
     ]
   }

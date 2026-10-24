@@ -47,6 +47,8 @@ import {
   RenderComputeConfig,
   RenderResolution,
   calculateRenderDimensions,
+  StylePreset,
+  SpacePreset,
 } from '../../../types/spaceStudio';
 import {
   ActivePhotographyAssets,
@@ -113,6 +115,10 @@ interface SpaceStudioRightPanelProps {
 
   theme?: 'dark' | 'light';
 
+  // 风格与户型双向联动
+  selectedStyle?: StylePreset;
+  selectedSpace?: SpacePreset;
+
   // 自由拉伸宽度与折叠收起支持
   width?: number;
   isCollapsed?: boolean;
@@ -172,6 +178,8 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   negativePrompt = 'nsfw, low quality, deformed anatomy, blurry, distorted furniture, extra limbs, watermark',
   onChangeNegativePrompt,
   theme = 'dark',
+  selectedStyle,
+  selectedSpace,
   width = 368,
   isCollapsed = false,
   onToggleCollapse
@@ -934,6 +942,40 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   </span>
                 </button>
               </div>
+            ) : selectedStyle ? (
+              <div
+                className={`group flex flex-col p-2.5 rounded-lg border transition-all ${
+                  isLight
+                    ? 'bg-amber-50/60 border-amber-200/80 hover:border-amber-400'
+                    : 'bg-amber-950/20 border-amber-500/20 hover:border-amber-500/40'
+                }`}
+              >
+                <div
+                  onClick={() => setIsStyleModalOpen(true)}
+                  className="flex gap-2.5 cursor-pointer items-center"
+                >
+                  <div className={`w-11 h-11 rounded-lg overflow-hidden shrink-0 flex items-center justify-center font-bold text-xs ${
+                    isLight ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  }`}>
+                    {selectedStyle.code}
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    <div className={`text-xs font-bold transition-colors truncate ${
+                      isLight ? 'text-stone-900 group-hover:text-amber-800' : 'text-white group-hover:text-amber-300'
+                    }`}>
+                      {selectedStyle.name}
+                    </div>
+                    <div className={`text-[10px] flex items-center gap-1.5 mt-0.5 ${isLight ? 'text-stone-600' : 'text-neutral-400'}`}>
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-medium ${
+                        isLight ? 'bg-amber-200/70 text-amber-900' : 'bg-amber-500/20 text-amber-300'
+                      }`}>
+                        已选风格
+                      </span>
+                      <span className="truncate">{(selectedStyle as any).dominantTone || (selectedStyle as any).lightingTone || selectedStyle.colorPalette?.[0] || '预设风格'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
               <button
                 onClick={() => setIsStyleModalOpen(true)}
@@ -1499,6 +1541,36 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 每次 4 候选
               </span>
             </div>
+
+            {/* 检查当前镜头是否为实拍图上传底图 */}
+            {(() => {
+              const curRev = activeShot.revisions?.find(r => r.id === activeShot.currentRevisionId) || activeShot.revisions?.[0];
+              const isBaseUploaded = Boolean(
+                curRev?.provenance === 'PROVIDED' ||
+                curRev?.label?.includes('实拍') ||
+                (curRev as any)?.isUserUploaded ||
+                (activeShot as any)?.isUserUploadedPhoto
+              );
+
+              if (!isBaseUploaded) return null;
+
+              return (
+                <div className={`p-2.5 rounded-xl border text-[10px] leading-relaxed flex items-start gap-2 ${
+                  isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs' : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                }`}>
+                  <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold flex items-center gap-1">
+                      <span>实拍底图保真模式生效中</span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">已锁定</span>
+                    </div>
+                    <p className="mt-0.5 opacity-85">
+                      当前镜头使用实拍素材：添加模特时将 100% 保留原有建筑、光影及家具，绝不受预设户型与色彩美学干扰。
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Lock Invariants Badges */}
             <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-center">

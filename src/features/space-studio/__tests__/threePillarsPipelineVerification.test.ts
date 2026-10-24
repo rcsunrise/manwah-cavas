@@ -41,9 +41,9 @@ describe('三大核心业务链路全功能与自洽性验证 (Three Pillars Ver
       });
 
       // 验证美式风格下呈现美式材质
-      expect(promptAmerican.positivePrompt).toContain('continuous solid architectural backdrop feature wall');
+      expect(promptAmerican.positivePrompt).toContain('continuous full-span architectural feature wall');
       // 意式风格下不会强制写死 walnut paneling
-      expect(promptItalian.positivePrompt).toContain('continuous solid architectural backdrop feature wall');
+      expect(promptItalian.positivePrompt).toContain('continuous full-span architectural feature wall');
       expect(promptItalian.positivePrompt).toContain(spacePreset.name);
       expect(promptItalian.positivePrompt).toContain('6.2m high ceiling');
     });

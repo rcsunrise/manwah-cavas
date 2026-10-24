@@ -127,37 +127,56 @@ router.get(['/local-file', '/download'], async (req: Request, res: Response) => 
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'public, max-age=86400');
 
+    const resolveAndSendBuffer = async (data: Buffer, fallbackKey: string) => {
+      const sample = data.subarray(0, 120).toString('utf-8').trimStart();
+      const isSvg = sample.startsWith('<svg') || sample.startsWith('<?xml');
+
+      // 若内容为 SVG 但请求 key 要求位图格式（.webp / .png / .jpg），优先通过 sharp 转换为真实位图
+      if (isSvg && (fallbackKey.endsWith('.webp') || fallbackKey.endsWith('.png') || fallbackKey.endsWith('.jpg'))) {
+        try {
+          const converted = await sharp(data).webp({ quality: 90 }).toBuffer();
+          res.setHeader('Content-Type', 'image/webp');
+          return res.end(converted);
+        } catch {
+          // sharp 转换失败时，回退到正确的 svg 格式
+          res.setHeader('Content-Type', 'image/svg+xml');
+          return res.end(data);
+        }
+      }
+
+      if (isSvg) {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else if (data.length >= 12 && data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') {
+        res.setHeader('Content-Type', 'image/webp');
+      } else if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+        res.setHeader('Content-Type', 'image/jpeg');
+      } else if (data.length >= 8 && data[0] === 0x89 && data[1] === 0x4e && data[2] === 0x47) {
+        res.setHeader('Content-Type', 'image/png');
+      } else if (fallbackKey.endsWith('.webp')) {
+        res.setHeader('Content-Type', 'image/webp');
+      } else if (fallbackKey.endsWith('.png')) {
+        res.setHeader('Content-Type', 'image/png');
+      } else if (fallbackKey.endsWith('.jpg') || fallbackKey.endsWith('.jpeg')) {
+        res.setHeader('Content-Type', 'image/jpeg');
+      } else if (fallbackKey.endsWith('.svg')) {
+        res.setHeader('Content-Type', 'image/svg+xml');
+      } else {
+        res.setHeader('Content-Type', 'application/octet-stream');
+      }
+      return res.end(data);
+    };
+
     const filePath = storage.getLocalFilePath(key);
     if (filePath && fs.existsSync(filePath)) {
-      if (key.endsWith('.svg')) {
-        res.setHeader('Content-Type', 'image/svg+xml');
-      } else if (key.endsWith('.webp')) {
-        res.setHeader('Content-Type', 'image/webp');
-      } else if (key.endsWith('.jpg') || key.endsWith('.jpeg')) {
-        res.setHeader('Content-Type', 'image/jpeg');
-      } else if (key.endsWith('.png')) {
-        res.setHeader('Content-Type', 'image/png');
-      }
       const data = fs.readFileSync(filePath);
-      return res.end(data);
+      return await resolveAndSendBuffer(data, key);
     }
 
     // 若本地文件未就绪，尝试从 GCS/Object Storage 读取 Buffer 并流式直通响应 (避免重定向跨域与 NoSuchKey)
     try {
       const buf = await storage.getBuffer(key);
       if (buf && buf.length > 0) {
-        if (key.endsWith('.svg')) {
-          res.setHeader('Content-Type', 'image/svg+xml');
-        } else if (key.endsWith('.webp')) {
-          res.setHeader('Content-Type', 'image/webp');
-        } else if (key.endsWith('.jpg') || key.endsWith('.jpeg')) {
-          res.setHeader('Content-Type', 'image/jpeg');
-        } else if (key.endsWith('.png')) {
-          res.setHeader('Content-Type', 'image/png');
-        } else {
-          res.setHeader('Content-Type', 'application/octet-stream');
-        }
-        return res.send(buf);
+        return await resolveAndSendBuffer(buf, key);
       }
     } catch (streamErr: any) {
       console.warn(`[spaceStorageRoutes] Direct buffer stream error for ${key}:`, streamErr.message);
@@ -196,8 +215,7 @@ router.get(['/local-file', '/download'], async (req: Request, res: Response) => 
         contentType: 'image/svg+xml'
       }).catch(() => {});
 
-      res.setHeader('Content-Type', 'image/svg+xml');
-      return res.send(fallbackBuf);
+      return await resolveAndSendBuffer(fallbackBuf, key);
     } catch {
       res.status(404).send('File not found in storage');
     }

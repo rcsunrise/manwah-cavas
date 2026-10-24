@@ -189,7 +189,11 @@ describe('四要素全链路闭环 (Space Preset --- Style Preset --- Product En
     expect(compiledA02.positivePrompt).toContain('[SHOT MANDATE - A02 45-DEGREE 3+1 ENSEMBLE VIEW');
     expect(compiledA02.positivePrompt).toContain('45mm standard-wide prime lens at 115cm height');
     expect(compiledA02.positivePrompt).toContain('dynamic 40-to-45 degree side isometric perspective');
+    expect(compiledA02.positivePrompt).toContain('[STRICT 3+1 CONVERSATIONAL SALON CHOREOGRAPHY]');
+    expect(compiledA02.positivePrompt).toContain('DUAL NESTING CENTER COFFEE TABLES');
+    expect(compiledA02.positivePrompt).toContain('OPEN-PLAN VISTA');
     expect(compiledA02.negativePrompt).toContain('flat frontal mugshot');
+    expect(compiledA02.negativePrompt).toContain('boxy closed small room');
 
     // 空间硬装背景继承
     expect(compiledA02.positivePrompt).toContain('顶层天际会所大宅');
