@@ -19,7 +19,8 @@ export const UploadProductImageSchema = z.object({
 export const AnalyzeProductRequestSchema = z.object({
   projectId: z.string().min(1).default('manwah-noble-space-01'),
   images: z.array(UploadProductImageSchema).min(1, 'At least one product image is required'),
-  userNotes: z.string().optional()
+  userNotes: z.string().optional(),
+  model: z.string().optional()
 });
 
 export const DisaggregatedProductItemSchema = z.object({
@@ -442,13 +443,12 @@ export class SpaceProductAnalysisService {
     let explanation = '';
 
     try {
-      const { ai, isValidKey } = await createServerGenAI(userId);
+      const { ai, config, isValidKey } = await createServerGenAI(userId);
 
       if (ai && isValidKey && storedReferences.length > 0) {
         const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
 
-        parts.push({
-          text: `你是一名敏华家居（CHEERS 芝华仕）顶级工业设计总监与家具视觉工程专家。
+        const promptText = `你是一名敏华家居（CHEERS 芝华仕）顶级工业设计总监与家具视觉工程专家。
 请对传入的沙发/家具实拍图、产品效果图或三维渲染图进行极其严谨的【物理真值与工程规格多模态读数 (Product Physical Truth & Spec Extraction)】。
 
 【读数核心目标与原则】
@@ -544,7 +544,10 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   "readoutConfidence": 95,
   "explanation": "深度解析完成，已成功提炼材质纹理与几何特征",
   "detectedProducts": []
-}`
+}`;
+
+        parts.push({
+          text: promptText
         });
 
         // 加入参考图的 base64 内容
@@ -557,33 +560,85 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           });
         }
 
-        // 优先使用当前环境最稳定的大模型通道，剔除配额耗尽的通道
-        const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-        let response: any = null;
+        // 优先使用用户选定模型，默认 gemini-3.7-flash，并配置高可用自动降级链路
+        const preferredModel = (input.model || '').trim() || 'gemini-3.7-flash';
+        const candidateModels = [
+          preferredModel,
+          'gemini-3.7-flash',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-2.5-flash',
+          'gemini-2.0-flash'
+        ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+        let responseText = '';
         for (const m of candidateModels) {
           try {
             console.log(`[SpaceProductAnalysisService] Initiating multi-modal analysis with model: ${m}...`);
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(`Timeout (${m}) after 60s`)), 60000)
-            );
-            const callPromise = ai.models.generateContent({
-              model: m,
-              contents: [{ role: 'user', parts: parts as any }],
-              config: {
-                responseMimeType: 'application/json'
+            if (m.includes('gpt') || m.includes('sol')) {
+              // OpenAI / GPT-Sol 路线：通过标准多模态 Chat Completions 接口分发
+              const openAiUrl = `${config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/+$/, '')}/v1/chat/completions`;
+              const openAiRes = await fetch(openAiUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${config.apiKey}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  model: m,
+                  messages: [
+                    {
+                      role: 'user',
+                      content: [
+                        { type: 'text', text: promptText },
+                        ...storedReferences.map((ref) => ({
+                          type: 'image_url',
+                          image_url: { url: `data:${ref.mimeType};base64,${ref.cleanBase64}` }
+                        }))
+                      ]
+                    }
+                  ],
+                  temperature: 0.2
+                }),
+                signal: AbortSignal.timeout(60000)
+              });
+
+              if (openAiRes.ok) {
+                const data = await openAiRes.json();
+                const content = data?.choices?.[0]?.message?.content || '';
+                if (content) {
+                  responseText = content;
+                  console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${responseText.length} chars)`);
+                  break;
+                }
+              } else {
+                console.warn(`[SpaceProductAnalysisService] Model ${m} HTTP ${openAiRes.status}:`, await openAiRes.text());
               }
-            });
-            response = await Promise.race([callPromise, timeoutPromise]);
-            if (response && response.text) {
-              console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${response.text.length} chars)`);
-              break;
+            } else {
+              // Gemini 原生视觉路线：通过 Google GenAI SDK 执行强类型 JSON 读数
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Timeout (${m}) after 60s`)), 60000)
+              );
+              const callPromise = ai.models.generateContent({
+                model: m,
+                contents: [{ role: 'user', parts: parts as any }],
+                config: {
+                  responseMimeType: 'application/json'
+                }
+              });
+              const response: any = await Promise.race([callPromise, timeoutPromise]);
+              if (response && response.text) {
+                responseText = response.text;
+                console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${responseText.length} chars)`);
+                break;
+              }
             }
           } catch (modelErr: any) {
             console.warn(`[SpaceProductAnalysisService] Model ${m} attempt notice:`, modelErr?.message);
           }
         }
 
-        const rawText = response?.text || '';
+        const rawText = responseText;
         const cleanText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
         const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -1010,12 +1065,11 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
     // 2. 调用多模态大模型进行【整景全套要素】结构化分析
     let rawAiResult: any = null;
     try {
-      const { ai, isValidKey } = await createServerGenAI(userId);
+      const { ai, config, isValidKey } = await createServerGenAI(userId);
       if (ai && isValidKey && storedReferences.length > 0) {
         const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
 
-        parts.push({
-          text: `你是一名敏华家居（CHEERS 芝华仕）顶级全案空间美学总监与高端大平层陈设设计大师。
+        const promptText = `你是一名敏华家居（CHEERS 芝华仕）顶级全案空间美学总监与高端大平层陈设设计大师。
 请对上传的【整套客厅/客餐厅全景实景图】进行极其细致的【整套场景资产结构化识别 (Whole-Scene Ensemble Dossier Extraction)】。
 区别于将家具割裂切碎的单品分割模式，我们要求你将该场景视为一个【高度协同的整体空间套组 (Whole-Scene Ensemble)】，直接识别并提取以下 7 大核心要素：
 
@@ -1140,7 +1194,10 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
   },
   "adaptiveStyles": ["现代美式都会宅", "意式轻奢", "极简高定", "新中式"],
   "dominantColors": ["复古深栗棕", "大理石暖白", "深黑胡桃木", "雅致暖灰"]
-}`
+}`;
+
+        parts.push({
+          text: promptText
         });
 
         for (const ref of storedReferences) {
@@ -1149,25 +1206,77 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           });
         }
 
-        const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+        // 优先使用用户选定模型，默认 gemini-3.7-flash，配置高可用平滑降级链路
+        const preferredModel = (input.model || '').trim() || 'gemini-3.7-flash';
+        const candidateModels = [
+          preferredModel,
+          'gemini-3.7-flash',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-2.5-flash',
+          'gemini-2.0-flash'
+        ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
         for (const m of candidateModels) {
           try {
             console.log(`[SpaceProductAnalysisService] Analyzing whole-scene ensemble with model: ${m}...`);
-            const callPromise = ai.models.generateContent({
-              model: m,
-              contents: [{ role: 'user', parts: parts as any }],
-              config: { responseMimeType: 'application/json' }
-            });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(`Timeout (${m}) after 65s`)), 65000)
-            );
-            const resp: any = await Promise.race([callPromise, timeoutPromise]);
-            if (resp?.text) {
-              const cleanText = resp.text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+            let respText = '';
+
+            if (m.includes('gpt') || m.includes('sol')) {
+              // OpenAI / GPT-Sol 路线：通过标准多模态 Chat Completions
+              const openAiUrl = `${config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/v1\/?$/, '').replace(/\/+$/, '')}/v1/chat/completions`;
+              const openAiRes = await fetch(openAiUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${config.apiKey}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  model: m,
+                  messages: [
+                    {
+                      role: 'user',
+                      content: [
+                        { type: 'text', text: promptText },
+                        ...storedReferences.map((ref) => ({
+                          type: 'image_url',
+                          image_url: { url: `data:${ref.mimeType};base64,${ref.cleanBase64}` }
+                        }))
+                      ]
+                    }
+                  ],
+                  temperature: 0.2
+                }),
+                signal: AbortSignal.timeout(65000)
+              });
+
+              if (openAiRes.ok) {
+                const data = await openAiRes.json();
+                respText = data?.choices?.[0]?.message?.content || '';
+              } else {
+                console.warn(`[SpaceProductAnalysisService] Ensemble analysis notice (${m}) HTTP ${openAiRes.status}:`, await openAiRes.text());
+              }
+            } else {
+              const callPromise = ai.models.generateContent({
+                model: m,
+                contents: [{ role: 'user', parts: parts as any }],
+                config: { responseMimeType: 'application/json' }
+              });
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Timeout (${m}) after 65s`)), 65000)
+              );
+              const resp: any = await Promise.race([callPromise, timeoutPromise]);
+              if (resp?.text) {
+                respText = resp.text;
+              }
+            }
+
+            if (respText) {
+              const cleanText = respText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
               const match = cleanText.match(/\{[\s\S]*\}/);
               if (match) {
                 rawAiResult = JSON.parse(match[0]);
-                console.log(`[SpaceProductAnalysisService] Whole-scene ensemble successfully extracted: ${rawAiResult?.name}`);
+                console.log(`[SpaceProductAnalysisService] Whole-scene ensemble successfully extracted via ${m}: ${rawAiResult?.name}`);
                 break;
               }
             }

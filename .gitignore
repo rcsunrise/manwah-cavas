@@ -38,3 +38,4 @@ P0_*.md
 *.sln
 *.sw?
 node_modules
+.jeikcode/codegraph/

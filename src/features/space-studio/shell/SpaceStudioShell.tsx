@@ -2268,9 +2268,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         ? diningTableProd
         : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]);
 
-      // 提取该核心单品的独立真值资产：优先使用独立切片原图 (如 cropBase64, cropImageUrl)
+      // 提取该核心单品的独立真值资产：当命中专属多角度工业真值(如45度/侧面)时优先采用，否则回退独立切片原图
       const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
+      const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
       const primaryRef =
+        (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
         primaryProd?.cropImageUrl ||
         primaryProd?.cropBase64 ||
         bestPrimaryView.reference?.publicUrl ||

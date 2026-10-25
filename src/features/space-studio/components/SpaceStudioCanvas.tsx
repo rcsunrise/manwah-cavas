@@ -969,7 +969,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <div>
                         <div className="font-bold flex items-center gap-1.5">
                           <span>超清 JPEG</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono font-bold">98% 品质 (推荐)</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono font-bold">98% 品质 (推荐)</span>
                         </div>
                         <div className="text-[10px] opacity-60 mt-0.5">体积约 3~6 MB · 保持真实物理尺寸</div>
                       </div>
@@ -989,7 +989,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <div>
                         <div className="font-bold flex items-center gap-1.5">
                           <span>无损原画 PNG</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold">100% 原始位图</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold">100% 原始位图</span>
                         </div>
                         <div className="text-[10px] opacity-60 mt-0.5">体积约 8~18 MB · 工业印刷级无损</div>
                       </div>
@@ -1265,15 +1265,15 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   )}
 
                   {/* Watermark in bottom right */}
-                  <div className={`absolute bottom-3 right-3 px-2.5 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono pointer-events-none flex items-center gap-1.5 ${
+                  <div className={`absolute bottom-3 right-3 px-2.5 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono pointer-events-none flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                     isLight ? 'bg-white/80 border-stone-200 text-stone-600 shadow-2xs' : 'bg-black/70 border-white/10 text-neutral-300'
                   }`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                     <span>MANWAH · 视觉驱动摄影母版</span>
                   </div>
 
                   {/* FLOATING INTERACTION HUD */}
-                  <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2.5 py-1 rounded-full backdrop-blur-xl border shadow-xl ${
+                  <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 z-30 w-max max-w-[calc(100%-24px)] whitespace-nowrap flex items-center gap-1 px-2.5 py-1 rounded-full backdrop-blur-xl border shadow-xl ${
                     isLight ? 'bg-white/95 border-stone-200 text-stone-800' : 'bg-black/80 border-white/15 text-white'
                   }`}>
                     <button
@@ -1281,12 +1281,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         e.stopPropagation();
                         handleZoomChange(-0.25);
                       }}
-                      className={`p-1.5 rounded-full transition cursor-pointer ${
+                      className={`p-1.5 rounded-full transition cursor-pointer shrink-0 ${
                         isLight ? 'hover:bg-stone-100 text-stone-600' : 'hover:bg-white/10 text-neutral-300'
                       }`}
                       title="缩小 (-25%)"
                     >
-                      <ZoomOut className="w-3.5 h-3.5" />
+                      <ZoomOut className="w-3.5 h-3.5 shrink-0" />
                     </button>
 
                     <button
@@ -1294,7 +1294,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         e.stopPropagation();
                         handleResetTransform();
                       }}
-                      className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold min-w-[48px] text-center cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold min-w-[48px] text-center cursor-pointer shrink-0 whitespace-nowrap ${
                         isLight ? 'text-amber-800' : 'text-amber-400'
                       }`}
                     >
@@ -1306,47 +1306,47 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         e.stopPropagation();
                         handleZoomChange(0.25);
                       }}
-                      className={`p-1.5 rounded-full transition cursor-pointer ${
+                      className={`p-1.5 rounded-full transition cursor-pointer shrink-0 ${
                         isLight ? 'hover:bg-stone-100 text-stone-600' : 'hover:bg-white/10 text-neutral-300'
                       }`}
                       title="放大 (+25%)"
                     >
-                      <ZoomIn className="w-3.5 h-3.5" />
+                      <ZoomIn className="w-3.5 h-3.5 shrink-0" />
                     </button>
 
-                    <div className={`w-px h-3.5 mx-0.5 ${isLight ? 'bg-stone-200' : 'bg-white/20'}`} />
+                    <div className={`w-px h-3.5 mx-0.5 shrink-0 ${isLight ? 'bg-stone-200' : 'bg-white/20'}`} />
 
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setFitMode((prev) => (prev === 'contain' ? 'cover' : 'contain'));
                       }}
-                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition flex items-center gap-1 cursor-pointer ${
+                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap ${
                         fitMode === 'cover'
                           ? isLight ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-amber-500/30 text-amber-300 border border-amber-500/40'
                           : isLight ? 'hover:bg-stone-100 text-stone-600' : 'hover:bg-white/10 text-neutral-300'
                       }`}
                     >
-                      {fitMode === 'contain' ? <Scan className="w-3 h-3" /> : <Maximize className="w-3 h-3" />}
-                      <span>{fitMode === 'contain' ? '适应' : '填满'}</span>
+                      {fitMode === 'contain' ? <Scan className="w-3 h-3 shrink-0" /> : <Maximize className="w-3 h-3 shrink-0" />}
+                      <span className="whitespace-nowrap">{fitMode === 'contain' ? '适应' : '填满'}</span>
                     </button>
 
-                    <div className={`w-px h-3.5 mx-0.5 ${isLight ? 'bg-stone-200' : 'bg-white/20'}`} />
+                    <div className={`w-px h-3.5 mx-0.5 shrink-0 ${isLight ? 'bg-stone-200' : 'bg-white/20'}`} />
 
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setIsOutpaintingMode(true);
                       }}
-                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1 cursor-pointer border ${
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1 cursor-pointer border shrink-0 whitespace-nowrap ${
                         isOutpaintingMode
                           ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
                           : isLight ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300/80 shadow-2xs' : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
                       }`}
                       title="智能扩图 (直接拖拽边框手柄向四周/左右/上下延展大视窗)"
                     >
-                      <Maximize2 className="w-3 h-3 text-amber-500" />
-                      <span>智能扩图</span>
+                      <Maximize2 className="w-3 h-3 text-amber-500 shrink-0" />
+                      <span className="whitespace-nowrap">智能扩图</span>
                     </button>
 
                     {(zoom !== 1.0 || pan.x !== 0 || pan.y !== 0) && (
@@ -1355,12 +1355,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                           e.stopPropagation();
                           handleResetTransform();
                         }}
-                        className={`p-1.5 rounded-full transition cursor-pointer ${
+                        className={`p-1.5 rounded-full transition cursor-pointer shrink-0 ${
                           isLight ? 'hover:bg-stone-100 text-amber-700' : 'hover:bg-white/10 text-amber-400'
                         }`}
                         title="复位视口"
                       >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     )}
                   </div>
@@ -1564,16 +1564,16 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 isLight ? 'bg-white/95 border-stone-200 text-stone-900 shadow-stone-200/50' : 'bg-[#14161f]/95 border-white/15 text-white'
               }`}>
                 {/* 方案标记 */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold flex items-center gap-1.5 text-amber-500">
-                    <Sparkle className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-amber-500 whitespace-nowrap shrink-0">
+                    <Sparkle className="w-3.5 h-3.5 shrink-0" />
                     <span>
                       {candidateBatch.candidates.length > 1
                         ? `精修方案 (共 ${candidateBatch.candidates.length} 款)`
                         : '精修母版方案'}
                     </span>
                   </span>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
                     isLight ? 'bg-stone-100 border-stone-200 text-stone-700' : 'bg-black/40 border-white/10 text-neutral-300'
                   }`}>
                     已选 #{activeCandidate?.variantIndex || 1}
@@ -1581,31 +1581,31 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 </div>
 
                 {/* 快捷操作 */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
                   <button
                     onClick={onRegenerateBatch}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
                     title="重新生成当前镜头方案"
                   >
-                    <RefreshCw className="w-3 h-3 text-amber-400" />
+                    <RefreshCw className="w-3 h-3 text-amber-400 shrink-0" />
                     <span>换一批</span>
                   </button>
 
                   <button
                     onClick={onKeepSpaceRefreshModel}
-                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 text-[10px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer hidden md:flex"
+                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 text-[10px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer hidden md:flex whitespace-nowrap shrink-0"
                     title="保持空间不变，重生人物"
                   >
-                    <User className="w-3 h-3 text-purple-400" />
+                    <User className="w-3 h-3 text-purple-400 shrink-0" />
                     <span>重生人物</span>
                   </button>
 
                   {activeCandidate && (
                     <button
                       onClick={() => onApplyCandidateAsFinal?.(activeCandidate)}
-                      className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-[10px] flex items-center gap-1 shadow-xs transition cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-[10px] flex items-center gap-1 shadow-xs transition cursor-pointer whitespace-nowrap shrink-0"
                     >
-                      <Check className="w-3 h-3 stroke-[3]" />
+                      <Check className="w-3 h-3 stroke-[3] shrink-0" />
                       <span>设为当前结果</span>
                     </button>
                   )}
@@ -1614,10 +1614,10 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 {/* 展开抽屉 */}
                 <button
                   onClick={toggleCollapseBatchDrawer}
-                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
                   title="展开精修方案抽屉与缩略图"
                 >
-                  <ChevronUp className="w-3.5 h-3.5" />
+                  <ChevronUp className="w-3.5 h-3.5 shrink-0" />
                   <span>展开候选方案</span>
                 </button>
               </div>
@@ -1641,10 +1641,10 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               {/* 方案卡片面板主体 */}
               <div className="flex-1 rounded-2xl bg-[#14161f]/95 border border-white/10 backdrop-blur-md shadow-2xl flex flex-col p-2.5 gap-2 overflow-hidden min-h-0">
                 {/* 标题栏与操作条 */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Sparkle className="w-3.5 h-3.5 text-amber-400" />
+                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5 whitespace-nowrap shrink-0">
+                      <Sparkle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span>
                         {candidateBatch.candidates.length > 1
                           ? `${candidateBatch.candidates.length} 张候选方案`
@@ -1655,15 +1655,15 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                           : '精修镜头方案'}
                       </span>
                     </span>
-                    <span className="text-[10px] text-neutral-400 font-mono">
+                    <span className="text-[10px] text-neutral-400 font-mono whitespace-nowrap shrink-0">
                       (已选 #{activeCandidate?.variantIndex || 1})
                     </span>
 
                     {/* 预设尺寸快速切换 */}
-                    <div className="hidden sm:flex items-center gap-1 ml-2 text-[9px] font-mono text-neutral-400">
+                    <div className="hidden sm:flex items-center gap-1 ml-2 text-[9px] font-mono text-neutral-400 whitespace-nowrap shrink-0">
                       <button
                         onClick={() => { setBatchDrawerHeight(140); setIsBatchDrawerCollapsed(false); }}
-                        className={`px-1.5 py-0.2 rounded hover:text-white cursor-pointer ${batchDrawerHeight < 170 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
+                        className={`px-1.5 py-0.5 rounded hover:text-white cursor-pointer whitespace-nowrap shrink-0 ${batchDrawerHeight < 170 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
                         title="紧凑高度 (140px)"
                       >
                         紧凑
@@ -1671,7 +1671,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <span>|</span>
                       <button
                         onClick={() => { setBatchDrawerHeight(200); setIsBatchDrawerCollapsed(false); }}
-                        className={`px-1.5 py-0.2 rounded hover:text-white cursor-pointer ${batchDrawerHeight >= 170 && batchDrawerHeight <= 250 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
+                        className={`px-1.5 py-0.5 rounded hover:text-white cursor-pointer whitespace-nowrap shrink-0 ${batchDrawerHeight >= 170 && batchDrawerHeight <= 250 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
                         title="舒适高度 (200px)"
                       >
                         舒适
@@ -1679,7 +1679,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <span>|</span>
                       <button
                         onClick={() => { setBatchDrawerHeight(300); setIsBatchDrawerCollapsed(false); }}
-                        className={`px-1.5 py-0.2 rounded hover:text-white cursor-pointer ${batchDrawerHeight > 250 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
+                        className={`px-1.5 py-0.5 rounded hover:text-white cursor-pointer whitespace-nowrap shrink-0 ${batchDrawerHeight > 250 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
                         title="大图高度 (300px)"
                       >
                         大图
@@ -1688,40 +1688,40 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   </div>
 
                   {/* 右侧动作条 */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <button
                       onClick={onRegenerateBatch}
-                      className="px-2 py-0.8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
                       title="重新生成当前镜头方案"
                     >
-                      <RefreshCw className="w-3 h-3 text-amber-400" />
+                      <RefreshCw className="w-3 h-3 text-amber-400 shrink-0" />
                       <span>换一批</span>
                     </button>
 
                     <button
                       onClick={onKeepSpaceRefreshModel}
-                      className="px-2 py-0.8 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-[10px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer hidden md:flex"
+                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/40 text-[10px] text-neutral-300 hover:text-purple-300 flex items-center gap-1 transition cursor-pointer hidden md:flex whitespace-nowrap shrink-0"
                       title="锁空间与家具不变，重新生成人物构图与细节"
                     >
-                      <User className="w-3 h-3 text-purple-400" />
+                      <User className="w-3 h-3 text-purple-400 shrink-0" />
                       <span>保持空间重生人物</span>
                     </button>
 
                     <button
                       onClick={onKeepModelRefreshPose}
-                      className="px-2 py-0.8 rounded-lg bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-[10px] text-neutral-300 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer hidden md:flex"
+                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-emerald-500/20 border border-white/10 hover:border-emerald-500/40 text-[10px] text-neutral-300 hover:text-emerald-300 flex items-center gap-1 transition cursor-pointer hidden md:flex whitespace-nowrap shrink-0"
                       title="轮换已导入角色并重新生成"
                     >
-                      <RefreshCw className="w-3 h-3 text-emerald-400" />
+                      <RefreshCw className="w-3 h-3 text-emerald-400 shrink-0" />
                       <span>替换角色重生</span>
                     </button>
 
                     {activeCandidate && (
                       <button
                         onClick={() => onApplyCandidateAsFinal?.(activeCandidate)}
-                        className="px-2.5 py-0.8 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-[10px] flex items-center gap-1 shadow-md transition cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg bg-amber-500 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-[10px] flex items-center gap-1 shadow-md transition cursor-pointer whitespace-nowrap shrink-0"
                       >
-                        <Check className="w-3 h-3 stroke-[3]" />
+                        <Check className="w-3 h-3 stroke-[3] shrink-0" />
                         <span>设为当前镜头结果</span>
                       </button>
                     )}
@@ -1729,7 +1729,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     {/* 收起抽屉按钮 */}
                     <button
                       onClick={toggleCollapseBatchDrawer}
-                      className="p-1 rounded-lg hover:bg-white/10 text-neutral-400 hover:text-white transition cursor-pointer ml-1"
+                      className="p-1 rounded-lg hover:bg-white/10 text-neutral-400 hover:text-white transition cursor-pointer ml-1 shrink-0"
                       title="收起此面板以最大化主视窗呈现面积"
                     >
                       <ChevronDown className="w-4 h-4" />
@@ -1778,7 +1778,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         </button>
 
                         {isSelected && (
-                          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.2 bg-amber-500 text-black rounded">
+                          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 bg-amber-500 text-black rounded whitespace-nowrap">
                             <Check className="w-2 h-2 stroke-[3]" /> 正在品鉴
                           </div>
                         )}

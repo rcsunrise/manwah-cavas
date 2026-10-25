@@ -73,8 +73,19 @@ export class SceneMasterPromptCompiler {
       let roleSpecificDesc = '';
       if (primaryProduct.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier) {
         const ens = primaryProduct.sceneEnsembleDossier;
+        const rawMain = ens.sofaSuite?.mainSofa?.color || primaryProduct.colors?.[0];
+        const rawRecliner = ens.sofaSuite?.reclinerChairs?.[0]?.color;
+        const mainSofaColor = translateColorToEnglish(rawMain, mainColor);
+        const hasRecliner = Boolean(ens.sofaSuite?.reclinerChairs && ens.sofaSuite.reclinerChairs.length > 0);
+        const reclinerColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainSofaColor;
+        const isDualTone = hasRecliner && rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim();
         const layoutDesc = ens.placementDirectives?.holisticLayoutPrompt || ens.dossierSummary;
-        roleSpecificDesc = `authentic complete luxury living room ensemble (${ens.name}, SKU: ${ens.sku || 'MW-ENS-SUITE'}). ${layoutDesc}. Coordinated architectural elements: [Seating: ${ens.sofaSuite?.description || 'luxury leather sofa suite'}]; [Tables: ${ens.coffeeTables?.description || 'natural marble center table and side tables'}]; [Rug: ${ens.carpetRug?.description || 'expansive plush wool area rug'}]; [Cabinetry: ${ens.credenzaSideboard?.presence ? ens.credenzaSideboard.description : 'curated low-profile credenza'}]; [Styling Decors: ${ens.softDecor?.description || 'designer sconces and curated botanicals'}]. Dimensions: ${dims}.`;
+
+        const seatingDesc = isDualTone
+          ? `[Seating: Main 3-seater sofa in ${mainSofaColor} paired with single accent armchair on left flank in contrasting ${reclinerColor}]`
+          : `[Seating: Cohesive sofa and matching single chair suite in ${mainSofaColor}]`;
+
+        roleSpecificDesc = `authentic complete luxury living room ensemble (${ens.name}, SKU: ${ens.sku || 'MW-ENS-SUITE'}). ${layoutDesc}. Coordinated architectural elements: ${seatingDesc}; [Tables: ${ens.coffeeTables?.description || 'natural marble center table and side tables'}]; [Rug: ${ens.carpetRug?.description || 'expansive plush wool area rug'}]; [Cabinetry: ${ens.credenzaSideboard?.presence ? ens.credenzaSideboard.description : 'curated low-profile credenza'}]; [Styling Decors: ${ens.softDecor?.description || 'designer sconces and curated botanicals'}]. Dimensions: ${dims}.`;
       } else {
         switch (primaryProduct.role) {
           case 'sofa_2seat':
@@ -107,9 +118,29 @@ export class SceneMasterPromptCompiler {
         ? 'Visual Invariants: strictly preserve authentic deep dark roasted leather richness from reference image; strictly forbid color lightening, pale caramel shift, or washed-out yellow tones; preserve exact design lines and materials.'
         : 'Visual Invariants: do not shift color to unintended dark red or burgundy; preserve exact design lines and materials.';
 
-      productClauses.push(
-        `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} STRICT COLOR AND MATERIAL FIDELITY: Finished in exact authentic ${mainColor}, crafted in ${mainMaterial}. Surface details: ${mainTexture}. ${colorAntiDriftDirective} ${rules ? rules + '.' : ''}`
-      );
+      if (primaryProduct.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier) {
+        const ens = primaryProduct.sceneEnsembleDossier;
+        const rawMain = ens.sofaSuite?.mainSofa?.color || primaryProduct.colors?.[0];
+        const rawRecliner = ens.sofaSuite?.reclinerChairs?.[0]?.color;
+        const mainSofaColor = translateColorToEnglish(rawMain, mainColor);
+        const hasRecliner = Boolean(ens.sofaSuite?.reclinerChairs && ens.sofaSuite.reclinerChairs.length > 0);
+        const reclinerColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainSofaColor;
+        const isDualTone = hasRecliner && rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim();
+
+        if (isDualTone) {
+          productClauses.push(
+            `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} DUAL-TONE SEATING COLOR FIDELITY: The 3-seater main sofa is crafted in authentic ${mainSofaColor}, whereas the single accent armchair on the left flank is STRICTLY finished in contrasting ${reclinerColor} upholstery, preserving its distinct modern profile. Surface details: ${mainTexture}. DO NOT paint the single chair in the main sofa's color (${mainSofaColor})! ${rules ? rules + '.' : ''}`
+          );
+        } else {
+          productClauses.push(
+            `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} COHESIVE SEATING COLOR FIDELITY: Finished in authentic ${mainSofaColor}. Surface details: ${mainTexture}. ${rules ? rules + '.' : ''}`
+          );
+        }
+      } else {
+        productClauses.push(
+          `MANDATORY HERO FURNITURE SPECIFICATION: ${roleSpecificDesc} STRICT COLOR AND MATERIAL FIDELITY: Finished in exact authentic ${mainColor}, crafted in ${mainMaterial}. Surface details: ${mainTexture}. ${colorAntiDriftDirective} ${rules ? rules + '.' : ''}`
+        );
+      }
     }
 
     // 次要家具配搭（仅包含已勾选关联的产品，支持动态名称/材质/色彩纯视觉英文翻译）

@@ -805,43 +805,42 @@ CRITICAL VANTAGE DIRECTIVE FOR SHOT A09:
 - LIVING SOFA OFF-CENTER: The three-seater living room sofa MUST NOT occupy center stage; dining suite takes 75%+ visual prominence.\n\n`
           : '';
 
-        let ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
+        const ref2SceneTag = isReferenceA01 ? 'Shot A01 (Grand Frontal Living Scene Master)' : 'Shot A00 (Scene Master Architectural Baseline)';
+        let ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag}:
    - Inherit the architectural walls, background geometry and finishes, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!`;
 
-        if (isReferenceA01) {
-          if (shotCode === 'A02' || isAngledHero) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL & FINISH DNA ONLY - STRICTLY DO NOT COPY CAMERA ANGLE):
-   - Reference Image 2 provides the authentic room materials (marble focal wall, ceiling lighting, floor tiles, daylight color) and furniture leather color tone.
-   - PERSPECTIVE ANGLE DECOUPLING: Reference Image 2 is a 0-degree straight-on frontal view. FOR SHOT A02, YOU MUST COMPLETELY DISCARD THE FRONTAL CAMERA ANGLE OF REFERENCE IMAGE 2 and rotate the camera 45° to the front-left corner! Render the exact same room and furniture ensemble, but seen from a dynamic 45-degree three-quarters diagonal vantage point!`;
-          } else if (shotCode === 'A03' || isHeroSofaFocus) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (GRAND LIVING SCENE MASTER - AUTHORITATIVE GROUND TRUTH - STRICTLY EXCLUDE SINGLE CHAIR):
-   - Reference Image 2 establishes the absolute visual ground truth for the room architecture (marble/wood feature wall, dual curved sconces/shelves, floor tiles, window daylight) AND the exact genuine leather grade and color tone for the 3-seater sofa.
-   - CAMERA & COMPOSITION DECOUPLING: Reference Image 2 is a 0-degree frontal 3+1 panorama. In Shot A03, you are framing the EXACT SAME 3-seater hero sofa from Reference Image 2 from a subtle 15-25 degree front-left three-quarters angle, with 100% focus on the 3-seater sofa alone! Completely crop out and exclude the single chair!`;
-          } else if (shotCode === 'A04') {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+        if (shotCode === 'A02' || isAngledHero) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (3D ROOM MATERIAL & FINISH DNA ONLY - STRICTLY DO NOT COPY 2D CAMERA ANGLE):
+   - Reference Image 2 provides the authentic 3D room materials (marble focal wall, ceiling lighting, floor tiles, daylight color) and furniture leather color tone.
+   - PERSPECTIVE ANGLE DECOUPLING: Reference Image 2 is a 0-degree straight-on frontal view. FOR SHOT A02, YOU MUST DISCARD THE 0° FRONTAL CAMERA ANGLE OF REFERENCE IMAGE 2 and rotate the camera 40-45° to the front-left! Render the exact same 3D room and furniture ensemble, but seen from a dynamic 45-degree three-quarters diagonal vantage point with diagonal floor vanishing lines!`;
+        } else if (shotCode === 'A03' || isHeroSofaFocus) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM FINISHES & HERO SOFA GROUND TRUTH - STRICTLY EXCLUDE SINGLE CHAIR):
+   - Reference Image 2 establishes visual ground truth for the room architecture (marble/wood feature wall, dual curved sconces/shelves, floor tiles, window daylight) AND the exact genuine leather grade and color tone for the 3-seater sofa.
+   - CAMERA & COMPOSITION DECOUPLING: Reference Image 2 is a wide frontal panorama. In Shot A03, you are framing the EXACT SAME 3-seater hero sofa from Reference Image 2 from a subtle 15-25 degree front-left three-quarters angle, with 100% focus on the 3-seater sofa alone! Completely crop out and exclude the single chair!`;
+        } else if (shotCode === 'A04') {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
    - Reference Image 2 provides authentic room finishes and sofa leather color tone.
    - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A04, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE SOFA AT A -15° DOWNWARD TILT! Completely discard the wide horizontal perspective of Reference Image 2!`;
-          } else if (shotCode === 'A05') {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+        } else if (shotCode === 'A05') {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
    - Reference Image 2 provides authentic room finishes and sofa leather color tone.
    - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A05, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE RIGHT SOFA ARMREST AT A +28° RIGHT ANGLE! Completely discard the frontal landscape composition of Reference Image 2!`;
-          } else if (shotCode === 'A06' || isZeroWallProfile) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM WALL FINISHES ONLY - STRICTLY DO NOT COPY 0-DEGREE FRONTAL ANGLE):
+        } else if (shotCode === 'A06' || isZeroWallProfile) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM WALL FINISHES ONLY - STRICTLY DO NOT COPY 0-DEGREE FRONTAL ANGLE):
    - Reference Image 2 shows the room from the front.
    - PERSPECTIVE DECOUPLING: FOR SHOT A06, YOU MUST PHYSICALLY ROTATE THE CAMERA 88° TO CAPTURE A PURE LATERAL PROFILE showing the sofa flush against the backdrop wall with <5cm zero-wall clearance! Discard the 0° frontal view of Reference Image 2!`;
-          } else if (shotCode === 'A07' || isLivingEnsembleMid) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM FINISHES & COFFEE TABLE REFERENCE - COMPRESS DEPTH):
+        } else if (shotCode === 'A07' || isLivingEnsembleMid) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM FINISHES & COFFEE TABLE REFERENCE - COMPRESS DEPTH):
    - Inherit room finishes, area rug, and coffee table designs from Reference Image 2.
    - PERSPECTIVE DECOUPLING: Use 55mm medium telephoto compression to bring the coffee table and sofa into a tight, cohesive conversational group, eliminating wide empty gaps from Reference Image 2!`;
-          } else if (shotCode === 'A08' || isReclinerMultiMode) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (ROOM ENVIRONMENT ONLY - COMPLETE HERO INVERSION):
+        } else if (shotCode === 'A08' || isReclinerMultiMode) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM ENVIRONMENT ONLY - COMPLETE HERO INVERSION):
    - Reference Image 2 provides the luxury room architecture, flooring, and window daylight.
    - HERO SUBJECT INVERSION: In Reference Image 2, the 3-seater sofa was centered. FOR SHOT A08, YOU MUST REMOVE THE 3-SEATER SOFA FROM CENTER STAGE AND FRAME THE SINGLE RECLINER ARMCHAIR AS THE 80% HERO PRODUCT in golden diagonal perspective!`;
-          } else if (shotCode === 'A09' || isDiningSuite) {
-            ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS SHOT A01 (OPEN-PLAN ARCHITECTURAL GROUND TRUTH - CAMERA SHIFT):
+        } else if (shotCode === 'A09' || isDiningSuite) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (OPEN-PLAN ARCHITECTURAL GROUND TRUTH - CAMERA SHIFT):
    - Reference Image 2 provides open-plan room finishes and daylight.
    - CAMERA SHIFT: In Reference Image 2, the camera was centered on the living room sofa. FOR SHOT A09, SHIFT THE CAMERA AXIS TO CENTER ON THE INTEGRATED DINING SUITE, without the living sofa blocking center frame!`;
-          }
         }
 
         let specificShotTopMandate = '';
@@ -924,19 +923,19 @@ ${(shotCode === 'A08' && activePrimaryProduct === primaryProduct)
   : `   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.`}
 ${(shotCode === 'A02' || isAngledHero)
   ? `   - MANDATORY PERSPECTIVE RE-ORIENTATION: Reference Image 2 shows the sofa from a 0-degree straight-on frontal view. For Shot A02, you MUST re-render the sofa and living room from a 45-degree diagonal three-quarters perspective, NOT from the flat frontal angle of Reference Image 2!`
-  : (shotCode === 'A03' && isReferenceA01)
+  : (shotCode === 'A03' || isHeroSofaFocus)
   ? `   - MANDATORY SUBTLE ANGLE ADJUSTMENT: Re-render from a subtle 15-25 degree oblique angle, 100% focusing on the 3-seater sofa and completely excluding the single chair.`
-  : (shotCode === 'A04' && isReferenceA01)
+  : (shotCode === 'A04')
   ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the hero sofa in 3:4 vertical composition at a -15° downward tilt.`
-  : (shotCode === 'A05' && isReferenceA01)
+  : (shotCode === 'A05')
   ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the right sofa armrest in 3:4 vertical composition at a +28° right angle.`
-  : (shotCode === 'A06' && isReferenceA01)
+  : (shotCode === 'A06' || isZeroWallProfile)
   ? `   - MANDATORY 88° LATERAL ROTATION: Rotate camera 88° to capture the sofa's pure side profile flush against the back wall (<5cm gap).`
-  : (shotCode === 'A07' && isReferenceA01)
+  : (shotCode === 'A07' || isLivingEnsembleMid)
   ? `   - MANDATORY 55mm MEDIUM GROUPING: Frame the sofa and coffee table in tight medium composition with depth compression.`
-  : (shotCode === 'A08' && isReferenceA01)
+  : (shotCode === 'A08' || isReclinerMultiMode)
   ? `   - MANDATORY RECLINER HERO FOCUS: Center and frame the matching single power recliner armchair as the hero piece, removing the 3-seater sofa from center stage.`
-  : (shotCode === 'A09' && isReferenceA01)
+  : (shotCode === 'A09' || isDiningSuite)
   ? `   - MANDATORY DINING VISTA ALIGNMENT: Focus on dining suite or open-plan continuous vista.`
   : '   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!'}
 ${ref2EnsembleDirective}
@@ -954,6 +953,8 @@ CORE INVARIANTS:
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
 - SHOWROOM POSTURE: ${shotCode === 'A02' ? 'Main sofa motorized footrests strictly remain closed and flush. The matching single recliner armchair may have its motorized footrest comfortably extended into ergonomic contour as in reference.' : (isFunctionalClosed ? 'All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base.' : 'Motion mechanism may be deployed as specified.')}`;
 
+        const isAngledOrProfile = ['A02', 'A04', 'A05', 'A06', 'A07', 'A08'].includes(shotCode) || isAngledHero || isZeroWallProfile;
+
         const cleanNegativeConstraints = [
           negativePrompt,
           antiStickerNegatives,
@@ -968,7 +969,7 @@ CORE INVARIANTS:
           'CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render',
           'double sofas, ghost sofa, overlapping couches, morphing furniture',
           'different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room',
-          'crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines',
+          isAngledOrProfile ? 'sofa floating off floor grid, mismatched vanishing lines, distorted proportions' : 'crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines',
           'deformed sofa, generic boxy sofa, distorted proportions, wrong color',
           (isFunctionalClosed && shotCode !== 'A02') ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托' : '',
           !hasHumanOccupant ? 'people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs' : '',
@@ -1052,11 +1053,33 @@ CORE INVARIANTS:
           styleNegativesA00.push('traditional decorative moldings', 'rustic country wood', 'cheap plastic laminate');
         }
 
+        const isEnsemble = Boolean((activePrimaryProduct as any)?.isSceneEnsembleSuite && (activePrimaryProduct as any)?.sceneEnsembleDossier);
+        const ensembleDossier = isEnsemble ? (activePrimaryProduct as any).sceneEnsembleDossier : null;
+        const rawMain = ensembleDossier?.sofaSuite?.mainSofa?.color || activePrimaryProduct?.colors?.[0];
+        const rawRecliner = ensembleDossier?.sofaSuite?.reclinerChairs?.[0]?.color;
+        const mainSofaColor = translateColorToEnglish(rawMain, effectiveColor);
+        const hasRecliner = Boolean(ensembleDossier?.sofaSuite?.reclinerChairs && ensembleDossier.sofaSuite.reclinerChairs.length > 0);
+        const reclinerChairColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainSofaColor;
+        const isDualTone = hasRecliner && Boolean(rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim());
+        const reclinerName = ensembleDossier?.sofaSuite?.reclinerChairs?.[0]?.name || 'single accent armchair';
+        const layoutPrompt = ensembleDossier?.placementDirectives?.holisticLayoutPrompt || '';
+
+        const visualAssetAnchorClause = isEnsemble
+          ? (isDualTone
+              ? `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
+   * THREE-SEATER MAIN SOFA: Centered in room, finished in ${mainSofaColor}.
+   * SINGLE ACCENT CHAIR ON LEFT: Positioned on the left flank, finished strictly in contrasting ${reclinerChairColor} (${reclinerName}), preserving its distinct modern silhouette from Reference Image 1. STRICTLY FORBID painting the single chair in the main sofa's color (${mainSofaColor})! Maintain the distinct two-tone contrast!
+   * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ''}`
+              : `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
+   * SEATING SUITE: All seating pieces finished in cohesive ${mainSofaColor}.
+   * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ''}`)
+          : `- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.`;
+
         directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
 ${topologyMandateA00 ? `${topologyMandateA00}\n` : ''}
 ${styleMandateA00 ? `${styleMandateA00}\n` : ''}
 VISUAL ASSET ANCHOR:
-- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.
+${visualAssetAnchorClause}
 ${primaryProduct?.role === 'sofa_2seat' ? `   - TWO-SEATER PROPORTIONS: Strictly a TWO-SEATER sofa (exactly 2 seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle cushion). Generously wide horizontal proportion and low-slung stance (2.1m wide presence). Tailored contrasting welt cord piping along front edge and armrest contours.` : ''}
 ${secondaryReferencesText ? `${secondaryReferencesText}\n` : ''}
 SPATIAL & CAMERA DIRECTIVE:
@@ -1072,6 +1095,7 @@ CORE INVARIANTS:
         const cleanNegativeConstraintsA00 = [
           negativePrompt,
           antiStickerNegatives,
+          isEnsemble && isDualTone ? `${mainSofaColor} recliner, ${mainSofaColor} armchair, identical ${mainSofaColor} single chair, monochromatic seating` : '',
           ...topologyNegativesA00,
           ...styleNegativesA00,
           'throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric pillow, blanket, clutter, floral armchair, patterned fabric chair, patchwork armchair',

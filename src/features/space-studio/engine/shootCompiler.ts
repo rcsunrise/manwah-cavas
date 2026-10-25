@@ -166,12 +166,9 @@ export class ShootCompiler {
     // 3. 偏角与透视 (Yaw Angle)
     if (Math.abs(camera.yawDeg) <= 5) {
       clauses.push('one-point symmetrical frontal perspective, architectural alignment with room grid');
-    } else if (camera.yawDeg >= 25) {
-      clauses.push(`dynamic 45-degree three-quarters angled isometric view from the right (${camera.yawDeg}° yaw), emphasizing 3D volume, 45-degree silhouette, side wing curvature, and seating depth`);
-      negativeExclusions.push('flat frontal shot', 'straight-on view');
-    } else if (camera.yawDeg <= -25) {
-      clauses.push(`dynamic 45-degree three-quarters angled isometric view from the left (${camera.yawDeg}° yaw), emphasizing 3D volume, 45-degree silhouette, side wing curvature, and seating depth`);
-      negativeExclusions.push('flat frontal shot', 'straight-on view');
+    } else if (Math.abs(camera.yawDeg) >= 25) {
+      clauses.push(`dynamic 40-to-45 degree three-quarters angled diagonal perspective (${Math.abs(camera.yawDeg)}° yaw), showing 3D depth, angular furniture foreshortening, side profile volume, and seating cushion depth`);
+      negativeExclusions.push('flat frontal shot', 'straight-on view', 'flat 1-point perspective', 'symmetrical center view');
     } else {
       clauses.push(`subtle oblique vantage (${camera.yawDeg}° yaw angle)`);
     }
@@ -265,7 +262,21 @@ export class ShootCompiler {
     let cleanProductName = '';
     if (primaryProduct?.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier) {
       const ens = primaryProduct.sceneEnsembleDossier;
-      cleanProductName = `coordinated luxury whole-scene living ensemble (${ens.name}) featuring [Sofa Suite: ${ens.sofaSuite?.description || 'leather sofa ensemble'}], [Tables: ${ens.coffeeTables?.description || 'marble center table'}], [Area Rug: ${ens.carpetRug?.description || 'expansive wool rug'}], [Cabinetry: ${ens.credenzaSideboard?.presence ? ens.credenzaSideboard.description : 'curated low-profile credenza'}], and [Decor: ${ens.softDecor?.description || 'warm sconces and botanicals'}] in ${primaryColorEn}`;
+      const mainSofa = ens.sofaSuite?.mainSofa;
+      const recliner = ens.sofaSuite?.reclinerChairs?.[0];
+      const rawMain = mainSofa?.color || primaryProduct.colors?.[0];
+      const rawRecliner = recliner?.color;
+      const mainColor = translateColorToEnglish(rawMain, primaryColorEn);
+      const reclinerColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainColor;
+      const isDualTone = Boolean(rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim());
+      const reclinerName = recliner?.name || 'matching single accent chair';
+      const mainSofaName = mainSofa?.name || 'three-seater luxury power motion sofa';
+
+      const seatingDesc = isDualTone
+        ? `[Main 3-Seater Sofa: ${mainSofaName} in ${mainColor}], paired with [Single Accent Chair on left flank: ${reclinerName} in contrasting ${reclinerColor}]`
+        : `[Sofa Suite: ${mainSofaName} and matching chair in cohesive ${mainColor}]`;
+
+      cleanProductName = `coordinated luxury whole-scene living ensemble (${ens.name}) featuring ${seatingDesc}, [Tables: ${ens.coffeeTables?.description || 'marble center table'}], [Area Rug: ${ens.carpetRug?.description || 'expansive wool rug'}], [Cabinetry: ${ens.credenzaSideboard?.presence ? ens.credenzaSideboard.description : 'curated low-profile credenza'}], and [Decor: ${ens.softDecor?.description || 'warm sconces and botanicals'}]`;
     } else if (primaryProduct?.role === 'sofa_2seat') {
       cleanProductName = `generous wide-body two-seater power motion sofa in ${primaryColorEn} (${primaryMaterialEn}), featuring a wide horizontal stance and low-profile deep cushions with EXACTLY TWO wide seating cushions, contrasting brown piping trim along front edge and armrest contours, and TWO backrest sections (twin 2-unit seating division, strictly NOT a three-seater sofa, strictly NOT tall or narrow)`;
     } else if (primaryProduct?.role === 'sofa_3seat' || isHeroSofaDedicatedShot) {
@@ -380,7 +391,25 @@ export class ShootCompiler {
         }
         return `${p.name} in ${cEn}`;
       }).filter(Boolean).join(', ');
-      const ensembleClause = secondaryEnsembleDesc ? `, alongside the coordinated ensemble suite: [${secondaryEnsembleDesc}]` : '';
+      let ensembleClause = secondaryEnsembleDesc ? `, alongside the coordinated ensemble suite: [${secondaryEnsembleDesc}]` : '';
+
+      if (primaryProduct?.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier) {
+        const ens = primaryProduct.sceneEnsembleDossier;
+        const rawMain = ens.sofaSuite?.mainSofa?.color || primaryProduct.colors?.[0];
+        const rawRecliner = ens.sofaSuite?.reclinerChairs?.[0]?.color;
+        const mainSofaColor = translateColorToEnglish(rawMain, primaryColorEn);
+        const hasRecliner = Boolean(ens.sofaSuite?.reclinerChairs && ens.sofaSuite.reclinerChairs.length > 0);
+        const reclinerColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainSofaColor;
+        const isDualTone = hasRecliner && rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim();
+        const layoutDirective = ens.placementDirectives?.holisticLayoutPrompt || '';
+        const rules = ens.placementDirectives?.visualInvariants?.join('. ') || '';
+
+        if (isDualTone) {
+          ensembleClause += `. DUAL-TONE SEATING HARMONY & VISUAL INVARIANTS: Main 3-seater sofa is finished in authentic ${mainSofaColor}, while the single accent armchair on the left flank is STRICTLY finished in contrasting ${reclinerColor}, featuring its distinct light-luxury silhouette. Strictly DO NOT paint the single chair in the same color (${mainSofaColor}) as the main sofa! ${layoutDirective ? `Holistic Layout Guide: ${layoutDirective}.` : ''} ${rules ? `Rule Mandates: ${rules}.` : ''}`;
+        } else if (hasRecliner) {
+          ensembleClause += `. COHESIVE SEATING HARMONY: Main sofa and single accent chair are finished in authentic ${mainSofaColor}. ${layoutDirective ? `Holistic Layout Guide: ${layoutDirective}.` : ''} ${rules ? `Rule Mandates: ${rules}.` : ''}`;
+        }
+      }
 
       const spaceTopology = compileSpaceTopology(spacePreset);
       const styleFinishes = compileStyleArchitecturalFinishes(stylePreset);
@@ -443,12 +472,14 @@ export class ShootCompiler {
         ? 'luxury three-seater main sofa with family relaxation posture'
         : 'luxury three-seater main sofa in pristine showroom posture with 1-2 curated decorative cushions';
       const perspectiveShiftDirective = `[MANDATORY PERSPECTIVE SHIFT: 45° THREE-QUARTERS OBLIQUE ANGLE]
-DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW!
-DO NOT CENTER THE SOFA ON A SYMMETRICAL HORIZONTAL AXIS!
-FOR SHOT A02, THE CAMERA MUST PHYSICALLY SWING 40-45 DEGREES TO THE FRONT-LEFT CORNER VANTAGE POINT!
-The 3-seater main sofa is oriented along a 45-degree diagonal receding from left-front to back-right into the room depth, showing rich 3D armrest curvature, deep seating cushion volume, and side perspective.
-The single recliner armchair is positioned in the foreground-left near the panoramic window, angled inward at 90 degrees toward the main sofa in an intimate conversational salon.
-The luxury marble background focal wall recedes diagonally with strong 2-point perspective vanishing lines, not a flat horizontal wall!`;
+ATTENTION GENERATOR: DO NOT COPY THE STRAIGHT-ON FRONTAL VIEW OR HORIZONTAL ALIGNMENT OF REFERENCE IMAGE 2!
+Reference Image 2 is a 0-degree straight-on frontal view, but SHOT A02 IS AN OBLIQUE THREE-QUARTERS SHOT OF THE SAME 3D ROOM!
+THE PHYSICAL ROOM AND ARCHITECTURAL FINISHES REMAIN FIXED, BUT THE CAMERA HAS MOVED:
+1. CAMERA POSITION: Stationed at the front-left near the panoramic window, pointing 40-45 degrees diagonally across the living room toward the back-right corner.
+2. 2-POINT PERSPECTIVE & DIAGONAL VANISHING LINES: The floor tile joints, wood floor planks, and background wall DO NOT run parallel to the frame bottom; they recede diagonally toward vanishing points with clear two-point perspective depth!
+3. THREE-SEATER MAIN SOFA ORIENTATION: The sofa is oriented along the 45-degree diagonal receding into the depth of the room. You see the left armrest in the foreground, with the sofa seating cushions and backrest receding diagonally to the right. Show the full 3D volume, armrest flare, and cushion depth!
+4. CONVERSATIONAL 3+1 LAYOUT & OCCLUSION: The matching single recliner armchair is positioned in the near-left foreground (near the window), angled at 90 degrees toward the main sofa. The dual coffee tables sit on the geometric area rug between the sofa and armchair along the diagonal axis.
+5. STRICTLY FORBIDDEN: Symmetrical frontal composition, horizontal sofa parallel to the frame, or copying the 0-degree mugshot angle of Reference Image 2!`;
 
       const ensemble3Plus1LayoutDirective = `[STRICT 3+1 CONVERSATIONAL SALON CHOREOGRAPHY]:
 Capture complete 3+1 furniture ensemble with genuine conversational depth:
@@ -975,6 +1006,10 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
         ]
       : [];
 
+    const isAngledOrProfileShot =
+      ['A02', 'A04', 'A05', 'A06', 'A07', 'A08'].includes(shot.templateCode) ||
+      Math.abs(camera.yawDeg) >= 15;
+
     const negativePrompt = [
       ...humanExclusionNegative,
       ...negativeFramingConstraints,
@@ -982,7 +1017,9 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       'different room background, altered architectural layout, flipped room orientation, mirrored window, window on wrong side, reversed daylight direction, invented wall shelves, arched bookshelf, unreferenced bookcase, hallway or corridor view, doorway framing, nighttime dark atmosphere in daytime space',
       'physically moved furniture positions, shifted sofa coordinates',
       'deformed sofa structure, distorted perspective distortion, warped straight lines',
-      'sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls',
+      (shot.templateCode === 'A02' || Math.abs(camera.yawDeg) >= 25)
+        ? 'sofa overlapping window and wall seam, sofa blocking window glass, sofa floating off floor grid'
+        : 'sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls',
       'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, plastic textures, cheap laminate, cartoon CGI rendering, overexposed highlights',
       'mismatched wall colors, wrong architectural palette, generic sterile white room without intended style color tone, garish neon colors',
       'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',

@@ -37,8 +37,55 @@ import {
   ChevronDown,
   ChevronUp,
   Layout,
-  Sofa
+  Sofa,
+  Cpu
 } from 'lucide-react';
+
+export interface VisionAnalysisModelOption {
+  id: string;
+  name: string;
+  badge: string;
+  tag: string;
+  description: string;
+}
+
+export const VISION_ANALYSIS_MODELS: VisionAnalysisModelOption[] = [
+  {
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    badge: '默认推荐 · 极速推理',
+    tag: '⚡ 极速推理',
+    description: '思考链视觉自校准，三维尺寸与微观材质深度推导，2~3秒极速返回'
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    badge: '空间感知进阶',
+    tag: '🚀 空间感知',
+    description: '增强型微观皮质纹理、金属五金反光感知与空间层次拆解'
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 4 (Argon) / 3.1 Pro',
+    badge: '空间几何旗舰',
+    tag: '💎 空间切片',
+    description: '原生 2D/3D 空间视觉接地 (Visual Grounding)，多家具坐标框毫米级贴合切片'
+  },
+  {
+    id: 'gpt-5.6-sol',
+    name: 'GPT Sol (5.6)',
+    badge: '商业企划全案',
+    tag: '👑 商业企划',
+    description: 'OpenAI 旗舰推理多模态，奢华材质工艺研判与工业级全案文案描述天花板'
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    badge: '极速轻量备用',
+    tag: '⏱️ 秒级响应',
+    description: '经典秒级轻量模型，适合单品常规快速录入'
+  }
+];
 
 const PRESET_STYLES = ['意式轻奢', '现代极简', '奶油原木', '法式复古', '侘寂原力', '轻奢高定', '新中式', '原木风'];
 const PRESET_COLORS = ['云雾暖灰', '极地奶白', '干邑暖橙', '鞍褐焦糖', '曜石深灰', '复古深栗', '珍珠米金'];
@@ -89,6 +136,13 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
+
+  // 视觉读数模型选择状态（默认 Gemini 3.7 Flash，记住本地偏好）
+  const [analysisModel, setAnalysisModel] = useState<string>(() => {
+    return localStorage.getItem('manwah_truth_engine_model') || 'gemini-3.7-flash';
+  });
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState<boolean>(false);
+  const currentModelConfig = VISION_ANALYSIS_MODELS.find(m => m.id === analysisModel) || VISION_ANALYSIS_MODELS[0];
 
   // 独立录入模式切换：'whole_scene' (整套全景场景资产识别·整体入库置入) | 'single_slice' (单品与切片分割)
   const [entryMode, setEntryMode] = useState<'whole_scene' | 'single_slice'>(
@@ -984,7 +1038,7 @@ interface CanvasDraftPayload {
       if (diff < 2200) {
         setAnalysisStage('阶段 1/4: 解析多视角图像视差与产品轮廓特征...');
       } else if (diff < 5200) {
-        setAnalysisStage('阶段 2/4: Gemini 视觉大模型测算真值长宽高与面料...');
+        setAnalysisStage(`阶段 2/4: ${currentModelConfig.name} 视觉大模型测算真值长宽高与面料...`);
       } else if (diff < 8200) {
         setAnalysisStage('阶段 3/4: 校验机械伸展机构与工程几何不变量...');
       } else {
@@ -1014,7 +1068,8 @@ interface CanvasDraftPayload {
           type: img.type,
           fileName: img.name
         })),
-        userNotes: userNotes.trim() || undefined
+        userNotes: userNotes.trim() || undefined,
+        model: analysisModel
       };
 
       const response = await fetch('/api/space/build/extract-product-dna', {
@@ -1164,7 +1219,8 @@ interface CanvasDraftPayload {
           type: img.type,
           fileName: img.name
         })),
-        userNotes: userNotes.trim() || undefined
+        userNotes: userNotes.trim() || undefined,
+        model: analysisModel
       };
 
       const res = await fetch('/api/space/build/analyze-scene-ensemble', {
@@ -1501,6 +1557,64 @@ interface CanvasDraftPayload {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* 视觉识别多模态模型选择器 */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 transition text-xs font-bold cursor-pointer shadow-2xs"
+                title="切换视觉识别与多要素解构多模态模型 (当前默认: Gemini 3.7 Flash)"
+              >
+                <Cpu className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="font-mono text-xs">{currentModelConfig.name}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-bold shrink-0">{currentModelConfig.tag.split(' ')[0]}</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-amber-700 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isModelDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-80 bg-white rounded-2xl shadow-2xl border border-stone-200 p-2 z-50 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="px-2.5 py-1 text-[11px] font-bold text-stone-500 border-b border-stone-100 flex items-center justify-between">
+                    <span>选择视觉识别大模型</span>
+                    <span className="text-[10px] font-mono text-amber-700 font-bold">默认: 3.7 Flash</span>
+                  </div>
+                  {VISION_ANALYSIS_MODELS.map((m) => {
+                    const isSelected = m.id === analysisModel;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setAnalysisModel(m.id);
+                          localStorage.setItem('manwah_truth_engine_model', m.id);
+                          setIsModelDropdownOpen(false);
+                        }}
+                        className={`w-full text-left p-2.5 rounded-xl transition cursor-pointer border flex flex-col gap-0.5 ${
+                          isSelected
+                            ? 'bg-amber-500/10 border-amber-400 text-stone-900 shadow-2xs'
+                            : 'hover:bg-stone-50 border-transparent text-stone-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            <span>{m.tag}</span>
+                            <span>{m.name}</span>
+                          </span>
+                          <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
+                            isSelected ? 'bg-amber-500 text-black' : 'bg-stone-100 text-stone-600'
+                          }`}>
+                            {m.badge}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 leading-snug">
+                          {m.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* 核心模式切换器 */}
             <div className="flex items-center p-0.5 bg-stone-200/80 rounded-xl border border-stone-300">
               <button
@@ -1994,9 +2108,15 @@ interface CanvasDraftPayload {
                     置信度 {entryMode === 'whole_scene' ? sceneEnsembleDossier?.readoutConfidence : confidenceScore}%
                   </span>
                 ) : (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 font-mono font-medium">
-                    {entryMode === 'whole_scene' ? '全景要素模型' : '单品视觉模型'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                    className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-200 font-mono font-medium flex items-center gap-1 cursor-pointer transition"
+                    title="点击切换视觉解析模型"
+                  >
+                    <span>{currentModelConfig.tag}</span>
+                    <ChevronDown className="w-3 h-3 text-amber-700" />
+                  </button>
                 )}
               </div>
 
@@ -2123,6 +2243,15 @@ interface CanvasDraftPayload {
                     <span>整套场景资产识别看板 (Whole Scene Ensemble)</span>
                   </span>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-mono font-medium flex items-center gap-1 cursor-pointer transition"
+                      title="点击切换视觉读数模型"
+                    >
+                      <Cpu className="w-3 h-3 text-amber-700" />
+                      <span>{currentModelConfig.name}</span>
+                    </button>
                     {sceneEnsembleDossier ? (
                       <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono font-bold flex items-center gap-1">
                         <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -2143,7 +2272,7 @@ interface CanvasDraftPayload {
                       <div className="flex items-center gap-2">
                         <RotateCw className="w-4 h-4 animate-spin text-amber-600" />
                         <span className="font-bold text-stone-900 text-xs">
-                          Gemini 2.5 场景多模态多要素正在并行识别解构...
+                          {currentModelConfig.name} 场景多模态多要素正在并行识别解构...
                         </span>
                       </div>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-200 text-amber-900 font-bold">
