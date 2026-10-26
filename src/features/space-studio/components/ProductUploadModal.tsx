@@ -845,7 +845,8 @@ interface CanvasDraftPayload {
         const base64 = e.target?.result as string;
         if (base64) {
           const currentTotal = uploadedImages.length + newItems.length;
-          const defaultType =
+          const fileName = (file.name || '').toLowerCase();
+          let defaultType: 'front' | '45_deg' | 'side' | 'back' | 'function_open' | 'detail' | 'material' =
             currentTotal === 0
               ? 'front'
               : currentTotal === 1
@@ -853,6 +854,23 @@ interface CanvasDraftPayload {
               : currentTotal === 2
               ? 'function_open'
               : 'detail';
+
+          if (/(45度|45deg|45°|斜角|斜侧|3\+1)/i.test(fileName)) {
+            defaultType = '45_deg';
+          } else if (/(正侧|侧面|侧视|side)/i.test(fileName)) {
+            defaultType = 'side';
+          } else if (/(展开|功能位|脚托|后仰|open)/i.test(fileName)) {
+            defaultType = 'function_open';
+          } else if (/(特写|微距|detail|macro)/i.test(fileName)) {
+            defaultType = 'detail';
+          } else if (/(材质|皮质|纹理|面料|material)/i.test(fileName)) {
+            defaultType = 'material';
+          } else if (/(背|背面|back)/i.test(fileName)) {
+            defaultType = 'back';
+          } else if (/(正面|正视|front|主图)/i.test(fileName)) {
+            defaultType = 'front';
+          }
+
           newItems.push({
             id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             file,

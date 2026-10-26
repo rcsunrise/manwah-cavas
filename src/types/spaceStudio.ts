@@ -644,6 +644,9 @@ export interface ShotInstance {
   hasHumanPass: boolean;
   aspectRatio?: ImageAspectRatio;
   error?: string; // 记录最近一次生成失败的显式异常原因（网络超时/上游接口异常等）
+  boundProductId?: string; // 用户为当前镜头指定的专属主品资产ID (支持切换素材)
+  customReferenceImage?: string; // 用户为当前镜头单独上传的专属参考底图 (如专属45度特写图)
+  decoupleOldMaster?: boolean; // 是否解除旧A00/A01母版绑定，以全新素材为准重绘
 }
 
 // 8. HUMAN MODEL & PASS (HUMAN)

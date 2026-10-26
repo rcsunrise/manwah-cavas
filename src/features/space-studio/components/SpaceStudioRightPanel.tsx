@@ -36,7 +36,9 @@ import {
   AlertTriangle,
   RotateCcw,
   ArrowRight,
-  XCircle
+  XCircle,
+  Package,
+  Upload
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -49,6 +51,7 @@ import {
   calculateRenderDimensions,
   StylePreset,
   SpacePreset,
+  ProductAsset
 } from '../../../types/spaceStudio';
 import {
   ActivePhotographyAssets,
@@ -123,6 +126,14 @@ interface SpaceStudioRightPanelProps {
   width?: number;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+
+  // 分镜产品素材绑定与切换支持
+  products?: ProductAsset[];
+  onSelectProduct?: (productId: string) => void;
+  onBindShotProduct?: (shotId: string, productId: string) => void;
+  onUploadCustomShotRef?: (shotId: string, file: File) => void;
+  onRemoveCustomShotRef?: (shotId: string) => void;
+  onToggleDecoupleMaster?: (shotId: string, decouple: boolean) => void;
 }
 
 const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
@@ -182,7 +193,13 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   selectedSpace,
   width = 368,
   isCollapsed = false,
-  onToggleCollapse
+  onToggleCollapse,
+  products = [],
+  onSelectProduct,
+  onBindShotProduct,
+  onUploadCustomShotRef,
+  onRemoveCustomShotRef,
+  onToggleDecoupleMaster
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
@@ -211,6 +228,14 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
   const isLight = theme === 'light';
   const cfg = computeConfig || DEFAULT_COMPUTE_CONFIG;
+
+  // 当前镜头绑定的产品素材
+  const boundProdId = activeShot.boundProductId;
+  const boundProduct = (boundProdId ? products.find((p) => p.id === boundProdId) : null)
+    || products.find((p) => p.priority === 'primary')
+    || products[0];
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const shotCustomFileInputRef = React.useRef<HTMLInputElement>(null);
 
   // 正在生成状态多阶段演进提示
   const [generationPhase, setGenerationPhase] = useState<number>(1);
@@ -767,6 +792,160 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   4 张变体
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* ═════════════════════════════════════════════════════════════
+              SECTION: Shot Material & Product Asset Switcher (分镜素材与产品绑定切换器)
+          ═════════════════════════════════════════════════════════════ */}
+          <div className={`p-3 rounded-xl border space-y-2.5 transition-all ${
+            isLight
+              ? 'bg-white border-stone-200/90 shadow-2xs'
+              : 'bg-[#161822] border-white/10'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${isLight ? 'text-stone-800' : 'text-neutral-300'}`}>
+                <Package className={`w-3.5 h-3.5 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} />
+                <span>分镜参考素材与主品绑定</span>
+              </span>
+
+              {products && products.length > 1 && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductDropdownOpen(!isProductDropdownOpen)}
+                    className="text-[10px] px-2 py-0.5 rounded-lg border font-bold flex items-center gap-1 transition cursor-pointer text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100"
+                    title="在项目已录入的多款产品间切换"
+                  >
+                    <span>切换素材 ({products.length}款)</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+
+                  {isProductDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1a1c28] rounded-xl shadow-2xl border border-stone-200 dark:border-white/15 p-1.5 z-50 space-y-1">
+                      <div className="px-2 py-1 text-[10px] text-stone-500 dark:text-neutral-400 font-bold border-b border-stone-100 dark:border-white/5">
+                        选择当前镜头 ({activeShot.templateCode}) 绑定的产品素材
+                      </div>
+                      {products.map((p) => {
+                        const isCurrent = (boundProduct?.id === p.id);
+                        const pImg = p.cropImageUrl || p.referenceImages?.[0]?.publicUrl || p.sourceMasterImageUrl || '';
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              onBindShotProduct?.(activeShot.id, p.id);
+                              onSelectProduct?.(p.id);
+                              setIsProductDropdownOpen(false);
+                            }}
+                            className={`w-full text-left p-2 rounded-lg flex items-center gap-2 transition cursor-pointer text-xs ${
+                              isCurrent
+                                ? 'bg-amber-500/15 text-amber-900 dark:text-amber-300 font-bold border border-amber-400/40'
+                                : 'hover:bg-stone-100 dark:hover:bg-white/5 text-stone-700 dark:text-neutral-300'
+                            }`}
+                          >
+                            {pImg ? (
+                              <img src={pImg} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                            ) : (
+                              <div className="w-8 h-8 rounded bg-stone-200 shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-bold text-[11px]">{p.name}</div>
+                              <div className="text-[9px] opacity-60 font-mono truncate">{p.sku || p.id} · {p.colors?.[0] || '标准色'}</div>
+                            </div>
+                            {isCurrent && <Check className="w-3.5 h-3.5 text-amber-500 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 当前绑定素材展示 */}
+            {activeShot.customReferenceImage ? (
+              <div className="flex items-center gap-2.5 p-2 rounded-lg border bg-amber-50/50 dark:bg-amber-500/5 border-amber-300/80 dark:border-amber-500/30">
+                <img
+                  src={activeShot.customReferenceImage}
+                  alt="Custom Shot Ref"
+                  className="w-12 h-12 rounded object-cover shrink-0 border border-amber-300 shadow-2xs"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                    <span>本镜头专属参考素材 (45°特写)</span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 dark:text-neutral-400 mt-0.5">
+                    已锁定当前上传图为最高真值
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemoveCustomShotRef?.(activeShot.id)}
+                  className="p-1 rounded text-stone-400 hover:text-rose-500 text-[10px] cursor-pointer"
+                  title="移除专属素材，恢复主品绑定"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            ) : boundProduct ? (
+              <div className="flex items-center gap-2.5 p-2 rounded-lg border bg-stone-50 dark:bg-black/30 border-stone-200 dark:border-white/5">
+                {(() => {
+                  const pImg = boundProduct.cropImageUrl || boundProduct.referenceImages?.[0]?.publicUrl || boundProduct.sourceMasterImageUrl || '';
+                  return pImg ? (
+                    <img src={pImg} alt="" className="w-12 h-12 rounded object-cover shrink-0 border border-stone-300 dark:border-white/10 shadow-2xs" />
+                  ) : (
+                    <div className="w-12 h-12 rounded bg-stone-200 dark:bg-white/10 shrink-0" />
+                  );
+                })()}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold truncate text-stone-900 dark:text-stone-100">{boundProduct.name}</div>
+                  <div className="text-[10px] font-mono text-stone-500 dark:text-neutral-400 mt-0.5 truncate">
+                    {boundProduct.sku} · {boundProduct.colors?.[0] || '标准色'} · {boundProduct.dimensions?.width}×{boundProduct.dimensions?.depth}mm
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* 专属素材导入按钮与解绑选项 */}
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <input
+                ref={shotCustomFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onUploadCustomShotRef?.(activeShot.id, file);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => shotCustomFileInputRef.current?.click()}
+                className="flex-1 py-1.5 px-2 rounded-lg border text-[10px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer bg-white dark:bg-white/5 hover:bg-stone-50 dark:hover:bg-white/10 border-stone-200 dark:border-white/10 text-stone-700 dark:text-neutral-300"
+                title="直接导入针对本镜头的专属实拍或45°视角素材"
+              >
+                <Upload className="w-3 h-3 text-amber-500" />
+                <span>导入本镜头专属素材 (如45°图)</span>
+              </button>
+
+              {activeShot.templateCode !== 'A00' && (
+                <button
+                  type="button"
+                  onClick={() => onToggleDecoupleMaster?.(activeShot.id, !activeShot.decoupleOldMaster)}
+                  className={`py-1.5 px-2 rounded-lg border text-[10px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+                    activeShot.decoupleOldMaster
+                      ? 'bg-amber-500 text-black border-amber-400 shadow-2xs'
+                      : 'bg-white dark:bg-white/5 text-stone-500 dark:text-neutral-400 border-stone-200 dark:border-white/10'
+                  }`}
+                  title="开启后将不继承旧 A01/A00 底图中的旧沙发，纯按新选素材重绘场景"
+                >
+                  <Sparkle className="w-3 h-3" />
+                  <span>纯新素材重绘</span>
+                </button>
+              )}
             </div>
           </div>
 

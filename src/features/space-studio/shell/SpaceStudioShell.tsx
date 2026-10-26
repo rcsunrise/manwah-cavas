@@ -2260,18 +2260,26 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
       );
 
-      const primaryProd = (isHeroSofaDedicatedShot && hero3SeatSofa)
-        ? hero3SeatSofa
-        : (isReclinerDedicatedShot && reclinerChair)
-        ? reclinerChair
-        : (isDiningDedicatedShot && diningTableProd)
-        ? diningTableProd
-        : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]);
+      // 0. 支持当前镜头单独绑定指定产品素材 (支持用户在右侧面板自由切换绑定)
+      const boundProd = targetShot.boundProductId
+        ? products.find((p) => p.id === targetShot.boundProductId)
+        : null;
 
-      // 提取该核心单品的独立真值资产：当命中专属多角度工业真值(如45度/侧面)时优先采用，否则回退独立切片原图
+      const primaryProd = boundProd
+        || ((isHeroSofaDedicatedShot && hero3SeatSofa)
+          ? hero3SeatSofa
+          : (isReclinerDedicatedShot && reclinerChair)
+          ? reclinerChair
+          : (isDiningDedicatedShot && diningTableProd)
+          ? diningTableProd
+          : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]));
+
+      // 提取该核心单品的独立真值资产：当命中专属多角度工业真值(如45度/侧面)或专属镜头素材时优先采用
+      const shotCustomRef = targetShot.customReferenceImage;
       const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
       const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
       const primaryRef =
+        shotCustomRef ||
         (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
         primaryProd?.cropImageUrl ||
         primaryProd?.cropBase64 ||
@@ -2360,14 +2368,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             referenceImage: primaryRef
           },
           ...(() => {
-            if (targetShotCode === 'A00') {
+            if (targetShotCode === 'A00' || targetShot.decoupleOldMaster) {
               return { sceneMasterReference: undefined, referenceShotCode: undefined };
             }
             const a01Shot = shots.find((s) => s.templateCode === 'A01');
             const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
             const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
 
-            // 当 A01 空间主大场景已生成时，所有衍生镜头 (A02 45°全景, A03 三人位主景等) 优先继承 A01 作为权威现场基准
+            // 当 A01 空间主大场景已生成时，且未解耦时，作为权威现场基准
             if (targetShotCode !== 'A01' && hasA01Image && a01Rev) {
               return {
                 sceneMasterReference: {
@@ -4104,6 +4112,27 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
           totalShots={shots.length}
           sceneMaster={sceneMaster}
+          products={products}
+          onSelectProduct={handleSetPrimaryProduct}
+          onBindShotProduct={(shotId, productId) => {
+            setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, boundProductId: productId } : s));
+          }}
+          onUploadCustomShotRef={async (shotId, file) => {
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve((e.target?.result as string) || '');
+              reader.readAsDataURL(file);
+            });
+            if (dataUrl) {
+              setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: dataUrl } : s));
+            }
+          }}
+          onRemoveCustomShotRef={(shotId) => {
+            setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: undefined } : s));
+          }}
+          onToggleDecoupleMaster={(shotId, decouple) => {
+            setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, decoupleOldMaster: decouple } : s));
+          }}
           aspectRatio={aspectRatio}
           onChangeAspectRatio={handleShotAspectRatioChange}
           computeConfig={computeConfig}

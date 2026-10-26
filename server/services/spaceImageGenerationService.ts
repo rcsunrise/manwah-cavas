@@ -807,16 +807,18 @@ CRITICAL VANTAGE DIRECTIVE FOR SHOT A09:
 
         const ref2SceneTag = isReferenceA01 ? 'Shot A01 (Grand Frontal Living Scene Master)' : 'Shot A00 (Scene Master Architectural Baseline)';
         let ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag}:
-   - Inherit the architectural walls, background geometry and finishes, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!`;
+   - ARCHITECTURAL SHELL ONLY: Inherit the architectural walls, background geometry, floor tiles, and window daylight direction strictly from Reference Image 2.
+   - [CRITICAL FURNITURE PURGE & OVERWRITE]: Reference Image 2 is used STRICTLY for room architecture. If Reference Image 2 contains any previous furniture, you MUST COMPLETELY PURGE AND OVERWRITE IT! All furniture MUST 100% come from Reference Image 1 (${effectiveProductName})!`;
 
         if (shotCode === 'A02' || isAngledHero) {
-          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (3D ROOM MATERIAL & FINISH DNA ONLY - STRICTLY DO NOT COPY 2D CAMERA ANGLE):
-   - Reference Image 2 provides the authentic 3D room materials (marble focal wall, ceiling lighting, floor tiles, daylight color) and furniture leather color tone.
-   - PERSPECTIVE ANGLE DECOUPLING: Reference Image 2 is a 0-degree straight-on frontal view. FOR SHOT A02, YOU MUST DISCARD THE 0° FRONTAL CAMERA ANGLE OF REFERENCE IMAGE 2 and rotate the camera 40-45° to the front-left! Render the exact same 3D room and furniture ensemble, but seen from a dynamic 45-degree three-quarters diagonal vantage point with diagonal floor vanishing lines!`;
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (3D ROOM ARCHITECTURAL SHELL ONLY - STRICTLY DO NOT COPY OLD FURNITURE):
+   - Reference Image 2 provides the authentic 3D room materials ONLY (marble focal wall, ceiling lighting, floor tiles, daylight color).
+   - [MANDATORY FURNITURE PURGE]: You MUST COMPLETELY ERASE, PURGE AND OVERWRITE any sofa or furniture from Reference Image 2! Every sofa, chair, and table in the room MUST 100% come from Reference Image 1 (${effectiveProductName})!
+   - PERSPECTIVE RE-ORIENTATION: For Shot A02, place the new furniture from Reference Image 1 into this architectural room shell, and capture it from a dynamic 45-degree three-quarters diagonal vantage point (front-left near window pointing toward back-right) with diagonal floor vanishing lines!`;
         } else if (shotCode === 'A03' || isHeroSofaFocus) {
-          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM FINISHES & HERO SOFA GROUND TRUTH - STRICTLY EXCLUDE SINGLE CHAIR):
-   - Reference Image 2 establishes visual ground truth for the room architecture (marble/wood feature wall, dual curved sconces/shelves, floor tiles, window daylight) AND the exact genuine leather grade and color tone for the 3-seater sofa.
-   - CAMERA & COMPOSITION DECOUPLING: Reference Image 2 is a wide frontal panorama. In Shot A03, you are framing the EXACT SAME 3-seater hero sofa from Reference Image 2 from a subtle 15-25 degree front-left three-quarters angle, with 100% focus on the 3-seater sofa alone! Completely crop out and exclude the single chair!`;
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM ARCHITECTURE ONLY - PURGE OLD FURNITURE):
+   - Reference Image 2 establishes visual ground truth for room architecture and window daylight ONLY.
+   - [MANDATORY FURNITURE PURGE]: Completely erase any previous sofa from Reference Image 2. Frame the NEW 3-seater sofa from Reference Image 1 from a subtle 15-25 degree front-left angle, focusing 100% on the new 3-seater sofa alone!`;
         } else if (shotCode === 'A04') {
           ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
    - Reference Image 2 provides authentic room finishes and sofa leather color tone.
@@ -922,22 +924,22 @@ ${(shotCode === 'A08' && activePrimaryProduct === primaryProduct)
   ? `   - [A08 SINGLE POWER RECLINER DERIVATION MANDATE]: Reference Image 1 provides the master genuine leather material (${effectiveMaterial}), precise color anchor (${effectiveColor}), and signature welt-piping craftsmanship for this suite. FOR THIS A08 SHOT, RENDER A MATCHING SINGLE-SEATER LUXURY POWER MOTION RECLINER ARMCHAIR in the three-quarters composition, 100% inheriting the exact leather grade, color tone, tufted pleating, and stitching DNA from Reference Image 1!`
   : `   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.`}
 ${(shotCode === 'A02' || isAngledHero)
-  ? `   - MANDATORY PERSPECTIVE RE-ORIENTATION: Reference Image 2 shows the sofa from a 0-degree straight-on frontal view. For Shot A02, you MUST re-render the sofa and living room from a 45-degree diagonal three-quarters perspective, NOT from the flat frontal angle of Reference Image 2!`
+  ? `   - [MANDATORY FURNITURE PURGE & OVERWRITE]: Reference Image 1 provides the new product truth. Reference Image 2 contains obsolete furniture from previous runs. You MUST COMPLETELY ERASE AND OVERWRITE any sofa/chair from Reference Image 2! Place the new furniture suite from Reference Image 1 into the architectural space of Reference Image 2, capturing it from a 45-degree diagonal three-quarters perspective!`
   : (shotCode === 'A03' || isHeroSofaFocus)
-  ? `   - MANDATORY SUBTLE ANGLE ADJUSTMENT: Re-render from a subtle 15-25 degree oblique angle, 100% focusing on the 3-seater sofa and completely excluding the single chair.`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Focus 100% on the new 3-seater sofa from Reference Image 1 from a subtle 15-25 degree oblique angle, completely purging any old furniture from Reference Image 2!`
   : (shotCode === 'A04')
-  ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the hero sofa in 3:4 vertical composition at a -15° downward tilt.`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame 2/3 of the new hero sofa from Reference Image 1 in 3:4 vertical composition at a -15° downward tilt, completely replacing any old furniture from Reference Image 2!`
   : (shotCode === 'A05')
-  ? `   - MANDATORY 2/3 VERTICAL CROPPING: Re-crop tightly to frame 2/3 of the right sofa armrest in 3:4 vertical composition at a +28° right angle.`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame 2/3 of the right armrest of the new hero sofa from Reference Image 1 in 3:4 vertical composition at a +28° right angle, completely replacing any old furniture from Reference Image 2!`
   : (shotCode === 'A06' || isZeroWallProfile)
-  ? `   - MANDATORY 88° LATERAL ROTATION: Rotate camera 88° to capture the sofa's pure side profile flush against the back wall (<5cm gap).`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Capture the new hero sofa from Reference Image 1 in pure 88° lateral side profile flush against the back wall, completely replacing any old furniture from Reference Image 2!`
   : (shotCode === 'A07' || isLivingEnsembleMid)
-  ? `   - MANDATORY 55mm MEDIUM GROUPING: Frame the sofa and coffee table in tight medium composition with depth compression.`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame the new hero sofa and coffee table from Reference Image 1 in 55mm medium telephoto compression, completely replacing any old furniture from Reference Image 2!`
   : (shotCode === 'A08' || isReclinerMultiMode)
-  ? `   - MANDATORY RECLINER HERO FOCUS: Center and frame the matching single power recliner armchair as the hero piece, removing the 3-seater sofa from center stage.`
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Center and frame the new single power recliner armchair from Reference Image 1 as the hero piece, completely replacing any old furniture from Reference Image 2!`
   : (shotCode === 'A09' || isDiningSuite)
-  ? `   - MANDATORY DINING VISTA ALIGNMENT: Focus on dining suite or open-plan continuous vista.`
-  : '   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!'}
+  ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame the new dining suite from Reference Image 1, completely replacing any old furniture from Reference Image 2!`
+  : '   - [MANDATORY FURNITURE OVERWRITE]: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!'}
 ${ref2EnsembleDirective}
 
 CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
