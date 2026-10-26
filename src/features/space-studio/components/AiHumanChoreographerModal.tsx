@@ -34,6 +34,37 @@ import {
   mapStudioSlotsToAssignments
 } from '../data/choreographyPresets';
 
+export const CHOREOGRAPHY_MODELS = [
+  {
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    badge: '默认推荐 · 极速推理',
+    tag: '⚡ 默认',
+    description: '思考链视觉自校准，生活意图与空间座次高敏锐度推导'
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    badge: '空间感知进阶',
+    tag: '🚀 空间感知',
+    description: '增强型微观空间层次拆解与多人物互动动线推导'
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 4 (Argon) / 3.1 Pro',
+    badge: '空间几何旗舰',
+    tag: '💎 空间切片',
+    description: '原生空间视觉接地 (Visual Grounding)，复杂大平层座次高保真规划'
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    badge: '秒级轻量备用',
+    tag: '⏱️ 秒级响应',
+    description: '经典秒级轻量多模态模型，高可用稳定输出'
+  }
+];
+
 interface AiHumanChoreographerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -55,6 +86,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
 }) => {
   // 输入方式: prompt | vision
   const [inputMode, setInputMode] = useState<'prompt' | 'vision'>('prompt');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
   const [prompt, setPrompt] = useState<string>(
     '三代同堂周末家庭日，爷爷在主沙发一号电动位展开脚托半躺小憩，奶奶在单人真皮单椅品茗，男女主人并坐交谈，小女儿依偎在身旁翻画册，小男孩在地毯上拼装积木。'
   );
@@ -122,6 +154,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
         imageBase64: selectedImageSource === 'upload' ? uploadedImageBase64 : undefined,
         imageUrl: selectedImageSource !== 'upload' ? activeImg : undefined,
         characterCount: typeof targetCount === 'number' ? targetCount : undefined,
+        model: selectedModel,
         availableModels
       });
 
@@ -220,32 +253,51 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
         {/* 2. Body (滚动区) */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 text-xs overscroll-contain">
           
-          {/* 输入模式选择器 */}
-          <div className="p-1 rounded-xl bg-black/40 border border-white/10 flex items-center gap-1 w-fit">
-            <button
-              type="button"
-              onClick={() => setInputMode('prompt')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
-                inputMode === 'prompt'
-                  ? 'bg-amber-500 text-black shadow-xs font-bold'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>提示词情景构思</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setInputMode('vision')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
-                inputMode === 'vision'
-                  ? 'bg-amber-500 text-black shadow-xs font-bold'
-                  : 'text-neutral-400 hover:text-white'
-              }`}
-            >
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>空间图像识别 + 构思</span>
-            </button>
+          {/* 模式选择器与识别/编排模型切换器 */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="p-1 rounded-xl bg-black/40 border border-white/10 flex items-center gap-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setInputMode('prompt')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
+                  inputMode === 'prompt'
+                    ? 'bg-amber-500 text-black shadow-xs font-bold'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>提示词情景构思</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode('vision')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-all cursor-pointer ${
+                  inputMode === 'vision'
+                    ? 'bg-amber-500 text-black shadow-xs font-bold'
+                    : 'text-neutral-400 hover:text-white'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>空间图像识别 + 构思</span>
+              </button>
+            </div>
+
+            {/* AI 识别与编排模型选择 */}
+            <div className="flex items-center gap-2 bg-[#12141e] border border-white/10 px-3 py-1.5 rounded-xl">
+              <Cpu className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="text-[11px] text-neutral-400 shrink-0">构思模型:</span>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-[#1a1d2c] border border-white/15 focus:border-amber-400 rounded-lg px-2 py-0.5 text-[11px] text-amber-300 font-medium outline-none cursor-pointer"
+              >
+                {CHOREOGRAPHY_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.tag})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* 图像多模态视觉选择区 (当处于 vision 模式时) */}
@@ -504,7 +556,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                       推荐 {editableSlots.length} 人组合
                     </span>
                     <span className="text-[10px] text-neutral-400 font-mono">
-                      {result.source === 'ai_vision' ? '视觉多模态分析' : result.source === 'ai_prompt' ? '意图理解构思' : '启发式精选引擎'}
+                      {result.source === 'ai_vision' ? '视觉多模态分析' : result.source === 'ai_prompt' ? '意图理解构思' : '启发式精选引擎'} · {result.modelUsed || selectedModel}
                     </span>
                   </div>
                   <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">

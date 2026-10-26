@@ -9,6 +9,7 @@ export const ChoreographLayoutRequestSchema = z.object({
   imageUrl: z.string().optional(),
   imageBase64: z.string().optional(),
   characterCount: z.number().optional(),
+  model: z.string().optional().default('gemini-3.7-flash'),
   availableModels: z.array(
     z.object({
       id: z.string(),
@@ -42,6 +43,7 @@ export interface ChoreographedLayoutResult {
   recommendedCount: number;
   slots: ChoreographedSlotItem[];
   source: 'ai_vision' | 'ai_prompt' | 'heuristic_engine';
+  modelUsed?: string;
 }
 
 export class SpaceHumanChoreographyService {
@@ -52,13 +54,27 @@ export class SpaceHumanChoreographyService {
     input: z.input<typeof ChoreographLayoutRequestSchema>,
     userId: string = 'system'
   ): Promise<ChoreographedLayoutResult> {
-    const { prompt = '', imageUrl, imageBase64, characterCount, availableModels = [] } = input;
+    const { prompt = '', imageUrl, imageBase64, characterCount, availableModels = [], model = 'gemini-3.7-flash' } = input;
 
-    // 1. 尝试使用 Gemini 多模态大模型进行智能分析
+    // 1. 尝试使用 Gemini 多模态大模型进行智能分析 (默认 gemini-3.7-flash，支持 3.8 与 4 Argon)
     try {
       const { ai, isValidKey } = await createServerGenAI(userId);
 
       if (ai && isValidKey) {
+        const preferredModel = (model || '').trim() || 'gemini-3.7-flash';
+        const normalizedPreferred =
+          (preferredModel === 'gemini-4-argon' || preferredModel === 'argon' || preferredModel === 'gemini-4')
+            ? 'gemini-3.1-pro-preview'
+            : preferredModel;
+
+        const candidateModels = Array.from(new Set([
+          normalizedPreferred,
+          'gemini-3.7-flash',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-2.5-flash'
+        ]));
+
         const modelsSummary = availableModels.map(m => ({
           id: m.id,
           name: m.nameZh || m.name,
@@ -128,45 +144,52 @@ ${characterCount ? `【期望人物数量】：${characterCount} 人` : '【人�
           });
         }
 
-        const modelToUse = 'gemini-2.5-flash';
-        const response = await ai.models.generateContent({
-          model: modelToUse,
-          contents
-        });
+        // 循环尝试候选模型以确保高可用性
+        for (const modelToUse of candidateModels) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelToUse,
+              contents
+            });
 
-        const textOutput = response.text || '';
-        const cleanedJson = textOutput
-          .replace(/```json/gi, '')
-          .replace(/```/g, '')
-          .trim();
+            const textOutput = response.text || '';
+            const cleanedJson = textOutput
+              .replace(/```json/gi, '')
+              .replace(/```/g, '')
+              .trim();
 
-        const parsed = JSON.parse(cleanedJson);
-        if (parsed && Array.isArray(parsed.slots) && parsed.slots.length > 0) {
-          // 确保 slots 结构完整且与资产库绑定
-          const slots = parsed.slots.map((s: any, idx: number) => {
-            const matched = availableModels.find(m => m.id === s.matchedModelId) ||
-              availableModels.find(m => m.roleType === s.targetRole) ||
-              availableModels[idx % availableModels.length];
+            const parsed = JSON.parse(cleanedJson);
+            if (parsed && Array.isArray(parsed.slots) && parsed.slots.length > 0) {
+              // 确保 slots 结构完整且与资产库绑定
+              const slots = parsed.slots.map((s: any, idx: number) => {
+                const matched = availableModels.find(m => m.id === s.matchedModelId) ||
+                  availableModels.find(m => m.roleType === s.targetRole) ||
+                  availableModels[idx % availableModels.length];
 
-            return {
-              id: s.id || `slot-${idx + 1}`,
-              targetRole: s.targetRole || 'family_member',
-              roleLabel: s.roleLabel || (matched?.nameZh || matched?.name || `角色 ${idx + 1}`),
-              positionDesc: s.positionDesc || '沙发功能主座',
-              actionDesc: s.actionDesc || '舒展就座，目光温和自然',
-              matchedModelId: matched?.id || s.matchedModelId,
-              matchedModelName: matched ? (matched.nameZh || matched.name) : s.matchedModelName,
-              matchReason: s.matchReason || '根据家庭定位与气质契合'
-            };
-          });
+                return {
+                  id: s.id || `slot-${idx + 1}`,
+                  targetRole: s.targetRole || 'family_member',
+                  roleLabel: s.roleLabel || (matched?.nameZh || matched?.name || `角色 ${idx + 1}`),
+                  positionDesc: s.positionDesc || '沙发功能主座',
+                  actionDesc: s.actionDesc || '舒展就座，目光温和自然',
+                  matchedModelId: matched?.id || s.matchedModelId,
+                  matchedModelName: matched ? (matched.nameZh || matched.name) : s.matchedModelName,
+                  matchReason: s.matchReason || '根据家庭定位与气质契合'
+                };
+              });
 
-          return {
-            theme: parsed.theme || '空间人物情景编排',
-            spatialSummary: parsed.spatialSummary || '基于空间家具结构与生活情景构思',
-            recommendedCount: slots.length,
-            slots,
-            source: imageBase64 || imageUrl ? 'ai_vision' : 'ai_prompt'
-          };
+              return {
+                theme: parsed.theme || '空间人物情景编排',
+                spatialSummary: parsed.spatialSummary || '基于空间家具结构与生活情景构思',
+                recommendedCount: slots.length,
+                slots,
+                source: imageBase64 || imageUrl ? 'ai_vision' : 'ai_prompt',
+                modelUsed: modelToUse
+              };
+            }
+          } catch (modelErr) {
+            console.warn(`[SpaceHumanChoreographyService] Model ${modelToUse} failed, falling back to next:`, modelErr);
+          }
         }
       }
     } catch (aiErr) {

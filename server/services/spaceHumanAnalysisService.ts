@@ -10,7 +10,8 @@ import { FamilyRoleType, ModelDnaData, ModelMultiViews } from '../../src/types/s
 export const AnalyzeModelCardRequestSchema = z.object({
   projectId: z.string().optional().default('manwah-space-default'),
   imageBase64: z.string().min(10, 'imageBase64 is required'),
-  userNotes: z.string().optional()
+  userNotes: z.string().optional(),
+  model: z.string().optional().default('gemini-3.7-flash')
 });
 
 export interface AnalyzedModelCardResult {
@@ -41,7 +42,7 @@ export class SpaceHumanAnalysisService {
     input: z.infer<typeof AnalyzeModelCardRequestSchema>,
     userId: string = 'system'
   ): Promise<AnalyzedModelCardResult> {
-    const { projectId, imageBase64, userNotes } = input;
+    const { projectId, imageBase64, userNotes, model = 'gemini-3.7-flash' } = input;
     const modelUniqueId = `model-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
 
     // 1. 解析 Base64
@@ -228,21 +229,44 @@ ${userNotes ? `【用户特别说明】: ${userNotes}` : ''}
           }
         ];
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: parts as any }],
-          config: {
-            responseMimeType: 'application/json'
-          }
-        });
+        const preferredModel = (model || '').trim() || 'gemini-3.7-flash';
+        const normalizedPreferred =
+          (preferredModel === 'gemini-4-argon' || preferredModel === 'argon' || preferredModel === 'gemini-4')
+            ? 'gemini-3.1-pro-preview'
+            : preferredModel;
 
-        const rawText = response.text || '';
-        const cleanJsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-        const matchJson = cleanJsonText.match(/\{[\s\S]*\}/);
-        if (matchJson) {
-          recognized = JSON.parse(matchJson[0]);
-          if (recognized.explanation) {
-            explanation = recognized.explanation;
+        const candidateModels = Array.from(new Set([
+          normalizedPreferred,
+          'gemini-3.7-flash',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-2.5-flash'
+        ]));
+
+        for (const modelToUse of candidateModels) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelToUse,
+              contents: [{ role: 'user', parts: parts as any }],
+              config: {
+                responseMimeType: 'application/json'
+              }
+            });
+
+            const rawText = response.text || '';
+            const cleanJsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+            const matchJson = cleanJsonText.match(/\{[\s\S]*\}/);
+            if (matchJson) {
+              recognized = JSON.parse(matchJson[0]);
+              if (recognized.explanation) {
+                explanation = recognized.explanation;
+              } else {
+                explanation = `基于 ${modelToUse} 完成人物身份属性与 Model DNA 深度解析`;
+              }
+              break;
+            }
+          } catch (modelErr: any) {
+            console.warn(`[SpaceHumanAnalysisService] Model ${modelToUse} recognition failed, trying next:`, modelErr?.message);
           }
         }
       }

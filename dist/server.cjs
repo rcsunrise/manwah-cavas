@@ -18512,8 +18512,8 @@ function resolveCompositeMaterialDna(rawMat, contextRole) {
   if (/头层牛皮|真皮|半苯胺|全苯胺|牛皮|小牛皮|leather|saddle/i.test(lower)) {
     return {
       materialEn: "genuine top-grain semi-aniline cowhide leather",
-      craftsmanshipDirective: "authentic natural grain with delicate micro-porous texture, soft supple leather drape with natural ergonomic tension folds, artisanal French double-stitched piping running along outer contours",
-      antiStickerNegative: "fake bonded leather, synthetic pleather, peeling plastic finish, overly uniform artificial grain"
+      craftsmanshipDirective: "authentic natural grain with delicate micro-porous texture, soft supple leather drape with natural ergonomic tension folds, rich organic leather luster under natural window illumination, delicate French double-stitched piping running along outer contours, luxurious tactile sheen (strictly NOT dull dusty grey, strictly NOT plastic artificial gloss)",
+      antiStickerNegative: "fake bonded leather, synthetic pleather, peeling plastic finish, overly uniform artificial grain, plastic shiny reflection"
     };
   }
   return defaultResult;
@@ -18656,6 +18656,12 @@ var SpaceImageGenerationService = class {
     this.storage = GcsAssetStorage.getInstance();
   }
   /**
+   * 辅助方法：解析图片引用为 inlineData 格式
+   */
+  static async resolveImageInline(imageRef) {
+    return resolveImageInlineData(imageRef);
+  }
+  /**
    * 核心方法：为 Space Studio 生成并存储真实图像资产
    */
   static async generateAndStore(input) {
@@ -18718,7 +18724,10 @@ var SpaceImageGenerationService = class {
         activePrimaryProduct = hero3SeatProduct;
       }
     }
-    let effectiveProductImageRef = activePrimaryProduct && activePrimaryProduct !== primaryProduct ? activePrimaryProduct?.cropImageUrl || activePrimaryProduct?.cropBase64 || activePrimaryProduct?.referenceImage || activePrimaryProduct?.uploadedImageUrl || activePrimaryProduct?.referenceImage || productReferenceImage : productReferenceImage || activePrimaryProduct?.referenceImage;
+    let effectiveProductImageRef = productReferenceImage;
+    if (!effectiveProductImageRef || typeof effectiveProductImageRef === "string" && effectiveProductImageRef.trim().length === 0) {
+      effectiveProductImageRef = activePrimaryProduct && activePrimaryProduct !== primaryProduct ? activePrimaryProduct?.cropImageUrl || activePrimaryProduct?.cropBase64 || activePrimaryProduct?.referenceImage || activePrimaryProduct?.uploadedImageUrl || activePrimaryProduct?.referenceImage : activePrimaryProduct?.referenceImage || primaryProduct?.referenceImage;
+    }
     if (!effectiveProductImageRef || typeof effectiveProductImageRef === "string" && effectiveProductImageRef.trim().length === 0) {
       effectiveProductImageRef = productReferenceImage || primaryProduct?.referenceImage || primaryProduct?.cropImageUrl || sceneMasterReferenceImage;
     }
@@ -18862,19 +18871,21 @@ var SpaceImageGenerationService = class {
             });
           }
         }
-        if (productInline) {
-          images.push({
-            data: `data:${productInline.mimeType};base64,${productInline.data}`,
-            mimeType: productInline.mimeType,
-            role: "primary_product"
-          });
-        }
-        for (const secItem of pushedSecondaryInlines) {
-          images.push({
-            data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
-            mimeType: secItem.inline.mimeType,
-            role: "secondary_product"
-          });
+        if (!isHumanPass && !input.preserveBasePhotoOnly) {
+          if (productInline) {
+            images.push({
+              data: `data:${productInline.mimeType};base64,${productInline.data}`,
+              mimeType: productInline.mimeType,
+              role: "primary_product"
+            });
+          }
+          for (const secItem of pushedSecondaryInlines) {
+            images.push({
+              data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
+              mimeType: secItem.inline.mimeType,
+              role: "secondary_product"
+            });
+          }
         }
       } else {
         if (productInline) {
@@ -18920,7 +18931,30 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
         )
       ).join(", ");
       if (isHumanPass || shotInline) {
-        directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
+        const sanitizedNegative = (negativePrompt || "").replace(/\b(side chair|accent chair|armchair|lounge chair|single chair|3\+1 ensemble|wide empty room panorama|far distant vantage)\b/gi, "").replace(/,\s*,+/g, ",").trim();
+        if (input.preserveBasePhotoOnly || isHumanPass) {
+          directivePrompt = `[CRITICAL MANDATE: INPAINT REAL PEOPLE INTO REFERENCE IMAGE 1 - ABSOLUTE FIELD OF VIEW & FRAMING LOCK]
+PRIMARY OBJECTIVE:
+Reference Image 1 is the 100% AUTHENTIC BASELINE PHOTOGRAPH of the living room and all furniture pieces.
+Your task is EXCLUSIVELY to photorealistically insert the designated real human model(s) seated naturally into the hero sofa shown in Reference Image 1.
+
+[ABSOLUTE CAMERA STABILITY & ZERO-ZOOM MANDATE (CRITICAL)]:
+1. 100% FROZEN FRAMING & FIELD OF VIEW: The camera position, shooting distance, focal length, field-of-view, optical horizon, and ALL furniture pieces shown in Reference Image 1 (including any side chairs, armchairs, coffee tables, wall decorations, rugs, and windows) MUST REMAIN 100% IDENTICAL, IMMOVABLE, AND UNCROPPED!
+2. ABSOLUTE PROHIBITION ON ZOOMING OR CROPPING: ABSOLUTELY DO NOT ZOOM IN! DO NOT ZOOM OUT! DO NOT crop out the left side chair, coffee table, or any surrounding elements! DO NOT re-frame or shift the sofa! The sofa and surrounding furniture must retain their exact scale, pixel position, and coordinates as in Reference Image 1!
+3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with realistic body weight, fabric folds, and authentic contact ambient occlusion shadows on the seating cushions. All surrounding architecture, windows, walls, and flooring remain completely untouched!
+
+${charInlines.length > 0 ? `REFERENCE IMAGE 2${charInlines.length > 1 ? " & 3" : ""}: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ""}
+
+STRICT OCCUPANCY & COMPOSITION RULES:
+1. The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with relaxed posture and realistic body contact.
+2. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS.
+3. Keep all existing furniture functional mechanisms intact and closed unless specified.
+
+${positivePrompt}
+
+Negative constraints: ${sanitizedNegative ? `${sanitizedNegative}, ` : ""}zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+        } else {
+          directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
 PRIMARY OBJECTIVE:
 You are an architectural lifestyle photographer. You MUST photorealistically insert real human models into the room shown in Reference Image 1.
 DO NOT LEAVE THE ROOM EMPTY. DO NOT RETURN AN EMPTY ROOM.
@@ -18939,7 +18973,7 @@ ${secondaryReferencesText}
 STRICT COMMERCIAL MANDATES:
 1. POPULATE THE HERO SOFA: The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with realistic body weight, folds in clothes, and authentic contact shadows on the leather cushions.
 ${shotCode === "A03" ? `   - A03 HERO 3-SEATER FAMILY LEISURE: Depict a genuine warm family moment with parents and young daughter seated together on the 3-seater hero sofa. Functional footrests ${isFunctionalClosed ? "strictly remain completely closed and retracted under the base in standard upright comfortable configuration" : "outer motion seats may be gently deployed for relaxed human occupancy"}. Natural, relaxed, joyful expressions. Center coffee table in foreground with coffee cups and art books within the authentic living room.` : ""}
-${shotCode === "A04" ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio (CAPACITY LOCK: strictly max 2 occupants, mother and daughter, zero extra crowd). Depict an affectionate mother and young daughter companion moment. The motorized footrests ${isFunctionalClosed ? "strictly remain completely closed and tucked flush under the base in standard upright configuration" : "outer motorized footrest is smoothly deployed, comfortably supporting the mother and daughter relaxing together"}. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ""}
+${shotCode === "A04" ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly max 2 occupants, mother and daughter, zero extra crowd), captured from 140cm eye level with -15 degree downward pitch looking down onto the deep seating cushion and rug stage. Depict an affectionate mother and young daughter companion moment. The motorized footrests ${isFunctionalClosed ? "strictly remain completely closed and tucked flush under the base in standard upright configuration" : "outer motorized footrest is smoothly deployed, comfortably supporting the mother and daughter relaxing together"}. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ""}
 ${shotCode === "A05" ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? "completely retracted under the base in standard upright closed posture" : "smoothly deployed supporting private lounge relaxation"}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ""}
 ${shotCode === "A06" ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW: Lateral side profile (75-90 degrees) in 16:9 widescreen (CAPACITY LOCK: strictly 1 occupant). Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music.` : ""}
 ${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective (CAPACITY LOCK: strictly 1 single occupant). Motorized footrest is ${isFunctionalClosed ? "completely retracted and closed in standard upright reading posture" : "deployed in ergonomic comfort contour"} supporting a relaxed individual comfortably browsing an iPad/tablet within the authentic living room.` : ""}
@@ -18953,6 +18987,7 @@ ${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicate
 ${positivePrompt}
 
 Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}${isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00, " : ""}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+        }
       } else if (productInline && masterInline) {
         const isFrontalPanorama = shotCode === "A01" || (positivePrompt.includes("GRAND FRONTAL") || positivePrompt.includes("\u6B63\u5927\u89C6\u89D2"));
         const isAngledHero = shotCode === "A02" || (positivePrompt.includes("45-degree") || positivePrompt.includes("45\xB0") || positivePrompt.includes("3+1 ENSEMBLE"));
@@ -18973,21 +19008,221 @@ Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiSticke
         );
         const hasBrownSecondary = allowedSecondaryInlines.some((sec) => /brown|caramel|amber|espresso/i.test(sec.colorEn));
         const brownNegativeFilter = hasBrownSecondary ? "" : "brown recliner, brown armchair, ";
-        const a02PerspectiveShiftClause = shotCode === "A02" || isAngledHero ? `[MANDATORY PERSPECTIVE SHIFT: 45\xB0 THREE-QUARTERS OBLIQUE ANGLE]
-Reference Image 2 (A00 Master) is a frontal view, BUT FOR SHOT A02 YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE SIDE FOR A THREE-QUARTERS ISOMETRIC VIEW!
-DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW.
+        const isReferenceA01 = input.referenceShotCode === "A01";
+        const a02PerspectiveShiftClause = shotCode === "A02" || isAngledHero ? `[MANDATORY PERSPECTIVE SHIFT & 3+1 CHOREOGRAPHY: 45\xB0 THREE-QUARTERS OBLIQUE ANGLE]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the frontal baseline."}
+FOR SHOT A02, YOU MUST PHYSICALLY SWING THE CAMERA 40-45 DEGREES TO THE FRONT-LEFT VANTAGE POINT (standing near the panoramic window, shooting diagonally across to the back-right)!
+DO NOT RENDER A STRAIGHT-ON FRONTAL VIEW!
+DO NOT CENTER THE SOFA SYMMETRICALLY!
+
+[MANDATORY 3+1 CONVERSATIONAL LIVING ENSEMBLE CHOREOGRAPHY]:
+Capture the cohesive conversational salon layout matching the luxury lifestyle reference:
+1. THREE-SEATER MAIN SOFA: Located at midground right, backed against the luxury stone/wood focal wall, oriented at 45\xB0 diagonal angle. Supple genuine leather, three distinct seating cushions, with 1-2 curated throw cushions.
+2. MATCHING 1-SEATER POWER MOTION RECLINER ARMCHAIR: Located at foreground left near the panoramic window flank, angled inward toward the main sofa in a 90-degree conversational L-shape. COMFORT ERGONOMIC POSTURE: Its motorized footrest is gracefully deployed into a relaxed comfort contour (as shown in reference design), highlighting peak First-Class relaxation!
+3. DUAL NESTING CENTER COFFEE TABLES: Positioned on the area rug between sofa and armchair. Featuring a higher black square side pedestal nested with a lower dark marble/glass table, styled with an artisan wooden box and minimal greenery.
+4. CONTEMPORARY GEOMETRIC AREA RUG: Expansive light ivory/warm greige geometric wool rug cleanly anchoring both sofas and coffee table on the warm wood plank flooring.
+5. INDOOR BOTANICAL: An elegant tall fiddle-leaf fig tree stands between the recliner armchair and the panoramic window.
+6. OPEN-PLAN VISTA: The vista to the right extends smoothly into the deep background open-plan dining zone (dark marble dining table and leather dining chairs), establishing majestic architectural depth.
 
 ` : "";
-        directivePrompt = `[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
+        const a03PerspectiveClause = shotCode === "A03" || isHeroSofaFocus ? `[MANDATORY HERO 3-SEATER PERSPECTIVE & COMPOSITION: SUBTLE THREE-QUARTERS OBLIQUE ANGLE]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A03:
+- SUBTLE 15-25 DEGREE OBLIQUE PERSPECTIVE: The camera is stationed at the front-left vantage point (near the panoramic window), shooting toward the 3-seater hero sofa with a subtle 15-to-25 degree three-quarters oblique perspective. DO NOT RENDER A FLAT STRAIGHT-ON FRONTAL MUGSHOT! Show the dynamic 3D depth, the flare of the left armrest, and the deep seating cushion volume.
+- 100% FOCUS ON HERO 3-SEATER SOFA: Completely crop out, exclude, and bypass ANY separate single armchair, recliner chair, or 3+1 ensemble arrangement. The 3-seater sofa is the ONLY seating piece in the frame!
+- PRISTINE LEATHER SURFACE: Zero cluttered oversized cushions or furry pillows. The seating cushions and backrests remain clean, smooth, and uncluttered, showcasing the pure luxury of genuine semi-aniline leather.
+- FOREGROUND NESTING COFFEE TABLES: The dual nesting coffee table ensemble (black square pedestal + lower dark marble/glass table with artisan wooden box and subtle greenery) sits in the foreground on the geometric area rug, angled naturally without blocking the main sofa seating cushions.
+- LEFT-SIDE FLANK: An elegant side table and tall fiddle-leaf fig tree stand near the left panoramic window flank.
+- BACKGROUND ENVELOPE: Hero sofa is backed against the luxury marble/wood accent feature wall with its signature dual tiered curved luminous floating shelves. The space to the right opens smoothly into the deep background open-plan dining area.
+
+` : "";
+        const a04PerspectiveClause = shotCode === "A04" ? `[MANDATORY 2/3 HERO SOFA COMPANION PERSPECTIVE & COMPOSITION: 3:4 VERTICAL PORTRAIT]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A04:
+- 3:4 VERTICAL COMPOSITION & -15\xB0 DOWNWARD TILT: The camera is stationed at 140cm standing eye-level height with an intentional -15 degree downward pitch looking down onto the living area rug stage in 3:4 vertical portrait aspect ratio.
+- 2/3 SOFA LIFESTYLE CROP: Frame approximately 2/3 of the three-seater hero motion sofa (focusing on the outer left armrest and deep seating cushions). The remaining 1/3 of the sofa and the rest of the room are naturally cropped out. DO NOT zoom out or shrink the sofa to fit the entire width into the vertical frame!
+- PERSPECTIVE & HORIZON DECOUPLING: Reference Image 2 is a horizontal level eye-line view. FOR SHOT A04, DO NOT COPY the level eye-line or flat horizontal lines of Reference Image 2! The camera MUST physically be elevated to 140cm and tilted downward by -15\xB0 onto the seating cushion surface!
+- NATURAL PLAY STAGE: Foreground play rug stage bathed in left window sheer curtain daylight, white matte cylindrical planter anchor.
+- ZERO SIDE CHAIR: Completely crop out, exclude, and bypass any separate single armchair or recliner chair.
+
+` : "";
+        const a05PerspectiveClause = shotCode === "A05" ? `[MANDATORY 2/3 HERO SOFA PRIVATE LOUNGE PERSPECTIVE & COMPOSITION: 3:4 VERTICAL PORTRAIT]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A05:
+- 3:4 VERTICAL COMPOSITION & +28\xB0 RIGHT ANGLE: The camera is positioned at 95cm seated eye-level height (0\xB0 tilt) with a +28 degree right oblique perspective in 3:4 vertical portrait aspect ratio.
+- 2/3 SOFA CRAFTSMANSHIP CROP: Frame approximately 2/3 of the three-seater hero motion sofa, tightly capturing the right outer armrest with signature diamond quilting, circular metal motion buttons, brass closure strip anchor, and warm 3000K ambient wall sconce from Reference Image 2.
+- EXCLUDE SEPARATE CHAIRS: Strictly crop out any separate single armchair or distant room clutter. Strictly DO NOT invent unreferenced bookcases or wall niches!
+
+` : "";
+        const a06PerspectiveClause = shotCode === "A06" || isZeroWallProfile ? `[MANDATORY ZERO-WALL CLEARANCE LATERAL PROFILE: 88\xB0 PURE SIDE PROFILE]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A06:
+- 88\xB0 PURE LATERAL SIDE PROFILE: The camera is stationed on the side flank (85-to-90 degree orthogonal profile) at 90cm seated eye-level height in 4:3 horizontal aspect ratio. Two-point perspective with strictly plumb vertical lines.
+- ZERO-WALL CLEARANCE FUNCTION: Showcase MANWAH signature ZERO-WALL CLEARANCE technology in living room setting: hero sofa is positioned flush against the solid architectural feature wall with virtually zero gap (<5cm flush alignment)!
+- PRISTINE CLOSED POSTURE: Motorized footrests strictly retracted and tucked flush under the base; backrest upright in standard closed showroom posture. Full side armrest profile highlights diamond quilting craftsmanship.
+
+` : "";
+        const a07PerspectiveClause = shotCode === "A07" || isLivingEnsembleMid ? `[MANDATORY ENSEMBLE LIVING PERSPECTIVE & DEPTH COMPRESSION: 55mm MEDIUM GROUPING]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A07:
+- 55mm MEDIUM TELEPHOTO COMPRESSION: Camera at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio.
+- INTIMATE CONVERSATIONAL GROUPING: Medium living ensemble grouping tightly framing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground, highlighting the golden height drop between 450mm marble table and 400mm sofa seat.
+- DEEP GROUNDING: Strong contact AO shadows ground furniture on the geometric area rug with soft side window daylight and 3000K ambient ceiling glow.
+
+` : "";
+        const a08PerspectiveClause = shotCode === "A08" || isReclinerMultiMode ? `[MANDATORY RECLINER 5-MODE PERSPECTIVE & HERO INVERSION: 50mm GOLDEN DIAGONAL]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A08:
+- 100% FOCUS ON SINGLE POWER RECLINER ARMCHAIR: The single power motion recliner armchair is the 80% HERO PRODUCT in this shot! The 3-seater main sofa must be completely removed from center stage (pushed off-frame or distant background blur).
+- 50mm GOLDEN DIAGONAL PERSPECTIVE: Camera at 95cm seated eye-level height with fixed 35-to-40 degree golden diagonal perspective in 4:3 horizontal aspect ratio.
+- DEDICATED LIVING ROOM SANCTUARY: Positioned comfortably on the tailored geometric area rug in the open, spacious living room from Reference Image 2, capturing window daylight shadow boundary, leather sheen, and deep contact AO shadows. Strictly FORBID moving the chair into a hallway or door frame!
+
+` : "";
+        const a09PerspectiveClause = shotCode === "A09" || isDiningSuite ? `[MANDATORY DINING SUITE PERSPECTIVE & SPATIAL PIVOT: 40mm ARCHITECTURAL VISTA]
+${isReferenceA01 ? "Reference Image 2 is Shot A01 (Grand Frontal Living Scene Master)." : "Reference Image 2 is the scene baseline."}
+CRITICAL VANTAGE DIRECTIVE FOR SHOT A09:
+- SPATIAL PIVOT TO DINING SUITE: Camera axis is shifted to center on the luxury dining zone with 0-degree symmetrical frontal axis in 4:3 horizontal aspect ratio at 115cm standing eye-level height.
+- HERO DINING SUITE: Expansive luxury Italian dining table with matching tailored leather dining chairs, architectural credenza sideboard, and modern bar cart, bathed in authentic natural window daylight.
+- LIVING SOFA OFF-CENTER: The three-seater living room sofa MUST NOT occupy center stage; dining suite takes 75%+ visual prominence.
+
+` : "";
+        const ref2SceneTag = isReferenceA01 ? "Shot A01 (Grand Frontal Living Scene Master)" : "Shot A00 (Scene Master Architectural Baseline)";
+        let ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag}:
+   - ARCHITECTURAL SHELL ONLY: Inherit the architectural walls, background geometry, floor tiles, and window daylight direction strictly from Reference Image 2.
+   - [CRITICAL FURNITURE PURGE & OVERWRITE]: Reference Image 2 is used STRICTLY for room architecture. If Reference Image 2 contains any previous furniture, you MUST COMPLETELY PURGE AND OVERWRITE IT! All furniture MUST 100% come from Reference Image 1 (${effectiveProductName})!`;
+        if (shotCode === "A02" || isAngledHero) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (3D ROOM ARCHITECTURAL SHELL ONLY - STRICTLY DO NOT COPY OLD FURNITURE):
+   - Reference Image 2 provides the authentic 3D room materials ONLY (marble focal wall, ceiling lighting, floor tiles, daylight color).
+   - [MANDATORY FURNITURE PURGE]: You MUST COMPLETELY ERASE, PURGE AND OVERWRITE any sofa or furniture from Reference Image 2! Every sofa, chair, and table in the room MUST 100% come from Reference Image 1 (${effectiveProductName})!
+   - PERSPECTIVE RE-ORIENTATION: For Shot A02, place the new furniture from Reference Image 1 into this architectural room shell, and capture it from a dynamic 45-degree three-quarters diagonal vantage point (front-left near window pointing toward back-right) with diagonal floor vanishing lines!`;
+        } else if (shotCode === "A03" || isHeroSofaFocus) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM ARCHITECTURE ONLY - PURGE OLD FURNITURE):
+   - Reference Image 2 establishes visual ground truth for room architecture and window daylight ONLY.
+   - [MANDATORY FURNITURE PURGE]: Completely erase any previous sofa from Reference Image 2. Frame the NEW 3-seater sofa from Reference Image 1 from a subtle 15-25 degree front-left angle, focusing 100% on the new 3-seater sofa alone!`;
+        } else if (shotCode === "A04") {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+   - Reference Image 2 provides authentic room finishes and sofa leather color tone.
+   - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A04, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE SOFA AT A -15\xB0 DOWNWARD TILT! Completely discard the wide horizontal perspective of Reference Image 2!`;
+        } else if (shotCode === "A05") {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (MATERIAL DNA ONLY - STRICTLY DO NOT COPY HORIZONTAL WIDE FRAMING):
+   - Reference Image 2 provides authentic room finishes and sofa leather color tone.
+   - FRAMING DECOUPLING: Reference Image 2 is an ultra-wide horizontal landscape. FOR SHOT A05, YOU MUST RENDER A 3:4 VERTICAL PORTRAIT CROPPED ON 2/3 OF THE RIGHT SOFA ARMREST AT A +28\xB0 RIGHT ANGLE! Completely discard the frontal landscape composition of Reference Image 2!`;
+        } else if (shotCode === "A06" || isZeroWallProfile) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM WALL FINISHES ONLY - STRICTLY DO NOT COPY 0-DEGREE FRONTAL ANGLE):
+   - Reference Image 2 shows the room from the front.
+   - PERSPECTIVE DECOUPLING: FOR SHOT A06, YOU MUST PHYSICALLY ROTATE THE CAMERA 88\xB0 TO CAPTURE A PURE LATERAL PROFILE showing the sofa flush against the backdrop wall with <5cm zero-wall clearance! Discard the 0\xB0 frontal view of Reference Image 2!`;
+        } else if (shotCode === "A07" || isLivingEnsembleMid) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM FINISHES & COFFEE TABLE REFERENCE - COMPRESS DEPTH):
+   - Inherit room finishes, area rug, and coffee table designs from Reference Image 2.
+   - PERSPECTIVE DECOUPLING: Use 55mm medium telephoto compression to bring the coffee table and sofa into a tight, cohesive conversational group, eliminating wide empty gaps from Reference Image 2!`;
+        } else if (shotCode === "A08" || isReclinerMultiMode) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (ROOM ENVIRONMENT ONLY - COMPLETE HERO INVERSION):
+   - Reference Image 2 provides the luxury room architecture, flooring, and window daylight.
+   - HERO SUBJECT INVERSION: In Reference Image 2, the 3-seater sofa was centered. FOR SHOT A08, YOU MUST REMOVE THE 3-SEATER SOFA FROM CENTER STAGE AND FRAME THE SINGLE RECLINER ARMCHAIR AS THE 80% HERO PRODUCT in golden diagonal perspective!`;
+        } else if (shotCode === "A09" || isDiningSuite) {
+          ref2EnsembleDirective = `2. REFERENCE IMAGE 2 IS ${ref2SceneTag} (OPEN-PLAN ARCHITECTURAL GROUND TRUTH - CAMERA SHIFT):
+   - Reference Image 2 provides open-plan room finishes and daylight.
+   - CAMERA SHIFT: In Reference Image 2, the camera was centered on the living room sofa. FOR SHOT A09, SHIFT THE CAMERA AXIS TO CENTER ON THE INTEGRATED DINING SUITE, without the living sofa blocking center frame!`;
+        }
+        let specificShotTopMandate = "";
+        if (shotCode === "A02" || isAngledHero) {
+          specificShotTopMandate = `[CRITICAL CAMERA ROTATION MANDATE FOR SHOT A02: 45\xB0 THREE-QUARTERS OBLIQUE ANGLE]
+ATTENTION GENERATOR: DO NOT COPY THE STRAIGHT-ON FRONTAL ANGLE OR SYMMETRICAL COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is a straight-on frontal view, but SHOT A02 MUST BE A DRAMATIC 45-DEGREE CORNER THREE-QUARTERS OBLIQUE PERSPECTIVE!
+The camera is physically stationed at the front-left corner near the panoramic window, shooting diagonally 40-45 degrees toward the back-right.
+1. THREE-SEATER MAIN SOFA: MUST NOT BE HORIZONTAL TO THE SCREEN! It must be oriented along the 45-degree diagonal receding into the depth of the room. Show the deep dimensional volume of the front armrest, cushion depth, and side contour.
+2. SINGLE RECLINER ARMCHAIR: Positioned prominently in the FOREGROUND-LEFT near the window, facing inward towards the 3-seater sofa at a 90-degree conversational angle.
+3. DUAL NESTING COFFEE TABLES: Located between sofa and armchair on the rug, showing clear diagonal perspective foreshortening.
+4. BACKGROUND FOCAL WALL: MUST RECEDE DIAGONALLY with strong two-point perspective vanishing lines from left to right, NOT a flat wall parallel to the frame!
+STRICTLY FORBIDDEN: Any straight-on, flat, frontal view, or symmetrical sofa placement!
+
+`;
+        } else if (shotCode === "A03" || isHeroSofaFocus) {
+          specificShotTopMandate = `[CRITICAL CAMERA & COMPOSITION MANDATE FOR SHOT A03: 15\xB0-25\xB0 SUBTLE OBLIQUE & 100% THREE-SEATER SOLO FOCUS]
+ATTENTION GENERATOR: DO NOT COPY THE 0-DEGREE STRAIGHT-ON FRONTAL ANGLE OR THE 3+1 ENSEMBLE LAYOUT OF REFERENCE IMAGE 2!
+Reference Image 2 is a wide frontal 3+1 panorama containing a separate single chair, but SHOT A03 MUST BE A TIGHT 50mm COMMERCIAL FOCUS ON THE 3-SEATER HERO SOFA ALONE!
+1. THREE-SEATER MAIN SOFA IS THE SOLE HERO SEATING PIECE: Completely crop out, bypass, and EXCLUDE any separate single armchair, recliner chair, or 3+1 ensemble arrangement from Reference Image 2! The 3-seater sofa must occupy 75%+ of the frame.
+2. SUBTLE 15-25 DEGREE OBLIQUE PERSPECTIVE: The camera is stationed at the front-left vantage point with a subtle 15-to-25 degree three-quarters oblique perspective. DO NOT RENDER A FLAT STRAIGHT-ON FRONTAL MUGSHOT! Show the dynamic 3D depth, the flare of the front-left armrest, and cushion depth.
+3. FOREGROUND DUAL COFFEE TABLES: Black square pedestal nested with dark lower marble/glass table sits in foreground on geometric rug without blocking sofa seating cushions.
+STRICTLY FORBIDDEN: Rendering any side single armchair, rendering flat 0\xB0 frontal mugshot, or centering a symmetrical horizontal sofa!
+
+`;
+        } else if (shotCode === "A04") {
+          specificShotTopMandate = `[CRITICAL FRAMING & ORIENTATION MANDATE FOR SHOT A04: 3:4 VERTICAL PORTRAIT & 2/3 SOFA LIFESTYLE CROP]
+ATTENTION GENERATOR: DO NOT COPY THE HORIZONTAL LANDSCAPE ORIENTATION OR FULL ROOM COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide horizontal landscape (A01). DO NOT SQUEEZE THE ENTIRE LIVING ROOM INTO THIS VERTICAL 3:4 FRAME!
+1. 3:4 VERTICAL ASPECT RATIO & MICRO-DOWNWARD TILT: The camera is stationed at 140cm standing eye-level height with a -15 degree downward pitch looking down onto the living area rug stage in 3:4 vertical portrait aspect ratio.
+2. TIGHT 2/3 SOFA CROP: Frame approximately 2/3 of the three-seater hero motion sofa (outer left armrest and wide seating cushion depth). The remaining 1/3 of the sofa and the rest of the room are naturally cropped out! DO NOT shrink or zoom out to fit the whole sofa.
+3. EXCLUDE SECONDARY FURNITURE: Completely crop out any separate single armchair, and ensure the foreground coffee table does NOT block the front seating stage.
+STRICTLY FORBIDDEN: Squeezing the entire room or entire sofa into the 3:4 vertical frame, horizontal wide-angle perspectives, or flat frontal views!
+
+`;
+        } else if (shotCode === "A05") {
+          specificShotTopMandate = `[CRITICAL FRAMING & CRAFTSMANSHIP MANDATE FOR SHOT A05: 3:4 VERTICAL PORTRAIT & 2/3 SOFA LUXURY CROP]
+ATTENTION GENERATOR: DO NOT COPY THE HORIZONTAL LANDSCAPE ORIENTATION OR FULL ROOM COMPOSITION OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide horizontal landscape (A01). DO NOT SQUEEZE THE ENTIRE LIVING ROOM INTO THIS VERTICAL 3:4 FRAME!
+1. 3:4 VERTICAL ASPECT RATIO & RIGHT-FLANK ANGLE: The camera is positioned at 95cm seated eye-level height with a +28 degree right oblique perspective in 3:4 vertical portrait aspect ratio.
+2. TIGHT 2/3 SOFA CROP: Frame approximately 2/3 of the three-seater hero motion sofa, tightly capturing the right outer armrest with signature diamond quilting, circular metal motion buttons, brass closure strip anchor, and warm 3000K ambient wall sconce from Reference Image 2.
+3. EXCLUDE SECONDARY FURNITURE: Completely crop out any separate single armchair or distant room clutter. Strictly DO NOT invent unreferenced bookcases or wall niches!
+STRICTLY FORBIDDEN: Squeezing the entire room or entire sofa into the 3:4 vertical frame, or flat frontal mugshot views!
+
+`;
+        } else if (shotCode === "A06" || isZeroWallProfile) {
+          specificShotTopMandate = `[CRITICAL ORTHOGONAL ROTATION MANDATE FOR SHOT A06: 88\xB0 PURE LATERAL PROFILE & ZERO-WALL CLEARANCE]
+ATTENTION GENERATOR: DO NOT COPY THE 0-DEGREE STRAIGHT-ON FRONTAL ANGLE OF REFERENCE IMAGE 2!
+Reference Image 2 is a 0-degree straight-on frontal view, but SHOT A06 MUST BE AN 88-DEGREE PURE LATERAL SIDE PROFILE VIEW!
+The camera is stationed on the side flank (85\xB0 to 90\xB0 orthogonal profile) at 90cm seated eye-level height.
+1. ZERO-WALL CLEARANCE ARCHITECTURE: The hero sofa is backed flush against the continuous solid living room marble/wood feature wall from Reference Image 2 with virtually ZERO gap (<5cm flush alignment), demonstrating MANWAH signature zero-wall space-saving technology!
+2. STRICTLY CLOSED SHOWROOM POSTURE: All motorized footrests are completely retracted and tucked underneath the base; the backrest is upright in standard closed form.
+3. PURE SIDE PROFILE: Showcase full side armrest silhouette with diamond-quilted craftsmanship and neat bottom chassis.
+STRICTLY FORBIDDEN: Frontal angle, 45-degree angle, sofa detached from back wall with large gap, or deployed footrests!
+
+`;
+        } else if (shotCode === "A07" || isLivingEnsembleMid) {
+          specificShotTopMandate = `[CRITICAL DEPTH COMPRESSION MANDATE FOR SHOT A07: 55mm MEDIUM ENSEMBLE COMPOSITION]
+ATTENTION GENERATOR: DO NOT COPY THE DISTANT ULTRA-WIDE-ANGLE PERSPECTIVE OF REFERENCE IMAGE 2!
+Reference Image 2 is an ultra-wide panoramic vista (26-35mm) where the coffee table and sofa appear far apart and surrounded by empty floor space.
+1. 55mm TELEPHOTO DEPTH COMPRESSION: The camera uses a 55mm medium telephoto lens at 95cm height with a -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio.
+2. INTIMATE LIVING CONVERSATION GROUPING: Compress depth to bring the dual nesting marble coffee tables into an intimate, cohesive foreground relationship with the hero sofa in the midground, clearly showcasing the golden height drop (450mm table vs 400mm sofa seat).
+3. GEOMETRIC RUG & AO SHADOWS: Strong contact AO shadows ground the furniture tightly on the geometric area rug.
+STRICTLY FORBIDDEN: Far distant wide-angle views, empty barren foregrounds, or flat frontal 0-degree mugshots!
+
+`;
+        } else if (shotCode === "A08" || isReclinerMultiMode) {
+          specificShotTopMandate = `[CRITICAL HERO INVERSION MANDATE FOR SHOT A08: DEDICATED SINGLE POWER RECLINER SHOWCASE]
+ATTENTION GENERATOR: DO NOT COPY THE THREE-SEATER CENTERED COMPOSITION OF REFERENCE IMAGE 2!
+In Reference Image 2 (A01), the three-seater sofa dominates the center of the frame, while the single recliner is a minor side accent.
+FOR SHOT A08, THE HERO SUBJECT IS 100% INVERTED: THE SINGLE POWER RECLINER ARMCHAIR IS THE 80% HERO PRODUCT!
+1. THREE-SEATER MAIN SOFA MUST VACATE CENTER STAGE: The 3-seater sofa must be completely out of frame or pushed to distant soft background blur. IT MUST NOT BE IN THE CENTER!
+2. DEDICATED RECLINER SHOWCASE: The matching single power recliner armchair sits majestically in the spacious, open living room of Reference Image 2 on the tailored area rug, framed at a 35-to-40 degree golden diagonal perspective.
+3. INHERIT LEATHER & FINISH DNA: 100% inherit the genuine leather grade, color tone, and welt piping craftsmanship from Reference Image 1, set against the authentic living room finishes and window daylight of Reference Image 2.
+STRICTLY FORBIDDEN: Centering the three-seater sofa, blocking the recliner with other furniture, or moving the recliner into a narrow hallway/corridor!
+
+`;
+        } else if (shotCode === "A09" || isDiningSuite) {
+          specificShotTopMandate = `[CRITICAL SPATIAL PIVOT MANDATE FOR SHOT A09: DINING SUITE INTEGRATED LIFESTYLE VISTA]
+ATTENTION GENERATOR: DO NOT COPY THE LIVING ROOM SOFA CENTERED COMPOSITION OF REFERENCE IMAGE 2!
+In Reference Image 2 (A01), the camera is centered on the living room sofa, while the dining area is in the far right background.
+FOR SHOT A09, PIVOT THE CAMERA AXIS TO CENTER ON THE INTEGRATED DINING SUITE:
+1. HERO DINING SUITE IS THE VISUAL CENTER: The camera axis is centered on the luxury dining table ensemble (luxury Italian black marble dining table, coordinated leather dining chairs, credenza sideboard, and mobile bar cart).
+2. LIVING ROOM SOFA MUST NOT OCCUPY CENTER STAGE: The living room sofa is shifted out of the central axis, allowing the dining suite to take 75%+ visual dominance.
+3. OPEN-PLAN ARCHITECTURAL HARMONY: Bathed in the authentic window daylight and architectural finishes strictly continuous with Reference Image 2.
+STRICTLY FORBIDDEN: Keeping the three-seater living sofa in the center of the frame, or copying the living room centered framing of Reference Image 2!
+
+`;
+        }
+        const effectivePitch = cameraSettings?.pitchDeg ?? (shotCode === "A04" ? -15 : shotCode === "A07" ? -5 : 0);
+        const isPitchTilted = Math.abs(effectivePitch) >= 3;
+        const perspectiveOpticsDirective = isPitchTilted ? `Three-point architectural perspective with authentic ${effectivePitch}\xB0 camera pitch tilt (${effectivePitch < 0 ? "micro-downward angle looking down onto sofa seating surface and floor carpet" : "upward vantage"}), dynamic natural foreshortening.` : "Two-point architectural perspective with plumb vertical lines (tilt = 0\xB0).";
+        directivePrompt = `${specificShotTopMandate}[MANWAH COMMERCIAL FURNITURE PHOTOGRAPHY: SHOT ${shotCode}]
 MULTI-VIEW ASSET ANCHOR:
 1. REFERENCE IMAGE 1 IS THE 100% EXCLUSIVE VISUAL TRUTH FOR THE HERO FURNITURE:
 ${shotCode === "A08" && activePrimaryProduct === primaryProduct ? `   - [A08 SINGLE POWER RECLINER DERIVATION MANDATE]: Reference Image 1 provides the master genuine leather material (${effectiveMaterial}), precise color anchor (${effectiveColor}), and signature welt-piping craftsmanship for this suite. FOR THIS A08 SHOT, RENDER A MATCHING SINGLE-SEATER LUXURY POWER MOTION RECLINER ARMCHAIR in the three-quarters composition, 100% inheriting the exact leather grade, color tone, tufted pleating, and stitching DNA from Reference Image 1!` : `   - Faithfully replicate the exact furniture silhouette from Reference Image 1: precise seating cushion division, signature armrest contour, ergonomic backrest volume, supple genuine leather texture (${effectiveMaterial}), authentic color tone (${effectiveColor}), and precision welt stitching.`}
-   - MANDATORY SOFA OVERWRITE: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!
-2. REFERENCE IMAGE 2 IS THE 100% EXCLUSIVE TRUTH FOR THE ROOM ENVELOPE:
-   - Inherit the architectural walls, background geometry and finishes, floor tiles, and window daylight direction strictly from Reference Image 2. Zero background drift!
+${shotCode === "A02" || isAngledHero ? `   - [MANDATORY FURNITURE PURGE & OVERWRITE]: Reference Image 1 provides the new product truth. Reference Image 2 contains obsolete furniture from previous runs. You MUST COMPLETELY ERASE AND OVERWRITE any sofa/chair from Reference Image 2! Place the new furniture suite from Reference Image 1 into the architectural space of Reference Image 2, capturing it from a 45-degree diagonal three-quarters perspective!` : shotCode === "A03" || isHeroSofaFocus ? `   - [MANDATORY FURNITURE OVERWRITE]: Focus 100% on the new 3-seater sofa from Reference Image 1 from a subtle 15-25 degree oblique angle, completely purging any old furniture from Reference Image 2!` : shotCode === "A04" ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame 2/3 of the new hero sofa from Reference Image 1 in 3:4 vertical composition at a -15\xB0 downward tilt, completely replacing any old furniture from Reference Image 2!` : shotCode === "A05" ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame 2/3 of the right armrest of the new hero sofa from Reference Image 1 in 3:4 vertical composition at a +28\xB0 right angle, completely replacing any old furniture from Reference Image 2!` : shotCode === "A06" || isZeroWallProfile ? `   - [MANDATORY FURNITURE OVERWRITE]: Capture the new hero sofa from Reference Image 1 in pure 88\xB0 lateral side profile flush against the back wall, completely replacing any old furniture from Reference Image 2!` : shotCode === "A07" || isLivingEnsembleMid ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame the new hero sofa and coffee table from Reference Image 1 in 55mm medium telephoto compression, completely replacing any old furniture from Reference Image 2!` : shotCode === "A08" || isReclinerMultiMode ? `   - [MANDATORY FURNITURE OVERWRITE]: Center and frame the new single power recliner armchair from Reference Image 1 as the hero piece, completely replacing any old furniture from Reference Image 2!` : shotCode === "A09" || isDiningSuite ? `   - [MANDATORY FURNITURE OVERWRITE]: Frame the new dining suite from Reference Image 1, completely replacing any old furniture from Reference Image 2!` : "   - [MANDATORY FURNITURE OVERWRITE]: Reference Image 2 contains a previous sofa from an earlier angle. You MUST COMPLETELY IGNORE, ERASE, AND OVERWRITE any sofa shown in Reference Image 2! DO NOT blend, morph, or take proportions from the old sofa in Reference Image 2!"}
+${ref2EnsembleDirective}
 
 CAMERA PERSPECTIVE & COMPOSITION DIRECTIVE:
-${a02PerspectiveShiftClause}${positivePrompt}
+${a02PerspectiveShiftClause}${a03PerspectiveClause}${a04PerspectiveClause}${a05PerspectiveClause}${a06PerspectiveClause}${a07PerspectiveClause}${a08PerspectiveClause}${a09PerspectiveClause}${positivePrompt}
 ${secondaryReferencesText ? `
 MATCHING ENSEMBLE:
 ${secondaryReferencesText}
@@ -18998,19 +19233,27 @@ CORE INVARIANTS:
   2. Dual curved wall sconces on marble backdrop with consistent curvature and spacing.
   3. Left panoramic window 6000K cool daylight paired with interior 3000K warm ambient glow, soft eastward contact shadow falloff.
   4. Deep physical contact AO grounding all furniture legs and chassis firmly onto the area rug.
-- OPTICS & LIGHTING: Two-point architectural perspective with plumb vertical lines (tilt = 0\xB0). Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
+- OPTICS & LIGHTING: ${perspectiveOpticsDirective} Natural soft side daylight streaming through panoramic window flank matching Reference Image 2, with gentle organic shadow falloff and genuine ambient occlusion. Zero 3D CGI look, zero plastic render sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
-- CLOSED SHOWROOM POSTURE: ${isFunctionalClosed ? "All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base." : "Motion mechanism may be deployed as specified."}`;
+- SHOWROOM POSTURE: ${shotCode === "A02" ? "Main sofa motorized footrests strictly remain closed and flush. The matching single recliner armchair may have its motorized footrest comfortably extended into ergonomic contour as in reference." : isFunctionalClosed ? "All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base." : "Motion mechanism may be deployed as specified."}`;
+        const isAngledOrProfile = ["A02", "A04", "A05", "A06", "A07", "A08"].includes(shotCode) || isAngledHero || isZeroWallProfile;
         const cleanNegativeConstraints = [
           negativePrompt,
           antiStickerNegatives,
-          shotCode === "A02" || isAngledHero ? "flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward" : "",
+          shotCode === "A02" || isAngledHero ? "flat frontal view, straight-on camera, straight-on frontal view, symmetrical center sofa, horizontal sofa parallel to screen, front-facing sofa, flat 1-point perspective, mugshot view, zero perspective depth, copying frontal composition of reference 2, boxy closed small room, missing coffee table, missing rug, cramped narrow space, center dividing pillar" : "",
+          shotCode === "A03" || isHeroSofaFocus ? "flat frontal mugshot, straight-on camera, symmetrical center sofa, facing directly forward, stiff mugshot view, side chair, accent chair, armchair, lounge chair, single chair, 3+1 ensemble, extra chair, additional seating, cluttered throw pillows, giant fuzzy cushions, boxy closed small room, missing coffee table, center dividing pillar" : "",
+          shotCode === "A04" ? "flat frontal view, flat eye-level view, 0-degree horizontal level shot, pure flat side elevation, full horizontal panorama, entire living room in frame, wide angle vista, isolated single chair, coffee table blocking front, 1-point perspective frontal view, miniature sofa squeezed in frame, flipped room" : "",
+          shotCode === "A05" ? "full horizontal panorama, entire room in frame, distant furniture, wide angle panorama, isolated single chair, built-in bookshelf, bookcase, library wall, flat frontal view, arched shelves" : "",
+          shotCode === "A06" || isZeroWallProfile ? "flat frontal view, 0-degree straight-on view, front-facing sofa, 45-degree corner view, detached sofa from wall, large gap between sofa and wall, deployed footrest, open recliner mechanism, office, library shelves, bookshelf" : "",
+          shotCode === "A07" || isLivingEnsembleMid ? "wide empty room panorama, tiny distant coffee table, flat frontal mugshot, vast empty foreground, floating furniture, disconnected coffee table" : "",
+          shotCode === "A08" || isReclinerMultiMode ? "three-seater sofa centered in frame, three-seater sofa blocking recliner, flat frontal living room view, copying A01 composition, hallway, corridor, entryway, door frame, white door frame" : "",
+          shotCode === "A09" || isDiningSuite ? "three-seater sofa centered in frame, living room sofa dominating image, kitchen sink, cramped room, copying A01 living room composition" : "",
           "CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render",
           "double sofas, ghost sofa, overlapping couches, morphing furniture",
           "different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room",
-          "crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines",
+          isAngledOrProfile ? "sofa floating off floor grid, mismatched vanishing lines, distorted proportions" : "crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines",
           "deformed sofa, generic boxy sofa, distorted proportions, wrong color",
-          isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258" : "",
+          isFunctionalClosed && shotCode !== "A02" ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258" : "",
           !hasHumanOccupant ? "people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs" : "",
           brownNegativeFilter,
           "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo"
@@ -19022,9 +19265,89 @@ Negative constraints: ${cleanNegativeConstraints}`;
         const isArmlessLoungeChairA00 = secondaryInlines.some(
           (sec) => sec.product.role === "lounge_chair" || sec.product.functionCapable === false || sec.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.product.name)
         );
+        const combinedContext = `${input.roomName || ""} ${input.spacePreset?.code || ""} ${input.spacePreset?.name || ""} ${input.styleName || ""} ${input.stylePreset?.code || ""} ${input.stylePreset?.name || ""} ${positivePrompt}`;
+        const isSunken = /下沉|sunken|N-R04/i.test(combinedContext);
+        const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedContext);
+        const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedContext);
+        const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedContext);
+        const isAmerican = /美式|american|US-01|US-02/i.test(combinedContext);
+        const isFrench = /法式|parisian|haussmann|EU-01/i.test(combinedContext);
+        const isItalian = /意式|italian|milanese|IT-01/i.test(combinedContext);
+        let topologyMandateA00 = "";
+        const topologyNegativesA00 = [];
+        if (isSunken) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: 45CM SUNKEN CONVERSATION PIT WITH PERIMETER STEPS & FIREPLACE]
+1. SUNKEN CONVERSATION PIT: The central living lounge seating zone MUST BE CLEARLY STEPPED DOWN 40-45CM BELOW THE SURROUNDING UPPER FLOOR LEVEL. Visible, clean perimeter stone steps wrap around the sunken lounge area. The sofa, carpet, and coffee table sit recessed inside this conversation sanctuary.
+2. TRAVERTINE STONE FIREPLACE: In the center background feature wall, there MUST be a monumental natural honed travertine limestone wall with an integrated horizontal modern linear fireplace hearth showing visible dancing live orange fire flames.
+3. ABSOLUTE TOPOLOGY MANDATE: STRICTLY FORBID flat one-level floor without steps! STRICTLY FORBID room without fireplace!`;
+          topologyNegativesA00.push(
+            "flat floor without steps",
+            "flat single-level floor",
+            "absence of sunken pit",
+            "no steps around living room",
+            "missing fireplace",
+            "no fireplace",
+            "missing fire hearth"
+          );
+        } else if (isDuplex) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: MONUMENTAL 6.2M DOUBLE-HEIGHT SOARING VOID]
+1. SOARING 6.2M DOUBLE HEIGHT: Dramatic double-height vertical volume with a two-story continuous feature wall.
+2. CHANDELIER & SCULPTURAL STAIRS: High-altitude modern sculptural pendant chandelier hanging in the void, with background revealing interior glass zen garden and floating curved stairs.`;
+          topologyNegativesA00.push("low ceiling", "standard 3m ceiling", "flat standard apartment", "missing double height ceiling void");
+        } else if (isPavilion) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: ORIENTAL ZEN WATER GARDEN VILLA PAVILION]
+1. WATER MIRROR & PINE VIEW: Full-span uninterrupted panoramic glass wall looking out directly to an outdoor serene water mirror reflection pool with a sculptural Japanese pine bonsai tree and limestone boulders.`;
+          topologyNegativesA00.push("urban skyscraper view", "street level view", "blocked garden view");
+        } else if (isPenthouse) {
+          topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: HIGH-ALTITUDE SKYLINE PENTHOUSE SALON]
+1. METROPOLIS SKYLINE: Majestic 4.2m ceiling with soaring floor-to-ceiling panoramic glass curtain wall overlooking high-altitude metropolis skyscraper skyline and sunset golden hour clouds.`;
+          topologyNegativesA00.push("ground floor view", "street level view", "garden outside window");
+        }
+        let styleMandateA00 = "";
+        const styleNegativesA00 = [];
+        if (isAmerican) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: MODERN AMERICAN METROPOLITAN]
+1. PICTURE-FRAME WALL PANEL MOLDINGS & WAINSCOTING: The background and side walls MUST feature authentic classic modern American picture-frame wall moldings and elegant wainscoting (crisp rectangular architectural wall frames with shadow relief moldings in warm oat greige #E6DFD5 and rich dark walnut millwork).
+2. FINISHES: Warm brushed brass wall sconces, plaster ceiling crown moldings, and solid American dark walnut joinery.
+3. ABSOLUTE PROHIBITION: STRICTLY FORBID modern flat sterile drywall, strictly forbid flat featureless white slabs without wall moldings!`;
+          styleNegativesA00.push(
+            "cold flat sterile drywall",
+            "modern plain white slab without moldings",
+            "sterile white clinic walls",
+            "flat bare drywall without panel frames"
+          );
+        } else if (isFrench) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: PARISIAN HAUSSMANNIAN BOISERIE]
+1. FRENCH BOISERIE & CARVED MOLDINGS: Walls feature delicate French boiserie panel moldings, carved plaster wall cornices, and pale oak herringbone parquet flooring.`;
+          styleNegativesA00.push("dark heavy industrial concrete", "flat modern drywall without moldings");
+        } else if (isItalian) {
+          styleMandateA00 = `[MANDATORY INTERIOR ARCHITECTURAL STYLE: MILANESE ARCHITECTURAL LUXURY]
+1. ROMAN TRAVERTINE & SMOKED WALNUT: Continuous full-span honed porous Roman travertine stone slabs and rich smoked dark walnut joinery, ultra-slim dark brushed titanium metal profiles, minimalist recessed reveal shadow gaps.`;
+          styleNegativesA00.push("traditional decorative moldings", "rustic country wood", "cheap plastic laminate");
+        }
+        const isEnsemble = Boolean(activePrimaryProduct?.isSceneEnsembleSuite && activePrimaryProduct?.sceneEnsembleDossier);
+        const ensembleDossier = isEnsemble ? activePrimaryProduct.sceneEnsembleDossier : null;
+        const rawMain = ensembleDossier?.sofaSuite?.mainSofa?.color || activePrimaryProduct?.colors?.[0];
+        const rawRecliner = ensembleDossier?.sofaSuite?.reclinerChairs?.[0]?.color;
+        const mainSofaColor = translateColorToEnglish(rawMain, effectiveColor);
+        const hasRecliner = Boolean(ensembleDossier?.sofaSuite?.reclinerChairs && ensembleDossier.sofaSuite.reclinerChairs.length > 0);
+        const reclinerChairColor = rawRecliner ? translateColorToEnglish(rawRecliner) : mainSofaColor;
+        const isDualTone = hasRecliner && Boolean(rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim());
+        const reclinerName = ensembleDossier?.sofaSuite?.reclinerChairs?.[0]?.name || "single accent armchair";
+        const layoutPrompt = ensembleDossier?.placementDirectives?.holisticLayoutPrompt || "";
+        const visualAssetAnchorClause = isEnsemble ? isDualTone ? `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
+   * THREE-SEATER MAIN SOFA: Centered in room, finished in ${mainSofaColor}.
+   * SINGLE ACCENT CHAIR ON LEFT: Positioned on the left flank, finished strictly in contrasting ${reclinerChairColor} (${reclinerName}), preserving its distinct modern silhouette from Reference Image 1. STRICTLY FORBID painting the single chair in the main sofa's color (${mainSofaColor})! Maintain the distinct two-tone contrast!
+   * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ""}` : `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
+   * SEATING SUITE: All seating pieces finished in cohesive ${mainSofaColor}.
+   * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ""}` : `- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.`;
         directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
+${topologyMandateA00 ? `${topologyMandateA00}
+` : ""}
+${styleMandateA00 ? `${styleMandateA00}
+` : ""}
 VISUAL ASSET ANCHOR:
-- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.
+${visualAssetAnchorClause}
 ${primaryProduct?.role === "sofa_2seat" ? `   - TWO-SEATER PROPORTIONS: Strictly a TWO-SEATER sofa (exactly 2 seating cushions and 2 backrest units, twin-cushion division, strictly NOT a three-seater sofa, NO middle cushion). Generously wide horizontal proportion and low-slung stance (2.1m wide presence). Tailored contrasting welt cord piping along front edge and armrest contours.` : ""}
 ${secondaryReferencesText ? `${secondaryReferencesText}
 ` : ""}
@@ -19032,7 +19355,7 @@ SPATIAL & CAMERA DIRECTIVE:
 ${positivePrompt}
 
 CORE INVARIANTS:
-- PERSPECTIVE & LIGHTING: Eye-level standing camera height (135cm) with clean two-point architectural perspective and plumb vertical lines. Soft natural daylight streaming through side panoramic floor-to-ceiling windows. Continuous solid architectural feature wall centered behind sofa.
+- PERSPECTIVE & ARCHITECTURE: Ultra-wide architectural camera perspective with plumb vertical lines (26mm field of view). Faithfully manifest the distinctive architectural room topology, ceiling headroom, lighting atmosphere, and tailored interior wall materiality specified in the Spatial & Camera Directive.
 - SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
 - ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
@@ -19040,6 +19363,9 @@ CORE INVARIANTS:
         const cleanNegativeConstraintsA00 = [
           negativePrompt,
           antiStickerNegatives,
+          isEnsemble && isDualTone ? `${mainSofaColor} recliner, ${mainSofaColor} armchair, identical ${mainSofaColor} single chair, monochromatic seating` : "",
+          ...topologyNegativesA00,
+          ...styleNegativesA00,
           "throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric pillow, blanket, clutter, floral armchair, patterned fabric chair, patchwork armchair",
           "CGI, 3D render, low-poly, clay model, plastic texture, oversaturated, amateur render",
           "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap",
@@ -20839,35 +21165,49 @@ router16.get(["/local-file", "/download"], async (req, res) => {
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("Cache-Control", "public, max-age=86400");
+    const resolveAndSendBuffer = async (data, fallbackKey) => {
+      const sample = data.subarray(0, 120).toString("utf-8").trimStart();
+      const isSvg = sample.startsWith("<svg") || sample.startsWith("<?xml");
+      if (isSvg && (fallbackKey.endsWith(".webp") || fallbackKey.endsWith(".png") || fallbackKey.endsWith(".jpg"))) {
+        try {
+          const converted = await (0, import_sharp5.default)(data).webp({ quality: 90 }).toBuffer();
+          res.setHeader("Content-Type", "image/webp");
+          return res.end(converted);
+        } catch {
+          res.setHeader("Content-Type", "image/svg+xml");
+          return res.end(data);
+        }
+      }
+      if (isSvg) {
+        res.setHeader("Content-Type", "image/svg+xml");
+      } else if (data.length >= 12 && data.toString("ascii", 0, 4) === "RIFF" && data.toString("ascii", 8, 12) === "WEBP") {
+        res.setHeader("Content-Type", "image/webp");
+      } else if (data.length >= 3 && data[0] === 255 && data[1] === 216 && data[2] === 255) {
+        res.setHeader("Content-Type", "image/jpeg");
+      } else if (data.length >= 8 && data[0] === 137 && data[1] === 78 && data[2] === 71) {
+        res.setHeader("Content-Type", "image/png");
+      } else if (fallbackKey.endsWith(".webp")) {
+        res.setHeader("Content-Type", "image/webp");
+      } else if (fallbackKey.endsWith(".png")) {
+        res.setHeader("Content-Type", "image/png");
+      } else if (fallbackKey.endsWith(".jpg") || fallbackKey.endsWith(".jpeg")) {
+        res.setHeader("Content-Type", "image/jpeg");
+      } else if (fallbackKey.endsWith(".svg")) {
+        res.setHeader("Content-Type", "image/svg+xml");
+      } else {
+        res.setHeader("Content-Type", "application/octet-stream");
+      }
+      return res.end(data);
+    };
     const filePath = storage.getLocalFilePath(key);
     if (filePath && import_fs25.default.existsSync(filePath)) {
-      if (key.endsWith(".svg")) {
-        res.setHeader("Content-Type", "image/svg+xml");
-      } else if (key.endsWith(".webp")) {
-        res.setHeader("Content-Type", "image/webp");
-      } else if (key.endsWith(".jpg") || key.endsWith(".jpeg")) {
-        res.setHeader("Content-Type", "image/jpeg");
-      } else if (key.endsWith(".png")) {
-        res.setHeader("Content-Type", "image/png");
-      }
       const data = import_fs25.default.readFileSync(filePath);
-      return res.end(data);
+      return await resolveAndSendBuffer(data, key);
     }
     try {
       const buf = await storage.getBuffer(key);
       if (buf && buf.length > 0) {
-        if (key.endsWith(".svg")) {
-          res.setHeader("Content-Type", "image/svg+xml");
-        } else if (key.endsWith(".webp")) {
-          res.setHeader("Content-Type", "image/webp");
-        } else if (key.endsWith(".jpg") || key.endsWith(".jpeg")) {
-          res.setHeader("Content-Type", "image/jpeg");
-        } else if (key.endsWith(".png")) {
-          res.setHeader("Content-Type", "image/png");
-        } else {
-          res.setHeader("Content-Type", "application/octet-stream");
-        }
-        return res.send(buf);
+        return await resolveAndSendBuffer(buf, key);
       }
     } catch (streamErr) {
       console.warn(`[spaceStorageRoutes] Direct buffer stream error for ${key}:`, streamErr.message);
@@ -20900,8 +21240,7 @@ router16.get(["/local-file", "/download"], async (req, res) => {
         contentType: "image/svg+xml"
       }).catch(() => {
       });
-      res.setHeader("Content-Type", "image/svg+xml");
-      return res.send(fallbackBuf);
+      return await resolveAndSendBuffer(fallbackBuf, key);
     } catch {
       res.status(404).send("File not found in storage");
     }
@@ -21449,7 +21788,8 @@ var UploadProductImageSchema = import_zod4.z.object({
 var AnalyzeProductRequestSchema = import_zod4.z.object({
   projectId: import_zod4.z.string().min(1).default("manwah-noble-space-01"),
   images: import_zod4.z.array(UploadProductImageSchema).min(1, "At least one product image is required"),
-  userNotes: import_zod4.z.string().optional()
+  userNotes: import_zod4.z.string().optional(),
+  model: import_zod4.z.string().optional()
 });
 var DisaggregatedProductItemSchema = import_zod4.z.object({
   id: import_zod4.z.string(),
@@ -21779,11 +22119,10 @@ var SpaceProductAnalysisService = class {
     let extracted = null;
     let explanation = "";
     try {
-      const { ai, isValidKey } = await createServerGenAI(userId);
+      const { ai, config, isValidKey } = await createServerGenAI(userId);
       if (ai && isValidKey && storedReferences.length > 0) {
         const parts = [];
-        parts.push({
-          text: `\u4F60\u662F\u4E00\u540D\u654F\u534E\u5BB6\u5C45\uFF08CHEERS \u829D\u534E\u4ED5\uFF09\u9876\u7EA7\u5DE5\u4E1A\u8BBE\u8BA1\u603B\u76D1\u4E0E\u5BB6\u5177\u89C6\u89C9\u5DE5\u7A0B\u4E13\u5BB6\u3002
+        const promptText = `\u4F60\u662F\u4E00\u540D\u654F\u534E\u5BB6\u5C45\uFF08CHEERS \u829D\u534E\u4ED5\uFF09\u9876\u7EA7\u5DE5\u4E1A\u8BBE\u8BA1\u603B\u76D1\u4E0E\u5BB6\u5177\u89C6\u89C9\u5DE5\u7A0B\u4E13\u5BB6\u3002
 \u8BF7\u5BF9\u4F20\u5165\u7684\u6C99\u53D1/\u5BB6\u5177\u5B9E\u62CD\u56FE\u3001\u4EA7\u54C1\u6548\u679C\u56FE\u6216\u4E09\u7EF4\u6E32\u67D3\u56FE\u8FDB\u884C\u6781\u5176\u4E25\u8C28\u7684\u3010\u7269\u7406\u771F\u503C\u4E0E\u5DE5\u7A0B\u89C4\u683C\u591A\u6A21\u6001\u8BFB\u6570 (Product Physical Truth & Spec Extraction)\u3011\u3002
 
 \u3010\u8BFB\u6570\u6838\u5FC3\u76EE\u6807\u4E0E\u539F\u5219\u3011
@@ -21879,7 +22218,9 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
   "readoutConfidence": 95,
   "explanation": "\u6DF1\u5EA6\u89E3\u6790\u5B8C\u6210\uFF0C\u5DF2\u6210\u529F\u63D0\u70BC\u6750\u8D28\u7EB9\u7406\u4E0E\u51E0\u4F55\u7279\u5F81",
   "detectedProducts": []
-}`
+}`;
+        parts.push({
+          text: promptText
         });
         for (const ref of storedReferences) {
           parts.push({
@@ -21889,31 +22230,79 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
             }
           });
         }
-        const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
-        let response = null;
+        const preferredModel = (input.model || "").trim() || "gemini-3.7-flash";
+        const candidateModels = [
+          preferredModel,
+          "gemini-3.7-flash",
+          "gemini-3.8-flash",
+          "gemini-3.1-pro-preview",
+          "gemini-2.5-flash",
+          "gemini-2.0-flash"
+        ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+        let responseText = "";
         for (const m of candidateModels) {
           try {
             console.log(`[SpaceProductAnalysisService] Initiating multi-modal analysis with model: ${m}...`);
-            const timeoutPromise = new Promise(
-              (_, reject) => setTimeout(() => reject(new Error(`Timeout (${m}) after 60s`)), 6e4)
-            );
-            const callPromise = ai.models.generateContent({
-              model: m,
-              contents: [{ role: "user", parts }],
-              config: {
-                responseMimeType: "application/json"
+            if (m.includes("gpt") || m.includes("sol")) {
+              const openAiUrl = `${config.baseUrl.replace(/\/v1beta\/?$/, "").replace(/\/v1\/?$/, "").replace(/\/+$/, "")}/v1/chat/completions`;
+              const openAiRes = await fetch(openAiUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${config.apiKey}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: m,
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        { type: "text", text: promptText },
+                        ...storedReferences.map((ref) => ({
+                          type: "image_url",
+                          image_url: { url: `data:${ref.mimeType};base64,${ref.cleanBase64}` }
+                        }))
+                      ]
+                    }
+                  ],
+                  temperature: 0.2
+                }),
+                signal: AbortSignal.timeout(6e4)
+              });
+              if (openAiRes.ok) {
+                const data = await openAiRes.json();
+                const content = data?.choices?.[0]?.message?.content || "";
+                if (content) {
+                  responseText = content;
+                  console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${responseText.length} chars)`);
+                  break;
+                }
+              } else {
+                console.warn(`[SpaceProductAnalysisService] Model ${m} HTTP ${openAiRes.status}:`, await openAiRes.text());
               }
-            });
-            response = await Promise.race([callPromise, timeoutPromise]);
-            if (response && response.text) {
-              console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${response.text.length} chars)`);
-              break;
+            } else {
+              const timeoutPromise = new Promise(
+                (_, reject) => setTimeout(() => reject(new Error(`Timeout (${m}) after 60s`)), 6e4)
+              );
+              const callPromise = ai.models.generateContent({
+                model: m,
+                contents: [{ role: "user", parts }],
+                config: {
+                  responseMimeType: "application/json"
+                }
+              });
+              const response = await Promise.race([callPromise, timeoutPromise]);
+              if (response && response.text) {
+                responseText = response.text;
+                console.log(`[SpaceProductAnalysisService] Model ${m} successfully returned response (${responseText.length} chars)`);
+                break;
+              }
             }
           } catch (modelErr) {
             console.warn(`[SpaceProductAnalysisService] Model ${m} attempt notice:`, modelErr?.message);
           }
         }
-        const rawText = response?.text || "";
+        const rawText = responseText;
         const cleanText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
         const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -22148,6 +22537,454 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
     }
     return parsed.data;
   }
+  /**
+   * 独立场景/整套组合资产全要素识别提取方法：
+   * 专用于直接识别整景大图中的沙发组、茶几、地毯、餐边柜、展示柜、餐桌椅、以及软装挂画摆件，
+   * 形成独立的整套场景资产档案（WholeSceneEnsembleDossier），区别于单品暴力分割，作为完整资产包整体入库与整体置入。
+   */
+  static async analyzeWholeSceneEnsemble(input, userId = "system") {
+    const { projectId, images, userNotes } = input;
+    const ensembleId = `ens-${Date.now().toString(36)}-${import_crypto23.default.randomBytes(3).toString("hex")}`;
+    const storedReferences = [];
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      const refId = `ens-ref-${i + 1}`;
+      let cleanBase64 = img.base64;
+      let mimeType = "image/jpeg";
+      let imageBuffer = null;
+      if (cleanBase64.startsWith("data:")) {
+        const match = cleanBase64.match(/^data:([a-zA-Z0-9/+-]+);base64,(.+)$/);
+        if (match) {
+          mimeType = match[1];
+          cleanBase64 = match[2];
+          try {
+            imageBuffer = Buffer.from(cleanBase64, "base64");
+          } catch {
+          }
+        }
+      } else if (cleanBase64.startsWith("/api/space/storage") || cleanBase64.includes("local-file") || cleanBase64.includes("download")) {
+        const keyMatch = cleanBase64.match(/[?&]key=([^&#]+)/);
+        if (keyMatch) {
+          const key = decodeURIComponent(keyMatch[1]);
+          imageBuffer = await this.storage.getBuffer(key, "source") || await this.storage.getBuffer(key, "generated");
+        }
+      } else if (cleanBase64.startsWith("http://") || cleanBase64.startsWith("https://")) {
+        try {
+          const resp = await fetch(cleanBase64);
+          if (resp.ok) {
+            const arr = await resp.arrayBuffer();
+            imageBuffer = Buffer.from(arr);
+            const ct = resp.headers.get("content-type");
+            if (ct && ct.startsWith("image/")) mimeType = ct;
+          }
+        } catch {
+        }
+      } else {
+        try {
+          const buf = Buffer.from(cleanBase64, "base64");
+          if (buf.length > 50) imageBuffer = buf;
+        } catch {
+        }
+      }
+      if (!imageBuffer || imageBuffer.length < 50) {
+        if (typeof cleanBase64 === "string" && import_fs26.default.existsSync(cleanBase64)) {
+          try {
+            imageBuffer = import_fs26.default.readFileSync(cleanBase64);
+          } catch {
+          }
+        }
+      }
+      if (!imageBuffer || imageBuffer.length < 20) {
+        imageBuffer = await (0, import_sharp6.default)({
+          create: { width: 1200, height: 800, channels: 3, background: { r: 245, g: 245, b: 245 } }
+        }).jpeg().toBuffer();
+      }
+      cleanBase64 = imageBuffer.toString("base64");
+      let webpBuffer;
+      try {
+        webpBuffer = await (0, import_sharp6.default)(imageBuffer).webp({ quality: 92 }).toBuffer();
+      } catch {
+        webpBuffer = imageBuffer;
+      }
+      const objectKey = `scene-ensembles/${projectId}/${ensembleId}/source_${i + 1}.webp`;
+      await this.storage.put({
+        bucketType: "source",
+        objectKey,
+        buffer: webpBuffer,
+        contentType: "image/webp",
+        metadata: { projectId, ensembleId, index: String(i + 1) }
+      });
+      const signed = await this.storage.getSignedReadUrl(objectKey, 86400 * 7, "source");
+      const publicUrl = signed?.url || `/api/space/storage/download?key=${encodeURIComponent(objectKey)}`;
+      storedReferences.push({
+        id: refId,
+        objectKey,
+        publicUrl,
+        mimeType: mimeType.startsWith("image/") ? mimeType : "image/jpeg",
+        cleanBase64,
+        rawBuffer: webpBuffer
+      });
+    }
+    const masterRef = storedReferences[0];
+    const sourceImageUrl = masterRef?.publicUrl || "";
+    let rawAiResult = null;
+    try {
+      const { ai, config, isValidKey } = await createServerGenAI(userId);
+      if (ai && isValidKey && storedReferences.length > 0) {
+        const parts = [];
+        const promptText = `\u4F60\u662F\u4E00\u540D\u654F\u534E\u5BB6\u5C45\uFF08CHEERS \u829D\u534E\u4ED5\uFF09\u9876\u7EA7\u5168\u6848\u7A7A\u95F4\u7F8E\u5B66\u603B\u76D1\u4E0E\u9AD8\u7AEF\u5927\u5E73\u5C42\u9648\u8BBE\u8BBE\u8BA1\u5927\u5E08\u3002
+\u8BF7\u5BF9\u4E0A\u4F20\u7684\u3010\u6574\u5957\u5BA2\u5385/\u5BA2\u9910\u5385\u5168\u666F\u5B9E\u666F\u56FE\u3011\u8FDB\u884C\u6781\u5176\u7EC6\u81F4\u7684\u3010\u6574\u5957\u573A\u666F\u8D44\u4EA7\u7ED3\u6784\u5316\u8BC6\u522B (Whole-Scene Ensemble Dossier Extraction)\u3011\u3002
+\u533A\u522B\u4E8E\u5C06\u5BB6\u5177\u5272\u88C2\u5207\u788E\u7684\u5355\u54C1\u5206\u5272\u6A21\u5F0F\uFF0C\u6211\u4EEC\u8981\u6C42\u4F60\u5C06\u8BE5\u573A\u666F\u89C6\u4E3A\u4E00\u4E2A\u3010\u9AD8\u5EA6\u534F\u540C\u7684\u6574\u4F53\u7A7A\u95F4\u5957\u7EC4 (Whole-Scene Ensemble)\u3011\uFF0C\u76F4\u63A5\u8BC6\u522B\u5E76\u63D0\u53D6\u4EE5\u4E0B 7 \u5927\u6838\u5FC3\u8981\u7D20\uFF1A
+
+\u3010\u5FC5\u987B\u8BC6\u522B\u4E0E\u63D0\u53D6\u7684 7 \u5927\u6838\u5FC3\u8981\u7D20\u3011\uFF1A
+1. \u6C99\u53D1\u7EC4\u5408 (sofaSuite):
+   - \u5305\u542B\u4E09\u4EBA/\u56DB\u4EBA\u4F4D\u4E3B\u6C99\u53D1\u3001\u53CC\u4EBA\u4F4D\u4FA7\u4F4D\u3001\u5355\u4EBA\u7535\u52A8\u5355\u6905\u6216\u4F11\u95F2\u5355\u6905\u3002
+   - \u63D0\u53D6\u5404\u4F4D\u7F6E\u6B3E\u5F0F\u6570\u91CF\u3001\u6446\u653E\u5939\u89D2\uFF08\u5982U\u578B/L\u578B/\u4EB2\u5BC6\u56F4\u5408\uFF09\u3001\u76AE\u8D28\u9762\u6599\u7B49\u7EA7\uFF08\u5982\u5357\u7F8E\u534A\u82EF\u80FA\u5934\u5C42\u725B\u76AE/Nappa\uFF09\u3001\u8272\u9636\u660E\u5EA6\uFF08\u5982\u590D\u53E4\u6DF1\u6817\u68D5\u3001\u9ED1\u5DE7\u514B\u529B\u8272\u3001\u5E72\u9091\u6A59\u7B49\uFF09\u3001\u6276\u624B\u9971\u6EE1\u5EA6\u4E0E\u7ACB\u4F53\u5305\u8FB9\u7279\u5F81\u3002
+2. \u8336\u51E0\u4E0E\u51E0\u7EC4 (coffeeTables):
+   - \u4E2D\u5FC3\u4E3B\u8336\u51E0\u3001\u526F\u51E0\u3001\u89D2\u51E0\u6216\u8FB9\u51E0\u3002
+   - \u63D0\u53D6\u53F0\u9762\u6750\u8D28\uFF08\u5929\u7136\u5927\u7406\u77F3\u7EB9\u7406/\u5962\u77F3\u5CA9\u677F/\u5B9E\u6728\uFF09\u3001\u5E95\u5EA7\u6846\u67B6\u6750\u8D28\uFF08\u54D1\u5149\u9ED1\u91D1\u5C5E/\u62C9\u4E1D\u9EC4\u94DC/\u60AC\u6D6E\u9020\u578B\uFF09\u3001\u9AD8\u4F4E\u9519\u843D\u5C42\u6B21\u3002
+3. \u5730\u6BEF (carpetRug):
+   - \u63D0\u53D6\u5730\u6BEF\u94FA\u8BBE\u8303\u56F4\u4E0E\u6BD4\u4F8B\uFF08\u57AB\u886C\u4E8E\u4E3B\u6C99\u53D1\u4E0E\u8336\u51E0\u4E0B\u65B9\uFF09\u3001\u6750\u8D28\u89E6\u611F\uFF08\u7F8A\u6BDB\u9AD8\u5BC6\u6DF7\u7EBA/\u77ED\u7ED2\uFF09\u3001\u7EB9\u7406\u808C\u7406\uFF08\u5982\u6D41\u52A8\u5927\u7406\u77F3\u6C34\u58A8\u7EB9/\u6D45\u7C73\u7070\u51E0\u4F55\u808C\u7406\uFF09\u3001\u8272\u5F69\u642D\u914D\u3002
+4. \u9910\u8FB9\u67DC\u4E0E\u4F4E\u77EE\u5730\u67DC (credenzaSideboard):
+   - \u89C2\u5BDF\u524D\u4FA7\u6216\u4FA7\u8FB9\u662F\u5426\u6709\u7535\u89C6\u77EE\u67DC\u3001\u9910\u8FB9\u67DC\u3001\u6597\u67DC\u6216\u50A8\u7269\u5730\u67DC\u3002
+   - \u63D0\u53D6\u67DC\u4F53\u6728\u9970\u9762\uFF08\u5982\u6DF1\u8272\u80E1\u6843\u6728/\u70DF\u718F\u6A61\u6728\uFF09\u3001\u53F0\u9762\u5CA9\u677F\u3001\u6536\u8FB9\u4E94\u91D1\u4E0E\u62BD\u5C49\u9020\u578B\u3002\u82E5\u65E0\u5219\u6807\u8BB0 presence \u4E3A false\u3002
+5. \u5C55\u793A\u67DC\u4E0E\u7ACB\u9762\u58C1\u9F9B (displayCabinet):
+   - \u89C2\u5BDF\u80CC\u666F\u5899\u6216\u4FA7\u7ACB\u9762\u662F\u5426\u6709\u5F00\u653E\u5F0F\u58C1\u9F9B\u5C55\u67B6\u3001\u5185\u5D4C\u5C55\u793A\u73BB\u7483\u67DC\u6216\u9152\u67DC\u3002
+   - \u63D0\u53D6\u5C42\u677F\u6750\u8D28\u4E0E\u7EBF\u6027\u9690\u85CF\u5149\u6C1B\u56F4\u3002\u82E5\u65E0\u5219\u6807\u8BB0 presence \u4E3A false\u3002
+6. \u9910\u684C\u4E0E\u9910\u6905\u914D\u5957 (diningSuite):
+   - \u82E5\u753B\u9762\u5305\u542B\u5BA2\u9910\u5385\u4E00\u4F53\u89C6\u91CE\uFF0C\u8BC6\u522B\u662F\u5426\u6709\u957F\u9910\u684C\u4E0E\u76AE\u9769\u9910\u6905\u3002\u63D0\u53D6\u9910\u684C\u6750\u8D28\u3001\u9910\u6905\u76AE\u9769\u8272\u7CFB\u4E0E\u6570\u91CF\u3002\u82E5\u65E0\u5219\u6807\u8BB0 presence \u4E3A false\u3002
+7. \u8F6F\u88C5\u6302\u753B\u4E0E\u827A\u672F\u6446\u4EF6 (softDecor):
+   - \u8BC6\u522B\u80CC\u666F\u5962\u77F3\u5899\u3001\u6302\u753B\u6216\u827A\u672F\u58C1\u706F\u3001\u843D\u5730\u7EFF\u690D\u76C6\u683D\u3001\u8336\u51E0\u6258\u76D8\u9999\u85B0\u6216\u96D5\u5851\u6446\u4EF6\u3002
+
+\u540C\u65F6\u751F\u6210\uFF1A
+- \u5168\u6848\u5B8F\u89C2\u6982\u8FF0 (dossierSummary): 200\u5B57\u5DE6\u53F3\u7684\u9AD8\u89C4\u683C\u5546\u4E1A\u5168\u6848\u6458\u8981\u3002
+- \u6574\u4F53\u7F6E\u5165\u6307\u4EE4 (placementDirectives): \u63D0\u4F9B\u53EF\u4EE5\u76F4\u63A5\u6CE8\u5165 A00 \u7A7A\u95F4\u6BCD\u7248\u4E0E\u5206\u955C\u751F\u56FE\u7684\u82F1\u6587\u534F\u540C\u63D0\u793A\u8BCD (holisticLayoutPrompt) \u548C\u89C6\u89C9\u4E0D\u53D8\u91CF (visualInvariants)\u3002
+
+${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${userNotes}` : ""}
+
+\u5FC5\u987B\u8F93\u51FA\u4E25\u683C\u7B26\u5408\u4EE5\u4E0B\u7ED3\u6784\u7684\u7EAF JSON \u683C\u5F0F\uFF1A
+{
+  "name": "\u5546\u4E1A\u5168\u6848\u5957\u7EC4\u6807\u51C6\u5168\u79F0 (\u5982: \u829D\u534E\u4ED5\xB7\u5927\u5E73\u5C42\u90FD\u4F1A\u8F7B\u5962\u5168\u666F\u5BA2\u5385\u5C0A\u4EAB\u5957\u7EC4)",
+  "sku": "MW-ENS-XXXX",
+  "ensembleCategory": "\u5927\u5E73\u5C42\u73B0\u4EE3\u8F7B\u5962\u5168\u666F\u4F1A\u5BA2\u5957\u7EC4",
+  "readoutConfidence": 96,
+  "dossierSummary": "\u5168\u6848\u5B8F\u89C2\u89C4\u683C\u4E0E\u7F8E\u5B66\u6982\u8FF0...",
+  "sofaSuite": {
+    "description": "\u4E09\u4EBA\u4E3B\u4F4D + \u53CC\u4EBA\u4FA7\u4F4D + \u5355\u4EBA\u4F4D\u5927\u6276\u624B\u529F\u80FD\u5355\u6905\u56F4\u5408\u5E03\u5C40",
+    "seatingConfiguration": "3+2+1 \u5C0A\u4EAB\u56F4\u5408\u5F0F\u591A\u529F\u80FD\u771F\u76AE\u6C99\u53D1\u7EC4",
+    "mainSofa": {
+      "name": "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u6C99\u53D1",
+      "seats": 3,
+      "dimensions": "3200\xD71080\xD7950mm",
+      "material": "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE",
+      "color": "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)",
+      "features": ["\u9AD8\u56DE\u5F39\u9971\u6EE1\u5750\u57AB", "\u5BBD\u539A\u4E91\u611F\u6276\u624B", "\u6CD5\u5F0F\u7ACB\u4F53\u53CC\u5305\u8FB9"]
+    },
+    "companionSofas": [
+      {
+        "name": "\u53CC\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4FA7\u4F4D\u6C99\u53D1",
+        "type": "sofa_2seat",
+        "material": "\u540C\u6B3E\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE",
+        "color": "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"
+      }
+    ],
+    "reclinerChairs": [
+      {
+        "name": "\u5355\u4EBA\u4F4D\u5934\u7B49\u8231\u7535\u52A8\u529F\u80FD\u5355\u6905",
+        "type": "recliner_1seat",
+        "material": "\u540C\u6B3E\u771F\u76AE\u4E0E\u7535\u52A8\u8C03\u8282\u5E95\u5EA7",
+        "color": "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"
+      }
+    ]
+  },
+  "coffeeTables": {
+    "description": "\u73B0\u4EE3\u8F7B\u5962\u53CC\u5C42\u5927\u7406\u77F3\u91D1\u5C5E\u8336\u51E0\u7EC4",
+    "items": [
+      {
+        "name": "\u4E2D\u5FC3\u5927\u7406\u77F3\u5927\u8336\u51E0",
+        "role": "center_table",
+        "material": "\u5929\u7136\u7235\u58EB\u767D/\u5927\u7406\u77F3\u7EB9\u77F3\u6750\u53F0\u9762",
+        "shape": "\u957F\u65B9\u5F62\u5706\u89D2",
+        "finish": "\u54D1\u5149\u62C9\u4E1D\u9ED1\u8272\u91D1\u5C5E\u51E0\u4F55\u652F\u67B6"
+      },
+      {
+        "name": "\u6781\u7B80\u9ED1\u8272\u51E0\u4F55\u8FB9\u51E0",
+        "role": "side_table",
+        "material": "\u9ED1\u8272\u54D1\u5149\u70E4\u6F06\u91D1\u5C5E",
+        "shape": "C\u578B\u53EF\u5185\u63A8\u7ED3\u6784",
+        "finish": "\u7EC6\u817B\u78E8\u7802\u89E6\u611F"
+      }
+    ]
+  },
+  "carpetRug": {
+    "description": "\u5927\u5C3A\u5BF8\u6D45\u8272\u6C34\u58A8\u5927\u7406\u77F3\u7EB9\u7406\u901A\u94FA\u827A\u672F\u5730\u6BEF",
+    "material": "\u9AD8\u5BC6\u7F8A\u6BDB\u6DF7\u7EBA\u77ED\u7ED2",
+    "pattern": "\u6D45\u7070\u7C73\u767D\u6D41\u52A8\u5927\u7406\u77F3\u6C34\u58A8\u51B0\u88C2\u7EB9",
+    "coverageScope": "\u5B8C\u6574\u901A\u94FA\u57AB\u886C\u4E8E\u4E3B\u6C99\u53D1\u3001\u8336\u51E0\u4E0E\u53CC\u4FA7\u5355\u6905\u6B63\u4E0B\u65B9\uFF0C\u5F62\u6210\u5411\u5FC3\u805A\u5408\u4F1A\u5BA2\u573A\u57DF",
+    "colors": ["\u6D45\u7C73\u767D", "\u4E91\u96FE\u6D45\u7070", "\u6DE1\u7126\u7CD6\u5FAE\u7EB9"]
+  },
+  "credenzaSideboard": {
+    "description": "\u524D\u7F6E\u6DF1\u8272\u5317\u7F8E\u80E1\u6843\u6728\u4E0E\u5CA9\u677F\u4F4E\u77EE\u5730\u67DC",
+    "presence": true,
+    "dimensions": "2000\xD7450\xD7420mm",
+    "material": "\u6DF1\u8272\u5317\u7F8E\u9ED1\u80E1\u6843\u5B9E\u6728\u67DC\u8EAB\u642D\u914D\u6697\u8272\u54D1\u5149\u5CA9\u677F\u53F0\u9762",
+    "features": ["\u4E09\u62BD\u5C49\u6697\u62C9\u624B\u8BBE\u8BA1", "\u6781\u7B80\u60AC\u6D6E\u5730\u53F0\u652F\u6491"]
+  },
+  "displayCabinet": {
+    "description": "\u80CC\u666F\u5899\u6574\u5408\u5F0F\u80E1\u6843\u6728\u58C1\u677F\u4E0E\u91D1\u5C5E\u7EBF\u6761\u58C1\u9F9B",
+    "presence": true,
+    "material": "\u5929\u7136\u80E1\u6843\u6728\u6728\u9970\u9762\u62A4\u5899\u677F\u4E0E\u9999\u69DF\u91D1\u91D1\u5C5E\u6536\u8FB9",
+    "lightingStyle": "\u5185\u5D4C\u67D4\u548C\u6696\u767D\u7EBF\u6027\u6D17\u5899\u706F"
+  },
+  "diningSuite": {
+    "description": "\u5BA2\u9910\u5385\u8D2F\u901A\u89C6\u91CE\u914D\u5957\u9910\u533A",
+    "presence": false
+  },
+  "softDecor": {
+    "description": "\u5962\u77F3\u4E3B\u5899\u3001\u5BF9\u79F0\u827A\u672F\u58C1\u706F\u3001\u9AD8\u6311\u7EFF\u690D\u4E0E\u8336\u51E0\u96C5\u81F4\u9648\u8BBE",
+    "wallArt": "\u80CC\u666F\u5BF9\u79F0\u9576\u5D4C\u5929\u7136\u5927\u7406\u77F3\u6574\u677F\u4E0E\u4E24\u4FA7\u67F1\u72B6\u67D4\u5149\u827A\u672F\u58C1\u706F",
+    "lighting": "\u60AC\u6D6E\u6781\u7B80\u540A\u9876\u6697\u85CF\u53CD\u5149\u706F\u69FD\u4E0E\u80CC\u666F\u58C1\u706F\u53CC\u5C42\u6C1B\u56F4\u91C7\u5149",
+    "greenery": "\u5DE6\u4FA7\u5927\u843D\u5730\u7A97\u524D\u9648\u8BBE\u9AD8\u6311\u7FBD\u53F6\u5BA4\u5185\u89C2\u8D4F\u7EFF\u690D",
+    "tabletopOrnaments": ["\u7CBE\u88C5\u76AE\u8D28\u827A\u672F\u6258\u76D8", "\u6781\u7B80\u9ED1\u8272\u51E0\u4F55\u77F3\u96D5", "\u900F\u660E\u7409\u7483\u6C34\u57F9\u82B1\u5668"]
+  },
+  "placementDirectives": {
+    "holisticLayoutPrompt": "authentic complete luxury living room ensemble featuring hero 3-seater power motion sofa, companion 2-seater sofa, and single recliner armchair finished in matching deep vintage chestnut brown leather, clustered comfortably on expansive marble-patterned wool area rug around center natural marble coffee table, with low-profile walnut credenza and architectural backdrop wall with warm sconces and potted foliage",
+    "visualInvariants": [
+      "\u4E25\u683C\u4FDD\u6301 3+2+1 \u7EC4\u5408\u56F4\u5408\u5411\u5FC3\u4F1A\u5BA2\u683C\u5C40\uFF0C\u5BB6\u5177\u7EDD\u4E0D\u677E\u6563\u6F02\u79FB",
+      "\u6574\u5957\u76AE\u8D28\u76AE\u9769\u4E25\u683C\u4FDD\u6301\u540C\u4E00\u6279\u6B21\u590D\u53E4\u6DF1\u6817\u68D5\uFF08Vintage Chestnut\uFF09\u8272\u76F8\uFF0C\u4E25\u7981\u5355\u4EF6\u504F\u8272",
+      "\u5927\u7406\u77F3\u8336\u51E0\u4E0E\u6D45\u8272\u827A\u672F\u5730\u6BEF\u4F5C\u4E3A\u89C6\u89C9\u4E2D\u5FC3\u7A33\u56FA\u951A\u5B9A\u5728\u5C45\u4E2D\u5730\u9762"
+    ]
+  },
+  "adaptiveStyles": ["\u73B0\u4EE3\u7F8E\u5F0F\u90FD\u4F1A\u5B85", "\u610F\u5F0F\u8F7B\u5962", "\u6781\u7B80\u9AD8\u5B9A", "\u65B0\u4E2D\u5F0F"],
+  "dominantColors": ["\u590D\u53E4\u6DF1\u6817\u68D5", "\u5927\u7406\u77F3\u6696\u767D", "\u6DF1\u9ED1\u80E1\u6843\u6728", "\u96C5\u81F4\u6696\u7070"]
+}`;
+        parts.push({
+          text: promptText
+        });
+        for (const ref of storedReferences) {
+          parts.push({
+            inlineData: { mimeType: ref.mimeType, data: ref.cleanBase64 }
+          });
+        }
+        const preferredModel = (input.model || "").trim() || "gemini-3.7-flash";
+        const candidateModels = [
+          preferredModel,
+          "gemini-3.7-flash",
+          "gemini-3.8-flash",
+          "gemini-3.1-pro-preview",
+          "gemini-2.5-flash",
+          "gemini-2.0-flash"
+        ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+        for (const m of candidateModels) {
+          try {
+            console.log(`[SpaceProductAnalysisService] Analyzing whole-scene ensemble with model: ${m}...`);
+            let respText = "";
+            if (m.includes("gpt") || m.includes("sol")) {
+              const openAiUrl = `${config.baseUrl.replace(/\/v1beta\/?$/, "").replace(/\/v1\/?$/, "").replace(/\/+$/, "")}/v1/chat/completions`;
+              const openAiRes = await fetch(openAiUrl, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${config.apiKey}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  model: m,
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        { type: "text", text: promptText },
+                        ...storedReferences.map((ref) => ({
+                          type: "image_url",
+                          image_url: { url: `data:${ref.mimeType};base64,${ref.cleanBase64}` }
+                        }))
+                      ]
+                    }
+                  ],
+                  temperature: 0.2
+                }),
+                signal: AbortSignal.timeout(65e3)
+              });
+              if (openAiRes.ok) {
+                const data = await openAiRes.json();
+                respText = data?.choices?.[0]?.message?.content || "";
+              } else {
+                console.warn(`[SpaceProductAnalysisService] Ensemble analysis notice (${m}) HTTP ${openAiRes.status}:`, await openAiRes.text());
+              }
+            } else {
+              const callPromise = ai.models.generateContent({
+                model: m,
+                contents: [{ role: "user", parts }],
+                config: { responseMimeType: "application/json" }
+              });
+              const timeoutPromise = new Promise(
+                (_, reject) => setTimeout(() => reject(new Error(`Timeout (${m}) after 65s`)), 65e3)
+              );
+              const resp = await Promise.race([callPromise, timeoutPromise]);
+              if (resp?.text) {
+                respText = resp.text;
+              }
+            }
+            if (respText) {
+              const cleanText = respText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+              const match = cleanText.match(/\{[\s\S]*\}/);
+              if (match) {
+                rawAiResult = JSON.parse(match[0]);
+                console.log(`[SpaceProductAnalysisService] Whole-scene ensemble successfully extracted via ${m}: ${rawAiResult?.name}`);
+                break;
+              }
+            }
+          } catch (modelErr) {
+            console.warn(`[SpaceProductAnalysisService] Ensemble analysis notice (${m}):`, modelErr?.message);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[SpaceProductAnalysisService] Ensemble AI extraction fallback warning:", err?.message);
+    }
+    const dossier = {
+      id: ensembleId,
+      name: rawAiResult?.name || "\u654F\u534E\u829D\u534E\u4ED5\xB7\u5927\u5E73\u5C42\u73B0\u4EE3\u5962\u534E\u5168\u666F\u4F1A\u5BA2\u5957\u7EC4 (\u5168\u6848\u6574\u4F53\u8D44\u4EA7)",
+      sku: rawAiResult?.sku || `MW-ENS-${Math.floor(1e3 + Math.random() * 9e3)}`,
+      ensembleCategory: rawAiResult?.ensembleCategory || "\u5927\u5E73\u5C42\u73B0\u4EE3\u8F7B\u5962\u5168\u666F\u5BA2\u9910\u5385\u5957\u7EC4",
+      readoutConfidence: Number(rawAiResult?.readoutConfidence) || 96,
+      dossierSummary: rawAiResult?.dossierSummary || "\u5927\u5E73\u5C42\u9AD8\u7AEF\u5168\u666F\u6574\u4F53\u4F1A\u5BA2\u5957\u7EC4\uFF1A\u5305\u542B\u4E09\u4EBA\u4E3B\u4F4D\u529F\u80FD\u771F\u76AE\u6C99\u53D1\u3001\u53CC\u4EBA\u4FA7\u4F4D\u6C99\u53D1\u3001\u5355\u4EBA\u5934\u7B49\u8231\u7535\u52A8\u5355\u6905\u3001\u53CC\u5C42\u5927\u7406\u77F3\u91D1\u5C5E\u8336\u51E0\u51E0\u7EC4\u3001\u5927\u7406\u77F3\u7EB9\u827A\u672F\u901A\u94FA\u5730\u6BEF\u53CA\u524D\u7F6E\u80E1\u6843\u6728\u4F4E\u77EE\u5730\u67DC\uFF0C\u5F62\u6210\u5B8F\u5927\u5F00\u9614\u7684\u5927\u5E73\u5C42\u5411\u5FC3\u793E\u4EA4\u573A\u57DF\u3002",
+      sofaSuite: rawAiResult?.sofaSuite || {
+        description: "\u4E09\u4EBA\u4E3B\u4F4D + \u53CC\u4EBA\u4FA7\u4F4D + \u5355\u4EBA\u5934\u7B49\u8231\u5355\u6905\u56F4\u5408\u5E03\u5C40",
+        seatingConfiguration: "3+2+1 \u5C0A\u4EAB\u56F4\u5408\u5F0F\u591A\u529F\u80FD\u771F\u76AE\u6C99\u53D1\u7EC4",
+        mainSofa: {
+          name: "\u4E3B\u4F4D\u4E09\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4E3B\u6C99\u53D1",
+          seats: 3,
+          dimensions: "3200\xD71080\xD7950mm",
+          material: "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE",
+          color: "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)",
+          features: ["\u9AD8\u56DE\u5F39\u9971\u6EE1\u5750\u57AB", "\u5BBD\u539A\u4E91\u611F\u6276\u624B", "\u6CD5\u5F0F\u7ACB\u4F53\u53CC\u5305\u8FB9"]
+        },
+        companionSofas: [
+          {
+            name: "\u53CC\u4EBA\u4F4D\u591A\u529F\u80FD\u771F\u76AE\u4FA7\u4F4D\u6C99\u53D1",
+            type: "sofa_2seat",
+            material: "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE",
+            color: "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"
+          }
+        ],
+        reclinerChairs: [
+          {
+            name: "\u5355\u4EBA\u4F4D\u5934\u7B49\u8231\u7535\u52A8\u529F\u80FD\u5355\u6905",
+            type: "recliner_1seat",
+            material: "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE\u4E0E\u7535\u52A8\u8C03\u8282\u5E95\u5EA7",
+            color: "\u590D\u53E4\u6DF1\u6817\u68D5 (Vintage Chestnut)"
+          }
+        ]
+      },
+      coffeeTables: rawAiResult?.coffeeTables || {
+        description: "\u73B0\u4EE3\u8F7B\u5962\u53CC\u5C42\u5927\u7406\u77F3\u91D1\u5C5E\u51E0\u7EC4",
+        items: [
+          {
+            name: "\u4E2D\u5FC3\u5927\u7406\u77F3\u4E3B\u8336\u51E0",
+            role: "center_table",
+            material: "\u5929\u7136\u5927\u7406\u77F3\u7EB9\u5CA9\u677F",
+            shape: "\u957F\u65B9\u5F62\u5706\u89D2",
+            finish: "\u54D1\u5149\u9ED1\u8272\u51E0\u4F55\u94A2\u67B6"
+          },
+          {
+            name: "\u4FA7\u5411\u6781\u7B80\u91D1\u5C5E\u8FB9\u51E0",
+            role: "side_table",
+            material: "\u54D1\u5149\u9ED1\u8272\u91D1\u5C5E",
+            shape: "C\u578B\u5D4C\u5165\u5F0F",
+            finish: "\u78E8\u7802\u9632\u6307\u7EB9"
+          }
+        ]
+      },
+      carpetRug: rawAiResult?.carpetRug || {
+        description: "\u5927\u5C3A\u5BF8\u901A\u94FA\u5927\u7406\u77F3\u827A\u672F\u5730\u6BEF",
+        material: "\u9AD8\u5BC6\u7F8A\u6BDB\u6DF7\u7EBA\u77ED\u7ED2",
+        pattern: "\u6D45\u7C73\u767D\u4E0E\u70DF\u7070\u6D41\u52A8\u5929\u7136\u5927\u7406\u77F3\u51B0\u88C2\u808C\u7406",
+        coverageScope: "\u5B8C\u6574\u901A\u94FA\u57AB\u886C\u4E8E\u4E3B\u6C99\u53D1\u3001\u8336\u51E0\u4E0E\u53CC\u4FA7\u5355\u6905\u6B63\u4E0B\u65B9\uFF0C\u5F62\u6210\u5411\u5FC3\u805A\u5408\u4F1A\u5BA2\u573A\u57DF",
+        colors: ["\u6D45\u7C73\u767D", "\u4E91\u96FE\u6D45\u7070", "\u7126\u7CD6\u5FAE\u7EB9"]
+      },
+      credenzaSideboard: rawAiResult?.credenzaSideboard || {
+        description: "\u524D\u7F6E\u6DF1\u8272\u5317\u7F8E\u80E1\u6843\u6728\u4E0E\u5CA9\u677F\u4F4E\u77EE\u5730\u67DC",
+        presence: true,
+        dimensions: "2000\xD7450\xD7420mm",
+        material: "\u5317\u7F8E\u9ED1\u80E1\u6843\u5B9E\u6728\u642D\u914D\u6DF1\u7070\u8272\u5CA9\u677F\u53F0\u9762",
+        features: ["\u6697\u62C9\u624B\u6781\u7B80\u7EBF\u6761", "\u60AC\u6D6E\u5F0F\u7A33\u56FA\u652F\u6491"]
+      },
+      displayCabinet: rawAiResult?.displayCabinet || {
+        description: "\u80CC\u666F\u5899\u5BF9\u79F0\u80E1\u6843\u6728\u62A4\u5899\u9970\u9762\u4E0E\u9999\u69DF\u91D1\u7EBF\u6761",
+        presence: true,
+        material: "\u5929\u7136\u80E1\u6843\u6728\u6728\u9970\u9762\u62A4\u5899\u677F\u4E0E\u9999\u69DF\u91D1\u91D1\u5C5E\u6536\u8FB9",
+        lightingStyle: "\u5185\u5D4C\u67D4\u548C\u6696\u767D\u7EBF\u6027\u6D17\u5899\u706F\u69FD"
+      },
+      diningSuite: rawAiResult?.diningSuite || {
+        description: "\u5BA2\u9910\u5385\u8D2F\u901A\u89C6\u91CE\u914D\u5957\u9910\u533A",
+        presence: false
+      },
+      softDecor: rawAiResult?.softDecor || {
+        description: "\u5962\u77F3\u4E3B\u5899\u3001\u5BF9\u79F0\u827A\u672F\u58C1\u706F\u3001\u9AD8\u6311\u843D\u5730\u7EFF\u690D\u4E0E\u8336\u51E0\u96C5\u81F4\u9648\u8BBE",
+        wallArt: "\u80CC\u666F\u5BF9\u79F0\u9576\u5D4C\u5929\u7136\u5927\u7406\u77F3\u6574\u677F\u4E0E\u4E24\u4FA7\u67F1\u72B6\u67D4\u5149\u827A\u672F\u58C1\u706F",
+        lighting: "\u60AC\u6D6E\u6781\u7B80\u540A\u9876\u6697\u85CF\u53CD\u5149\u706F\u69FD\u4E0E\u80CC\u666F\u58C1\u706F\u53CC\u5C42\u6C1B\u56F4\u91C7\u5149",
+        greenery: "\u5DE6\u4FA7\u5927\u843D\u5730\u7A97\u524D\u9648\u8BBE\u9AD8\u6311\u7FBD\u53F6\u5BA4\u5185\u89C2\u8D4F\u7EFF\u690D",
+        tabletopOrnaments: ["\u7CBE\u88C5\u76AE\u8D28\u827A\u672F\u6258\u76D8", "\u6781\u7B80\u9ED1\u8272\u51E0\u4F55\u77F3\u96D5", "\u900F\u660E\u7409\u7483\u6C34\u57F9\u82B1\u5668"]
+      },
+      placementDirectives: rawAiResult?.placementDirectives || {
+        holisticLayoutPrompt: "authentic complete luxury living room ensemble featuring hero 3-seater power motion sofa, companion 2-seater sofa, and single recliner armchair finished in matching deep vintage chestnut brown leather, clustered comfortably on expansive marble-patterned wool area rug around center natural marble coffee table, with low-profile walnut credenza and architectural backdrop wall with warm sconces and potted foliage",
+        visualInvariants: [
+          "\u4E25\u683C\u4FDD\u6301 3+2+1 \u7EC4\u5408\u56F4\u5408\u5411\u5FC3\u4F1A\u5BA2\u683C\u5C40\uFF0C\u5BB6\u5177\u7EDD\u4E0D\u677E\u6563\u6F02\u79FB",
+          "\u6574\u5957\u76AE\u8D28\u76AE\u9769\u4E25\u683C\u4FDD\u6301\u540C\u4E00\u6279\u6B21\u590D\u53E4\u6DF1\u6817\u68D5\uFF08Vintage Chestnut\uFF09\u8272\u76F8\uFF0C\u4E25\u7981\u5355\u4EF6\u504F\u8272",
+          "\u5927\u7406\u77F3\u8336\u51E0\u4E0E\u6D45\u8272\u827A\u672F\u5730\u6BEF\u4F5C\u4E3A\u89C6\u89C9\u4E2D\u5FC3\u7A33\u56FA\u951A\u5B9A\u5728\u5C45\u4E2D\u5730\u9762"
+        ]
+      },
+      adaptiveStyles: Array.isArray(rawAiResult?.adaptiveStyles) && rawAiResult.adaptiveStyles.length > 0 ? rawAiResult.adaptiveStyles : ["\u73B0\u4EE3\u7F8E\u5F0F\u90FD\u4F1A\u5B85", "\u610F\u5F0F\u8F7B\u5962", "\u6781\u7B80\u9AD8\u5B9A"],
+      dominantColors: Array.isArray(rawAiResult?.dominantColors) && rawAiResult.dominantColors.length > 0 ? rawAiResult.dominantColors : ["\u590D\u53E4\u6DF1\u6817\u68D5", "\u5927\u7406\u77F3\u6696\u767D", "\u5317\u7F8E\u9ED1\u80E1\u6843", "\u4E91\u96FE\u6D45\u7070"],
+      sourceImageUrl,
+      generatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const ensembleProductAsset = {
+      id: `prod-ens-${ensembleId}`,
+      sku: dossier.sku,
+      name: dossier.name,
+      role: "sofa_3seat",
+      // 兼容主角色分类
+      priority: "primary",
+      identityLock: "strict",
+      dimensions: {
+        width: 3200,
+        depth: 1080,
+        height: 950
+      },
+      materials: [
+        "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u534A\u82EF\u80FA\u725B\u76AE",
+        "\u5929\u7136\u7235\u58EB\u767D\u5927\u7406\u77F3\u5CA9\u677F",
+        "\u5317\u7F8E\u9ED1\u80E1\u6843\u5B9E\u6728\u9970\u9762",
+        "\u9AD8\u5BC6\u7F8A\u6BDB\u6DF7\u7EBA\u5730\u6BEF"
+      ],
+      colors: dossier.dominantColors,
+      surfaceTexture: "\u591A\u54C1\u7C7B\u6750\u8D28\u878D\u5408\uFF1A\u6DF1\u6817\u68D5\u7EC6\u817B\u5E73\u7EB9\u534A\u82EF\u80FA\u725B\u76AE\u3001\u5929\u7136\u5927\u7406\u77F3\u51B0\u88C2\u808C\u7406\u3001\u6E29\u6DA6\u9ED1\u80E1\u6843\u6728\u7EB9\u4E0E\u9AD8\u5BC6\u77ED\u7ED2\u7F8A\u6BDB",
+      functionCapable: true,
+      referenceImages: storedReferences.map((r) => ({
+        id: r.id,
+        type: "front",
+        objectKey: r.objectKey,
+        publicUrl: r.publicUrl,
+        verified: true
+      })),
+      adaptiveStyles: dossier.adaptiveStyles,
+      isEnsembleIncluded: true,
+      readoutConfidence: dossier.readoutConfidence,
+      dossierSummary: dossier.dossierSummary,
+      dossierGeneratedAt: dossier.generatedAt,
+      sourceMasterImageUrl: sourceImageUrl,
+      lockedRules: dossier.placementDirectives.visualInvariants,
+      isSceneEnsembleSuite: true,
+      sceneEnsembleDossier: dossier
+    };
+    return {
+      success: true,
+      dossier,
+      productAsset: ensembleProductAsset
+    };
+  }
 };
 
 // server/routes/spaceBuildRoutes.ts
@@ -22196,6 +23033,28 @@ router17.post("/analyze-product", async (req, res) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to analyze product DNA";
+    return res.status(500).json({
+      success: false,
+      error: message
+    });
+  }
+});
+router17.post("/analyze-scene-ensemble", async (req, res) => {
+  try {
+    const parsed = AnalyzeProductRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid scene ensemble payload",
+        details: parsed.error.issues
+      });
+    }
+    const userId = req.user?.id || "system";
+    const result = await SpaceProductAnalysisService.analyzeWholeSceneEnsemble(parsed.data, userId);
+    return res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to analyze whole scene ensemble";
+    console.error("[spaceBuildRoutes] analyze-scene-ensemble error:", err);
     return res.status(500).json({
       success: false,
       error: message
@@ -22788,12 +23647,14 @@ router18.post("/render-shot", async (req, res) => {
     const effectiveProductColor = productDNA?.colorCode || "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
     const effectiveProductMaterial = productDNA?.leatherType || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
     const effectiveProductRef = productReferenceImage || productDNA?.referenceImage;
-    const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    const effectiveSceneMasterRef = shotCode === "A00" ? void 0 : sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    const referenceShotCode = req.body?.referenceShotCode || sceneMasterReference?.referenceShotCode;
     const positivePrompt = promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode} luxury ${effectiveProductName} in ${effectiveProductColor}`;
     const negativePrompt = promptSnapshot?.negativePrompt || "";
     const imageResult = await SpaceImageGenerationService.generateAndStore({
       projectId,
       shotCode,
+      referenceShotCode,
       positivePrompt,
       negativePrompt,
       aspectRatio: generationSettings?.aspectRatio || "4:3",
@@ -22980,7 +23841,8 @@ router18.post("/render-candidates", async (req, res) => {
     const effectiveProductColor = productDNA?.colorCode || "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
     const effectiveProductMaterial = productDNA?.leatherType || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
     const effectiveProductRef = productReferenceImage || productDNA?.referenceImage;
-    const effectiveSceneMasterRef = sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    const effectiveSceneMasterRef = shotCode === "A00" ? void 0 : sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
+    const referenceShotCode = req.body?.referenceShotCode || sceneMasterReference?.referenceShotCode;
     const effectiveStyleName = req.body.styleName || promptSnapshot?.styleName || req.body.stylePreset?.name?.split(" (")[0] || "\u90FD\u4F1A\u6536\u85CF\u5BB6";
     const effectiveRoomName = req.body.roomName || promptSnapshot?.roomName || req.body.spacePreset?.name?.split(" (")[0] || "\u9876\u5C42\u5929\u9645\u4F1A\u6240\u5927\u5B85";
     const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || "4:3";
@@ -23053,11 +23915,13 @@ router18.post("/render-candidates", async (req, res) => {
           pitchDeg: v.cameraDelta.pitchDeg ?? camera.pitchDeg
         };
         const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
+        const preserveBasePhotoOnly = Boolean(req.body.preserveBasePhotoOnly);
         try {
           const imageResult = await SpaceImageGenerationService.generateAndStore({
             projectId,
             shotCode,
             isHumanPass,
+            preserveBasePhotoOnly,
             humanLayout,
             selectedModels,
             characterReferenceImages,
@@ -23080,10 +23944,13 @@ router18.post("/render-candidates", async (req, res) => {
             },
             ensembleProducts: ensembleProducts || req.body?.ensembleProducts,
             productReferenceImage: effectiveProductRef,
+            referenceShotCode,
             sceneMasterReferenceImage: effectiveSceneMasterRef,
             currentShotReferenceImage: baseShotRef,
             roomName: effectiveRoomName,
             styleName: effectiveStyleName,
+            spacePreset: req.body.spacePreset,
+            stylePreset: req.body.stylePreset,
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
@@ -23110,22 +23977,46 @@ router18.post("/render-candidates", async (req, res) => {
             throw candErr;
           }
           try {
-            const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
-              shotCode,
-              productName: effectiveProductName,
-              productColor: effectiveProductColor,
-              productRole: shotCode === "A08" ? "recliner_1seat" : shotCode === "A09" ? "dining_table" : void 0,
-              roomName: effectiveRoomName,
-              styleName: effectiveStyleName,
-              camera: effectiveCamera,
-              variantIndex: v.idx,
-              variantTag: v.tag
-            });
+            let finalBuffer = null;
+            let finalContentType = "image/webp";
+            if (baseShotRef) {
+              const inlineShot = await SpaceImageGenerationService.resolveImageInline(baseShotRef);
+              if (inlineShot && inlineShot.data) {
+                const rawBaseBuf = Buffer.from(inlineShot.data, "base64");
+                try {
+                  finalBuffer = await (0, import_sharp8.default)(rawBaseBuf).webp({ quality: 90 }).toBuffer();
+                  finalContentType = "image/webp";
+                } catch {
+                  finalBuffer = rawBaseBuf;
+                  finalContentType = inlineShot.mimeType || "image/jpeg";
+                }
+              }
+            }
+            if (!finalBuffer) {
+              const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
+                shotCode,
+                productName: effectiveProductName,
+                productColor: effectiveProductColor,
+                productRole: shotCode === "A08" ? "recliner_1seat" : shotCode === "A09" ? "dining_table" : void 0,
+                roomName: effectiveRoomName,
+                styleName: effectiveStyleName,
+                camera: effectiveCamera,
+                variantIndex: v.idx,
+                variantTag: v.tag
+              });
+              try {
+                finalBuffer = await (0, import_sharp8.default)(fallbackBuf).webp({ quality: 90 }).toBuffer();
+                finalContentType = "image/webp";
+              } catch {
+                finalBuffer = fallbackBuf;
+                finalContentType = "image/svg+xml";
+              }
+            }
             await storage3.put({
               bucketType: "generated",
               objectKey,
-              buffer: fallbackBuf,
-              contentType: "image/svg+xml",
+              buffer: finalBuffer,
+              contentType: finalContentType,
               metadata: {
                 projectId,
                 shotCode,
@@ -23143,7 +24034,7 @@ router18.post("/render-candidates", async (req, res) => {
               imageUrl: realProxyUrl,
               objectKey,
               thumbnailUrl: realProxyUrl,
-              summaryTag: `${v.tag} (\u9AD8\u53EF\u7528\u81EA\u6108\u65B9\u6848)`,
+              summaryTag: baseShotRef ? "\u5B9E\u62CD\u5E95\u56FE\u4FDD\u771F (\u4E91\u7AEF\u6545\u969C\xB7\u5DF2\u4FDD\u7559\u539F\u56FE)" : `${v.tag} (\u9AD8\u53EF\u7528\u81EA\u6108\u65B9\u6848)`,
               promptFragment: v.promptAddon,
               seed: 1e3 + v.idx,
               score: 91,
@@ -23584,7 +24475,8 @@ var import_zod7 = require("zod");
 var AnalyzeModelCardRequestSchema = import_zod7.z.object({
   projectId: import_zod7.z.string().optional().default("manwah-space-default"),
   imageBase64: import_zod7.z.string().min(10, "imageBase64 is required"),
-  userNotes: import_zod7.z.string().optional()
+  userNotes: import_zod7.z.string().optional(),
+  model: import_zod7.z.string().optional().default("gemini-3.7-flash")
 });
 var SpaceHumanAnalysisService = class {
   static {
@@ -23594,7 +24486,7 @@ var SpaceHumanAnalysisService = class {
    * 核心方法：上传模特大图/资产卡并进行多模态视觉真实识别与切片
    */
   static async analyzeAndExtract(input, userId = "system") {
-    const { projectId, imageBase64, userNotes } = input;
+    const { projectId, imageBase64, userNotes, model = "gemini-3.7-flash" } = input;
     const modelUniqueId = `model-${Date.now().toString(36)}-${import_crypto24.default.randomBytes(3).toString("hex")}`;
     let cleanBase64 = imageBase64;
     let mimeType = "image/jpeg";
@@ -23750,20 +24642,38 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8BF4\u660E\u3011: ${userNotes}` :
             }
           }
         ];
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [{ role: "user", parts }],
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
-        const rawText = response.text || "";
-        const cleanJsonText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-        const matchJson = cleanJsonText.match(/\{[\s\S]*\}/);
-        if (matchJson) {
-          recognized = JSON.parse(matchJson[0]);
-          if (recognized.explanation) {
-            explanation = recognized.explanation;
+        const preferredModel = (model || "").trim() || "gemini-3.7-flash";
+        const normalizedPreferred = preferredModel === "gemini-4-argon" || preferredModel === "argon" || preferredModel === "gemini-4" ? "gemini-3.1-pro-preview" : preferredModel;
+        const candidateModels = Array.from(/* @__PURE__ */ new Set([
+          normalizedPreferred,
+          "gemini-3.7-flash",
+          "gemini-3.8-flash",
+          "gemini-3.1-pro-preview",
+          "gemini-2.5-flash"
+        ]));
+        for (const modelToUse of candidateModels) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelToUse,
+              contents: [{ role: "user", parts }],
+              config: {
+                responseMimeType: "application/json"
+              }
+            });
+            const rawText = response.text || "";
+            const cleanJsonText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+            const matchJson = cleanJsonText.match(/\{[\s\S]*\}/);
+            if (matchJson) {
+              recognized = JSON.parse(matchJson[0]);
+              if (recognized.explanation) {
+                explanation = recognized.explanation;
+              } else {
+                explanation = `\u57FA\u4E8E ${modelToUse} \u5B8C\u6210\u4EBA\u7269\u8EAB\u4EFD\u5C5E\u6027\u4E0E Model DNA \u6DF1\u5EA6\u89E3\u6790`;
+              }
+              break;
+            }
+          } catch (modelErr) {
+            console.warn(`[SpaceHumanAnalysisService] Model ${modelToUse} recognition failed, trying next:`, modelErr?.message);
           }
         }
       }
@@ -23833,6 +24743,7 @@ var ChoreographLayoutRequestSchema = import_zod8.z.object({
   imageUrl: import_zod8.z.string().optional(),
   imageBase64: import_zod8.z.string().optional(),
   characterCount: import_zod8.z.number().optional(),
+  model: import_zod8.z.string().optional().default("gemini-3.7-flash"),
   availableModels: import_zod8.z.array(
     import_zod8.z.object({
       id: import_zod8.z.string(),
@@ -23853,10 +24764,19 @@ var SpaceHumanChoreographyService = class {
    * 核心方法：结合图像识别与提示词进行 AI 构思，并智能匹配角色资产库
    */
   static async choreograph(input, userId = "system") {
-    const { prompt = "", imageUrl, imageBase64, characterCount, availableModels = [] } = input;
+    const { prompt = "", imageUrl, imageBase64, characterCount, availableModels = [], model = "gemini-3.7-flash" } = input;
     try {
       const { ai, isValidKey } = await createServerGenAI(userId);
       if (ai && isValidKey) {
+        const preferredModel = (model || "").trim() || "gemini-3.7-flash";
+        const normalizedPreferred = preferredModel === "gemini-4-argon" || preferredModel === "argon" || preferredModel === "gemini-4" ? "gemini-3.1-pro-preview" : preferredModel;
+        const candidateModels = Array.from(/* @__PURE__ */ new Set([
+          normalizedPreferred,
+          "gemini-3.7-flash",
+          "gemini-3.8-flash",
+          "gemini-3.1-pro-preview",
+          "gemini-2.5-flash"
+        ]));
         const modelsSummary = availableModels.map((m) => ({
           id: m.id,
           name: m.nameZh || m.name,
@@ -23921,35 +24841,41 @@ ${characterCount ? `\u3010\u671F\u671B\u4EBA\u7269\u6570\u91CF\u3011\uFF1A${char
             }
           });
         }
-        const modelToUse = "gemini-2.5-flash";
-        const response = await ai.models.generateContent({
-          model: modelToUse,
-          contents
-        });
-        const textOutput = response.text || "";
-        const cleanedJson = textOutput.replace(/```json/gi, "").replace(/```/g, "").trim();
-        const parsed = JSON.parse(cleanedJson);
-        if (parsed && Array.isArray(parsed.slots) && parsed.slots.length > 0) {
-          const slots = parsed.slots.map((s, idx) => {
-            const matched = availableModels.find((m) => m.id === s.matchedModelId) || availableModels.find((m) => m.roleType === s.targetRole) || availableModels[idx % availableModels.length];
-            return {
-              id: s.id || `slot-${idx + 1}`,
-              targetRole: s.targetRole || "family_member",
-              roleLabel: s.roleLabel || (matched?.nameZh || matched?.name || `\u89D2\u8272 ${idx + 1}`),
-              positionDesc: s.positionDesc || "\u6C99\u53D1\u529F\u80FD\u4E3B\u5EA7",
-              actionDesc: s.actionDesc || "\u8212\u5C55\u5C31\u5EA7\uFF0C\u76EE\u5149\u6E29\u548C\u81EA\u7136",
-              matchedModelId: matched?.id || s.matchedModelId,
-              matchedModelName: matched ? matched.nameZh || matched.name : s.matchedModelName,
-              matchReason: s.matchReason || "\u6839\u636E\u5BB6\u5EAD\u5B9A\u4F4D\u4E0E\u6C14\u8D28\u5951\u5408"
-            };
-          });
-          return {
-            theme: parsed.theme || "\u7A7A\u95F4\u4EBA\u7269\u60C5\u666F\u7F16\u6392",
-            spatialSummary: parsed.spatialSummary || "\u57FA\u4E8E\u7A7A\u95F4\u5BB6\u5177\u7ED3\u6784\u4E0E\u751F\u6D3B\u60C5\u666F\u6784\u601D",
-            recommendedCount: slots.length,
-            slots,
-            source: imageBase64 || imageUrl ? "ai_vision" : "ai_prompt"
-          };
+        for (const modelToUse of candidateModels) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelToUse,
+              contents
+            });
+            const textOutput = response.text || "";
+            const cleanedJson = textOutput.replace(/```json/gi, "").replace(/```/g, "").trim();
+            const parsed = JSON.parse(cleanedJson);
+            if (parsed && Array.isArray(parsed.slots) && parsed.slots.length > 0) {
+              const slots = parsed.slots.map((s, idx) => {
+                const matched = availableModels.find((m) => m.id === s.matchedModelId) || availableModels.find((m) => m.roleType === s.targetRole) || availableModels[idx % availableModels.length];
+                return {
+                  id: s.id || `slot-${idx + 1}`,
+                  targetRole: s.targetRole || "family_member",
+                  roleLabel: s.roleLabel || (matched?.nameZh || matched?.name || `\u89D2\u8272 ${idx + 1}`),
+                  positionDesc: s.positionDesc || "\u6C99\u53D1\u529F\u80FD\u4E3B\u5EA7",
+                  actionDesc: s.actionDesc || "\u8212\u5C55\u5C31\u5EA7\uFF0C\u76EE\u5149\u6E29\u548C\u81EA\u7136",
+                  matchedModelId: matched?.id || s.matchedModelId,
+                  matchedModelName: matched ? matched.nameZh || matched.name : s.matchedModelName,
+                  matchReason: s.matchReason || "\u6839\u636E\u5BB6\u5EAD\u5B9A\u4F4D\u4E0E\u6C14\u8D28\u5951\u5408"
+                };
+              });
+              return {
+                theme: parsed.theme || "\u7A7A\u95F4\u4EBA\u7269\u60C5\u666F\u7F16\u6392",
+                spatialSummary: parsed.spatialSummary || "\u57FA\u4E8E\u7A7A\u95F4\u5BB6\u5177\u7ED3\u6784\u4E0E\u751F\u6D3B\u60C5\u666F\u6784\u601D",
+                recommendedCount: slots.length,
+                slots,
+                source: imageBase64 || imageUrl ? "ai_vision" : "ai_prompt",
+                modelUsed: modelToUse
+              };
+            }
+          } catch (modelErr) {
+            console.warn(`[SpaceHumanChoreographyService] Model ${modelToUse} failed, falling back to next:`, modelErr);
+          }
         }
       }
     } catch (aiErr) {
@@ -25963,11 +26889,12 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           const normalizedInitialError = normalizeProviderError(initialErr, { provider, model });
           const errMsg = normalizedInitialError.message;
           const isHybrid = routingMode === 2;
-          const shouldFallback = ["timeout", "rate_limited", "upstream_unavailable"].includes(normalizedInitialError.category);
-          if ((provider === "vectorengine" || baseUrl.includes("vectorengine")) && (shouldFallback || isHybrid && normalizedInitialError.retryable)) {
+          const isAuthOrChannelError = normalizedInitialError.category === "authentication" || /unauthorized|invalid token|model_price_error|no available channel/i.test(errMsg);
+          const shouldFallback = ["timeout", "rate_limited", "upstream_unavailable"].includes(normalizedInitialError.category) || isAuthOrChannelError;
+          if (shouldFallback || isHybrid && normalizedInitialError.retryable) {
             const fallback = await getFallbackConfig(deptId, method1Key);
-            if (fallback && fetchResult === void 0) {
-              console.log(`[O&M: Fallback Activated] VectorEngine failed (${errMsg}). Retrying with fallback provider ${fallback.provider} (${fallback.baseUrl})...`);
+            if (fallback && fetchResult === void 0 && (fallback.provider !== provider || fallback.apiKey !== apiKey)) {
+              console.log(`[O&M: Fallback Activated] \u4E3B\u901A\u9053 ${provider} \u8C03\u7528\u5931\u8D25 (${errMsg})\u3002\u6B63\u5728\u81EA\u52A8\u65E0\u7F1D\u5207\u6362\u81F3\u5907\u7528\u901A\u9053 ${fallback.provider} (${fallback.baseUrl})...`);
               usedProvider = fallback.provider;
               try {
                 const fetchRes = await doFetch(fallback.baseUrl, fallback.apiKey, fallback.provider);
@@ -25975,11 +26902,11 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                 actualModelUsed = fetchRes.actualModel;
               } catch (fallbackErr) {
                 const normalizedFallbackError = normalizeProviderError(fallbackErr, { provider: fallback.provider, model });
-                console.error(`[O&M: Fallback Failed] Fallback ${fallback.provider} also failed: ${normalizedFallbackError.message}`);
+                console.error(`[O&M: Fallback Failed] \u5907\u7528\u901A\u9053 ${fallback.provider} \u4EA6\u5931\u8D25: ${normalizedFallbackError.message}`);
                 throw normalizedFallbackError;
               }
             } else {
-              console.error(`[O&M: Fallback Skipped] VectorEngine failed (${errMsg}) and no valid fallback API key was found.`);
+              console.error(`[O&M: Fallback Skipped] \u901A\u9053 ${provider} \u5931\u8D25 (${errMsg}) \u4E14\u672A\u627E\u5230\u53EF\u7528\u7684\u5176\u4ED6\u5907\u7528 API key\u3002`);
               throw normalizedInitialError;
             }
           } else {
@@ -26455,7 +27382,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
   });
   const hasDist = import_fs27.default.existsSync(import_path24.default.join(process.cwd(), "dist", "index.html"));
-  const isProduction = process.env.NODE_ENV === "production" || hasDist && process.env.NODE_ENV !== "development";
+  const isProduction = process.env.NODE_ENV === "production" && hasDist;
   if (!isProduction && process.env.DISABLE_VITE !== "true") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({

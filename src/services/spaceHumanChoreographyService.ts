@@ -19,6 +19,7 @@ export interface ChoreographedLayoutResult {
   recommendedCount: number;
   slots: ChoreographedSlotItem[];
   source: 'ai_vision' | 'ai_prompt' | 'heuristic_engine';
+  modelUsed?: string;
 }
 
 export interface ChoreographLayoutPayload {
@@ -27,6 +28,7 @@ export interface ChoreographLayoutPayload {
   imageUrl?: string;
   imageBase64?: string;
   characterCount?: number;
+  model?: string;
   availableModels?: ModelAsset[];
 }
 
@@ -100,6 +102,7 @@ export class SpaceHumanChoreographyClientService {
         imageUrl: payload.imageUrl,
         imageBase64: payload.imageBase64,
         characterCount: payload.characterCount,
+        model: payload.model || 'gemini-3.7-flash',
         availableModels: (payload.availableModels || []).map(m => ({
           id: m.id,
           name: m.name,

@@ -534,14 +534,18 @@ Rich perspective depth against architectural luxury backdrop, floor diagonal van
 - HERO SEATING ASSET: Strictly construct the hero sofa from the isolated 3-seater product asset ground truth (3 seating cushions, horizontal division, supple genuine leather, flared comfort armrests). Clean pristine surface without oversized fuzzy throw cushions.
 - SPATIAL & PERSPECTIVE ANCHOR: Lock the architectural feature wall (dark stone marble + vertical wood paneling + dual curved floating wall shelves), window daylight from left, and warm wood flooring. DO NOT render a flat frontal mugshot! Position camera at front-left with subtle 15-to-25 degree three-quarters oblique perspective.`;
 
+      const framingScopeDirective = isHumanPassActive
+        ? 'PRESERVE BASELINE FRAMING & FIELD OF VIEW: Keep the exact camera framing, shooting distance, and all surrounding furniture from the base shot intact. DO NOT zoom in or crop out existing side chairs or coffee tables.'
+        : 'STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single recliner, or 3+1 ensemble arrangement!';
+
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Centered directly on hero three-seater main sofa ${footrestMandate}, accompanied by dual nesting coffee tables in foreground on geometric rug, aligned against architectural marble/wood backdrop wall and dual curved wall shelves, with left-side side table and floor tree, and right vista opening into dining zone. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single recliner, or 3+1 ensemble arrangement!`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Centered directly on hero three-seater main sofa ${footrestMandate}, accompanied by dual nesting coffee tables in foreground on geometric rug, aligned against architectural marble/wood backdrop wall and dual curved wall shelves, with left-side side table and floor tree, and right vista opening into dining zone. ${framingScopeDirective}`;
       } else {
         shotMandate = `[SHOT MANDATE - A03 HERO 3-SEATER LIVING FOCUS (Studio Sample 50mm Standard Focus)]:
 ${linkageDirective}
-Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with sofa backrest, 0° tilt) with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Frame tightly and comfortably around hero three-seater main sofa ${footrestMandate}, showcasing its 3D depth, flared armrest profile, and genuine leather sheen. Foreground features dual nesting coffee tables (black square pedestal + lower marble/glass table with artisan wooden box and minimal plant) on the geometric area rug. Deep contact AO shadows ground the sofa and table. STRICTLY FOCUS ON THE THREE-SEATER MAIN SOFA ALONE: completely crop out, bypass, and exclude any separate side accent chair, single chair, or 3+1 ensemble! The three-seater sofa is the ONLY hero seating piece in this shot.`;
+Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with sofa backrest, 0° tilt) with subtle 15-to-25 degree three-quarters oblique perspective from the front-left in 4:3 horizontal aspect ratio. Frame comfortably around hero three-seater main sofa ${footrestMandate}, showcasing its 3D depth, flared armrest profile, and genuine leather sheen. Foreground features dual nesting coffee tables (black square pedestal + lower marble/glass table with artisan wooden box and minimal plant) on the geometric area rug. Deep contact AO shadows ground the sofa and table. ${framingScopeDirective}`;
       }
       negativeFramingConstraints.push(
         'flat frontal mugshot',
@@ -549,20 +553,24 @@ Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with s
         'symmetrical center sofa',
         'facing directly forward',
         'stiff mugshot view',
-        'side chair',
-        'accent chair',
-        'armchair',
-        'lounge chair',
-        'single chair',
-        '3+1 ensemble',
-        'extra chair',
-        'additional seating',
+        ...(isHumanPassActive
+          ? ['zoomed in', 'zooming in', 'cropped sofa', 'cropping furniture', 're-framing', 'shifted camera', 'perspective drift', 'altered zoom level']
+          : [
+              'side chair',
+              'accent chair',
+              'armchair',
+              'lounge chair',
+              'single chair',
+              '3+1 ensemble',
+              'extra chair',
+              'additional seating',
+              'wide empty room panorama',
+              'far distant vantage',
+              'camera centered on single accent chair',
+              'framing the separate single chair'
+            ]),
         'cluttered throw pillows',
         'giant fuzzy cushions',
-        'wide empty room panorama',
-        'far distant vantage',
-        'camera centered on single accent chair',
-        'framing the separate single chair',
         'cloning low-res sofa from master image',
         'inpainting distant sofa',
         'different room background',

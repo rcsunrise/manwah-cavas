@@ -3012,11 +3012,45 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40 } : null));
 
-      const primaryProd =
-        activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0];
+      const targetShotCode = targetShot.templateCode;
+      const isHeroSofaDedicatedShot = ['A03', 'A04', 'A05', 'A06'].includes(targetShotCode);
+      const isReclinerDedicatedShot = ['A08'].includes(targetShotCode);
+      const isDiningDedicatedShot = ['A09'].includes(targetShotCode);
+
+      const hero3SeatSofa = activeEnsemble.find(
+        (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
+      );
+      const reclinerChair = activeEnsemble.find(
+        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
+      ) || activeEnsemble.find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
+      const diningTableProd = activeEnsemble.find(
+        (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
+      );
+
+      // 支持当前镜头单独绑定指定产品素材或专属上传素材 (如用户单独为本镜头上传的 45°/特写素材)
+      const boundProd = targetShot.boundProductId
+        ? products.find((p) => p.id === targetShot.boundProductId)
+        : null;
+
+      const primaryProd = boundProd
+        || ((isHeroSofaDedicatedShot && hero3SeatSofa)
+          ? hero3SeatSofa
+          : (isReclinerDedicatedShot && reclinerChair)
+          ? reclinerChair
+          : (isDiningDedicatedShot && diningTableProd)
+          ? diningTableProd
+          : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]));
+
+      const shotCustomRef = targetShot.customReferenceImage;
+      const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
+      const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
       const primaryRef =
+        shotCustomRef ||
+        (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
         primaryProd?.cropImageUrl ||
         primaryProd?.cropBase64 ||
+        bestPrimaryView.reference?.publicUrl ||
+        bestPrimaryView.reference?.objectKey ||
         primaryProd?.referenceImages?.[0]?.publicUrl ||
         primaryProd?.referenceImages?.[0]?.objectKey ||
         (primaryProd as any)?.uploadedImageUrl ||
@@ -3049,6 +3083,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         seed: computeConfig.seed
       };
 
+      const hasBaseBaseline = Boolean(baseShotImage);
+
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3060,7 +3096,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionNumber: (targetShot.revisions.length || 0) + 1,
           candidateCount: 1,
           isHumanPass: true,
-          preserveBasePhotoOnly: isBaseUploaded,
+          preserveBasePhotoOnly: hasBaseBaseline,
           roomName: isBaseUploaded ? '实拍原图环境' : selectedSpace.name.split(' (')[0],
           spaceCode: isBaseUploaded ? 'custom_photo' : selectedSpace.code,
           styleName: isBaseUploaded ? '实拍原画质感' : selectedStyle.name.split(' (')[0],
@@ -3112,7 +3148,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             referenceImage: primaryRef
           },
           ...(() => {
-            if (targetShot.templateCode === 'A00' || isBaseUploaded) {
+            if (targetShot.templateCode === 'A00' || isBaseUploaded || targetShot.decoupleOldMaster) {
               return { sceneMasterReference: undefined, referenceShotCode: undefined };
             }
             const a01Shot = shots.find((s) => s.templateCode === 'A01');
@@ -3158,14 +3194,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           generationSettings: activeSettings,
           promptSnapshot: {
             ...baseCompiled,
-            positivePrompt: isBaseUploaded
-              ? `${compiledHuman.positivePrompt}, photo ground truth inpainting, keep all existing room architecture, backdrop walls, lighting, windows, flooring, and furniture in Reference Image 1 100% frozen and untouched, photorealistically seat real human model(s)`
+            positivePrompt: hasBaseBaseline
+              ? `${compiledHuman.positivePrompt}, zero camera drift inpainting, strictly 100% preserve and freeze Reference Image 1 camera field of view, focal length, distance, optical horizon, and all surrounding furniture (including side chairs, coffee tables, and wall decor) completely untouched and uncropped, photorealistically seat real human model(s) into the sofa with realistic body weight and contact shadows`
               : `${compiledHuman.positivePrompt}, ${baseCompiled.positivePrompt}`,
-            negativePrompt: isBaseUploaded
-              ? `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions, altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style`
+            negativePrompt: hasBaseBaseline
+              ? `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions, altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style, zooming in, zoom in, cropped sofa, cropping furniture, displaced sofa, extra furniture, missing furniture`
               : `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
             isHumanPass: true,
-            preserveBasePhotoOnly: isBaseUploaded
+            preserveBasePhotoOnly: hasBaseBaseline
           }
         })
       });
