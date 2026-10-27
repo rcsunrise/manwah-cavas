@@ -170,7 +170,9 @@ router.post('/render-shot', async (req: Request, res: Response) => {
         name: effectiveProductName,
         colors: [effectiveProductColor],
         materials: [effectiveProductMaterial],
-        referenceImage: effectiveProductRef
+        referenceImage: effectiveProductRef,
+        isSceneEnsembleSuite: (productDNA as any)?.isSceneEnsembleSuite ?? (req.body as any)?.isSceneEnsembleSuite,
+        sceneEnsembleDossier: (productDNA as any)?.sceneEnsembleDossier ?? (req.body as any)?.sceneEnsembleDossier
       },
       ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
       productReferenceImage: effectiveProductRef,
@@ -491,7 +493,9 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
               name: effectiveProductName,
               colors: [effectiveProductColor],
               materials: [effectiveProductMaterial],
-              referenceImage: effectiveProductRef
+              referenceImage: effectiveProductRef,
+              isSceneEnsembleSuite: (productDNA as any)?.isSceneEnsembleSuite ?? (req.body as any)?.isSceneEnsembleSuite,
+              sceneEnsembleDossier: (productDNA as any)?.sceneEnsembleDossier ?? (req.body as any)?.sceneEnsembleDossier
             },
             ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
             productReferenceImage: effectiveProductRef,

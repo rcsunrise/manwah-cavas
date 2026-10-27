@@ -19253,7 +19253,7 @@ CORE INVARIANTS:
           "different room, altered architecture, newly invented wall niches, arched shelves, bookshelf, bookcase, library shelves, study room, hallway, corridor, foyer, doorway, mirrored window, reversed daylight, flipped room",
           isAngledOrProfile ? "sofa floating off floor grid, mismatched vanishing lines, distorted proportions" : "crooked vertical lines, tilted camera, crooked perspective, floating furniture, mismatched vanishing lines",
           "deformed sofa, generic boxy sofa, distorted proportions, wrong color",
-          isFunctionalClosed && shotCode !== "A02" ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258" : "",
+          isFunctionalClosed && shotCode !== "A02" ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, raised headrest, lifted headrest, popped headrest, asymmetric headrests, uneven headrests, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u62AC\u8D77\u7684\u5934\u6795, \u7FD8\u8D77\u7684\u5934\u6795" : "",
           !hasHumanOccupant ? "people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs" : "",
           brownNegativeFilter,
           "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo"
@@ -19335,11 +19335,15 @@ Negative constraints: ${cleanNegativeConstraints}`;
         const isDualTone = hasRecliner && Boolean(rawRecliner && rawMain && rawRecliner.trim() !== rawMain.trim());
         const reclinerName = ensembleDossier?.sofaSuite?.reclinerChairs?.[0]?.name || "single accent armchair";
         const layoutPrompt = ensembleDossier?.placementDirectives?.holisticLayoutPrompt || "";
+        const coffeeTableDesc = ensembleDossier?.coffeeTables?.description || "";
+        const coffeeTableItems = ensembleDossier?.coffeeTables?.items || [];
+        const coffeeTableClause = coffeeTableItems.length > 0 ? `
+   * COFFEE TABLES: Positioned on the area rug directly in front of the main sofa, strictly manifesting ${coffeeTableDesc}: ${coffeeTableItems.map((tb) => `${tb.name || "table"} (${tb.material || "stone/wood top"})`).join(" paired with ")}, preserving authentic dual-tier nesting design from Reference Image 1.` : "";
         const visualAssetAnchorClause = isEnsemble ? isDualTone ? `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
    * THREE-SEATER MAIN SOFA: Centered in room, finished in ${mainSofaColor}.
-   * SINGLE ACCENT CHAIR ON LEFT: Positioned on the left flank, finished strictly in contrasting ${reclinerChairColor} (${reclinerName}), preserving its distinct modern silhouette from Reference Image 1. STRICTLY FORBID painting the single chair in the main sofa's color (${mainSofaColor})! Maintain the distinct two-tone contrast!
+   * SINGLE ACCENT CHAIR ON LEFT: Positioned on the left flank, finished strictly in contrasting ${reclinerChairColor} (${reclinerName}), preserving its distinct modern silhouette from Reference Image 1. STRICTLY FORBID painting the single chair in the main sofa's color (${mainSofaColor})! Maintain the distinct two-tone contrast!${coffeeTableClause}
    * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ""}` : `- REFERENCE IMAGE 1: Authentic living room scene ensemble (${ensembleDossier?.name || activePrimaryProduct?.name}).
-   * SEATING SUITE: All seating pieces finished in cohesive ${mainSofaColor}.
+   * SEATING SUITE: All seating pieces finished in cohesive ${mainSofaColor}.${coffeeTableClause}
    * ${layoutPrompt ? `LAYOUT DIRECTIVE: ${layoutPrompt}` : ""}` : `- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.`;
         directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
 ${topologyMandateA00 ? `${topologyMandateA00}
@@ -19356,7 +19360,7 @@ ${positivePrompt}
 
 CORE INVARIANTS:
 - PERSPECTIVE & ARCHITECTURE: Ultra-wide architectural camera perspective with plumb vertical lines (26mm field of view). Faithfully manifest the distinctive architectural room topology, ceiling headroom, lighting atmosphere, and tailored interior wall materiality specified in the Spatial & Camera Directive.
-- SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base.
+- SHOWROOM POSTURE: All sofa and chair motorized footrests strictly remain 100% CLOSED and retracted flush under base. All sofa headrests strictly remain completely flush, lowered, and aligned with backrest contour (strictly NO raised or popped-up headrests).
 - ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
@@ -19372,8 +19376,8 @@ CORE INVARIANTS:
           primaryProduct?.role === "sofa_2seat" ? "three-seater sofa, 3 seating cushions, middle cushion, extra seat cushion, tall and narrow sofa, squished proportions" : "",
           isArmlessLoungeChairA00 ? "bulky recliner footrest, deployed footrest on lounge chair, thick armrests on armless chair, power motion buttons" : "",
           "sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, crooked vertical lines, ground-level low shot",
-          "deployed footrest, extended footrest, open recliner mechanism, excessive empty rug void in foreground, cut-off ceiling",
-          "lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance",
+          "deployed footrest, extended footrest, open recliner mechanism, raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, \u62AC\u8D77\u7684\u5934\u6795, \u7FD8\u8D77\u7684\u5934\u6795, excessive empty rug void in foreground, cut-off ceiling",
+          !isEnsemble && !hasRecliner && secondaryInlines.length === 0 ? "lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance" : "disconnected furniture, chair pushed against window, lopsided dark wall imbalance",
           "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces"
         ].filter(Boolean).join(", ");
         directivePrompt += `
@@ -23669,7 +23673,9 @@ router18.post("/render-shot", async (req, res) => {
         name: effectiveProductName,
         colors: [effectiveProductColor],
         materials: [effectiveProductMaterial],
-        referenceImage: effectiveProductRef
+        referenceImage: effectiveProductRef,
+        isSceneEnsembleSuite: productDNA?.isSceneEnsembleSuite ?? req.body?.isSceneEnsembleSuite,
+        sceneEnsembleDossier: productDNA?.sceneEnsembleDossier ?? req.body?.sceneEnsembleDossier
       },
       ensembleProducts: ensembleProducts || req.body?.ensembleProducts,
       productReferenceImage: effectiveProductRef,
@@ -23940,7 +23946,9 @@ router18.post("/render-candidates", async (req, res) => {
               name: effectiveProductName,
               colors: [effectiveProductColor],
               materials: [effectiveProductMaterial],
-              referenceImage: effectiveProductRef
+              referenceImage: effectiveProductRef,
+              isSceneEnsembleSuite: productDNA?.isSceneEnsembleSuite ?? req.body?.isSceneEnsembleSuite,
+              sceneEnsembleDossier: productDNA?.sceneEnsembleDossier ?? req.body?.sceneEnsembleDossier
             },
             ensembleProducts: ensembleProducts || req.body?.ensembleProducts,
             productReferenceImage: effectiveProductRef,

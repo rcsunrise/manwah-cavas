@@ -344,7 +344,7 @@ export class ShootCompiler {
     const isHumanPassActive = Boolean(shot.hasHumanPass);
     const isFunctionalClosed = input.functionalPositionState !== 'open';
     const functionalPostureMandate = isFunctionalClosed
-      ? 'CRITICAL MANDATE (EVERY SHOT): ALL SOFA AND CHAIR FUNCTIONAL MOTION MECHANISMS STRICTLY REMAIN CLOSED, fully retracted, and neatly tucked flush under the base in standard upright seated configuration. Motorized footrests are completely closed and flush. Absolutely NO deployed footrest, NO extended leg rest, NO open recliner, NO reclining backrest'
+      ? 'CRITICAL MANDATE (EVERY SHOT): ALL SOFA AND CHAIR FUNCTIONAL MOTION MECHANISMS STRICTLY REMAIN CLOSED, fully retracted, and neatly tucked flush under the base in standard upright seated configuration. Motorized footrests are completely closed and flush. All backrest headrests strictly remain 100% flush, lowered, and symmetrically aligned with backrest top contour. Absolutely NO deployed footrest, NO extended leg rest, NO open recliner, NO reclining backrest, NO raised headrest, NO popped-up headrest, NO asymmetric headrest'
       : 'FUNCTIONAL MOTION DIRECTIVE: Functional recliners and footrests may be opened if appropriate.';
 
     if (isFunctionalClosed) {
@@ -364,12 +364,22 @@ export class ShootCompiler {
         'unfolded mechanism',
         'footrest sticking out',
         'reclined backrest',
+        'raised headrest',
+        'lifted headrest',
+        'popped headrest',
+        'popped-up headrest',
+        'extended headrest',
+        'asymmetric headrests',
+        'uneven headrests',
         '展开的脚踏',
         '伸出的脚托',
         '功能位展开',
         '靠背倾斜后仰展开',
         '伸展的脚垫',
-        '脚托弹出'
+        '脚托弹出',
+        '抬起的头枕',
+        '翘起的头枕',
+        '头枕立起'
       );
     }
 
@@ -1018,6 +1028,17 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       ['A02', 'A04', 'A05', 'A06', 'A07', 'A08'].includes(shot.templateCode) ||
       Math.abs(camera.yawDeg) >= 15;
 
+    const hasEnsembleChair = Boolean(
+      (primaryProduct?.isSceneEnsembleSuite && primaryProduct.sceneEnsembleDossier?.sofaSuite?.reclinerChairs?.length) ||
+      secondaryProducts.some((p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair')
+    );
+    const sanitizedMustExclude = (camera.mustExclude || []).filter((ex) => {
+      if (hasEnsembleChair && /chair|armchair|recliner/i.test(ex)) {
+        return false;
+      }
+      return true;
+    });
+
     const negativePrompt = [
       ...humanExclusionNegative,
       ...negativeFramingConstraints,
@@ -1031,7 +1052,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, plastic textures, cheap laminate, cartoon CGI rendering, overexposed highlights',
       'mismatched wall colors, wrong architectural palette, generic sterile white room without intended style color tone, garish neon colors',
       'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
-      ...(camera.mustExclude || []),
+      ...sanitizedMustExclude,
       ...spaceTopologyGlobal.negativeConstraints,
       ...styleFinishesGlobal.styleNegativeRules,
       ...(stylePreset.negativeRules || [])

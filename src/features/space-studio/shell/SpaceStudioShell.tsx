@@ -122,7 +122,7 @@ const DEFAULT_SHOTS: ShotInstance[] = [
       target: { type: 'product', id: 'p1' },
       framing: 'wide',
       mustInclude: ['hero_sofa', 'coffee_table', 'ceiling_architecture', 'balanced_living_ensemble', 'wide_bay_vista'],
-      mustExclude: ['human', 'drifting_isolated_chair', 'excessive_empty_rug', 'isolated_center_pillar', 'narrow_tunnel_walls']
+      mustExclude: ['human', 'excessive_empty_rug', 'isolated_center_pillar', 'narrow_tunnel_walls']
     },
     intent: {
       intentCode: 'SI-01',
@@ -2362,10 +2362,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           intent: targetShot.intent,
           productDNA: {
             modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa',
+            name: primaryProd?.name || (primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa'),
             leatherType: primaryProd?.materials?.[0] || '真皮',
             colorCode: primaryProd?.colors?.[0] || '标准色',
-            referenceImage: primaryRef
+            referenceImage: primaryRef,
+            isSceneEnsembleSuite: (primaryProd as any)?.isSceneEnsembleSuite,
+            sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
           },
           ...(() => {
             if (targetShotCode === 'A00' || targetShot.decoupleOldMaster) {
@@ -3142,10 +3144,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           intent: targetShot.intent,
           productDNA: {
             modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa',
+            name: primaryProd?.name || (primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa'),
             leatherType: primaryProd?.materials?.[0] || '真皮',
             colorCode: primaryProd?.colors?.[0] || '标准色',
-            referenceImage: primaryRef
+            referenceImage: primaryRef,
+            isSceneEnsembleSuite: (primaryProd as any)?.isSceneEnsembleSuite,
+            sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
           },
           ...(() => {
             if (targetShot.templateCode === 'A00' || isBaseUploaded || targetShot.decoupleOldMaster) {
