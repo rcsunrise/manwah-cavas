@@ -163,6 +163,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
       resolution: generationSettings?.resolution,
       seed: generationSettings?.seed,
       autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
+      renderMode: (generationSettings as any)?.renderMode || (req.body as any)?.renderMode,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,

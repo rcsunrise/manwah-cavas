@@ -1258,6 +1258,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     let initialRes: RenderResolution = '2K';
     let initialFuncPos: 'closed' | 'open' = 'closed';
     let initialAutoFallback = true;
+    let initialRenderMode: 'orchestration' | 'studio_swap' = 'orchestration';
     if (typeof window !== 'undefined') {
       const savedAspect = localStorage.getItem('space_studio_aspect_ratio') as ImageAspectRatio;
       if (savedAspect && ['4:3', '16:9', '3:4', '1:1', '9:16', '2:3'].includes(savedAspect)) {
@@ -1279,6 +1280,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       if (savedAutoFallback !== null) {
         initialAutoFallback = savedAutoFallback === 'true';
       }
+      const savedRenderMode = localStorage.getItem('space_studio_render_mode') as 'orchestration' | 'studio_swap';
+      if (savedRenderMode && ['orchestration', 'studio_swap'].includes(savedRenderMode)) {
+        initialRenderMode = savedRenderMode;
+      }
     }
     return {
       model: initialModel,
@@ -1290,7 +1295,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       customPrefix: '',
       candidateCount: 1,
       functionalPositionState: initialFuncPos,
-      autoModelFallback: initialAutoFallback
+      autoModelFallback: initialAutoFallback,
+      renderMode: initialRenderMode
     };
   });
 
@@ -1308,6 +1314,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       }
       if (typeof window !== 'undefined' && typeof updater.autoModelFallback === 'boolean') {
         localStorage.setItem('space_studio_auto_model_fallback', String(updater.autoModelFallback));
+      }
+      if (typeof window !== 'undefined' && updater.renderMode) {
+        localStorage.setItem('space_studio_render_mode', updater.renderMode);
       }
       if (updater.aspectRatio) {
         if (updater.aspectRatio !== aspectRatio) {
@@ -2184,6 +2193,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       resolution: (customSettings as any)?.resolution || computeConfig.resolution || '2K',
       aspectRatio: (customSettings as any)?.aspectRatio || targetShot.aspectRatio || computeConfig.aspectRatio,
       autoModelFallback: (customSettings as any)?.autoModelFallback ?? computeConfig.autoModelFallback,
+      renderMode: (customSettings as any)?.renderMode || computeConfig.renderMode || 'orchestration',
       ...(computeConfig.seed !== undefined ? { seed: computeConfig.seed } : {}),
       useRandomSeed: computeConfig.seed === undefined,
       ...customSettings
@@ -2338,6 +2348,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
           resolution: activeSettings.resolution,
           autoModelFallback: activeSettings.autoModelFallback,
+          renderMode: activeSettings.renderMode,
           roomName: selectedSpace.name.split(' (')[0],
           spaceCode: selectedSpace.code,
           styleName: selectedStyle.name.split(' (')[0],
@@ -3962,6 +3973,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onChangeAspectRatio={handleShotAspectRatioChange}
           resolution={computeConfig.resolution || '2K'}
           onChangeResolution={(res) => handleUpdateComputeConfig({ resolution: res })}
+          renderMode={computeConfig.renderMode}
           isGenerating={isGeneratingCurrentShot || (isRenderingHuman && renderingShotIds.includes(activeShot.id)) || isOutpainting}
           onCancelRendering={() => handleCancelRendering(activeShot.id)}
           renderingShotCode={renderingShotCode}

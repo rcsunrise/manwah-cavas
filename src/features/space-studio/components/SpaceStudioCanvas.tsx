@@ -138,6 +138,7 @@ interface SpaceStudioCanvasProps {
   onPasteShotPhoto?: () => void;
   autoModelFallback?: boolean;
   onEnableAutoFallback?: () => void;
+  renderMode?: 'orchestration' | 'studio_swap';
 }
 
 export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
@@ -189,7 +190,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onClearCurrentShotImage,
   hasGenerations,
   autoModelFallback,
-  onEnableAutoFallback
+  onEnableAutoFallback,
+  renderMode = 'orchestration'
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
@@ -1268,8 +1270,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   <div className={`absolute bottom-3 right-3 px-2.5 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono pointer-events-none flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                     isLight ? 'bg-white/80 border-stone-200 text-stone-600 shadow-2xs' : 'bg-black/70 border-white/10 text-neutral-300'
                   }`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    <span>MANWAH · 视觉驱动摄影母版</span>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${renderMode === 'studio_swap' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    <span>{renderMode === 'studio_swap' ? 'MANWAH · 极简影棚背景置换直通' : 'MANWAH · 视觉驱动摄影母版'}</span>
                   </div>
 
                   {/* FLOATING INTERACTION HUD */}

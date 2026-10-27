@@ -524,6 +524,7 @@ export interface RenderComputeConfig {
   customPrefix?: string;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean; // 多模型故障自动轮换开关 (开启时主模型失败自动轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2)
+  renderMode?: 'orchestration' | 'studio_swap'; // 生产模式：'orchestration' (全案机位编排，默认) | 'studio_swap' (极简影棚背景置换/直通图生图)
 }
 
 export type UIThemeMode = 'dark' | 'light';
@@ -749,6 +750,7 @@ export interface GenerationSettings {
   useRandomSeed: boolean;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
+  renderMode?: 'orchestration' | 'studio_swap';
 }
 
 export interface GenerationJob {

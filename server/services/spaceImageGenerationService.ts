@@ -85,6 +85,7 @@ export interface SpaceGenerateImageInput {
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
   preserveBasePhotoOnly?: boolean;
+  renderMode?: 'orchestration' | 'studio_swap';
 }
 
 export interface SpaceGenerateImageResult {
@@ -530,6 +531,8 @@ export class SpaceImageGenerationService {
       const isFlash25 = targetModel === 'gemini-2.5-flash-image' || targetModel === 'gemini-2.5-flash';
       const validResolution = isFlash25 ? '1K' : (['1K', '2K', '4K'].includes(reqResolution) ? reqResolution : '2K');
 
+      const isStudioSwapMode = input.renderMode === 'studio_swap';
+
       // 编织多模态视觉参考图像 (按工作模式优先级排序)
       const images: Array<{ data: string; mimeType?: string; role?: string }> = [];
       // 核心工业逻辑：针对 3人位主沙发专属镜头 (A03, A04, A05, A06)，绝对不把单椅作为搭配品参考图塞入！
@@ -596,7 +599,7 @@ export class SpaceImageGenerationService {
             role: 'primary_product'
           });
         }
-        if (masterInline) {
+        if (!isStudioSwapMode && masterInline) {
           images.push({
             data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
             mimeType: masterInline.mimeType,
@@ -604,12 +607,14 @@ export class SpaceImageGenerationService {
           });
         }
 
-        for (const secItem of pushedSecondaryInlines) {
-          images.push({
-            data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
-            mimeType: secItem.inline.mimeType,
-            role: 'secondary_product'
-          });
+        if (!isStudioSwapMode) {
+          for (const secItem of pushedSecondaryInlines) {
+            images.push({
+              data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
+              mimeType: secItem.inline.mimeType,
+              role: 'secondary_product'
+            });
+          }
         }
       }
 
@@ -645,7 +650,42 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
         )
       ).join(', ');
 
-      if (isHumanPass || shotInline) {
+      if (isStudioSwapMode && productInline) {
+        const effectiveRoomDesc = input.roomName || input.spacePreset?.name || '都会平层大宅客餐厅';
+        const effectiveStyleDesc = input.styleName || input.stylePreset?.name || '意式轻奢';
+
+        directivePrompt = `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
+PRIMARY OBJECTIVE:
+Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
+ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
+DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
+
+YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND:
+1. REPLACE THE BACKGROUND WALLS & FLOORS: Transform the flat studio/showroom backdrop into an authentic luxury architectural interior:
+   - ROOM TOPOLOGY: ${effectiveRoomDesc} with soaring architectural headroom and panoramic daylight.
+   - INTERIOR FINISHES: ${effectiveStyleDesc} architectural wall finishes, seamless natural stone/wood wall joinery with recessed reveals, and polished floor tiles. Plumb vertical lines.
+   - WINDOW SCENERY: Floor-to-ceiling panoramic glass curtain wall revealing natural open vista and outdoor daylight.
+2. NATURAL ILLUMINATION & CONTACT SHADOWS:
+   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the floor/area rug, eliminating any floating sticker artifact.
+   - Match the room's directional daylight and indirect cove lighting onto the outer edges of the existing furniture with seamless color temperature harmony.
+3. PRESERVE ORIGINAL FURNITURE POSTURE:
+   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
+4. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS. Clean pristine commercial catalog photograph.
+
+${positivePrompt}`;
+
+        const cleanNegativeConstraintsStudioSwap = [
+          'altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines',
+          'removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture',
+          'raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, 抬起的头枕, 翘起的头枕',
+          'deployed footrest, extended footrest, open recliner mechanism, 展开的脚踏, 伸出的脚托',
+          'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render',
+          'floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact',
+          'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces'
+        ].join(', ');
+
+        directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraintsStudioSwap}`;
+      } else if (isHumanPass || shotInline) {
         // 在有人物入座或以底图为锚点的模式下，必须净化 negativePrompt，严禁包含底图内已有物体的剔除词（如 side chair / armchair / wide panorama），避免大模型为满足负面词而强行放大裁切！
         const sanitizedNegative = (negativePrompt || '')
           .replace(/\b(side chair|accent chair|armchair|lounge chair|single chair|3\+1 ensemble|wide empty room panorama|far distant vantage)\b/gi, '')

@@ -18843,6 +18843,7 @@ var SpaceImageGenerationService = class {
       const reqResolution = input.resolution || "2K";
       const isFlash25 = targetModel === "gemini-2.5-flash-image" || targetModel === "gemini-2.5-flash";
       const validResolution = isFlash25 ? "1K" : ["1K", "2K", "4K"].includes(reqResolution) ? reqResolution : "2K";
+      const isStudioSwapMode = input.renderMode === "studio_swap";
       const images = [];
       const allowedSecondaryInlines = secondaryInlines.filter((s) => {
         if (["A04", "A05", "A06"].includes(shotCode)) {
@@ -18895,19 +18896,21 @@ var SpaceImageGenerationService = class {
             role: "primary_product"
           });
         }
-        if (masterInline) {
+        if (!isStudioSwapMode && masterInline) {
           images.push({
             data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
             mimeType: masterInline.mimeType,
             role: "scene_reference"
           });
         }
-        for (const secItem of pushedSecondaryInlines) {
-          images.push({
-            data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
-            mimeType: secItem.inline.mimeType,
-            role: "secondary_product"
-          });
+        if (!isStudioSwapMode) {
+          for (const secItem of pushedSecondaryInlines) {
+            images.push({
+              data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
+              mimeType: secItem.inline.mimeType,
+              role: "secondary_product"
+            });
+          }
         }
       }
       let secondaryReferencesText = "";
@@ -18930,7 +18933,41 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           allowedSecondaryInlines.map((s) => s.antiStickerNegative).filter(Boolean)
         )
       ).join(", ");
-      if (isHumanPass || shotInline) {
+      if (isStudioSwapMode && productInline) {
+        const effectiveRoomDesc = input.roomName || input.spacePreset?.name || "\u90FD\u4F1A\u5E73\u5C42\u5927\u5B85\u5BA2\u9910\u5385";
+        const effectiveStyleDesc = input.styleName || input.stylePreset?.name || "\u610F\u5F0F\u8F7B\u5962";
+        directivePrompt = `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
+PRIMARY OBJECTIVE:
+Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
+ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
+DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
+
+YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND:
+1. REPLACE THE BACKGROUND WALLS & FLOORS: Transform the flat studio/showroom backdrop into an authentic luxury architectural interior:
+   - ROOM TOPOLOGY: ${effectiveRoomDesc} with soaring architectural headroom and panoramic daylight.
+   - INTERIOR FINISHES: ${effectiveStyleDesc} architectural wall finishes, seamless natural stone/wood wall joinery with recessed reveals, and polished floor tiles. Plumb vertical lines.
+   - WINDOW SCENERY: Floor-to-ceiling panoramic glass curtain wall revealing natural open vista and outdoor daylight.
+2. NATURAL ILLUMINATION & CONTACT SHADOWS:
+   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the floor/area rug, eliminating any floating sticker artifact.
+   - Match the room's directional daylight and indirect cove lighting onto the outer edges of the existing furniture with seamless color temperature harmony.
+3. PRESERVE ORIGINAL FURNITURE POSTURE:
+   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
+4. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS. Clean pristine commercial catalog photograph.
+
+${positivePrompt}`;
+        const cleanNegativeConstraintsStudioSwap = [
+          "altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines",
+          "removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture",
+          "raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, \u62AC\u8D77\u7684\u5934\u6795, \u7FD8\u8D77\u7684\u5934\u6795",
+          "deployed footrest, extended footrest, open recliner mechanism, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258",
+          "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render",
+          "floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact",
+          "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces"
+        ].join(", ");
+        directivePrompt += `
+
+Negative constraints: ${cleanNegativeConstraintsStudioSwap}`;
+      } else if (isHumanPass || shotInline) {
         const sanitizedNegative = (negativePrompt || "").replace(/\b(side chair|accent chair|armchair|lounge chair|single chair|3\+1 ensemble|wide empty room panorama|far distant vantage)\b/gi, "").replace(/,\s*,+/g, ",").trim();
         if (input.preserveBasePhotoOnly || isHumanPass) {
           directivePrompt = `[CRITICAL MANDATE: INPAINT REAL PEOPLE INTO REFERENCE IMAGE 1 - ABSOLUTE FIELD OF VIEW & FRAMING LOCK]
@@ -23666,6 +23703,7 @@ router18.post("/render-shot", async (req, res) => {
       resolution: generationSettings?.resolution,
       seed: generationSettings?.seed,
       autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
+      renderMode: generationSettings?.renderMode || req.body?.renderMode,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,

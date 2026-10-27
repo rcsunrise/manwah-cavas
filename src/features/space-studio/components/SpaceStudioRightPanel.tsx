@@ -38,7 +38,8 @@ import {
   ArrowRight,
   XCircle,
   Package,
-  Upload
+  Upload,
+  Wand2
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -144,7 +145,8 @@ const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
   seed: undefined,
   namingPreset: 'detailed',
   customPrefix: '',
-  functionalPositionState: 'closed'
+  functionalPositionState: 'closed',
+  renderMode: 'orchestration'
 };
 
 const LIGHTING_OPTIONS = [
@@ -531,6 +533,77 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
           transition={{ duration: 0.15 }}
           className="space-y-3.5"
         >
+
+          {/* ═════════════════════════════════════════════════════════════
+              生产生图模式 (全案机位编排 vs 极简影棚背景置换直通)
+          ═════════════════════════════════════════════════════════════ */}
+          <div className={`p-2.5 rounded-xl border space-y-2 transition-all ${
+            isLight ? 'bg-white border-stone-200/90 shadow-2xs' : 'bg-[#161822] border-white/10'
+          }`}>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className={`font-semibold flex items-center gap-1.5 ${isLight ? 'text-stone-800' : 'text-neutral-300'}`}>
+                <Wand2 className={`w-3.5 h-3.5 ${isLight ? 'text-amber-600' : 'text-amber-400'}`} />
+                <span>生产直通模式</span>
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
+                cfg.renderMode === 'studio_swap'
+                  ? (isLight ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20 font-bold')
+                  : (isLight ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/20')
+              }`}>
+                {cfg.renderMode === 'studio_swap' ? '⚡ 极简影棚直通 (零漂移)' : '🎬 全案机位编排 (深度)'}
+              </span>
+            </div>
+
+            {/* 模式选择按钮组 */}
+            <div className={`grid grid-cols-2 gap-1.5 p-1 rounded-lg border ${
+              isLight ? 'bg-stone-100 border-stone-200' : 'bg-black/40 border-white/5'
+            }`}>
+              <button
+                type="button"
+                onClick={() => onChangeComputeConfig?.({ renderMode: 'orchestration' })}
+                className={`py-1.5 px-2 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  cfg.renderMode !== 'studio_swap'
+                    ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                    : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                }`}
+                title="全案机位编排：A00~A08 多机位连续编排、空间母版锁定、模特人居编排与多模态解构"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>全案机位编排</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeComputeConfig?.({ renderMode: 'studio_swap' })}
+                className={`py-1.5 px-2 rounded-md text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  cfg.renderMode === 'studio_swap'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20'
+                    : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                }`}
+                title="极简影棚背景置换：产品100%原样锁定零漂移，不拆解不丢单椅，一键更换户型与美学豪宅背景"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>极简影棚换景</span>
+              </button>
+            </div>
+
+            {/* 模式专属说明 */}
+            <div className={`text-[10px] leading-relaxed px-2 py-1.5 rounded-md border ${
+              cfg.renderMode === 'studio_swap'
+                ? (isLight ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800' : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300')
+                : (isLight ? 'bg-stone-50 border-stone-200 text-stone-500' : 'bg-white/5 border-white/5 text-neutral-400')
+            }`}>
+              {cfg.renderMode === 'studio_swap' ? (
+                <span>
+                  ⚡ <strong>极简模式生效中：</strong>已跳过繁琐特征识别与二次脑补。产品实拍照作为唯一绝对真值，家具结构、单椅与套组细节分毫不动，仅根据所选户型与美学模板智能置换背景墙、地面与窗外景！
+                </span>
+              ) : (
+                <span>
+                  🎬 <strong>全案编排模式：</strong>支持 A00~A08 多机位联动、空间母版继承、模特人居交互与分镜头特写。
+                </span>
+              )}
+            </div>
+          </div>
 
           {/* ═════════════════════════════════════════════════════════════
               生图计算模型选项 (支持 Gemini + GPT Image 2 快捷切换)
