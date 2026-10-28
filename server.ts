@@ -1327,21 +1327,59 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                  provider: currentProvider
                });
              } catch (error: any) {
+               fileLog(`[OpenAI Proxy Debug] Gemini 200 without valid image (${finalModel}): ${text.slice(0, 500)}`);
                throw new ProviderError(
                  error.message,
                  'invalid_upstream_response',
                  502,
-                 false,
+                 true,
                  currentProvider,
                  finalModel
                );
+             }
+
+             // 若 API 路由返回的是远程图片 URL（如 markdown 链接或 data[].url），在网关层统一拉取并转为 Base64，
+             // 确保后续 Sharp 尺寸规整及所有下游调用方（Space Studio / 创意画布）100% 拿到内联图像数据。
+             if (Array.isArray(data?.images)) {
+               for (let imgIdx = 0; imgIdx < data.images.length; imgIdx++) {
+                 const imgEntry = data.images[imgIdx];
+                 if (typeof imgEntry?.data === 'string' && /^https?:\/\//i.test(imgEntry.data)) {
+                   try {
+                     const downloaded = await resolveAndValidateImage({
+                       source: imgEntry.data,
+                       role: 'style_reference',
+                       order: imgIdx
+                     });
+                     imgEntry.mimeType = downloaded.mimeType;
+                     imgEntry.data = downloaded.cleanB64;
+                     const candPart = data.candidates?.[imgIdx]?.content?.parts?.[0]?.inlineData;
+                     if (candPart) {
+                       candPart.mimeType = downloaded.mimeType;
+                       candPart.data = downloaded.cleanB64;
+                     }
+                   } catch (dlErr: any) {
+                     fileLog(`[OpenAI Proxy Debug] Failed to download Gemini remote image URL (${imgEntry.data}): ${dlErr?.message}`);
+                   }
+                 }
+               }
              }
           }
 
           return data;
         };
 
-        const result = await executeRequestForModel();
+        let result;
+        try {
+          result = await executeRequestForModel();
+        } catch (firstAttemptErr: any) {
+          if (firstAttemptErr instanceof ProviderError && firstAttemptErr.category === 'invalid_upstream_response' && firstAttemptErr.retryable) {
+            fileLog(`[OpenAI Proxy Debug] Retrying ${registeredModel.id} once after empty upstream image response...`);
+            await new Promise((r) => setTimeout(r, 800));
+            result = await executeRequestForModel();
+          } else {
+            throw firstAttemptErr;
+          }
+        }
         return { data: result, actualModel: registeredModel.id };
       };
 
@@ -1379,7 +1417,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           const isAuthOrChannelError = 
             normalizedInitialError.category === 'authentication' ||
             /unauthorized|invalid token|model_price_error|no available channel/i.test(errMsg);
-          const shouldFallback = ['timeout', 'rate_limited', 'upstream_unavailable'].includes(normalizedInitialError.category) || isAuthOrChannelError;
+          const shouldFallback = ['timeout', 'rate_limited', 'upstream_unavailable', 'invalid_upstream_response'].includes(normalizedInitialError.category) || isAuthOrChannelError;
 
           if (shouldFallback || (isHybrid && normalizedInitialError.retryable)) {
             const fallback = await getFallbackConfig(deptId, method1Key);
@@ -1467,7 +1505,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
             for (const candidate of candidates) {
               if (candidate.content && candidate.content.parts) {
                 for (const part of candidate.content.parts) {
-                  if (part.inlineData && part.inlineData.data) {
+                  if (part.inlineData && part.inlineData.data && !/^https?:\/\//i.test(part.inlineData.data)) {
                     const rawBuffer = Buffer.from(part.inlineData.data, 'base64');
                     const meta = await sharp(rawBuffer).metadata();
                     
@@ -1555,15 +1593,19 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         }
 
         let topLevelImageUrl: string | undefined = undefined;
+        const matchedCandPart = fetchResult?.candidates?.[0]?.content?.parts?.find(
+          (p: any) => p?.inlineData?.data || p?.inline_data?.data
+        );
+        const matchedInline = matchedCandPart?.inlineData || matchedCandPart?.inline_data;
         if (fetchResult?.images?.[0]?.data) {
           const firstImg = fetchResult.images[0];
           const rawData = typeof firstImg === 'string' ? firstImg : firstImg.data;
           const mime = (typeof firstImg === 'object' && firstImg.mimeType) ? firstImg.mimeType : 'image/png';
           topLevelImageUrl = rawData.startsWith('data:') || rawData.startsWith('http') ? rawData : `data:${mime};base64,${rawData}`;
-        } else if (fetchResult?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-          const part = fetchResult.candidates[0].content.parts[0].inlineData;
-          const mime = part.mimeType || 'image/png';
-          topLevelImageUrl = `data:${mime};base64,${part.data}`;
+        } else if (matchedInline?.data) {
+          const mime = matchedInline.mimeType || matchedInline.mime_type || 'image/png';
+          const rawData = String(matchedInline.data);
+          topLevelImageUrl = rawData.startsWith('data:') || rawData.startsWith('http') ? rawData : `data:${mime};base64,${rawData}`;
         }
 
         res.write(JSON.stringify({ 

@@ -1009,17 +1009,63 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   type="button"
                   onClick={() => onToggleDecoupleMaster?.(activeShot.id, !activeShot.decoupleOldMaster)}
                   className={`py-1.5 px-2 rounded-lg border text-[10px] font-bold transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
-                    activeShot.decoupleOldMaster
-                      ? 'bg-amber-500 text-black border-amber-400 shadow-2xs'
-                      : 'bg-white dark:bg-white/5 text-stone-500 dark:text-neutral-400 border-stone-200 dark:border-white/10'
+                    computeConfig?.renderMode === 'studio_swap' || !activeShot.decoupleOldMaster
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 shadow-2xs'
+                      : 'bg-amber-500 text-black border-amber-400 shadow-2xs'
                   }`}
-                  title="开启后将不继承旧 A01/A00 底图中的旧沙发，纯按新选素材重绘场景"
+                  title={
+                    computeConfig?.renderMode === 'studio_swap'
+                      ? '极简影棚换景模式下，前景家具100%锁定本镜素材，背景100%对齐 A00 空间母版'
+                      : activeShot.decoupleOldMaster
+                      ? '当前已解除 A00 母版锁定（独立生成新房间背景）；点击可恢复锁定 A00 空间母版'
+                      : '当前已锁定 A00 空间母版背景（跨镜头保持同一房间硬装与窗景）；点击可切换为纯新素材独立重绘'
+                  }
                 >
-                  <Sparkle className="w-3 h-3" />
-                  <span>纯新素材重绘</span>
+                  {computeConfig?.renderMode === 'studio_swap' || !activeShot.decoupleOldMaster ? (
+                    <>
+                      <Lock className="w-3 h-3 text-emerald-500" />
+                      <span>已锁 A00 母版背景</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3 h-3" />
+                      <span>纯新素材重绘 (不锁母版)</span>
+                    </>
+                  )}
                 </button>
               )}
             </div>
+
+            {/* A00 空间母版视觉参考状态条 */}
+            {activeShot.templateCode !== 'A00' && sceneMaster?.imageUrl && (
+              <div
+                className={`flex items-center gap-2 p-2 rounded-lg border text-[10px] transition ${
+                  computeConfig?.renderMode === 'studio_swap' || !activeShot.decoupleOldMaster
+                    ? 'bg-emerald-50/60 dark:bg-emerald-500/10 border-emerald-300/70 dark:border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
+                    : 'bg-amber-50/60 dark:bg-amber-500/10 border-amber-300/70 dark:border-amber-500/30 text-amber-900 dark:text-amber-200'
+                }`}
+              >
+                <img
+                  src={sceneMaster.imageUrl}
+                  alt="A00 Scene Master"
+                  className="w-9 h-7 rounded object-cover shrink-0 border border-emerald-400/50"
+                />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="font-bold truncate">
+                    {computeConfig?.renderMode === 'studio_swap' || !activeShot.decoupleOldMaster
+                      ? '已关联 A00 空间母版 (同房间背景锁定)'
+                      : '已解除 A00 母版锁定 (将独立生成新房间背景)'}
+                  </div>
+                  <div className="opacity-75 truncate mt-0.5">
+                    {computeConfig?.renderMode === 'studio_swap'
+                      ? '前景家具锁死本镜素材 · 墙面/窗景/地板100%参考 A00 母版'
+                      : !activeShot.decoupleOldMaster
+                      ? '当前分镜将严格继承 A00 母版的房间硬装与光影'
+                      : '如需保持与 A00 相同背景，请点击上方按钮恢复锁定'}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Quick Render Base Shot Header Button */}

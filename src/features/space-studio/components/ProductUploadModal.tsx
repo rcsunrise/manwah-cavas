@@ -38,7 +38,9 @@ import {
   ChevronUp,
   Layout,
   Sofa,
-  Cpu
+  Cpu,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 
 export interface VisionAnalysisModelOption {
@@ -1309,6 +1311,139 @@ interface CanvasDraftPayload {
     onClose();
   };
 
+  // ⚡ 极简免识别直通入库（极简影棚换景专属直通通道）
+  // 彻底跳过任何 AI 多模态识别与解构，零等待直接将用户原图作为权威物理绝对真值存入空间产品库
+  const handleDirectImportWithoutAnalysis = () => {
+    if (uploadedImages.length === 0) return;
+
+    const firstImg = uploadedImages[0];
+    const cleanFileName = (firstImg.name || '').replace(/\.[^/.]+$/, '').trim();
+    const effectiveName =
+      name.trim() ||
+      (cleanFileName && !cleanFileName.startsWith('剪贴板') && !cleanFileName.startsWith('网络产品图')
+        ? cleanFileName
+        : '影棚实拍产品全景资产');
+    const effectiveSku = sku.trim() || `MW-DIRECT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const finalProductId = initialProduct?.id || `prod-direct-${Date.now().toString(36)}`;
+
+    const directProduct: ProductAsset = {
+      id: finalProductId,
+      sku: effectiveSku,
+      name: effectiveName,
+      role: role || 'sofa_3seat',
+      priority: 'primary',
+      identityLock: 'strict',
+      dimensions: {
+        width: Number(width) || 3200,
+        depth: Number(depth) || 1080,
+        height: Number(height) || 950
+      },
+      materials: materials.length > 0 ? materials : ['优质头层牛皮', '天然实木/奢石'],
+      colors: colors.length > 0 ? colors : ['焦糖棕', '浅米白'],
+      surfaceTexture: surfaceTexture || '全案多品类协同材质：优质半苯胺真皮、大理石纹理与金属实木质感',
+      functionCapable: functionCapable,
+      referenceImages: uploadedImages.map((img, idx) => ({
+        id: `direct-ref-${idx + 1}`,
+        type: img.type || 'front',
+        objectKey: `projects/${projectId}/products/${finalProductId}/refs/ref_${idx + 1}.webp`,
+        publicUrl: img.base64,
+        verified: true
+      })),
+      adaptiveStyles: adaptiveStyles.length > 0 ? adaptiveStyles : ['现代美式都会宅', '意式经典', '现代轻奢'],
+      isEnsembleIncluded: true,
+      readoutConfidence: 100,
+      dossierSummary: `极简影棚实拍直通资产：未经任何 AI 二次脑补，原图作为唯一物理绝对真值（包含套组内全部沙发、单椅与几具）`,
+      dossierGeneratedAt: new Date().toISOString(),
+      sourceMasterImageUrl: firstImg.base64,
+      lockedRules: [
+        '100% 保持原图家具、单椅、几具与色彩结构零漂移',
+        '仅置换背景硬装墙面、地面与窗外景色'
+      ],
+      isSceneEnsembleSuite: true,
+      sceneEnsembleDossier: {
+        id: `ens-direct-${Date.now().toString(36)}`,
+        sku: effectiveSku,
+        name: effectiveName,
+        ensembleCategory: '影棚全案套组',
+        dossierSummary: '免识别直通原图真值资产，包含原图完整组合',
+        dominantColors: colors.length > 0 ? colors : ['焦糖棕', '浅米白'],
+        sourceImageUrl: firstImg.base64,
+        readoutConfidence: 100,
+        adaptiveStyles: adaptiveStyles.length > 0 ? adaptiveStyles : ['现代美式都会宅', '意式经典', '现代轻奢'],
+        sofaSuite: {
+          description: '原图展示之主沙发与配套单椅组合',
+          seatingConfiguration: '原图完整组合',
+          mainSofa: {
+            name: effectiveName,
+            seats: 3,
+            dimensions: '3200×1080×950mm',
+            color: colors[0] || '焦糖棕',
+            material: materials[0] || '优质头层牛皮',
+            features: ['原品高保真靠背', '原品扶手造型']
+          },
+          reclinerChairs: [
+            {
+              name: '原图配套单人位功能单椅',
+              type: 'recliner_1seat',
+              color: colors[1] || '浅米白',
+              material: materials[0] || '优质头层牛皮'
+            }
+          ]
+        },
+        coffeeTables: {
+          description: '原图配套组合茶几几组',
+          items: [
+            {
+              name: '原图配套中心茶几',
+              role: 'center_table' as const,
+              material: '大理石岩板/实木',
+              shape: '圆形/几何',
+              finish: '天然哑光质感'
+            }
+          ]
+        },
+        carpetRug: {
+          description: '原图配套地毯',
+          material: '高密短绒混纺纤维',
+          pattern: '素色几何肌理',
+          coverageScope: '大面积铺设于主沙发及茶几下方',
+          colors: ['浅米灰']
+        },
+        credenzaSideboard: {
+          description: '未单独展示边柜',
+          presence: false,
+          material: '木饰面',
+          features: []
+        },
+        displayCabinet: {
+          description: '未单独展示展示柜',
+          presence: false,
+          material: '木饰面/玻璃',
+          lightingStyle: '隐藏式暗藏灯带'
+        },
+        diningSuite: {
+          description: '未单独展示餐厅餐桌椅',
+          presence: false
+        },
+        softDecor: {
+          description: '原图软装与艺术陈设',
+          wallArt: '背景艺术挂画',
+          lighting: '自然漫射光与氛围灯',
+          greenery: '室内观赏绿植',
+          tabletopOrnaments: ['精致生活摆件']
+        },
+        placementDirectives: {
+          holisticLayoutPrompt: 'authentic living room furniture arrangement faithfully matching Reference Image 1',
+          visualInvariants: ['preserve 100% of all furniture pieces shown in Reference Image 1']
+        },
+        generatedAt: new Date().toISOString()
+      }
+    };
+
+    onSaveProduct(directProduct);
+    onClose();
+  };
+
   // 添加材质标签
   const handleAddMaterial = () => {
     if (newMaterialInput.trim()) {
@@ -2322,6 +2457,24 @@ interface CanvasDraftPayload {
                     <div className="w-full h-1.5 bg-amber-200 rounded-full overflow-hidden mt-1">
                       <div className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 animate-[progress_1.5s_ease-in-out_infinite]" />
                     </div>
+
+                    {/* 免识别快速直通操作栏 */}
+                    <div className="pt-2 mt-1 border-t border-amber-300/40 flex items-center justify-between">
+                      <span className="text-[10px] text-stone-600 flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-emerald-600" />
+                        <span>极简影棚换景模式无需等待 AI 识别：</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDirectImportWithoutAnalysis}
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-[11px] transition shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+                        title="立即跳过所有识别解构，原图直接存为物理真值资产"
+                      >
+                        <Zap className="w-3 h-3 text-amber-300" />
+                        <span>立即跳过并直通入库</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -2386,19 +2539,36 @@ interface CanvasDraftPayload {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleExtractSceneEnsemble()}
-                      disabled={uploadedImages.length === 0}
-                      className={`mt-2 py-2.5 px-6 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition active:scale-98 cursor-pointer ${
-                        uploadedImages.length === 0
-                          ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-400/40 shadow-amber-900/15'
-                      }`}
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-200" />
-                      <span>{uploadedImages.length === 0 ? '请先在左侧上传全景效果图' : '✨ 立即识别整套场景多要素'}</span>
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleExtractSceneEnsemble()}
+                        disabled={uploadedImages.length === 0}
+                        className={`py-2.5 px-5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition active:scale-98 cursor-pointer ${
+                          uploadedImages.length === 0
+                            ? 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-400/40 shadow-amber-900/15'
+                        }`}
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-200" />
+                        <span>{uploadedImages.length === 0 ? '请先在左侧上传全景效果图' : '✨ 立即识别整套场景多要素'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDirectImportWithoutAnalysis}
+                        disabled={uploadedImages.length === 0}
+                        className={`py-2.5 px-5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-98 cursor-pointer ${
+                          uploadedImages.length === 0
+                            ? 'bg-stone-100 text-stone-400 border border-stone-200 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white ring-2 ring-emerald-400/40 shadow-emerald-900/20'
+                        }`}
+                        title="跳过 AI 识别，原图直接存入，专为极简影棚换景设计"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-300" />
+                        <span>⚡ 极简免识别直通入库 (极简模式专属)</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -3398,6 +3568,22 @@ interface CanvasDraftPayload {
               className="px-4 py-2 rounded-xl text-xs font-medium text-stone-600 hover:bg-stone-200/60 transition cursor-pointer"
             >
               取消
+            </button>
+
+            {/* ⚡ 极简免识别直通入库常驻按钮 */}
+            <button
+              type="button"
+              onClick={handleDirectImportWithoutAnalysis}
+              disabled={uploadedImages.length === 0}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md ${
+                uploadedImages.length > 0
+                  ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white ring-2 ring-emerald-400/40 shadow-emerald-900/20 active:scale-[0.98]'
+                  : 'bg-stone-100 text-stone-400 border border-stone-200 cursor-not-allowed'
+              }`}
+              title="极简模式专属：跳过 AI 识别解构，零等待直接将当前原图保存为物理真值资产，用于极简影棚背景置换！"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-300" />
+              <span>⚡ 极简免识别直通入库 (极简模式专属)</span>
             </button>
             {entryMode === 'whole_scene' ? (
               <button

@@ -18,7 +18,9 @@ export interface NormalizedImageResponse {
 }
 
 const isValidImage = (image: NormalizedImage) =>
-  typeof image.data === 'string' && image.data.length > 100 && image.mimeType.startsWith('image/');
+  typeof image.data === 'string' &&
+  (image.data.length > 100 || /^https?:\/\//i.test(image.data)) &&
+  image.mimeType.startsWith('image/');
 
 export function buildNormalizedImageResponse(
   images: NormalizedImage[],
@@ -47,6 +49,40 @@ export function buildNormalizedImageResponse(
   };
 }
 
+function normalizeImageMime(rawMime?: string): string {
+  if (!rawMime || typeof rawMime !== 'string') return 'image/jpeg';
+  const trimmed = rawMime.trim().toLowerCase();
+  if (trimmed.startsWith('image/')) return trimmed;
+  if (['png', 'jpeg', 'jpg', 'webp', 'gif'].includes(trimmed)) {
+    return trimmed === 'jpg' ? 'image/jpeg' : `image/${trimmed}`;
+  }
+  return 'image/png';
+}
+
+function extractImagesFromText(textStr: string, target: NormalizedImage[]): void {
+  const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=\s]+)/);
+  if (dataUrlMatch) {
+    const cleanB64 = dataUrlMatch[2].replace(/\s+/g, '');
+    if (cleanB64.length > 100) {
+      target.push({
+        mimeType: normalizeImageMime(dataUrlMatch[1]),
+        data: cleanB64
+      });
+      return;
+    }
+  }
+  const mdUrlMatch = textStr.match(/!\[[^\]]*\]\((https?:\/\/[^\s"'<>\)]+)\)/i);
+  const extUrlMatch = textStr.match(/(https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp|gif)(?:\?[^\s"'<>\)]*)?)/i);
+  const singleUrlMatch = /^https?:\/\/[^\s"'<>\)]+$/i.test(textStr) ? [textStr, textStr] : null;
+  const urlMatch = mdUrlMatch || extUrlMatch || singleUrlMatch;
+  if (urlMatch) {
+    target.push({
+      mimeType: 'image/png',
+      data: urlMatch[1] || urlMatch[0]
+    });
+  }
+}
+
 export function normalizeGeminiImageResponse(
   raw: any,
   context: { actualModel: string; provider: string }
@@ -57,42 +93,109 @@ export function normalizeGeminiImageResponse(
 
   for (const candidate of Array.isArray(raw?.candidates) ? raw.candidates : []) {
     if (candidate?.finishReason) finishReasons.push(String(candidate.finishReason));
-    for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
+    const partsList = Array.isArray(candidate?.content?.parts)
+      ? candidate.content.parts
+      : Array.isArray(candidate?.parts)
+      ? candidate.parts
+      : [];
+    for (const part of partsList) {
       const inlineData = part?.inlineData || part?.inline_data;
-      if (inlineData?.data) {
+      const fileData = part?.fileData || part?.file_data;
+      const imageUrlObj = part?.image_url || part?.imageUrl;
+      if (inlineData?.data && typeof inlineData.data === 'string') {
+        const rawDataStr = inlineData.data.trim();
+        const strippedB64 = rawDataStr.startsWith('data:')
+          ? rawDataStr.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '')
+          : rawDataStr.startsWith('http://') || rawDataStr.startsWith('https://')
+          ? rawDataStr
+          : rawDataStr.replace(/\s+/g, '');
         images.push({
-          mimeType: inlineData.mimeType || inlineData.mime_type || 'image/jpeg',
-          data: inlineData.data
+          mimeType: normalizeImageMime(inlineData.mimeType || inlineData.mime_type),
+          data: strippedB64
         });
+      } else if (fileData?.fileUri || fileData?.file_uri) {
+        images.push({
+          mimeType: normalizeImageMime(fileData.mimeType || fileData.mime_type || 'image/png'),
+          data: String(fileData.fileUri || fileData.file_uri).trim()
+        });
+      } else if (imageUrlObj) {
+        const u = typeof imageUrlObj === 'string' ? imageUrlObj : imageUrlObj?.url;
+        if (typeof u === 'string' && u.trim()) {
+          extractImagesFromText(u.trim(), images);
+        }
       } else if (part?.text) {
         const textStr = String(part.text).trim();
         if (textStr) {
           collectedText += (collectedText ? ' | ' : '') + textStr;
-          const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/);
-          if (dataUrlMatch && dataUrlMatch[2].length > 100) {
-            images.push({
-              mimeType: dataUrlMatch[1],
-              data: dataUrlMatch[2]
-            });
-          } else {
-            const urlMatch = textStr.match(/https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp)/i);
-            if (urlMatch) {
-              images.push({
-                mimeType: 'image/png',
-                data: urlMatch[0]
-              });
-            }
+          extractImagesFromText(textStr, images);
+        }
+      }
+    }
+  }
+
+  // Fallback 1: compatible with relay gateways that return OpenAI-style { data: [{ b64_json / url }] }
+  if (images.length === 0 && Array.isArray(raw?.data)) {
+    for (const item of raw.data) {
+      const b64Val = item?.b64_json || item?.b64 || item?.base64 || item?.image;
+      if (typeof b64Val === 'string' && b64Val.length > 100) {
+        images.push({
+          mimeType: normalizeImageMime(item.mime_type || item.mimeType || 'image/png'),
+          data: b64Val.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '')
+        });
+      } else if (typeof item?.url === 'string' && item.url.trim()) {
+        images.push({ mimeType: 'image/png', data: item.url.trim() });
+      }
+    }
+  }
+
+  // Fallback 2: compatible with relay gateways that wrap Gemini image responses in OpenAI Chat { choices: [{ message }] }
+  if (images.length === 0 && Array.isArray(raw?.choices)) {
+    for (const choice of raw.choices) {
+      const msg = choice?.message;
+      if (Array.isArray(msg?.images)) {
+        for (const imgItem of msg.images) {
+          const u = imgItem?.image_url?.url || imgItem?.url || (typeof imgItem === 'string' ? imgItem : '');
+          if (typeof u === 'string' && u.trim()) {
+            extractImagesFromText(u.trim(), images);
+          }
+        }
+      }
+      if (typeof msg?.content === 'string' && msg.content.trim()) {
+        const textStr = msg.content.trim();
+        collectedText += (collectedText ? ' | ' : '') + textStr;
+        extractImagesFromText(textStr, images);
+      } else if (Array.isArray(msg?.content)) {
+        for (const cPart of msg.content) {
+          const u = cPart?.image_url?.url || cPart?.url;
+          if (typeof u === 'string' && u.trim()) {
+            extractImagesFromText(u.trim(), images);
+          } else if (typeof cPart?.text === 'string' && cPart.text.trim()) {
+            extractImagesFromText(cPart.text.trim(), images);
           }
         }
       }
     }
   }
 
+  // Fallback 3: top-level imageUrl / url
+  if (images.length === 0 && typeof (raw?.imageUrl || raw?.url) === 'string') {
+    extractImagesFromText(String(raw.imageUrl || raw.url).trim(), images);
+  }
+
   if (images.length === 0) {
+    const upstreamErrMsg = typeof raw?.error === 'string' ? raw.error : raw?.error?.message;
+    if (upstreamErrMsg) {
+      throw new Error(`上游接口返回错误: ${upstreamErrMsg}`);
+    }
+    const blockReason = raw?.promptFeedback?.blockReason || raw?.candidates?.[0]?.finishMessage;
+    if (blockReason) {
+      throw new Error(`上游接口拦截或未生成图像 (${blockReason})`);
+    }
     if (collectedText) {
       throw new Error(`上游模型未返回图片数据流，仅返回了文本内容: "${collectedText.slice(0, 120)}${collectedText.length > 120 ? '...' : ''}"`);
     }
-    throw new Error('上游接口未返回有效图像数据。');
+    const reasonSuffix = finishReasons.length > 0 ? ` (finishReason: ${finishReasons.join(', ')})` : '';
+    throw new Error(`上游接口未返回有效图像数据。${reasonSuffix}`);
   }
 
   return buildNormalizedImageResponse(images, {

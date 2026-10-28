@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as providerConfigModule from '../../../../server/ai/providerConfig';
 import { SpaceImageGenerationService } from '../../../../server/services/spaceImageGenerationService';
 import { GcsAssetStorage } from '../../../../server/services/storage/gcsAssetStorage';
+import spaceShootRoutes from '../../../../server/routes/spaceShootRoutes';
+import { ShootCompiler } from '../engine/shootCompiler';
+import { SPACE_PROTOTYPES } from '../data/spacePresets';
+import { STYLE_PRESETS } from '../data/stylePresets';
+import { STANDARD_SHOT_TEMPLATES } from '../data/shotTemplates';
 
 describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)', () => {
   const dummyBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -88,7 +93,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).toContain('altering furniture');
     expect(capturedBody.prompt).toContain('removing chair');
     expect(capturedBody.prompt).toContain('missing single chair');
-    expect(capturedBody.prompt).toContain('raised headrest');
+    expect(capturedBody.prompt).toContain('altering headrest position shown in Reference Image 1');
 
     // 3. Should only send the primary product inline image
     expect(capturedBody.images.length).toBe(1);
@@ -146,5 +151,327 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     // Orchestration mode should contain A00 Master Ground Truth instead of Studio Swap Mandate
     expect(capturedBody.prompt).toContain('MANWAH SCENE MASTER GROUND TRUTH: A00');
     expect(capturedBody.prompt).not.toContain('STUDIO PRODUCT BACKGROUND SWAP');
+  });
+
+  it('injects pure floor-plan & style DNA without orchestration camera/prop pollution and merges style negatives', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-dna',
+      shotCode: 'A02',
+      positivePrompt: '[SHOT MANDATE - A02 45-degree angled hero], SPATIAL INVARIANCE ANCHOR: white matte cylindrical planter, sofa securely anchored at zone center',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕美式真皮套组',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕美式真皮套组',
+        colors: ['焦糖棕'],
+        materials: ['头层牛皮'],
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '下沉式围合私享厅',
+      styleName: '现代美式都会宅',
+      studioSwapContext: {
+        spaceDna: [
+          'space prototype anchor: 下沉式围合私享厅 (N-R04)',
+          '3.8m soaring architectural ceiling headroom',
+          'sunken conversation salon with perimeter travertine steps'
+        ],
+        styleDna: [
+          'classic American picture-frame wall panel moldings and dark walnut wainscoting',
+          'warm oat greige #E6DFD5 wall tone'
+        ],
+        spaceNegatives: ['flat single-level floor without steps'],
+        styleNegatives: ['flat bare drywall without panel frames', 'cold sterile hospital wall']
+      },
+      studioSwapLightingHint: 'warm golden hour afternoon sunlight entering through the windows',
+      objectKey: 'test/studio_swap_dna.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    // 1. Contains pure space & style DNA
+    expect(capturedBody.prompt).toContain('sunken conversation salon with perimeter travertine steps');
+    expect(capturedBody.prompt).toContain('classic American picture-frame wall panel moldings and dark walnut wainscoting');
+    expect(capturedBody.prompt).toContain('TOPOLOGY ADAPTATION');
+    expect(capturedBody.prompt).toContain('warm golden hour afternoon sunlight entering through the windows');
+
+    // 2. Does NOT leak orchestration camera / prop / zone placement instructions
+    expect(capturedBody.prompt).not.toContain('A02 45-degree angled hero');
+    expect(capturedBody.prompt).not.toContain('white matte cylindrical planter');
+    expect(capturedBody.prompt).not.toContain('sofa securely anchored at zone center');
+    expect(capturedBody.prompt).not.toContain('polished floor tiles');
+
+    // 3. Merges space & style negative rules
+    expect(capturedBody.prompt).toContain('flat single-level floor without steps');
+    expect(capturedBody.prompt).toContain('flat bare drywall without panel frames');
+  });
+
+  it('prioritizes Human Pass over studio_swap when isHumanPass=true so people are not blocked by negative constraints', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-human',
+      shotCode: 'A01',
+      positivePrompt: 'family seated naturally on the sofa',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      isHumanPass: true,
+      currentShotReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '通透横厅大平层',
+      styleName: '现代美式都会宅',
+      objectKey: 'test/studio_swap_human.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.prompt).toContain('INPAINT REAL PEOPLE INTO REFERENCE IMAGE 1');
+    expect(capturedBody.prompt).not.toContain('STUDIO PRODUCT BACKGROUND SWAP');
+  });
+
+  it('forwards renderMode="studio_swap" and studioSwapContext through POST /render-candidates with zero cameraDelta', async () => {
+    const spacePreset = SPACE_PROTOTYPES[0];
+    const stylePreset = STYLE_PRESETS[0];
+    const tpl = STANDARD_SHOT_TEMPLATES[0];
+
+    const compiled = ShootCompiler.compileShotPrompt({
+      shot: {
+        id: 'shot-a01',
+        templateCode: 'A01',
+        name: tpl.name,
+        category: tpl.studioCategory,
+        status: 'pending',
+        aspectRatio: '4:3',
+        camera: tpl.defaultCamera,
+        intent: tpl.intent,
+        revisions: []
+      } as any,
+      sceneMaster: {
+        id: 'temp-master',
+        projectId: 'proj-route-test',
+        objectKey: '',
+        isLocked: true,
+        lockedAt: new Date().toISOString(),
+        locks: {
+          productIdentity: true,
+          placement: true,
+          architecture: true,
+          style: true,
+          material: true,
+          lighting: true,
+          camera: true,
+          human: false
+        },
+        promptSnapshotId: 'rev-01'
+      },
+      products: [
+        {
+          id: 'prod-1',
+          sku: 'MW-001',
+          name: '芝华仕沙发套组',
+          role: 'sofa_3seat',
+          priority: 'primary',
+          identityLock: 'strict',
+          dimensions: { width: 3200, depth: 1050, height: 950 },
+          materials: ['头层牛皮'],
+          colors: ['焦糖棕'],
+          functionCapable: true,
+          referenceImages: []
+        } as any
+      ],
+      spacePreset,
+      stylePreset,
+      blueprint: { zones: [], items: [] } as any,
+      aspectRatio: '4:3',
+      functionalPositionState: 'closed'
+    });
+
+    expect(compiled.studioSwapContext).toBeDefined();
+    expect(compiled.studioSwapContext!.spaceDna.length).toBeGreaterThan(0);
+    expect(compiled.studioSwapContext!.styleDna.length).toBeGreaterThan(0);
+
+    const capturedInputs: any[] = [];
+    vi.spyOn(SpaceImageGenerationService, 'generateAndStore').mockImplementation(async (input: any) => {
+      capturedInputs.push(input);
+      return {
+        objectKey: input.objectKey,
+        imageUrl: `data:image/webp;base64,${dummyBase64}`,
+        provider: 'tiantoken',
+        model: 'gemini-nano-banana-2.1-preview',
+        bytes: 100,
+        sha256: `sha-${input.variantIndex}`,
+        contentType: 'image/webp',
+        provenance: 'AI_ESTIMATED',
+        productionTruth: true
+      };
+    });
+
+    // Find the /render-candidates handler on the router stack
+    const layer = (spaceShootRoutes as any).stack.find(
+      (l: any) => l.route?.path === '/render-candidates' && l.route?.methods?.post
+    );
+    expect(layer).toBeDefined();
+    const handler = layer.route.stack[0].handle;
+
+    let responseStatus = 200;
+    let responseJson: any = null;
+    const req: any = {
+      body: {
+        projectId: 'proj-route-test',
+        shotId: 'shot-a01',
+        shotCode: 'A01',
+        revisionNumber: 1,
+        candidateCount: 4,
+        renderMode: 'studio_swap',
+        roomName: spacePreset.name,
+        styleName: stylePreset.name,
+        spacePreset,
+        stylePreset,
+        camera: compiled.cameraSpec,
+        intent: tpl.intent,
+        productDNA: {
+          modelNumber: 'MW-001',
+          name: '芝华仕沙发套组',
+          leatherType: '头层牛皮',
+          colorCode: '焦糖棕',
+          referenceImage: `data:image/png;base64,${dummyBase64}`
+        },
+        productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+        generationSettings: {
+          model: 'gemini-nano-banana-2.1-preview',
+          resolution: '2K',
+          aspectRatio: '4:3',
+          renderMode: 'studio_swap'
+        },
+        promptSnapshot: compiled
+      },
+      on: vi.fn()
+    };
+    const res: any = {
+      writableEnded: false,
+      status(code: number) {
+        responseStatus = code;
+        return this;
+      },
+      json(payload: any) {
+        this.writableEnded = true;
+        responseJson = payload;
+        return this;
+      }
+    };
+
+    await handler(req, res, () => {});
+
+    expect(responseStatus).toBe(200);
+    expect(responseJson?.success).toBe(true);
+    expect(capturedInputs).toHaveLength(4);
+
+    for (const call of capturedInputs) {
+      expect(call.renderMode).toBe('studio_swap');
+      expect(call.studioSwapContext).toEqual(compiled.studioSwapContext);
+      expect(call.studioSwapLightingHint).toBeTruthy();
+      // Camera lensMm and pitchDeg must NOT be mutated by candidate variants in studio_swap mode
+      expect(call.cameraSettings.lensMm).toBe(compiled.cameraSpec.lensMm);
+      expect(call.cameraSettings.pitchDeg).toBe(compiled.cameraSpec.pitchDeg);
+    }
+  });
+
+  it('passes Scene Master (A00) as Reference Image 2 for derived shots (A01~A08) in studio_swap mode to lock cross-shot background consistency', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-master-lock',
+      shotCode: 'A02',
+      referenceShotCode: 'A00',
+      positivePrompt: '45 degree ensemble view',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕·现代美式沙发套组',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕·现代美式沙发套组',
+        colors: ['焦糖棕'],
+        materials: ['头层牛皮'],
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '挑空复式庭院豪宅',
+      styleName: '现代美式都会宅',
+      objectKey: 'test/studio_swap_a02_master_lock.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    // 1. Both Reference Image 1 (composition_reference) and Reference Image 2 (style_reference = empty-room A00 master) must be passed!
+    expect(capturedBody.images).toHaveLength(2);
+    expect(capturedBody.images[0].role).toBe('composition_reference');
+    expect(capturedBody.images[1].role).toBe('style_reference');
+
+    // 2. Prompt must lock background continuity to Reference Image 2 while locking furniture & camera to Reference Image 1
+    expect(capturedBody.prompt).toContain('SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2');
+    expect(capturedBody.prompt).toContain('REFERENCE IMAGE 2 ([参考图2｜风格参考] - Panoramic Room Layout & Material Swatch Board from A00)');
+    expect(capturedBody.prompt).toContain('COMPLETE OLD BACKGROUND ERASURE');
+    expect(capturedBody.prompt).toContain('different room from Reference Image 2');
+    expect(capturedBody.prompt).toContain('newly invented staircase');
   });
 });

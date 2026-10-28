@@ -42,7 +42,8 @@ import {
   Upload,
   Clipboard,
   AlertTriangle,
-  MoreHorizontal
+  MoreHorizontal,
+  Wand2
 } from 'lucide-react';
 import {
   ShotInstance,
@@ -59,6 +60,7 @@ import {
 import { CandidateItem, ShotCandidateBatch } from '../../../types/spaceAssetLibrary';
 import { SceneProductAnnotationOverlay } from './SceneProductAnnotationOverlay';
 import { CanvasOutpaintOverlay, OutpaintParams } from './CanvasOutpaintOverlay';
+import { CanvasInpaintModal, InpaintSubmitPayload } from './CanvasInpaintModal';
 
 /**
  * 健壮的原生 Blob 下载辅助函数，确保规范挂载 DOM 且遵循用户手势，避免 Edge/Chrome 丢弃文件名或降级为 UUID
@@ -92,6 +94,8 @@ interface SpaceStudioCanvasProps {
   renderingShotCode?: string;
   onOutpaint?: (params: OutpaintParams) => Promise<void>;
   isOutpainting?: boolean;
+  onInpaintEdit?: (payload: InpaintSubmitPayload) => Promise<void>;
+  isInpainting?: boolean;
   onOpenCompareModal?: () => void;
   onRenderHumanPass?: () => void;
   onSelectRevision?: (shotId: string, revisionId: string) => void;
@@ -156,6 +160,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   renderingShotCode,
   onOutpaint,
   isOutpainting = false,
+  onInpaintEdit,
+  isInpainting = false,
   onOpenCompareModal,
   onRenderHumanPass,
   onSelectRevision,
@@ -201,6 +207,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isOutpaintingMode, setIsOutpaintingMode] = useState(false);
+  const [isInpaintMode, setIsInpaintMode] = useState(false);
   const [imageAspect, setImageAspect] = useState<number | null>(null);
 
   // 点击外部自动收起所有顶部下拉面板
@@ -724,8 +731,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   const isSelected = rev.id === activeShot.currentRevisionId || (!activeShot.currentRevisionId && revIdx === 0);
                   const isHuman = rev.revisionType === 'human' || rev.id.includes('human');
                   const isOutpaint = rev.id.includes('outpaint') || rev.label?.includes('扩图');
+                  const isEdit = rev.id.includes('rev-edit-') || rev.label?.includes('精修') || rev.label?.includes('重绘');
                   const isUpload = rev.provenance === 'PROVIDED' || rev.label?.includes('实拍');
-                  const revName = isUpload ? '实拍' : isOutpaint ? '扩图' : isHuman ? '人物' : '空间';
+                  const revName = isUpload ? '实拍' : isEdit ? '精修' : isOutpaint ? '扩图' : isHuman ? '人物' : '空间';
                   const revNum = rev.revisionNumber || (activeShot.revisions.length - revIdx);
                   const isMasterBenchmark = activeShot.templateCode === 'A00' && isSelected;
 
@@ -736,6 +744,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         isSelected
                           ? isHuman
                             ? 'bg-purple-600 text-white shadow-xs'
+                            : isEdit
+                            ? 'bg-emerald-600 text-white shadow-xs'
                             : isOutpaint
                             ? 'bg-cyan-600 text-white shadow-xs'
                             : 'bg-amber-500 text-stone-950 shadow-xs ring-1 ring-amber-400'
@@ -754,6 +764,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                           <Star className="w-2.5 h-2.5 text-stone-950 fill-stone-950 shrink-0" />
                         ) : isHuman ? (
                           <Users className="w-2.5 h-2.5" />
+                        ) : isEdit ? (
+                          <Wand2 className="w-2.5 h-2.5" />
                         ) : (
                           <Layers className="w-2.5 h-2.5" />
                         )}
@@ -1266,6 +1278,27 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     />
                   )}
 
+                  {/* 局部重绘与二次指令修改模态窗 (Surgical Inpainting & Instruction Edit Modal) */}
+                  {isInpaintMode && currentImageUrl && (
+                    <CanvasInpaintModal
+                      isOpen={isInpaintMode}
+                      onClose={() => setIsInpaintMode(false)}
+                      currentImageUrl={currentImageUrl}
+                      shotCode={activeShot.templateCode}
+                      roomName={roomName || activeShot.name}
+                      styleName={styleName || stylePreset?.name?.split(' (')[0] || '现代美式'}
+                      productName={productName || '主沙发'}
+                      isSubmitting={isInpainting}
+                      onSubmit={async (payload) => {
+                        if (onInpaintEdit) {
+                          await onInpaintEdit(payload);
+                          setIsInpaintMode(false);
+                        }
+                      }}
+                      theme={theme}
+                    />
+                  )}
+
                   {/* Watermark in bottom right */}
                   <div className={`absolute bottom-3 right-3 px-2.5 py-1 rounded-md backdrop-blur-md border text-[10px] font-mono pointer-events-none flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                     isLight ? 'bg-white/80 border-stone-200 text-stone-600 shadow-2xs' : 'bg-black/70 border-white/10 text-neutral-300'
@@ -1349,6 +1382,22 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     >
                       <Maximize2 className="w-3 h-3 text-amber-500 shrink-0" />
                       <span className="whitespace-nowrap">智能扩图</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsInpaintMode(true);
+                      }}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold transition flex items-center gap-1 cursor-pointer border shrink-0 whitespace-nowrap ${
+                        isInpaintMode
+                          ? 'bg-rose-500 text-white border-rose-400 shadow-xs'
+                          : isLight ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-300/80 shadow-2xs' : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                      }`}
+                      title="局部重绘与二次指令修改 (涂抹/多边形框选指定区域或输入修改指令)"
+                    >
+                      <Sparkles className="w-3 h-3 text-rose-500 shrink-0" />
+                      <span className="whitespace-nowrap">局部重绘</span>
                     </button>
 
                     {(zoom !== 1.0 || pan.x !== 0 || pan.y !== 0) && (

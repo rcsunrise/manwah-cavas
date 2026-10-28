@@ -56,6 +56,17 @@ export interface CompiledShotPrompt {
     productLocked: boolean;
     lightingConsistent: boolean;
   };
+  /**
+   * 极简影棚换景 (studio_swap) 专用的纯背景 DNA：
+   * 仅包含户型建筑拓扑与硬装美学，不含任何机位/景别/摆位/固定道具指令，
+   * 避免诱导模型重新构图或挪动原图家具。
+   */
+  studioSwapContext?: {
+    spaceDna: string[];
+    styleDna: string[];
+    spaceNegatives: string[];
+    styleNegatives: string[];
+  };
 }
 
 export class ShootCompiler {
@@ -1080,6 +1091,15 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
         furnitureFixed: true,
         productLocked: true,
         lightingConsistent: true
+      },
+      studioSwapContext: {
+        spaceDna: spaceArchitectureClauses,
+        styleDna: [styleDna.styleMandateClause, ...styleClauses].filter(Boolean),
+        spaceNegatives: [...(spaceTopologyGlobal.negativeConstraints || [])],
+        styleNegatives: [
+          ...(styleFinishesGlobal.styleNegativeRules || []),
+          ...(stylePreset.negativeRules || [])
+        ]
       }
     };
   }

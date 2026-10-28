@@ -634,12 +634,16 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                                   <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-purple-600 text-white">
                                     模特
                                   </span>
+                                ) : (rev.id.includes('rev-edit-') || rev.label?.includes('精修') || rev.label?.includes('重绘')) ? (
+                                  <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-emerald-600 text-white">
+                                    精修
+                                  </span>
                                 ) : (rev.id.includes('outpaint') || rev.label?.includes('扩图')) ? (
                                   <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-cyan-600 text-white">
                                     扩图
                                   </span>
                                 ) : (
-                                  <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-emerald-600 text-white">
+                                  <span className="absolute top-0.5 right-0.5 px-1 py-0.2 rounded text-[7px] font-bold bg-amber-500 text-stone-950">
                                     空间
                                   </span>
                                 )}

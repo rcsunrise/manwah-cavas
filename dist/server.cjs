@@ -18538,6 +18538,105 @@ function translateMaterialToEnglish(rawMat, defaultMat = "genuine top-grain semi
 }
 
 // server/services/spaceImageGenerationService.ts
+function flattenPresetField(value) {
+  if (!value) return [];
+  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
+  if (typeof value === "number" || typeof value === "boolean") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap((v) => flattenPresetField(v));
+  if (typeof value === "object") {
+    return Object.entries(value).flatMap(([k, v]) => {
+      const parts = flattenPresetField(v);
+      return parts.length > 0 ? [`${k}: ${parts.join(", ")}`] : [];
+    });
+  }
+  return [];
+}
+function buildStudioSwapDirective(params) {
+  const {
+    roomName,
+    styleName,
+    spacePreset,
+    stylePreset,
+    context,
+    lightingHint,
+    hasSceneMasterReference = false,
+    referenceShotCode = "A00"
+  } = params;
+  const effectiveRoomDesc = roomName || spacePreset?.name || "metropolitan luxury apartment living room";
+  const effectiveStyleDesc = styleName || stylePreset?.name || "contemporary luxury";
+  const spaceDna = context?.spaceDna && context.spaceDna.length > 0 ? context.spaceDna : [
+    spacePreset?.ceilingHeight ? `${spacePreset.ceilingHeight}m ceiling headroom` : "",
+    ...flattenPresetField(spacePreset?.signatureFeatures).map((f) => `architectural feature: ${f}`),
+    ...flattenPresetField(spacePreset?.promptFragments)
+  ].filter(Boolean);
+  const styleDna = context?.styleDna && context.styleDna.length > 0 ? context.styleDna : [
+    ...flattenPresetField(stylePreset?.colorPalette).map((c) => `color palette: ${c}`),
+    ...flattenPresetField(stylePreset?.materialSystem).map((m) => `material system: ${m}`),
+    ...flattenPresetField(stylePreset?.promptFragments)
+  ].filter(Boolean);
+  const topologyContext = `${effectiveRoomDesc} ${spacePreset?.code || ""} ${spaceDna.join(" ")}`;
+  const needsVerticalReveal = /挑空|复式|duplex|double[- ]height|下沉|sunken|N-R03|N-R04/i.test(topologyContext);
+  const spaceNegatives = context?.spaceNegatives || [];
+  const styleNegatives = context?.styleNegatives || [];
+  const negatives = [
+    "altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines",
+    "removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture",
+    "moved furniture, shifted furniture position, rescaled furniture, re-framed composition, camera angle change, zoomed in, zoomed out, cropped furniture",
+    "altering footrest state from Reference Image 1, closing deployed footrests shown in Reference Image 1, altering headrest position shown in Reference Image 1",
+    "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render",
+    "floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact, plain studio backdrop, seamless paper backdrop",
+    ...hasSceneMasterReference ? [
+      "flat 0-degree frontal view when Reference Image 1 is angled, rotating angled furniture to face front, copying camera angle from Reference Image 2, retaining old background from Reference Image 1, keeping old framed picture or wall art from Reference Image 1, keeping old floor lamp from Reference Image 1, inverted left-right window side from Reference Image 2, different room from Reference Image 2, inconsistent background wall, mismatched wall moldings, newly invented staircase, spiral stairs, mezzanine loft, extra fireplace not in Reference Image 2, altered window style, different floor material"
+    ] : [],
+    ...spaceNegatives,
+    ...styleNegatives,
+    "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces"
+  ].filter(Boolean).join(", ");
+  const masterContinuitySection = hasSceneMasterReference ? `
+[SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2 (CRITICAL)]:
+- REFERENCE IMAGE 1 ([\u53C2\u8003\u56FE1\uFF5C\u6784\u56FE\u53C2\u8003] - Immutable Foreground Furniture & Camera Angle Base):
+  * Reference Image 1 is the ONLY base photograph for the FURNITURE and CAMERA ANGLE! Its exact camera shooting angle (e.g., 45-degree diagonal three-quarter view / oblique perspective / close-up), perspective vanishing lines, furniture pixel placement, and exact open/closed footrest & headrest posture MUST BE 100% LOCKED AND PRESERVED!
+  * NEVER rotate the camera or furniture back to a 0-degree flat frontal view! The output image MUST have the EXACT same furniture angle and pixel positions as Reference Image 1!
+  * COMPLETE OLD BACKGROUND ERASURE: If Reference Image 1 was shot in an existing showroom or room (containing old wall art / framed pictures / posters, old floor lamps, old left-side curtains, or old wall panels), you MUST 100% ERASE AND REMOVE ALL of Reference Image 1's original background walls, framed wall pictures, floor lamps, and curtains! Keep ONLY the sofa, single accent chair, and coffee tables from Reference Image 1!
+- REFERENCE IMAGE 2 ([\u53C2\u8003\u56FE2\uFF5C\u98CE\u683C\u53C2\u8003] - Panoramic Room Layout & Material Swatch Board from ${referenceShotCode}):
+  * Reference Image 2 is a MULTI-PANEL ARCHITECTURAL LAYOUT & MATERIAL BOARD extracted from the master scene ${referenceShotCode}:
+    - TOP WIDE PANORAMIC BAND: Shows the complete Left-to-Right upper room layout of ${referenceShotCode} (exact Left-to-Right sequence of left wall molding/marble -> center backdrop wall without any extra framed picture -> right wall molding/fireplace crown -> right-side floor-to-ceiling window & ceiling cove).
+    - BOTTOM-LEFT PANEL: Shows the middle-right architectural feature (such as fireplace mantel / right wall molding) and full window curtain details of ${referenceShotCode}.
+    - BOTTOM-RIGHT PANEL: Shows the exact area rug & herringbone/wood/stone flooring material of ${referenceShotCode}.
+  * Because Reference Image 2 is a multi-panel reference board with white divider bars (NOT a full room canvas), you must NEVER copy its split-panel grid or change Reference Image 1's camera angle!
+  * STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK: Reconstruct the exact Left-to-Right architectural sequence from Reference Image 2's top panoramic band onto the background behind Reference Image 1's furniture, foreshortened to match Reference Image 1's 45-degree / custom camera perspective:
+    1) Keep the window on the SAME side (e.g. Right side) as shown in Reference Image 2's panoramic band (do NOT leave a window on the left side if Reference Image 1 had one!).
+    2) Keep the left-wall French wainscoting + marble slab, center vertical wood slat paneling (CLEAN, with NO framed picture/poster hanging on it!), and right-wall French molding / fireplace mantel in the exact same Left-to-Right order as Reference Image 2!
+  * STRICT PROHIBITION: Do NOT invent any new architectural features not present in Reference Image 2, and do NOT carry over any framed wall picture or floor lamp from Reference Image 1's old background!
+` : "";
+  return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
+PRIMARY OBJECTIVE:
+Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
+ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
+DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
+CAMERA LOCK: Keep the exact camera position, focal length, horizon line, perspective vanishing points, furniture scale and pixel placement of Reference Image 1. Do NOT re-frame, zoom, or rotate the view.
+${masterContinuitySection}
+YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND (walls, floor, ceiling, windows, lighting) so it ${hasSceneMasterReference ? "remains 100% consistent with Reference Image 2 and " : ""}matches the following architecture and interior design:
+
+1. ROOM TOPOLOGY (\u6237\u578B): ${effectiveRoomDesc}
+${spaceDna.map((s) => `   - ${s}`).join("\n")}
+${needsVerticalReveal ? "   - TOPOLOGY ADAPTATION: Express the ceiling height / floor level change ONLY through background cues that are naturally visible within the locked camera frame (distant steps, upper wall volume, tall window mullions). Never move, lift, or re-scale the furniture and never change the camera to reveal it.\n" : ""}
+2. INTERIOR FINISHES & AESTHETIC (\u786C\u88C5\u7F8E\u5B66): ${effectiveStyleDesc}
+${styleDna.map((s) => `   - ${s}`).join("\n")}
+   - The wall treatment, flooring material, ceiling details and color palette MUST follow this aesthetic faithfully${hasSceneMasterReference ? " and stay identical to Reference Image 2" : ""}. Plumb vertical lines aligned with the original perspective.
+
+3. NATURAL ILLUMINATION & CONTACT SHADOWS:
+   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the new floor/area rug, eliminating any floating sticker artifact.
+   - Match the room's light direction and color temperature onto the outer edges of the existing furniture with seamless harmony.${lightingHint ? `
+   - LIGHTING MOOD: ${lightingHint}` : ""}
+
+4. PRESERVE ORIGINAL FURNITURE POSTURE:
+   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
+
+5. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS, NO PEOPLE. Clean pristine commercial catalog photograph.
+
+Negative constraints: ${negatives}`;
+}
 async function normalizeInlineBuffer(rawBuf) {
   try {
     const meta = await (0, import_sharp4.default)(rawBuf).metadata();
@@ -18649,6 +18748,55 @@ async function cropImageInlineBuffer(imageRef, box) {
   } catch (err) {
     console.warn("[SpaceImageGenerationService] Fallback on cropImageInlineBuffer:", err);
     return null;
+  }
+}
+async function extractEmptyRoomFromMasterInline(masterInline) {
+  try {
+    const rawBuf = Buffer.from(masterInline.data, "base64");
+    const meta = await (0, import_sharp4.default)(rawBuf).metadata();
+    if (!meta.width || !meta.height || meta.width < 120 || meta.height < 120) {
+      return masterInline;
+    }
+    const w = 1024;
+    const h = 768;
+    const normalized = await (0, import_sharp4.default)(rawBuf).resize({ width: w, height: h, fit: "fill" }).toBuffer();
+    const [topPanorama, bottomLeftFeature, bottomRightFloor] = await Promise.all([
+      // 顶部通栏 (1008x376): 完整从左到右 (x: 0..100%, y: 0..48%) 的硬装空间序列与吊顶
+      (0, import_sharp4.default)(normalized).extract({
+        left: 0,
+        top: 0,
+        width: w,
+        height: Math.round(h * 0.48)
+      }).resize(1008, 376, { fit: "cover" }).toBuffer(),
+      // 左下格 (496x360): 右侧壁炉线框/护墙板中段 + 右侧落地窗与窗帘 (x: 55%..99%, y: 26%..76%)
+      (0, import_sharp4.default)(normalized).extract({
+        left: Math.round(w * 0.55),
+        top: Math.round(h * 0.26),
+        width: Math.round(w * 0.44),
+        height: Math.round(h * 0.5)
+      }).resize(496, 360, { fit: "cover" }).toBuffer(),
+      // 右下格 (496x360): 地毯与人字拼木地板/石材地面肌理 (x: 15%..85%, y: 86%..99%)
+      (0, import_sharp4.default)(normalized).extract({
+        left: Math.round(w * 0.15),
+        top: Math.round(h * 0.86),
+        width: Math.round(w * 0.7),
+        height: Math.round(h * 0.13)
+      }).resize(496, 360, { fit: "cover" }).toBuffer()
+    ]);
+    const board = await (0, import_sharp4.default)({
+      create: { width: w, height: h, channels: 3, background: { r: 255, g: 255, b: 255 } }
+    }).composite([
+      { input: topPanorama, left: 8, top: 8 },
+      { input: bottomLeftFeature, left: 8, top: 400 },
+      { input: bottomRightFloor, left: 520, top: 400 }
+    ]).webp({ quality: 85 }).toBuffer();
+    return {
+      mimeType: "image/webp",
+      data: board.toString("base64")
+    };
+  } catch (err) {
+    console.warn("[SpaceImageGenerationService] Fallback on extractEmptyRoomFromMasterInline:", err);
+    return masterInline;
   }
 }
 var SpaceImageGenerationService = class {
@@ -18844,6 +18992,7 @@ var SpaceImageGenerationService = class {
       const isFlash25 = targetModel === "gemini-2.5-flash-image" || targetModel === "gemini-2.5-flash";
       const validResolution = isFlash25 ? "1K" : ["1K", "2K", "4K"].includes(reqResolution) ? reqResolution : "2K";
       const isStudioSwapMode = input.renderMode === "studio_swap";
+      const isStudioSwapImageSet = isStudioSwapMode && !isHumanPass;
       const images = [];
       const allowedSecondaryInlines = secondaryInlines.filter((s) => {
         if (["A04", "A05", "A06"].includes(shotCode)) {
@@ -18889,21 +19038,23 @@ var SpaceImageGenerationService = class {
           }
         }
       } else {
+        const hasStudioSwapMasterRef = Boolean(isStudioSwapImageSet && masterInline && shotCode !== "A00");
         if (productInline) {
           images.push({
             data: `data:${productInline.mimeType};base64,${productInline.data}`,
             mimeType: productInline.mimeType,
-            role: "primary_product"
+            role: hasStudioSwapMasterRef ? "composition_reference" : "primary_product"
           });
         }
-        if (!isStudioSwapMode && masterInline) {
+        if (masterInline && (!isStudioSwapImageSet || shotCode !== "A00")) {
+          const effectiveMasterForRef = isStudioSwapImageSet ? await extractEmptyRoomFromMasterInline(masterInline) : masterInline;
           images.push({
-            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
-            mimeType: masterInline.mimeType,
-            role: "scene_reference"
+            data: `data:${effectiveMasterForRef.mimeType};base64,${effectiveMasterForRef.data}`,
+            mimeType: effectiveMasterForRef.mimeType,
+            role: isStudioSwapImageSet ? "style_reference" : "scene_reference"
           });
         }
-        if (!isStudioSwapMode) {
+        if (!isStudioSwapImageSet) {
           for (const secItem of pushedSecondaryInlines) {
             images.push({
               data: `data:${secItem.inline.mimeType};base64,${secItem.inline.data}`,
@@ -18933,40 +19084,19 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           allowedSecondaryInlines.map((s) => s.antiStickerNegative).filter(Boolean)
         )
       ).join(", ");
-      if (isStudioSwapMode && productInline) {
-        const effectiveRoomDesc = input.roomName || input.spacePreset?.name || "\u90FD\u4F1A\u5E73\u5C42\u5927\u5B85\u5BA2\u9910\u5385";
-        const effectiveStyleDesc = input.styleName || input.stylePreset?.name || "\u610F\u5F0F\u8F7B\u5962";
-        directivePrompt = `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
-PRIMARY OBJECTIVE:
-Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
-ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
-DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
-
-YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND:
-1. REPLACE THE BACKGROUND WALLS & FLOORS: Transform the flat studio/showroom backdrop into an authentic luxury architectural interior:
-   - ROOM TOPOLOGY: ${effectiveRoomDesc} with soaring architectural headroom and panoramic daylight.
-   - INTERIOR FINISHES: ${effectiveStyleDesc} architectural wall finishes, seamless natural stone/wood wall joinery with recessed reveals, and polished floor tiles. Plumb vertical lines.
-   - WINDOW SCENERY: Floor-to-ceiling panoramic glass curtain wall revealing natural open vista and outdoor daylight.
-2. NATURAL ILLUMINATION & CONTACT SHADOWS:
-   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the floor/area rug, eliminating any floating sticker artifact.
-   - Match the room's directional daylight and indirect cove lighting onto the outer edges of the existing furniture with seamless color temperature harmony.
-3. PRESERVE ORIGINAL FURNITURE POSTURE:
-   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
-4. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS. Clean pristine commercial catalog photograph.
-
-${positivePrompt}`;
-        const cleanNegativeConstraintsStudioSwap = [
-          "altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines",
-          "removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture",
-          "raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, \u62AC\u8D77\u7684\u5934\u6795, \u7FD8\u8D77\u7684\u5934\u6795",
-          "deployed footrest, extended footrest, open recliner mechanism, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258",
-          "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render",
-          "floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact",
-          "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces"
-        ].join(", ");
-        directivePrompt += `
-
-Negative constraints: ${cleanNegativeConstraintsStudioSwap}`;
+      const useStudioSwapDirective = isStudioSwapImageSet && Boolean(productInline) && !shotInline;
+      if (useStudioSwapDirective) {
+        const hasMasterRefForSwap = Boolean(masterInline && shotCode !== "A00");
+        directivePrompt = buildStudioSwapDirective({
+          roomName: input.roomName,
+          styleName: input.styleName,
+          spacePreset: input.spacePreset,
+          stylePreset: input.stylePreset,
+          context: input.studioSwapContext,
+          lightingHint: input.studioSwapLightingHint,
+          hasSceneMasterReference: hasMasterRefForSwap,
+          referenceShotCode: input.referenceShotCode || "A00"
+        });
       } else if (isHumanPass || shotInline) {
         const sanitizedNegative = (negativePrompt || "").replace(/\b(side chair|accent chair|armchair|lounge chair|single chair|3\+1 ensemble|wide empty room panorama|far distant vantage)\b/gi, "").replace(/,\s*,+/g, ",").trim();
         if (input.preserveBasePhotoOnly || isHumanPass) {
@@ -19448,7 +19578,7 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
         console.log(
           `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway (\u5C1D\u8BD5 ${mIdx + 1}/${candidateModels.length}): model=${currentModelToAttempt}, res=${currentResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
         );
-        const timeoutMs = process.env.NODE_ENV === "test" ? 1200 : currentModelToAttempt.includes("gpt") ? 12e4 : 75e3;
+        const timeoutMs = process.env.NODE_ENV === "test" ? 1200 : 18e4;
         try {
           const gatewayRes = await fetch(gatewayUrl, {
             method: "POST",
@@ -19469,7 +19599,11 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
           });
           const gatewayData = await gatewayRes.json();
           if (gatewayRes.ok && !gatewayData.error && gatewayData.success !== false) {
-            const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data || gatewayData.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            const candidatePartWithImage = gatewayData.candidates?.[0]?.content?.parts?.find(
+              (p) => p?.inlineData?.data || p?.inline_data?.data
+            );
+            const candidateInlineData = candidatePartWithImage?.inlineData?.data || candidatePartWithImage?.inline_data?.data;
+            const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data || candidateInlineData;
             if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.length > 0) {
               if (imgUrlOrBase64.startsWith("data:")) {
                 const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
@@ -19479,7 +19613,7 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
                 if (fetched.ok) {
                   rawImageBuffer = Buffer.from(await fetched.arrayBuffer());
                 }
-              } else if (imgUrlOrBase64.length > 500) {
+              } else if (imgUrlOrBase64.length > 100) {
                 rawImageBuffer = Buffer.from(imgUrlOrBase64, "base64");
               }
             }
@@ -19497,7 +19631,8 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
             console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} gateway error:`, errDetail);
           }
         } catch (apiErr) {
-          const errMsg = apiErr?.name === "AbortError" ? "\u4E0A\u6E38\u8BF7\u6C42\u7F51\u7EDC\u8D85\u65F6" : apiErr?.message || "\u4E91\u7AEF\u7F51\u7EDC\u8BF7\u6C42\u5F02\u5E38";
+          const isTimeout = apiErr?.name === "AbortError" || apiErr?.name === "TimeoutError";
+          const errMsg = isTimeout ? "\u4E0A\u6E38\u8BF7\u6C42\u7F51\u7EDC\u8D85\u65F6" : apiErr?.message || "\u4E91\u7AEF\u7F51\u7EDC\u8BF7\u6C42\u5F02\u5E38";
           attemptErrors.push({ model: currentModelToAttempt, error: errMsg });
           console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} deferred: ${errMsg}`);
         }
@@ -23704,6 +23839,7 @@ router18.post("/render-shot", async (req, res) => {
       seed: generationSettings?.seed,
       autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
       renderMode: generationSettings?.renderMode || req.body?.renderMode,
+      studioSwapContext: promptSnapshot?.studioSwapContext,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,
@@ -23890,7 +24026,37 @@ router18.post("/render-candidates", async (req, res) => {
     const effectiveStyleName = req.body.styleName || promptSnapshot?.styleName || req.body.stylePreset?.name?.split(" (")[0] || "\u90FD\u4F1A\u6536\u85CF\u5BB6";
     const effectiveRoomName = req.body.roomName || promptSnapshot?.roomName || req.body.spacePreset?.name?.split(" (")[0] || "\u9876\u5C42\u5929\u9645\u4F1A\u6240\u5927\u5B85";
     const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || "4:3";
-    const variantSpecs = isHumanPass ? [
+    const rawRenderMode = generationSettings?.renderMode || req.body?.renderMode;
+    const renderMode = rawRenderMode === "studio_swap" ? "studio_swap" : "orchestration";
+    const isStudioSwapBase = renderMode === "studio_swap" && !isHumanPass;
+    const studioSwapContext = promptSnapshot?.studioSwapContext;
+    const studioSwapVariantSpecs = [
+      {
+        idx: 1,
+        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u5929\u7136\u901A\u900F\u6F2B\u5C04\u5149`,
+        promptAddon: "soft natural diffuse daylight, clean neutral color temperature",
+        cameraDelta: {}
+      },
+      {
+        idx: 2,
+        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u5348\u540E\u4F59\u6656\u6696\u5149`,
+        promptAddon: "warm golden hour afternoon sunlight entering through the windows, gentle amber glow",
+        cameraDelta: {}
+      },
+      {
+        idx: 3,
+        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u67D4\u548C\u6C1B\u56F4\u706F\u5149`,
+        promptAddon: "balanced interior ambient cove lighting with soft wall sconce glow, calm evening-ready atmosphere",
+        cameraDelta: {}
+      },
+      {
+        idx: 4,
+        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u660E\u4EAE\u753B\u518C\u5149`,
+        promptAddon: "bright high-key catalog lighting, crisp airy daylight with soft shadows",
+        cameraDelta: {}
+      }
+    ];
+    const variantSpecs = isStudioSwapBase ? studioSwapVariantSpecs : isHumanPass ? [
       {
         idx: 1,
         tag: `${effectiveStyleName} \xB7 \u4EBA\u7269\u5165\u5EA7 \xB7 \u5929\u7136\u901A\u900F\u5149`,
@@ -24000,6 +24166,9 @@ router18.post("/render-candidates", async (req, res) => {
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
+            renderMode,
+            studioSwapContext,
+            studioSwapLightingHint: isStudioSwapBase ? v.promptAddon : void 0,
             objectKey
           });
           return {
@@ -24251,6 +24420,192 @@ ${promptSupplement}` : ""}`;
     res.status(500).json({
       success: false,
       error: err.message || "Failed to outpaint shot"
+    });
+  }
+});
+router18.post("/inpaint-edit", async (req, res) => {
+  try {
+    const {
+      projectId = "manwah-noble-space-01",
+      shotId,
+      shotCode = "A00",
+      baseRevisionId,
+      baseImage,
+      // 当前已生成的图片 (base64 或内部/公开 url)
+      maskImage,
+      // 可选：局部蒙版 PNG (白色或透明标记区域)
+      annotatedImage,
+      // 可选：在原图上叠加了半透明红色涂抹区的视觉定位引导图 (base64)
+      maskBounds,
+      // 可选：涂抹区域的归一化百分比包围盒 { ymin, xmin, ymax, xmax } (0~100)
+      referenceImages = [],
+      // 可选：用户上传的参考素材图列表 (base64 或 url 数组)
+      instruction = "",
+      // 用户的修改提示词指令
+      editMode = "modify",
+      // 'modify' (指令/局部修改) | 'erase' (局部消除) | 'replace_with_ref' (参考图置入替换)
+      roomName = "\u90FD\u4F1A\u5927\u5E73\u5C42",
+      styleName = "\u610F\u5F0F\u7ECF\u5178",
+      preferredModel = "gemini-nano-banana-2.1-preview",
+      aspectRatio = "4:3",
+      resolution = "2K",
+      productName
+    } = req.body;
+    if (!baseImage) {
+      return res.status(400).json({ success: false, error: "\u7F3A\u5C11\u5F85\u4FEE\u6539\u7684\u57FA\u7840\u751F\u6210\u56FE\u50CF (baseImage)" });
+    }
+    const cleanInstruction = String(instruction || "").trim();
+    if (!cleanInstruction && !maskImage && !annotatedImage && (!Array.isArray(referenceImages) || referenceImages.length === 0)) {
+      return res.status(400).json({ success: false, error: "\u8BF7\u8F93\u5165\u4FEE\u6539\u63D0\u793A\u8BCD\u6307\u4EE4\u3001\u7ED8\u5236\u8499\u7248\u533A\u57DF\u6216\u4E0A\u4F20\u53C2\u8003\u56FE" });
+    }
+    const timestamp = Date.now();
+    const revisionId = `rev-edit-${shotCode.toLowerCase()}-${timestamp.toString(36)}`;
+    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId,
+      shotId: shotCode,
+      revisionId,
+      extension: "webp"
+    });
+    const resolveToDataUrl = async (rawRef) => {
+      const trimmed = rawRef.trim();
+      if (trimmed.startsWith("data:")) return trimmed;
+      const inline = await SpaceImageGenerationService.resolveImageInline(trimmed);
+      if (inline && inline.data) {
+        return `data:${inline.mimeType};base64,${inline.data}`;
+      }
+      return trimmed;
+    };
+    const resolvedBaseImage = await resolveToDataUrl(String(baseImage));
+    const hasMask = Boolean(
+      maskImage && typeof maskImage === "string" && maskImage.trim().length > 0 || annotatedImage && typeof annotatedImage === "string" && annotatedImage.trim().length > 0
+    );
+    const resolvedAnnotatedImage = annotatedImage && typeof annotatedImage === "string" && annotatedImage.trim().length > 0 ? await resolveToDataUrl(annotatedImage) : void 0;
+    const rawValidRefs = Array.isArray(referenceImages) ? referenceImages.filter((r) => typeof r === "string" && r.trim().length > 0).slice(0, 3) : [];
+    const validRefs = [];
+    for (const refItem of rawValidRefs) {
+      validRefs.push(await resolveToDataUrl(refItem));
+    }
+    const hasBounds = maskBounds && typeof maskBounds === "object" && typeof maskBounds.ymin === "number" && typeof maskBounds.xmin === "number" && typeof maskBounds.ymax === "number" && typeof maskBounds.xmax === "number";
+    const boundsClause = hasBounds ? `
+TARGET REGION COORDINATES (Normalized 0-100% of frame): [ymin: ${Math.round(maskBounds.ymin)}%, xmin: ${Math.round(maskBounds.xmin)}%, ymax: ${Math.round(maskBounds.ymax)}%, xmax: ${Math.round(maskBounds.xmax)}%].` : "";
+    const annotatedGuideClause = resolvedAnnotatedImage ? `
+SPATIAL MASK GUIDE: Reference Image 2 shows Reference Image 1 with a semi-transparent RED highlight marking the exact target region to edit.${boundsClause} CRITICAL: The red highlight in Reference Image 2 is ONLY a positional indicator\u2014NEVER output any red tint, red overlay, or red border in the final image! Use Reference Image 1 for the true un-tinted colors.` : boundsClause;
+    const firstAssetRefIndex = resolvedAnnotatedImage ? 3 : 2;
+    let taskHeader = "";
+    if (editMode === "erase" && hasMask) {
+      taskHeader = `[CRITICAL INPAINTING ERASE MANDATE - SEAMLESS OBJECT REMOVAL]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+Completely erase and remove the object/elements inside the masked target region of Reference Image 1.
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and camera perspective).
+2. SEAMLESS BACKGROUND RECONSTRUCTION: Reconstruct the background wall, floor, rug, or architectural surfaces behind the removed area to match the surrounding ${roomName} (${styleName}) interior with zero artifacts and no red marker trace.`;
+    } else if (hasMask && validRefs.length > 0) {
+      taskHeader = `[CRITICAL MASKED REFERENCE FUSION & INPAINTING MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+Reference Image ${firstAssetRefIndex}${validRefs.length > 1 ? ` (and subsequent reference images)` : ""} provides the authentic target product/material/texture reference to be integrated or replaced into the masked target region!
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and perspective).
+2. MASKED REGION FUSION: Inside the masked target area, faithfully render/replace according to Reference Image ${firstAssetRefIndex} and the user instruction, matching the exact camera perspective, scale, ambient lighting, and floor contact shadows of Reference Image 1, with zero red marker residue.`;
+    } else if (hasMask) {
+      taskHeader = `[CRITICAL MASKED REGION INPAINTING & PRECISION EDIT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and perspective).
+2. MASKED REGION EDIT: Exclusively modify the masked target region according to the user instruction below, blending lighting, textures, and contact shadows seamlessly with the surrounding room, with zero red marker residue.`;
+    } else if (validRefs.length > 0) {
+      taskHeader = `[CRITICAL MULTI-IMAGE REFERENCE EDIT & CONTINUOUS REFINEMENT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the base interior photograph to be refined.
+Reference Image 2${validRefs.length > 1 ? ` (and subsequent reference images)` : ""} provides the visual reference asset for the requested modification.
+Modify Reference Image 1 according to the user instruction and Reference Image 2 while strictly preserving the core camera perspective, room architecture, and unmentioned furniture in Reference Image 1.`;
+    } else {
+      taskHeader = `[CRITICAL CONTINUOUS IMAGE REFINEMENT & INSTRUCTION EDIT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the base interior photograph to be refined.
+Execute the user's modification instruction accurately on Reference Image 1 while strictly preserving the overall camera perspective, core furniture identity (${productName || "main sofa and ensemble"}), and unmentioned spatial elements.`;
+    }
+    const directivePrompt = `${taskHeader}
+
+USER MODIFICATION INSTRUCTION:
+${cleanInstruction || (editMode === "erase" ? "\u79FB\u9664\u8499\u7248\u9009\u4E2D\u533A\u57DF\u7684\u7269\u4F53\u5E76\u81EA\u7136\u8865\u5168\u80CC\u666F\u3002" : "\u6839\u636E\u8499\u7248\u9009\u533A\u4E0E\u53C2\u8003\u56FE\u5BF9\u753B\u9762\u8FDB\u884C\u7CBE\u7EC6\u5316\u91CD\u7ED8\u4FEE\u6539\u3002")}
+
+MANDATORY QUALITY RULES:
+- Maintain photorealistic architectural photography quality, natural lighting harmony, and realistic ambient occlusion contact shadows.
+- Preserve the exact camera angle and furniture posture of Reference Image 1 unless explicitly instructed otherwise.
+- ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO LABELS, NO CHINESE CHARACTERS, NO WATERMARKS, NO RED MASK TINT.`;
+    const imagesPayload = [
+      { data: resolvedBaseImage, role: "composition_reference" }
+    ];
+    if (resolvedAnnotatedImage) {
+      imagesPayload.push({ data: resolvedAnnotatedImage, role: "composition_reference" });
+    }
+    for (const refImg of validRefs) {
+      imagesPayload.push({ data: refImg, role: "primary_product" });
+    }
+    let modelToUse = preferredModel;
+    if (!modelToUse || modelToUse === "gemini-2.5-flash-image") {
+      modelToUse = "gemini-nano-banana-2.1-preview";
+    }
+    const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
+    const gatewayRes = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-uuid": "system"
+      },
+      body: JSON.stringify({
+        prompt: directivePrompt,
+        model: modelToUse,
+        aspectRatio,
+        resolution,
+        images: imagesPayload,
+        ...hasMask ? { mask: maskImage } : {},
+        generationIntent: "image_edit"
+      }),
+      signal: AbortSignal.timeout(18e4)
+    });
+    const gatewayData = await gatewayRes.json();
+    if (!gatewayRes.ok || gatewayData.error) {
+      const errorMsg = gatewayData.error?.message || (typeof gatewayData.error === "string" ? gatewayData.error : "") || gatewayData.message || "\u56FE\u50CF\u4E8C\u6B21\u7CBE\u4FEE\u751F\u6210\u5931\u8D25";
+      throw new Error(errorMsg);
+    }
+    const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data;
+    if (!imgUrlOrBase64) {
+      throw new Error("\u56FE\u50CF\u7CBE\u4FEE\u7F51\u5173\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E");
+    }
+    let finalImageUrl = imgUrlOrBase64;
+    if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.startsWith("data:")) {
+      const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+      let imgBuffer = Buffer.from(base64Clean, "base64");
+      try {
+        imgBuffer = await (0, import_sharp8.default)(imgBuffer).webp({ quality: 92 }).toBuffer();
+      } catch (sharpErr) {
+        console.warn("Direct webp conversion fallback in inpaint-edit:", sharpErr);
+      }
+      await storage3.put({
+        objectKey,
+        buffer: imgBuffer,
+        contentType: "image/webp"
+      });
+      finalImageUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+    }
+    const modeLabel = editMode === "erase" ? "\u5C40\u90E8\u64E6\u9664\u7CBE\u4FEE" : hasMask && validRefs.length > 0 ? "\u8499\u7248+\u53C2\u8003\u56FE\u7CBE\u4FEE" : hasMask ? "\u8499\u7248\u5C40\u90E8\u91CD\u7ED8" : validRefs.length > 0 ? "\u53C2\u8003\u56FE\u878D\u5408\u4FEE\u6539" : "\u63D0\u793A\u8BCD\u6307\u4EE4\u7CBE\u4FEE";
+    res.json({
+      success: true,
+      data: {
+        revisionId,
+        imageUrl: finalImageUrl,
+        objectKey,
+        aspectRatio,
+        label: modeLabel,
+        metaSummary: `${modeLabel}${cleanInstruction ? `\uFF1A${cleanInstruction.slice(0, 36)}` : ""}`
+      }
+    });
+  } catch (err) {
+    console.error("[spaceShootRoutes] Inpaint-edit error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message || "Failed to execute inpaint-edit"
     });
   }
 });
@@ -25514,7 +25869,7 @@ function serializeProviderError(error, requestId) {
 }
 
 // server/ai/imageResponse.ts
-var isValidImage = (image) => typeof image.data === "string" && image.data.length > 100 && image.mimeType.startsWith("image/");
+var isValidImage = (image) => typeof image.data === "string" && (image.data.length > 100 || /^https?:\/\//i.test(image.data)) && image.mimeType.startsWith("image/");
 function buildNormalizedImageResponse(images, context) {
   const validImages = images.filter(isValidImage);
   if (validImages.length === 0) throw new Error("\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E\u3002");
@@ -25532,47 +25887,132 @@ function buildNormalizedImageResponse(images, context) {
     }))
   };
 }
+function normalizeImageMime(rawMime) {
+  if (!rawMime || typeof rawMime !== "string") return "image/jpeg";
+  const trimmed = rawMime.trim().toLowerCase();
+  if (trimmed.startsWith("image/")) return trimmed;
+  if (["png", "jpeg", "jpg", "webp", "gif"].includes(trimmed)) {
+    return trimmed === "jpg" ? "image/jpeg" : `image/${trimmed}`;
+  }
+  return "image/png";
+}
+function extractImagesFromText(textStr, target) {
+  const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=\s]+)/);
+  if (dataUrlMatch) {
+    const cleanB64 = dataUrlMatch[2].replace(/\s+/g, "");
+    if (cleanB64.length > 100) {
+      target.push({
+        mimeType: normalizeImageMime(dataUrlMatch[1]),
+        data: cleanB64
+      });
+      return;
+    }
+  }
+  const mdUrlMatch = textStr.match(/!\[[^\]]*\]\((https?:\/\/[^\s"'<>\)]+)\)/i);
+  const extUrlMatch = textStr.match(/(https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp|gif)(?:\?[^\s"'<>\)]*)?)/i);
+  const singleUrlMatch = /^https?:\/\/[^\s"'<>\)]+$/i.test(textStr) ? [textStr, textStr] : null;
+  const urlMatch = mdUrlMatch || extUrlMatch || singleUrlMatch;
+  if (urlMatch) {
+    target.push({
+      mimeType: "image/png",
+      data: urlMatch[1] || urlMatch[0]
+    });
+  }
+}
 function normalizeGeminiImageResponse(raw, context) {
   const images = [];
   const finishReasons = [];
   let collectedText = "";
   for (const candidate of Array.isArray(raw?.candidates) ? raw.candidates : []) {
     if (candidate?.finishReason) finishReasons.push(String(candidate.finishReason));
-    for (const part of Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []) {
+    const partsList = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : Array.isArray(candidate?.parts) ? candidate.parts : [];
+    for (const part of partsList) {
       const inlineData = part?.inlineData || part?.inline_data;
-      if (inlineData?.data) {
+      const fileData = part?.fileData || part?.file_data;
+      const imageUrlObj = part?.image_url || part?.imageUrl;
+      if (inlineData?.data && typeof inlineData.data === "string") {
+        const rawDataStr = inlineData.data.trim();
+        const strippedB64 = rawDataStr.startsWith("data:") ? rawDataStr.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "") : rawDataStr.startsWith("http://") || rawDataStr.startsWith("https://") ? rawDataStr : rawDataStr.replace(/\s+/g, "");
         images.push({
-          mimeType: inlineData.mimeType || inlineData.mime_type || "image/jpeg",
-          data: inlineData.data
+          mimeType: normalizeImageMime(inlineData.mimeType || inlineData.mime_type),
+          data: strippedB64
         });
+      } else if (fileData?.fileUri || fileData?.file_uri) {
+        images.push({
+          mimeType: normalizeImageMime(fileData.mimeType || fileData.mime_type || "image/png"),
+          data: String(fileData.fileUri || fileData.file_uri).trim()
+        });
+      } else if (imageUrlObj) {
+        const u = typeof imageUrlObj === "string" ? imageUrlObj : imageUrlObj?.url;
+        if (typeof u === "string" && u.trim()) {
+          extractImagesFromText(u.trim(), images);
+        }
       } else if (part?.text) {
         const textStr = String(part.text).trim();
         if (textStr) {
           collectedText += (collectedText ? " | " : "") + textStr;
-          const dataUrlMatch = textStr.match(/data:(image\/[a-zA-Z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/);
-          if (dataUrlMatch && dataUrlMatch[2].length > 100) {
-            images.push({
-              mimeType: dataUrlMatch[1],
-              data: dataUrlMatch[2]
-            });
-          } else {
-            const urlMatch = textStr.match(/https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp)/i);
-            if (urlMatch) {
-              images.push({
-                mimeType: "image/png",
-                data: urlMatch[0]
-              });
-            }
+          extractImagesFromText(textStr, images);
+        }
+      }
+    }
+  }
+  if (images.length === 0 && Array.isArray(raw?.data)) {
+    for (const item of raw.data) {
+      const b64Val = item?.b64_json || item?.b64 || item?.base64 || item?.image;
+      if (typeof b64Val === "string" && b64Val.length > 100) {
+        images.push({
+          mimeType: normalizeImageMime(item.mime_type || item.mimeType || "image/png"),
+          data: b64Val.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "")
+        });
+      } else if (typeof item?.url === "string" && item.url.trim()) {
+        images.push({ mimeType: "image/png", data: item.url.trim() });
+      }
+    }
+  }
+  if (images.length === 0 && Array.isArray(raw?.choices)) {
+    for (const choice of raw.choices) {
+      const msg = choice?.message;
+      if (Array.isArray(msg?.images)) {
+        for (const imgItem of msg.images) {
+          const u = imgItem?.image_url?.url || imgItem?.url || (typeof imgItem === "string" ? imgItem : "");
+          if (typeof u === "string" && u.trim()) {
+            extractImagesFromText(u.trim(), images);
+          }
+        }
+      }
+      if (typeof msg?.content === "string" && msg.content.trim()) {
+        const textStr = msg.content.trim();
+        collectedText += (collectedText ? " | " : "") + textStr;
+        extractImagesFromText(textStr, images);
+      } else if (Array.isArray(msg?.content)) {
+        for (const cPart of msg.content) {
+          const u = cPart?.image_url?.url || cPart?.url;
+          if (typeof u === "string" && u.trim()) {
+            extractImagesFromText(u.trim(), images);
+          } else if (typeof cPart?.text === "string" && cPart.text.trim()) {
+            extractImagesFromText(cPart.text.trim(), images);
           }
         }
       }
     }
   }
+  if (images.length === 0 && typeof (raw?.imageUrl || raw?.url) === "string") {
+    extractImagesFromText(String(raw.imageUrl || raw.url).trim(), images);
+  }
   if (images.length === 0) {
+    const upstreamErrMsg = typeof raw?.error === "string" ? raw.error : raw?.error?.message;
+    if (upstreamErrMsg) {
+      throw new Error(`\u4E0A\u6E38\u63A5\u53E3\u8FD4\u56DE\u9519\u8BEF: ${upstreamErrMsg}`);
+    }
+    const blockReason = raw?.promptFeedback?.blockReason || raw?.candidates?.[0]?.finishMessage;
+    if (blockReason) {
+      throw new Error(`\u4E0A\u6E38\u63A5\u53E3\u62E6\u622A\u6216\u672A\u751F\u6210\u56FE\u50CF (${blockReason})`);
+    }
     if (collectedText) {
       throw new Error(`\u4E0A\u6E38\u6A21\u578B\u672A\u8FD4\u56DE\u56FE\u7247\u6570\u636E\u6D41\uFF0C\u4EC5\u8FD4\u56DE\u4E86\u6587\u672C\u5185\u5BB9: "${collectedText.slice(0, 120)}${collectedText.length > 120 ? "..." : ""}"`);
     }
-    throw new Error("\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E\u3002");
+    const reasonSuffix = finishReasons.length > 0 ? ` (finishReason: ${finishReasons.join(", ")})` : "";
+    throw new Error(`\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E\u3002${reasonSuffix}`);
   }
   return buildNormalizedImageResponse(images, {
     ...context,
@@ -26892,19 +27332,54 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                 provider: currentProvider
               });
             } catch (error) {
+              fileLog(`[OpenAI Proxy Debug] Gemini 200 without valid image (${finalModel}): ${text.slice(0, 500)}`);
               throw new ProviderError(
                 error.message,
                 "invalid_upstream_response",
                 502,
-                false,
+                true,
                 currentProvider,
                 finalModel
               );
             }
+            if (Array.isArray(data?.images)) {
+              for (let imgIdx = 0; imgIdx < data.images.length; imgIdx++) {
+                const imgEntry = data.images[imgIdx];
+                if (typeof imgEntry?.data === "string" && /^https?:\/\//i.test(imgEntry.data)) {
+                  try {
+                    const downloaded = await resolveAndValidateImage({
+                      source: imgEntry.data,
+                      role: "style_reference",
+                      order: imgIdx
+                    });
+                    imgEntry.mimeType = downloaded.mimeType;
+                    imgEntry.data = downloaded.cleanB64;
+                    const candPart = data.candidates?.[imgIdx]?.content?.parts?.[0]?.inlineData;
+                    if (candPart) {
+                      candPart.mimeType = downloaded.mimeType;
+                      candPart.data = downloaded.cleanB64;
+                    }
+                  } catch (dlErr) {
+                    fileLog(`[OpenAI Proxy Debug] Failed to download Gemini remote image URL (${imgEntry.data}): ${dlErr?.message}`);
+                  }
+                }
+              }
+            }
           }
           return data;
         };
-        const result = await executeRequestForModel();
+        let result;
+        try {
+          result = await executeRequestForModel();
+        } catch (firstAttemptErr) {
+          if (firstAttemptErr instanceof ProviderError && firstAttemptErr.category === "invalid_upstream_response" && firstAttemptErr.retryable) {
+            fileLog(`[OpenAI Proxy Debug] Retrying ${registeredModel.id} once after empty upstream image response...`);
+            await new Promise((r) => setTimeout(r, 800));
+            result = await executeRequestForModel();
+          } else {
+            throw firstAttemptErr;
+          }
+        }
         return { data: result, actualModel: registeredModel.id };
       };
       res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -26936,7 +27411,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           const errMsg = normalizedInitialError.message;
           const isHybrid = routingMode === 2;
           const isAuthOrChannelError = normalizedInitialError.category === "authentication" || /unauthorized|invalid token|model_price_error|no available channel/i.test(errMsg);
-          const shouldFallback = ["timeout", "rate_limited", "upstream_unavailable"].includes(normalizedInitialError.category) || isAuthOrChannelError;
+          const shouldFallback = ["timeout", "rate_limited", "upstream_unavailable", "invalid_upstream_response"].includes(normalizedInitialError.category) || isAuthOrChannelError;
           if (shouldFallback || isHybrid && normalizedInitialError.retryable) {
             const fallback = await getFallbackConfig(deptId, method1Key);
             if (fallback && fetchResult === void 0 && (fallback.provider !== provider || fallback.apiKey !== apiKey)) {
@@ -27009,7 +27484,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
             for (const candidate of candidates) {
               if (candidate.content && candidate.content.parts) {
                 for (const part of candidate.content.parts) {
-                  if (part.inlineData && part.inlineData.data) {
+                  if (part.inlineData && part.inlineData.data && !/^https?:\/\//i.test(part.inlineData.data)) {
                     const rawBuffer = Buffer.from(part.inlineData.data, "base64");
                     const meta = await (0, import_sharp11.default)(rawBuffer).metadata();
                     let maxTargetDim = 1024;
@@ -27077,15 +27552,19 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           );
         }
         let topLevelImageUrl = void 0;
+        const matchedCandPart = fetchResult?.candidates?.[0]?.content?.parts?.find(
+          (p) => p?.inlineData?.data || p?.inline_data?.data
+        );
+        const matchedInline = matchedCandPart?.inlineData || matchedCandPart?.inline_data;
         if (fetchResult?.images?.[0]?.data) {
           const firstImg = fetchResult.images[0];
           const rawData = typeof firstImg === "string" ? firstImg : firstImg.data;
           const mime = typeof firstImg === "object" && firstImg.mimeType ? firstImg.mimeType : "image/png";
           topLevelImageUrl = rawData.startsWith("data:") || rawData.startsWith("http") ? rawData : `data:${mime};base64,${rawData}`;
-        } else if (fetchResult?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) {
-          const part = fetchResult.candidates[0].content.parts[0].inlineData;
-          const mime = part.mimeType || "image/png";
-          topLevelImageUrl = `data:${mime};base64,${part.data}`;
+        } else if (matchedInline?.data) {
+          const mime = matchedInline.mimeType || matchedInline.mime_type || "image/png";
+          const rawData = String(matchedInline.data);
+          topLevelImageUrl = rawData.startsWith("data:") || rawData.startsWith("http") ? rawData : `data:${mime};base64,${rawData}`;
         }
         res.write(JSON.stringify({
           success: isSuccessfulResponse,

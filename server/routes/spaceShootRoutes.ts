@@ -164,6 +164,7 @@ router.post('/render-shot', async (req: Request, res: Response) => {
       seed: generationSettings?.seed,
       autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
       renderMode: (generationSettings as any)?.renderMode || (req.body as any)?.renderMode,
+      studioSwapContext: (promptSnapshot as any)?.studioSwapContext,
       productName: effectiveProductName,
       productColor: effectiveProductColor,
       productMaterial: effectiveProductMaterial,
@@ -391,7 +392,43 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
       '顶层天际会所大宅';
     const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || '4:3';
 
-    const variantSpecs = isHumanPass
+    // 生产模式：必须显式透传至生成服务，否则极简影棚换景 (studio_swap) 会被静默降级为全案编排
+    const rawRenderMode = (generationSettings as any)?.renderMode || (req.body as any)?.renderMode;
+    const renderMode: 'orchestration' | 'studio_swap' = rawRenderMode === 'studio_swap' ? 'studio_swap' : 'orchestration';
+    const isStudioSwapBase = renderMode === 'studio_swap' && !isHumanPass;
+    const studioSwapContext = (promptSnapshot as any)?.studioSwapContext;
+
+    // 极简影棚换景变体：只改变光线氛围，绝不改变机位/焦段/俯仰，确保家具零漂移
+    const studioSwapVariantSpecs = [
+      {
+        idx: 1,
+        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 天然通透漫射光`,
+        promptAddon: 'soft natural diffuse daylight, clean neutral color temperature',
+        cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
+      },
+      {
+        idx: 2,
+        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 午后余晖暖光`,
+        promptAddon: 'warm golden hour afternoon sunlight entering through the windows, gentle amber glow',
+        cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
+      },
+      {
+        idx: 3,
+        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 柔和氛围灯光`,
+        promptAddon: 'balanced interior ambient cove lighting with soft wall sconce glow, calm evening-ready atmosphere',
+        cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
+      },
+      {
+        idx: 4,
+        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 明亮画册光`,
+        promptAddon: 'bright high-key catalog lighting, crisp airy daylight with soft shadows',
+        cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
+      }
+    ];
+
+    const variantSpecs = isStudioSwapBase
+      ? studioSwapVariantSpecs
+      : isHumanPass
       ? [
           {
             idx: 1,
@@ -510,6 +547,9 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
+            renderMode,
+            studioSwapContext,
+            studioSwapLightingHint: isStudioSwapBase ? v.promptAddon : undefined,
             objectKey
           });
 
@@ -795,6 +835,238 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
     res.status(500).json({
       success: false,
       error: err.message || 'Failed to outpaint shot'
+    });
+  }
+});
+
+/**
+ * POST /api/space/shoot/inpaint-edit
+ * 生成后图片的二次指令修改与蒙版局部重绘接口：
+ * 支持纯提示词指令修改、蒙版标记（画笔涂抹/多边形框选/矩形与椭圆几何标记）局部重绘、以及上传参考图替换/融合修改
+ */
+router.post('/inpaint-edit', async (req: Request, res: Response) => {
+  try {
+    const {
+      projectId = 'manwah-noble-space-01',
+      shotId,
+      shotCode = 'A00',
+      baseRevisionId,
+      baseImage,             // 当前已生成的图片 (base64 或内部/公开 url)
+      maskImage,             // 可选：局部蒙版 PNG (白色或透明标记区域)
+      annotatedImage,        // 可选：在原图上叠加了半透明红色涂抹区的视觉定位引导图 (base64)
+      maskBounds,            // 可选：涂抹区域的归一化百分比包围盒 { ymin, xmin, ymax, xmax } (0~100)
+      referenceImages = [],  // 可选：用户上传的参考素材图列表 (base64 或 url 数组)
+      instruction = '',      // 用户的修改提示词指令
+      editMode = 'modify',   // 'modify' (指令/局部修改) | 'erase' (局部消除) | 'replace_with_ref' (参考图置入替换)
+      roomName = '都会大平层',
+      styleName = '意式经典',
+      preferredModel = 'gemini-nano-banana-2.1-preview',
+      aspectRatio = '4:3',
+      resolution = '2K',
+      productName
+    } = req.body;
+
+    if (!baseImage) {
+      return res.status(400).json({ success: false, error: '缺少待修改的基础生成图像 (baseImage)' });
+    }
+
+    const cleanInstruction = String(instruction || '').trim();
+    if (!cleanInstruction && !maskImage && !annotatedImage && (!Array.isArray(referenceImages) || referenceImages.length === 0)) {
+      return res.status(400).json({ success: false, error: '请输入修改提示词指令、绘制蒙版区域或上传参考图' });
+    }
+
+    const timestamp = Date.now();
+    const revisionId = `rev-edit-${shotCode.toLowerCase()}-${timestamp.toString(36)}`;
+    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId,
+      shotId: shotCode,
+      revisionId,
+      extension: 'webp'
+    });
+
+    const resolveToDataUrl = async (rawRef: string): Promise<string> => {
+      const trimmed = rawRef.trim();
+      if (trimmed.startsWith('data:')) return trimmed;
+      const inline = await SpaceImageGenerationService.resolveImageInline(trimmed);
+      if (inline && inline.data) {
+        return `data:${inline.mimeType};base64,${inline.data}`;
+      }
+      return trimmed;
+    };
+
+    const resolvedBaseImage = await resolveToDataUrl(String(baseImage));
+    const hasMask = Boolean(
+      (maskImage && typeof maskImage === 'string' && maskImage.trim().length > 0) ||
+      (annotatedImage && typeof annotatedImage === 'string' && annotatedImage.trim().length > 0)
+    );
+    const resolvedAnnotatedImage =
+      annotatedImage && typeof annotatedImage === 'string' && annotatedImage.trim().length > 0
+        ? await resolveToDataUrl(annotatedImage)
+        : undefined;
+
+    const rawValidRefs = Array.isArray(referenceImages)
+      ? referenceImages.filter((r: any) => typeof r === 'string' && r.trim().length > 0).slice(0, 3)
+      : [];
+    const validRefs: string[] = [];
+    for (const refItem of rawValidRefs) {
+      validRefs.push(await resolveToDataUrl(refItem));
+    }
+
+    const hasBounds =
+      maskBounds &&
+      typeof maskBounds === 'object' &&
+      typeof maskBounds.ymin === 'number' &&
+      typeof maskBounds.xmin === 'number' &&
+      typeof maskBounds.ymax === 'number' &&
+      typeof maskBounds.xmax === 'number';
+
+    const boundsClause = hasBounds
+      ? `\nTARGET REGION COORDINATES (Normalized 0-100% of frame): [ymin: ${Math.round(maskBounds.ymin)}%, xmin: ${Math.round(maskBounds.xmin)}%, ymax: ${Math.round(maskBounds.ymax)}%, xmax: ${Math.round(maskBounds.xmax)}%].`
+      : '';
+
+    const annotatedGuideClause = resolvedAnnotatedImage
+      ? `\nSPATIAL MASK GUIDE: Reference Image 2 shows Reference Image 1 with a semi-transparent RED highlight marking the exact target region to edit.${boundsClause} CRITICAL: The red highlight in Reference Image 2 is ONLY a positional indicator—NEVER output any red tint, red overlay, or red border in the final image! Use Reference Image 1 for the true un-tinted colors.`
+      : boundsClause;
+
+    const firstAssetRefIndex = resolvedAnnotatedImage ? 3 : 2;
+
+    let taskHeader = '';
+    if (editMode === 'erase' && hasMask) {
+      taskHeader = `[CRITICAL INPAINTING ERASE MANDATE - SEAMLESS OBJECT REMOVAL]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+Completely erase and remove the object/elements inside the masked target region of Reference Image 1.
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and camera perspective).
+2. SEAMLESS BACKGROUND RECONSTRUCTION: Reconstruct the background wall, floor, rug, or architectural surfaces behind the removed area to match the surrounding ${roomName} (${styleName}) interior with zero artifacts and no red marker trace.`;
+    } else if (hasMask && validRefs.length > 0) {
+      taskHeader = `[CRITICAL MASKED REFERENCE FUSION & INPAINTING MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+Reference Image ${firstAssetRefIndex}${validRefs.length > 1 ? ` (and subsequent reference images)` : ''} provides the authentic target product/material/texture reference to be integrated or replaced into the masked target region!
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and perspective).
+2. MASKED REGION FUSION: Inside the masked target area, faithfully render/replace according to Reference Image ${firstAssetRefIndex} and the user instruction, matching the exact camera perspective, scale, ambient lighting, and floor contact shadows of Reference Image 1, with zero red marker residue.`;
+    } else if (hasMask) {
+      taskHeader = `[CRITICAL MASKED REGION INPAINTING & PRECISION EDIT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the clean base interior photograph to be edited.${annotatedGuideClause}
+1. UNTOUCHED AREA LOCK: Everything OUTSIDE the masked target region in Reference Image 1 MUST REMAIN 100% IDENTICAL, UNCHANGED, AND PIXEL-LOCKED (preserve all unmasked furniture, walls, lighting, and perspective).
+2. MASKED REGION EDIT: Exclusively modify the masked target region according to the user instruction below, blending lighting, textures, and contact shadows seamlessly with the surrounding room, with zero red marker residue.`;
+    } else if (validRefs.length > 0) {
+      taskHeader = `[CRITICAL MULTI-IMAGE REFERENCE EDIT & CONTINUOUS REFINEMENT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the base interior photograph to be refined.
+Reference Image 2${validRefs.length > 1 ? ` (and subsequent reference images)` : ''} provides the visual reference asset for the requested modification.
+Modify Reference Image 1 according to the user instruction and Reference Image 2 while strictly preserving the core camera perspective, room architecture, and unmentioned furniture in Reference Image 1.`;
+    } else {
+      taskHeader = `[CRITICAL CONTINUOUS IMAGE REFINEMENT & INSTRUCTION EDIT MANDATE]
+PRIMARY TASK:
+Reference Image 1 is the base interior photograph to be refined.
+Execute the user's modification instruction accurately on Reference Image 1 while strictly preserving the overall camera perspective, core furniture identity (${productName || 'main sofa and ensemble'}), and unmentioned spatial elements.`;
+    }
+
+    const directivePrompt = `${taskHeader}
+
+USER MODIFICATION INSTRUCTION:
+${cleanInstruction || (editMode === 'erase' ? '移除蒙版选中区域的物体并自然补全背景。' : '根据蒙版选区与参考图对画面进行精细化重绘修改。')}
+
+MANDATORY QUALITY RULES:
+- Maintain photorealistic architectural photography quality, natural lighting harmony, and realistic ambient occlusion contact shadows.
+- Preserve the exact camera angle and furniture posture of Reference Image 1 unless explicitly instructed otherwise.
+- ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO LABELS, NO CHINESE CHARACTERS, NO WATERMARKS, NO RED MASK TINT.`;
+
+    const imagesPayload: Array<{ data: string; role: string }> = [
+      { data: resolvedBaseImage, role: 'composition_reference' }
+    ];
+    if (resolvedAnnotatedImage) {
+      imagesPayload.push({ data: resolvedAnnotatedImage, role: 'composition_reference' });
+    }
+    for (const refImg of validRefs) {
+      imagesPayload.push({ data: refImg, role: 'primary_product' });
+    }
+
+    let modelToUse = preferredModel;
+    if (!modelToUse || modelToUse === 'gemini-2.5-flash-image') {
+      modelToUse = 'gemini-nano-banana-2.1-preview';
+    }
+
+    const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
+    const gatewayRes = await fetch(gatewayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-uuid': 'system'
+      },
+      body: JSON.stringify({
+        prompt: directivePrompt,
+        model: modelToUse,
+        aspectRatio,
+        resolution,
+        images: imagesPayload,
+        ...(hasMask ? { mask: maskImage } : {}),
+        generationIntent: 'image_edit'
+      }),
+      signal: AbortSignal.timeout(180000)
+    });
+
+    const gatewayData = await gatewayRes.json();
+    if (!gatewayRes.ok || gatewayData.error) {
+      const errorMsg =
+        gatewayData.error?.message ||
+        (typeof gatewayData.error === 'string' ? gatewayData.error : '') ||
+        gatewayData.message ||
+        '图像二次精修生成失败';
+      throw new Error(errorMsg);
+    }
+
+    const imgUrlOrBase64 =
+      gatewayData.imageUrl ||
+      gatewayData.data?.[0]?.url ||
+      gatewayData.data?.[0]?.b64_json ||
+      gatewayData.images?.[0]?.data;
+
+    if (!imgUrlOrBase64) {
+      throw new Error('图像精修网关未返回有效图像数据');
+    }
+
+    let finalImageUrl = imgUrlOrBase64;
+    if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.startsWith('data:')) {
+      const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+      let imgBuffer = Buffer.from(base64Clean, 'base64');
+      try {
+        imgBuffer = await sharp(imgBuffer).webp({ quality: 92 }).toBuffer();
+      } catch (sharpErr) {
+        console.warn('Direct webp conversion fallback in inpaint-edit:', sharpErr);
+      }
+      await storage.put({
+        objectKey,
+        buffer: imgBuffer,
+        contentType: 'image/webp'
+      });
+      finalImageUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+    }
+
+    const modeLabel =
+      editMode === 'erase' ? '局部擦除精修' :
+      hasMask && validRefs.length > 0 ? '蒙版+参考图精修' :
+      hasMask ? '蒙版局部重绘' :
+      validRefs.length > 0 ? '参考图融合修改' : '提示词指令精修';
+
+    res.json({
+      success: true,
+      data: {
+        revisionId,
+        imageUrl: finalImageUrl,
+        objectKey,
+        aspectRatio,
+        label: modeLabel,
+        metaSummary: `${modeLabel}${cleanInstruction ? `：${cleanInstruction.slice(0, 36)}` : ''}`
+      }
+    });
+  } catch (err: any) {
+    console.error('[spaceShootRoutes] Inpaint-edit error:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to execute inpaint-edit'
     });
   }
 });

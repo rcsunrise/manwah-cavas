@@ -97,6 +97,7 @@ import { TemplateId } from '../../../types/posterTemplate';
 import { SeatAssignment } from '../../../types/spaceStudio';
 import { SpaceStudioPersistenceService } from '../../../services/spaceStudioPersistenceService';
 import { ClearRecordsModal } from '../components/modals/ClearRecordsModal';
+import { InpaintSubmitPayload } from '../components/CanvasInpaintModal';
 
 interface SpaceStudioShellProps {
   projectId?: string;
@@ -981,6 +982,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   const [isGeneratingMaster, setIsGeneratingMaster] = useState<boolean>(false);
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
   const [isOutpainting, setIsOutpainting] = useState<boolean>(false);
+  const [isInpainting, setIsInpainting] = useState<boolean>(false);
 
   // 多机位并发渲染调度状态引擎 (Multi-Shot Concurrent Generation Pool)
   const [renderingShotIds, setRenderingShotIds] = useState<string[]>([]);
@@ -2288,16 +2290,30 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const shotCustomRef = targetShot.customReferenceImage;
       const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
       const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
+      const isStudioSwapFullPhotoPreferred = activeSettings.renderMode === 'studio_swap';
       const primaryRef =
         shotCustomRef ||
         (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
-        primaryProd?.cropImageUrl ||
-        primaryProd?.cropBase64 ||
-        bestPrimaryView.reference?.publicUrl ||
-        bestPrimaryView.reference?.objectKey ||
-        primaryProd?.referenceImages?.[0]?.publicUrl ||
-        primaryProd?.referenceImages?.[0]?.objectKey ||
-        (primaryProd as any)?.uploadedImageUrl ||
+        (isStudioSwapFullPhotoPreferred
+          ? (
+              bestPrimaryView.reference?.publicUrl ||
+              bestPrimaryView.reference?.objectKey ||
+              primaryProd?.sourceMasterImageUrl ||
+              primaryProd?.referenceImages?.[0]?.publicUrl ||
+              primaryProd?.referenceImages?.[0]?.objectKey ||
+              (primaryProd as any)?.uploadedImageUrl ||
+              primaryProd?.cropImageUrl ||
+              primaryProd?.cropBase64
+            )
+          : (
+              primaryProd?.cropImageUrl ||
+              primaryProd?.cropBase64 ||
+              bestPrimaryView.reference?.publicUrl ||
+              bestPrimaryView.reference?.objectKey ||
+              primaryProd?.referenceImages?.[0]?.publicUrl ||
+              primaryProd?.referenceImages?.[0]?.objectKey ||
+              (primaryProd as any)?.uploadedImageUrl
+            )) ||
         (primaryProd as any)?.referenceImage ||
         products[0]?.cropImageUrl ||
         products[0]?.cropBase64 ||
@@ -2381,14 +2397,45 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
           },
           ...(() => {
-            if (targetShotCode === 'A00' || targetShot.decoupleOldMaster) {
+            if (
+              targetShotCode === 'A00' ||
+              (targetShot.decoupleOldMaster && activeSettings.renderMode !== 'studio_swap')
+            ) {
               return { sceneMasterReference: undefined, referenceShotCode: undefined };
             }
+            const a00Shot = shots.find((s) => s.templateCode === 'A00');
+            const a00Rev =
+              a00Shot?.revisions.find((r) => r.id === a00Shot.currentRevisionId) ||
+              (a00Shot?.revisions && a00Shot.revisions[0]);
+            const hasA00RevImage = Boolean(a00Rev?.imageUrl || a00Rev?.objectKey);
+            const a00MasterRef = hasA00RevImage && a00Rev
+              ? { objectKey: a00Rev.objectKey, imageUrl: a00Rev.imageUrl }
+              : effectiveSceneMaster && (effectiveSceneMaster.imageUrl || effectiveSceneMaster.objectKey)
+              ? { objectKey: effectiveSceneMaster.objectKey, imageUrl: effectiveSceneMaster.imageUrl }
+              : undefined;
+
             const a01Shot = shots.find((s) => s.templateCode === 'A01');
-            const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
+            const a01Rev =
+              a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) ||
+              (a01Shot?.revisions && a01Shot.revisions[0]);
             const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
 
-            // 当 A01 空间主大场景已生成时，且未解耦时，作为权威现场基准
+            // 在极简影棚换景 (studio_swap) 模式下，或当 A00 母版比 A01 更新时，优先以 A00 当前选定的空间母版作为全场唯一权威背景基准，
+            // 确保 A01~A09 所有镜头的背景硬装与窗景 100% 统一锚定至母版 A00！
+            const isA00NewerThanA01 = Boolean(
+              a00Rev?.createdAt && a01Rev?.createdAt && a00Rev.createdAt >= a01Rev.createdAt
+            );
+            const preferA00Master =
+              activeSettings.renderMode === 'studio_swap' || targetShotCode === 'A01' || isA00NewerThanA01;
+
+            if (preferA00Master && a00MasterRef) {
+              return {
+                sceneMasterReference: a00MasterRef,
+                referenceShotCode: 'A00'
+              };
+            }
+
+            // 当 A01 空间主大场景已生成且未解耦时，作为现场基准
             if (targetShotCode !== 'A01' && hasA01Image && a01Rev) {
               return {
                 sceneMasterReference: {
@@ -2400,12 +2447,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             }
 
             return {
-              sceneMasterReference: effectiveSceneMaster
-                ? {
-                    objectKey: effectiveSceneMaster.objectKey,
-                    imageUrl: effectiveSceneMaster.imageUrl
-                  }
-                : undefined,
+              sceneMasterReference: a00MasterRef,
               referenceShotCode: 'A00'
             };
           })(),
@@ -3057,16 +3099,30 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const shotCustomRef = targetShot.customReferenceImage;
       const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
       const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
+      const isStudioSwapFullPhotoPreferred = computeConfig.renderMode === 'studio_swap';
       const primaryRef =
         shotCustomRef ||
         (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
-        primaryProd?.cropImageUrl ||
-        primaryProd?.cropBase64 ||
-        bestPrimaryView.reference?.publicUrl ||
-        bestPrimaryView.reference?.objectKey ||
-        primaryProd?.referenceImages?.[0]?.publicUrl ||
-        primaryProd?.referenceImages?.[0]?.objectKey ||
-        (primaryProd as any)?.uploadedImageUrl ||
+        (isStudioSwapFullPhotoPreferred
+          ? (
+              bestPrimaryView.reference?.publicUrl ||
+              bestPrimaryView.reference?.objectKey ||
+              primaryProd?.sourceMasterImageUrl ||
+              primaryProd?.referenceImages?.[0]?.publicUrl ||
+              primaryProd?.referenceImages?.[0]?.objectKey ||
+              (primaryProd as any)?.uploadedImageUrl ||
+              primaryProd?.cropImageUrl ||
+              primaryProd?.cropBase64
+            )
+          : (
+              primaryProd?.cropImageUrl ||
+              primaryProd?.cropBase64 ||
+              bestPrimaryView.reference?.publicUrl ||
+              bestPrimaryView.reference?.objectKey ||
+              primaryProd?.referenceImages?.[0]?.publicUrl ||
+              primaryProd?.referenceImages?.[0]?.objectKey ||
+              (primaryProd as any)?.uploadedImageUrl
+            )) ||
         (primaryProd as any)?.referenceImage ||
         products[0]?.cropImageUrl ||
         products[0]?.cropBase64 ||
@@ -3163,15 +3219,33 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
           },
           ...(() => {
-            if (targetShot.templateCode === 'A00' || isBaseUploaded || targetShot.decoupleOldMaster) {
+            if (
+              targetShot.templateCode === 'A00' ||
+              isBaseUploaded ||
+              (targetShot.decoupleOldMaster && computeConfig.renderMode !== 'studio_swap')
+            ) {
               return { sceneMasterReference: undefined, referenceShotCode: undefined };
             }
+            const a00Shot = shots.find((s) => s.templateCode === 'A00');
+            const a00Rev = a00Shot?.revisions.find((r) => r.id === a00Shot.currentRevisionId) || (a00Shot?.revisions && a00Shot.revisions[0]);
+            const a00MasterRef = (a00Rev?.imageUrl || a00Rev?.objectKey)
+              ? { objectKey: a00Rev.objectKey, imageUrl: a00Rev.imageUrl }
+              : sceneMaster
+                ? { objectKey: sceneMaster.objectKey, imageUrl: sceneMaster.imageUrl }
+                : undefined;
+
             const a01Shot = shots.find((s) => s.templateCode === 'A01');
             const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
             const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
 
-            // 批量衍生时，除 A00/A01 以外的所有衍生镜头 (A02, A03 等) 优先继承 A01 成果图
-            if (targetShot.templateCode !== 'A01' && hasA01Image && a01Rev) {
+            // 极简影棚换景模式下，或者当 A00 母版比 A01 更新时，优先直接锚定 A00 空间母版
+            const isStudioSwapMode = computeConfig.renderMode === 'studio_swap';
+            const a00Time = a00Rev?.createdAt ? new Date(a00Rev.createdAt).getTime() : 0;
+            const a01Time = a01Rev?.createdAt ? new Date(a01Rev.createdAt).getTime() : 0;
+            const preferA00OverA01 = isStudioSwapMode || (Boolean(a00MasterRef) && a00Time > a01Time);
+
+            // 批量衍生时，除 A00/A01 以外的所有衍生镜头 (A02, A03 等) 优先继承 A01 成果图（非极简换景且 A01 为最新时）
+            if (!preferA00OverA01 && targetShot.templateCode !== 'A01' && hasA01Image && a01Rev) {
               return {
                 sceneMasterReference: {
                   objectKey: a01Rev.objectKey,
@@ -3182,12 +3256,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             }
 
             return {
-              sceneMasterReference: sceneMaster
-                ? {
-                    objectKey: sceneMaster.objectKey,
-                    imageUrl: sceneMaster.imageUrl
-                  }
-                : undefined,
+              sceneMasterReference: a00MasterRef,
               referenceShotCode: 'A00'
             };
           })(),
@@ -3524,6 +3593,182 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       abortControllersRef.current.delete(targetShot.id);
       setRenderingShotIds((prev) => prev.filter((id) => id !== targetShot.id));
       setIsOutpainting(false);
+    }
+  };
+
+  // 局部重绘与二次指令精修 (Inpainting & Surgical Instruction Edit)
+  const handleInpaintShot = async (payload: InpaintSubmitPayload) => {
+    const targetShot = activeShot;
+    if (!targetShot) return;
+
+    const isRenderingShot = renderingShotIds.includes(targetShot.id);
+    if (isInpainting || isRenderingShot) {
+      alert('当前镜头正在渲染计算中，请稍候...');
+      return;
+    }
+
+    setIsInpainting(true);
+    const controller = new AbortController();
+    abortControllersRef.current.set(targetShot.id, controller);
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+      console.warn(`[SpaceStudioShell] 局部重绘任务超时已自动中断: ${targetShot.id}`);
+    }, 180000);
+    renderTimeoutsRef.current.set(targetShot.id, timeout);
+    setRenderingShotIds((prev) => Array.from(new Set([...prev, targetShot.id])));
+
+    const jobId = `job-inpaint-${targetShot.templateCode.toLowerCase()}-${Date.now()}`;
+    const initialJob: GenerationJob = {
+      jobId,
+      phase: 'shoot',
+      targetCode: targetShot.templateCode,
+      status: 'generating',
+      progress: 30,
+      provider: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+      settings: {
+        model: computeConfig.model,
+        resolution: computeConfig.resolution,
+        aspectRatio: computeConfig.aspectRatio || '4:3',
+        useRandomSeed: true
+      },
+      createdAt: new Date().toISOString()
+    };
+    setCurrentJob(initialJob);
+
+    try {
+      const res = await fetch('/api/space/shoot/inpaint-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          projectId: 'manwah-noble-space-01',
+          shotId: targetShot.id,
+          shotCode: targetShot.templateCode,
+          baseRevisionId: targetShot.currentRevisionId,
+          baseImage: payload.baseImage,
+          maskImage: payload.maskImage,
+          annotatedImage: payload.annotatedImage,
+          maskBounds: payload.maskBounds,
+          referenceImages: payload.referenceImages,
+          instruction: payload.instruction,
+          editMode: payload.editMode,
+          roomName: selectedSpace.name.split(' (')[0],
+          styleName: selectedStyle.name.split(' (')[0],
+          preferredModel: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+          aspectRatio: computeConfig.aspectRatio || '4:3',
+          resolution: computeConfig.resolution || '2K',
+          productName: primaryProductForCanvas?.name
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorMsg =
+          data.error?.message ||
+          (typeof data.error === 'string' ? data.error : '') ||
+          data.message ||
+          '局部重绘生成失败';
+        throw new Error(errorMsg);
+      }
+
+      const nextRevNum = (targetShot.revisions.length || 0) + 1;
+      const newRevision: ShotRevision = {
+        id: data.data.revisionId,
+        shotId: targetShot.id,
+        revisionNumber: nextRevNum,
+        revisionType: 'scene',
+        label: data.data.label || `精修 v${nextRevNum}`,
+        metaSummary: data.data.metaSummary || `局部重绘微调 · 保留未涂抹区域`,
+        parentRevisionId: targetShot.currentRevisionId,
+        objectKey: data.data.objectKey,
+        imageUrl: data.data.imageUrl,
+        thumbnailUrl: data.data.imageUrl,
+        promptSnapshotId: `inpaint-${data.data.revisionId}`,
+        status: 'approved',
+        score: {
+          productIdentity: 98,
+          placement: 98,
+          sceneContinuity: 98,
+          shotIntent: 98,
+          overall: 98
+        },
+        provenance: 'SOLVER_RESOLVED',
+        productionTruth: false,
+        createdAt: new Date().toISOString()
+      };
+
+      setShots((prev) =>
+        prev.map((s) => {
+          if (s.id !== targetShot.id) return s;
+          return {
+            ...s,
+            status: 'passed',
+            currentRevisionId: newRevision.id,
+            revisions: [newRevision, ...s.revisions.filter((r) => r.id !== newRevision.id)]
+          };
+        })
+      );
+
+      // 若精修的是 A00 空间母版，同步更新母版图
+      if (targetShot.templateCode === 'A00') {
+        setSceneMaster((prev) =>
+          prev
+            ? {
+                ...prev,
+                imageUrl: data.data.imageUrl,
+                objectKey: data.data.objectKey
+              }
+            : null
+        );
+      }
+
+      setCurrentJob((j) => (j ? { ...j, status: 'completed', progress: 100, finishedAt: new Date().toISOString() } : null));
+    } catch (err: unknown) {
+      const isAborted =
+        (err as any)?.name === 'AbortError' ||
+        (err as any)?.name === 'TimeoutError' ||
+        (err as any)?.message?.includes('aborted') ||
+        controller.signal.aborted;
+
+      if (isAborted) {
+        console.log('[SpaceStudioShell] 局部重绘任务已被打断或超时中止');
+        setCurrentJob(null);
+      } else {
+        let errorMessage =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'object' && err !== null && 'message' in err
+            ? (err as any).message
+            : typeof err === 'string'
+            ? err
+            : '局部重绘生成失败，请重试';
+        if (errorMessage.includes('Failed to fetch')) {
+          errorMessage = '后端服务连接异常或正在重启，请刷新重试。';
+        }
+        console.error('Failed to inpaint shot:', err);
+        alert(`局部重绘提示: ${errorMessage}`);
+        setCurrentJob((j) =>
+          j
+            ? {
+                ...j,
+                status: 'failed',
+                error: errorMessage,
+                progress: 100,
+                finishedAt: new Date().toISOString()
+              }
+            : null
+        );
+      }
+    } finally {
+      const timer = renderTimeoutsRef.current.get(targetShot.id);
+      if (timer) {
+        clearTimeout(timer);
+        renderTimeoutsRef.current.delete(targetShot.id);
+      }
+      abortControllersRef.current.delete(targetShot.id);
+      setRenderingShotIds((prev) => prev.filter((id) => id !== targetShot.id));
+      setIsInpainting(false);
     }
   };
 
@@ -3974,11 +4219,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           resolution={computeConfig.resolution || '2K'}
           onChangeResolution={(res) => handleUpdateComputeConfig({ resolution: res })}
           renderMode={computeConfig.renderMode}
-          isGenerating={isGeneratingCurrentShot || (isRenderingHuman && renderingShotIds.includes(activeShot.id)) || isOutpainting}
+          isGenerating={isGeneratingCurrentShot || (isRenderingHuman && renderingShotIds.includes(activeShot.id)) || isOutpainting || isInpainting}
           onCancelRendering={() => handleCancelRendering(activeShot.id)}
           renderingShotCode={renderingShotCode}
           onOutpaint={handleOutpaintShot}
           isOutpainting={isOutpainting}
+          onInpaintEdit={handleInpaintShot}
+          isInpainting={isInpainting}
           stylePreset={selectedStyle}
           spacePreset={selectedSpace}
           styleName={selectedStyle.name.split(' (')[0]}
@@ -4163,7 +4410,35 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           activeShot={activeShot}
           activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
           totalShots={shots.length}
-          sceneMaster={sceneMaster}
+          sceneMaster={(() => {
+            const a00 = shots.find((s) => s.templateCode === 'A00');
+            const a00Rev = a00?.revisions.find((r) => r.id === a00.currentRevisionId) || a00?.revisions?.[0];
+            if (a00Rev?.imageUrl) {
+              return {
+                id: sceneMaster?.id || `sm-${a00Rev.id}`,
+                projectId: sceneMaster?.projectId || 'manwah-noble-space-01',
+                spaceId: selectedSpace.id,
+                styleId: selectedStyle.id,
+                blueprintId: blueprint?.id || 'bp-default',
+                imageUrl: a00Rev.imageUrl,
+                objectKey: a00Rev.objectKey || `shots/${a00Rev.id}.webp`,
+                isLocked: true,
+                locks: sceneMaster?.locks || {
+                  productIdentity: true,
+                  placement: true,
+                  architecture: true,
+                  style: true,
+                  material: true,
+                  lighting: true,
+                  camera: true,
+                  human: false
+                },
+                promptSnapshotId: sceneMaster?.promptSnapshotId || a00Rev.id,
+                createdAt: a00Rev.createdAt || new Date().toISOString()
+              };
+            }
+            return sceneMaster;
+          })()}
           products={products}
           onSelectProduct={handleSetPrimaryProduct}
           onBindShotProduct={(shotId, productId) => {
@@ -4322,6 +4597,23 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             setShots((prev) =>
               prev.map((s) => (s.id === activeShot.id ? { ...s, currentRevisionId: revId } : s))
             );
+            if (activeShot.templateCode === 'A00') {
+              const chosenRev = activeShot.revisions.find((r) => r.id === revId);
+              if (chosenRev) {
+                setSceneMaster((prev) => {
+                  const next = prev
+                    ? {
+                        ...prev,
+                        objectKey: chosenRev.objectKey,
+                        imageUrl: chosenRev.imageUrl,
+                        promptSnapshotId: chosenRev.id
+                      }
+                    : null;
+                  sceneMasterRef.current = next;
+                  return next;
+                });
+              }
+            }
           }}
           onConfirmProductionTruth={handleConfirmProductionTruth}
         />
