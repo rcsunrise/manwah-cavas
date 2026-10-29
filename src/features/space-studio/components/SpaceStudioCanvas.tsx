@@ -374,24 +374,33 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     : undefined;
 
   // 5. 核心图片优先级校正：
-  // 当用户在顶栏显式点击切换历史版本（如 纯空间 (v1)）时，画布强制优先展示当前选中版本的 currentRevision.imageUrl；
-  // 仅在候选批次严格匹配、且用户在底部明确选择品鉴某张候选卡片时，才展示该候选卡片；
-  // 异构候选方案（如查看纯空间时残存的人物卡片）绝不遮蔽画布！
+  // 当当前版本为局部重绘/扩图产生的定稿版本（如 rev-edit-* / rev-outpaint-*）时，定稿图 revisionFinalUrl 具有绝对最高优先级；
+  // 仅在非精修版本、候选批次严格匹配、且用户在底部明确选择品鉴某张候选卡片时，才展示该候选卡片；
+  // 历史候选方案绝不遮蔽最新定稿与重绘画面！
+  const isEditRevision = Boolean(
+    currentRevision?.id?.startsWith('rev-edit-') ||
+    currentRevision?.id?.startsWith('rev-outpaint-') ||
+    currentRevision?.promptSnapshotId?.startsWith('inpaint-') ||
+    currentRevision?.promptSnapshotId?.startsWith('outpaint-')
+  );
+
   const isExplicitCandidateSelected = Boolean(
+    !isEditRevision &&
     selectedCandidateId &&
     isCandidateBatchMatchingCurrentRevision &&
     candidateBatch?.candidates?.some((c) => c.id === selectedCandidateId)
   );
 
   const hasAnyActualImage = Boolean(
-    (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
     revisionFinalUrl ||
+    (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
     (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined)
   );
 
   const rawCandidateUrl = triedFallback
-    ? (localFileUrl || activeCandidate?.imageUrl || currentRevision?.imageUrl)
+    ? (localFileUrl || (isEditRevision ? currentRevision?.imageUrl : activeCandidate?.imageUrl) || currentRevision?.imageUrl)
     : (
+        (isEditRevision ? revisionFinalUrl : undefined) ||
         (isExplicitCandidateSelected ? activeCandidate?.imageUrl : undefined) ||
         revisionFinalUrl ||
         (isCandidateBatchMatchingCurrentRevision ? activeCandidate?.imageUrl : undefined) ||

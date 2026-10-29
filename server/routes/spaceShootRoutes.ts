@@ -1029,9 +1029,88 @@ MANDATORY QUALITY RULES:
     }
 
     let finalImageUrl = imgUrlOrBase64;
+    let imgBuffer: Buffer | null = null;
+
     if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.startsWith('data:')) {
       const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
-      let imgBuffer = Buffer.from(base64Clean, 'base64');
+      imgBuffer = Buffer.from(base64Clean, 'base64');
+    } else if (typeof imgUrlOrBase64 === 'string' && imgUrlOrBase64.startsWith('http')) {
+      try {
+        const fetchRes = await fetch(imgUrlOrBase64);
+        if (fetchRes.ok) {
+          imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+        }
+      } catch (dlErr) {
+        console.warn('[spaceShootRoutes] Failed to fetch remote gateway image:', dlErr);
+      }
+    }
+
+    // 像素级定域重绘与背景保底锁定 (Pixel-Level Latent Mask Composite & Alpha Lock)
+    // 工业级保底：针对带蒙版的重绘与消除任务，未涂抹区域 100% 继承原底图像素，防止大模型全画幅重采样导致背景漂移
+    if (imgBuffer && hasMask && maskImage && resolvedBaseImage) {
+      try {
+        const baseClean = resolvedBaseImage.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+        const baseRawBuffer = Buffer.from(baseClean, 'base64');
+        const baseMeta = await sharp(baseRawBuffer).metadata();
+        const targetW = baseMeta.width || 2400;
+        const targetH = baseMeta.height || 1800;
+
+        // 1. 底图与生成图统一转为原始 RGB 缓冲区
+        const basePixelBuf = await sharp(baseRawBuffer)
+          .resize(targetW, targetH, { fit: 'fill' })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+
+        const genPixelBuf = await sharp(imgBuffer)
+          .resize(targetW, targetH, { fit: 'fill' })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+
+        // 2. 蒙版转为单通道灰度掩码，边缘做 1.5px 轻微羽化保证接缝无缝融合
+        const maskClean = String(maskImage).replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+        const maskRawInput = Buffer.from(maskClean, 'base64');
+        const maskPixelBuf = await sharp(maskRawInput)
+          .resize(targetW, targetH, { fit: 'fill' })
+          .blur(1.5)
+          .extractChannel(0)
+          .raw()
+          .toBuffer();
+
+        // 3. 逐像素无损合成：蒙版外(0)恒等锁定原图，蒙版内(255)填充AI成果，接缝区线性过渡
+        const blendedBuf = Buffer.allocUnsafe(targetW * targetH * 3);
+        const totalPixels = targetW * targetH;
+
+        for (let i = 0; i < totalPixels; i++) {
+          const m = maskPixelBuf[i];
+          const idx = i * 3;
+          if (m === 0) {
+            blendedBuf[idx] = basePixelBuf[idx];
+            blendedBuf[idx + 1] = basePixelBuf[idx + 1];
+            blendedBuf[idx + 2] = basePixelBuf[idx + 2];
+          } else if (m === 255) {
+            blendedBuf[idx] = genPixelBuf[idx];
+            blendedBuf[idx + 1] = genPixelBuf[idx + 1];
+            blendedBuf[idx + 2] = genPixelBuf[idx + 2];
+          } else {
+            const alpha = m / 255.0;
+            const invAlpha = 1.0 - alpha;
+            blendedBuf[idx] = Math.round(genPixelBuf[idx] * alpha + basePixelBuf[idx] * invAlpha);
+            blendedBuf[idx + 1] = Math.round(genPixelBuf[idx + 1] * alpha + basePixelBuf[idx + 1] * invAlpha);
+            blendedBuf[idx + 2] = Math.round(genPixelBuf[idx + 2] * alpha + basePixelBuf[idx + 2] * invAlpha);
+          }
+        }
+
+        imgBuffer = await sharp(blendedBuf, { raw: { width: targetW, height: targetH, channels: 3 } })
+          .webp({ quality: 92 })
+          .toBuffer();
+      } catch (blendErr) {
+        console.warn('[spaceShootRoutes] Mask pixel composite fallback warning:', blendErr);
+      }
+    }
+
+    if (imgBuffer) {
       try {
         imgBuffer = await sharp(imgBuffer).webp({ quality: 92 }).toBuffer();
       } catch (sharpErr) {

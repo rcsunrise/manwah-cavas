@@ -2562,6 +2562,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       );
 
+      // 释放候选卡片占用，保证画布立即展示最新精修定稿版本
+      setSelectedCandidateIds((prev) => {
+        const next = { ...prev };
+        delete next[targetShot.id];
+        return next;
+      });
+
       let createdSceneMaster: SceneMaster | null = null;
       // 若当前渲染的是 A00 空间母版，自动初始化并锁定 SceneMaster 全局物理基准
       if (targetShot.templateCode === 'A00') {
@@ -3537,6 +3544,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       );
 
+      // 释放候选卡片占用，保证画布立即展示最新精修定稿版本
+      setSelectedCandidateIds((prev) => {
+        const next = { ...prev };
+        delete next[targetShot.id];
+        return next;
+      });
+
       // 若扩图的是 A00 空间母版，同步更新母版图
       if (targetShot.templateCode === 'A00') {
         setSceneMaster((prev) =>
@@ -3709,6 +3723,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           };
         })
       );
+
+      // 释放候选卡片占用，保证画布立即展示最新精修定稿版本
+      setSelectedCandidateIds((prev) => {
+        const next = { ...prev };
+        delete next[targetShot.id];
+        return next;
+      });
 
       // 若精修的是 A00 空间母版，同步更新母版图
       if (targetShot.templateCode === 'A00') {

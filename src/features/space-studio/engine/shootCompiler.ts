@@ -681,7 +681,12 @@ Camera: 50mm portrait environmental prime lens at 95cm height (seated eye-level 
         'bookcase',
         'wall niche',
         'built-in shelving',
-        'library wall'
+        'library wall',
+        'visible ceiling',
+        'ceiling cove',
+        'ceiling light trough',
+        'low ceiling compression',
+        'squeezed ceiling'
       );
     } else if (shot.templateCode === 'A06') {
       const closedZeroWallMandate =
@@ -718,6 +723,13 @@ Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with
         'inpainting distant sofa',
         'different room background',
         'altered wall finish',
+        'partition wall',
+        'divider wall',
+        'freestanding wall',
+        'room screen',
+        'newly invented partition',
+        'fake corner wall',
+        'column jutting out',
         'bookshelf',
         'bookcase',
         'library wall',
@@ -727,6 +739,11 @@ Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with
         'wooden wall of shelves'
       );
     } else if (shot.templateCode === 'A07') {
+      const matchedView = primaryProduct ? ShootCompiler.selectBestProductReferenceForShot(primaryProduct, shot.templateCode) : null;
+      const isFrontalView =
+        matchedView?.viewType === 'front' ||
+        camera.yawDeg === 0 ||
+        Boolean(primaryProduct?.name && /正大角度|正面|frontal/i.test(primaryProduct.name));
       const linkageDirective = `[DUAL-TRACK LINKAGE: SOFA & COFFEE TABLE ENSEMBLE WITHIN MASTER SPATIAL ANCHOR]
 - HERO ENSEMBLE ASSET: Inherit the primary sofa and dual nesting marble coffee tables from product ground truth, highlighting the 450mm vs 400mm golden height drop.
 - SPATIAL & DEPTH ANCHOR: Lock the architectural background, geometric area rug, and left window daylight strictly from spatial master A00. Use 55mm medium telephoto perspective to compress depth, creating an intimate conversation grouping without wide empty voids.`;
@@ -736,14 +753,17 @@ Camera: 60mm telephoto lateral profile lens at 90cm seated eye-level height with
 ${linkageDirective}
 ${camera.lensMm}mm lens at ${camera.heightCm}cm height with ${camera.pitchDeg} degree tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00.`;
       } else {
+        const perspectiveDescription = isFrontalView
+          ? 'with direct straight-on living room perspective aligned with the furniture ensemble'
+          : `${camera.yawDeg} degree oblique angle and -5 degree downward tilt`;
         shotMandate = `[SHOT MANDATE - A07 ENSEMBLE LIVING COMPOSITION (Studio Sample 55mm Medium Ensemble)]:
 ${linkageDirective}
-55mm medium telephoto prime lens at 95cm height with -35 degree oblique angle and -5 degree downward tilt in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
+55mm medium telephoto prime lens at 95cm height ${perspectiveDescription} in 4:3 horizontal aspect ratio. Medium living ensemble grouping capturing hero sofa in midground, luxury marble center coffee table and dark side accent table in foreground highlighting the golden height drop between the 450mm marble table and 400mm sofa seat, carpet geometric pattern anchor, foliage shadow falloff anchor, and deep contact AO shadows, bathed in natural daytime window daylight and soft 3000K ceiling cove ambient illumination from A00, creating a warm cohesive conversation living space with rich material layering.`;
       }
       negativeFramingConstraints.push(
         'wide empty room panorama',
         'tiny distant coffee table',
-        'flat frontal mugshot',
+        ...(isFrontalView ? [] : ['flat frontal mugshot']),
         'vast empty foreground',
         'floating furniture',
         'disconnected coffee table',

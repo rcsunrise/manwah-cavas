@@ -473,5 +473,169 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).toContain('COMPLETE OLD BACKGROUND ERASURE');
     expect(capturedBody.prompt).toContain('different room from Reference Image 2');
     expect(capturedBody.prompt).toContain('newly invented staircase');
+
+    // 3. For A02 45° angled shot, must inject 45° 2-point perspective anchors and forbid flat frontal locks
+    expect(capturedBody.prompt).toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+    expect(capturedBody.prompt).toContain('45-DEGREE CAMERA PERSPECTIVE & 2-POINT DEPTH LOCK');
+    expect(capturedBody.prompt).not.toContain('STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK');
+    expect(capturedBody.prompt).toContain('flat frontal mugshot');
+    expect(capturedBody.prompt).toContain('copying 0-degree frontal camera angle from Reference Image 2');
+  });
+
+  it('A05 2/3主沙发休闲景：锁定天花板 100% 出画，严禁在画框顶部压缩塞入天花板', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-a05',
+      shotCode: 'A05',
+      referenceShotCode: 'A00',
+      positivePrompt: '2/3 HERO SOFA PRIVATE WINE LOUNGE',
+      negativePrompt: '',
+      aspectRatio: '3:4',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕·现代美式沙发套组',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕·现代美式沙发套组',
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '顶层天际会所大宅',
+      styleName: '都会收藏家',
+      cameraSettings: { lensMm: 50, heightCm: 95, yawDeg: 28, pitchDeg: 0 },
+      objectKey: 'test/studio_swap_a05_out_of_frame_ceiling.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    // 必须包含天花板完全出画与防压缩锁
+    expect(capturedBody.prompt).toContain('OUT-OF-FRAME CEILING');
+    expect(capturedBody.prompt).toContain('ZERO CEILING COMPRESSION LOCK');
+    expect(capturedBody.prompt).toContain('visible ceiling');
+    expect(capturedBody.prompt).toContain('low ceiling compression');
+    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+  });
+
+  it('A06 零靠墙侧景：锁定沙发背部贴靠 A00 客厅主立面贯通大墙，严禁发明任何隔断假墙', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-a06',
+      shotCode: 'A06',
+      referenceShotCode: 'A00',
+      positivePrompt: 'A06 ZERO-WALL CLEARANCE PROFILE VIEW',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕·现代美式沙发套组',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕·现代美式沙发套组',
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '顶层天际会所大宅',
+      styleName: '都会收藏家',
+      cameraSettings: { lensMm: 60, heightCm: 90, yawDeg: 88, pitchDeg: 0 },
+      objectKey: 'test/studio_swap_a06_continuous_wall.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    // 必须包含连续客厅大墙锁定与严禁隔断假墙
+    expect(capturedBody.prompt).toContain('PURE LATERAL PROFILE & CONTINUOUS LIVING ROOM MAIN WALL LOCK');
+    expect(capturedBody.prompt).toContain('ZERO-WALL CLEARANCE LOCK');
+    expect(capturedBody.prompt).toContain('partition wall');
+    expect(capturedBody.prompt).toContain('freestanding wall');
+    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+  });
+
+  it('A07 沙发茶几组群中景：自适应继承正面素材视角，严禁强制注入对角透视与反正面负向词', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-a07',
+      shotCode: 'A07',
+      referenceShotCode: 'A00',
+      positivePrompt: 'A07 ENSEMBLE LIVING COMPOSITION 正大角度全家欢聚',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕·现代美式沙发茶几套组',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕·现代美式沙发茶几套组 (1 正大角度)',
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '顶层天际会所大宅',
+      styleName: '都会收藏家',
+      cameraSettings: { lensMm: 55, heightCm: 95, yawDeg: 0, pitchDeg: -5 },
+      objectKey: 'test/studio_swap_a07_frontal_ensemble.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    // 保持正面平视秩序，绝不能被强行扭转为 45 度对角透视
+    expect(capturedBody.prompt).toContain('STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK');
+    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+    expect(capturedBody.prompt).not.toContain('flat frontal mugshot');
   });
 });

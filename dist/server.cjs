@@ -18560,10 +18560,16 @@ function buildStudioSwapDirective(params) {
     context,
     lightingHint,
     hasSceneMasterReference = false,
-    referenceShotCode = "A00"
+    referenceShotCode = "A00",
+    shotCode,
+    cameraSettings,
+    positivePrompt
   } = params;
   const effectiveRoomDesc = roomName || spacePreset?.name || "metropolitan luxury apartment living room";
   const effectiveStyleDesc = styleName || stylePreset?.name || "contemporary luxury";
+  const isLateralProfileShot = shotCode === "A06" || cameraSettings && Math.abs(cameraSettings.yawDeg || 0) >= 75 || Boolean(positivePrompt && /ZERO-WALL|零靠墙|pure lateral|side profile|88 degree|90 degree/i.test(positivePrompt));
+  const isCloseOrMediumCrop = ["A04", "A05", "A08"].includes(shotCode || "") || Boolean(positivePrompt && /2\/3 HERO SOFA|2\/3主沙发|三分之二|CRAFTSMANSHIP|特写|DETAIL/i.test(positivePrompt));
+  const isAngledShot = !isLateralProfileShot && !isCloseOrMediumCrop && (shotCode === "A02" || Boolean(positivePrompt && /45-degree|45°|3\+1 ENSEMBLE/i.test(positivePrompt)) || cameraSettings && Math.abs(cameraSettings.yawDeg || 0) >= 20 && Math.abs(cameraSettings.yawDeg || 0) < 75 && !["A00", "A01", "A03", "A04", "A05", "A07"].includes(shotCode || "") && !Boolean(positivePrompt && /正大角度|GRAND FRONTAL|straight-on|0-degree|frontal view/i.test(positivePrompt)));
   const spaceDna = context?.spaceDna && context.spaceDna.length > 0 ? context.spaceDna : [
     spacePreset?.ceilingHeight ? `${spacePreset.ceilingHeight}m ceiling headroom` : "",
     ...flattenPresetField(spacePreset?.signatureFeatures).map((f) => `architectural feature: ${f}`),
@@ -18588,10 +18594,58 @@ function buildStudioSwapDirective(params) {
     ...hasSceneMasterReference ? [
       "flat 0-degree frontal view when Reference Image 1 is angled, rotating angled furniture to face front, copying camera angle from Reference Image 2, retaining old background from Reference Image 1, keeping old framed picture or wall art from Reference Image 1, keeping old floor lamp from Reference Image 1, inverted left-right window side from Reference Image 2, different room from Reference Image 2, inconsistent background wall, mismatched wall moldings, newly invented staircase, spiral stairs, mezzanine loft, extra fireplace not in Reference Image 2, altered window style, different floor material"
     ] : [],
+    ...isCloseOrMediumCrop ? [
+      "visible ceiling",
+      "ceiling cove",
+      "ceiling light trough",
+      "low ceiling compression",
+      "squeezed ceiling",
+      "cropped ceiling beam",
+      "ceiling slab",
+      "false ceiling",
+      "low headroom"
+    ] : [],
+    ...isLateralProfileShot ? [
+      "partition wall",
+      "divider wall",
+      "freestanding wall",
+      "room screen",
+      "newly invented partition",
+      "fake corner wall",
+      "column jutting out",
+      "half wall",
+      "protruding wall behind sofa",
+      "doorway behind sofa",
+      "cubicle wall"
+    ] : [],
+    ...isAngledShot ? [
+      "flat frontal mugshot",
+      "flat frontal view",
+      "straight-on camera",
+      "straight-on frontal view",
+      "symmetrical center sofa",
+      "horizontal sofa parallel to screen",
+      "front-facing sofa",
+      "facing directly forward",
+      "flat 1-point perspective",
+      "flat background wall parallel to screen",
+      "zero perspective depth",
+      "copying 0-degree frontal camera angle from Reference Image 2"
+    ] : [],
     ...spaceNegatives,
     ...styleNegatives,
     "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces"
   ].filter(Boolean).join(", ");
+  const spatialContinuityDirective = isLateralProfileShot ? `  * PURE LATERAL PROFILE & CONTINUOUS LIVING ROOM MAIN WALL LOCK (A06):
+    The camera is stationed at an 85-to-90 degree pure lateral side profile (yaw: ${cameraSettings?.yawDeg ?? 88}\xB0), looking longitudinally across the living room parallel to the main wall.
+    1) HERO SOFA FLUSH AGAINST LIVING ROOM WALL: The hero sofa's backrest is positioned flush (<5cm) against the EXACT SAME continuous living room main backdrop wall from Reference Image 2.
+    2) STRICT PROHIBITION ON INVENTED PARTITIONS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner directly behind the sofa! The back wall must remain the single, continuous planar living room backdrop wall from Reference Image 2 extending into the deep background.
+    3) Maintain the room's authentic daylight direction and window placement as established in Reference Image 2, seen in longitudinal side perspective.` : isAngledShot ? `  * 45-DEGREE CORNER PERSPECTIVE ANCHOR: The camera is stationed at the diagonal flank (yaw: ${cameraSettings?.yawDeg ?? -45}\xB0, 2-point perspective depth). Reconstruct the master room finishes and materials from Reference Image 2 (wall molding, marble, wood slats, window daylight, ceiling cove) foreshortened along the diagonal vanishing lines matching Reference Image 1's 45-degree camera perspective:
+    1) The main architectural background wall and floor joints must recede diagonally with authentic 2-point perspective depth toward the back vanishing point (DO NOT flatten the back wall parallel to the camera!).
+    2) Keep the natural window daylight direction and architectural materials completely consistent with Reference Image 2, but projected accurately under Reference Image 1's diagonal camera viewpoint.
+    3) Strictly DO NOT force a flat 0-degree frontal elevation sequence across the screen. Reference Image 1's furniture is at a 45-degree angle, so the room architecture behind it MUST recede into 3D diagonal depth!` : `  * STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK: Reconstruct the exact Left-to-Right architectural sequence from Reference Image 2's top panoramic band onto the background behind Reference Image 1's furniture, foreshortened to match Reference Image 1's camera perspective:
+    1) Keep the window on the SAME side (e.g. Right side) as shown in Reference Image 2's panoramic band (do NOT leave a window on the left side if Reference Image 1 had one!).
+    2) Keep the left-wall French wainscoting + marble slab, center vertical wood slat paneling (CLEAN, with NO framed picture/poster hanging on it!), and right-wall French molding / fireplace mantel in the exact same Left-to-Right order as Reference Image 2!`;
   const masterContinuitySection = hasSceneMasterReference ? `
 [SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2 (CRITICAL)]:
 - REFERENCE IMAGE 1 ([\u53C2\u8003\u56FE1\uFF5C\u6784\u56FE\u53C2\u8003] - Immutable Foreground Furniture & Camera Angle Base):
@@ -18604,9 +18658,7 @@ function buildStudioSwapDirective(params) {
     - BOTTOM-LEFT PANEL: Shows the middle-right architectural feature (such as fireplace mantel / right wall molding) and full window curtain details of ${referenceShotCode}.
     - BOTTOM-RIGHT PANEL: Shows the exact area rug & herringbone/wood/stone flooring material of ${referenceShotCode}.
   * Because Reference Image 2 is a multi-panel reference board with white divider bars (NOT a full room canvas), you must NEVER copy its split-panel grid or change Reference Image 1's camera angle!
-  * STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK: Reconstruct the exact Left-to-Right architectural sequence from Reference Image 2's top panoramic band onto the background behind Reference Image 1's furniture, foreshortened to match Reference Image 1's 45-degree / custom camera perspective:
-    1) Keep the window on the SAME side (e.g. Right side) as shown in Reference Image 2's panoramic band (do NOT leave a window on the left side if Reference Image 1 had one!).
-    2) Keep the left-wall French wainscoting + marble slab, center vertical wood slat paneling (CLEAN, with NO framed picture/poster hanging on it!), and right-wall French molding / fireplace mantel in the exact same Left-to-Right order as Reference Image 2!
+${spatialContinuityDirective}
   * STRICT PROHIBITION: Do NOT invent any new architectural features not present in Reference Image 2, and do NOT carry over any framed wall picture or floor lamp from Reference Image 1's old background!
 ` : "";
   return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
@@ -18620,10 +18672,11 @@ YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND (walls
 
 1. ROOM TOPOLOGY (\u6237\u578B): ${effectiveRoomDesc}
 ${spaceDna.map((s) => `   - ${s}`).join("\n")}
-${needsVerticalReveal ? "   - TOPOLOGY ADAPTATION: Express the ceiling height / floor level change ONLY through background cues that are naturally visible within the locked camera frame (distant steps, upper wall volume, tall window mullions). Never move, lift, or re-scale the furniture and never change the camera to reveal it.\n" : ""}
+${isCloseOrMediumCrop ? "   - VERTICAL FRAMING & OUT-OF-FRAME CEILING: This is a close portrait/medium crop where the top of the frame cuts off at mid-wall level (~1.8m height). The ceiling, ceiling cove, and light troughs are FAR ABOVE the top edge and are 100% OUT OF FRAME. The backdrop wall finishes (French wainscoting / marble / wood paneling) must extend cleanly and vertically straight out of the top of the frame. ABSOLUTELY DO NOT compress, lower, or draw any ceiling cove, light trough, or ceiling beams into the top of the frame!\n" : ""}
+${needsVerticalReveal && !isCloseOrMediumCrop ? "   - TOPOLOGY ADAPTATION: Express the ceiling height / floor level change ONLY through background cues that are naturally visible within the locked camera frame (distant steps, upper wall volume, tall window mullions). Never move, lift, or re-scale the furniture and never change the camera to reveal it.\n" : ""}
 2. INTERIOR FINISHES & AESTHETIC (\u786C\u88C5\u7F8E\u5B66): ${effectiveStyleDesc}
 ${styleDna.map((s) => `   - ${s}`).join("\n")}
-   - The wall treatment, flooring material, ceiling details and color palette MUST follow this aesthetic faithfully${hasSceneMasterReference ? " and stay identical to Reference Image 2" : ""}. Plumb vertical lines aligned with the original perspective.
+   - The wall treatment, flooring material, ceiling details and color palette MUST follow this aesthetic faithfully${hasSceneMasterReference ? " and stay identical to Reference Image 2" : ""}.${isCloseOrMediumCrop ? " Because this is a close/medium crop, the wall paneling extends straight up out of frame; DO NOT draw any ceiling cove." : isLateralProfileShot ? " The back wall runs continuously along the side in deep longitudinal perspective; strictly DO NOT draw partition walls." : isAngledShot ? " Receding wall moldings, vertical wood slats, and flooring joints follow Reference Image 1's 45-degree diagonal vanishing lines." : " Plumb vertical lines aligned with the original perspective."}
 
 3. NATURAL ILLUMINATION & CONTACT SHADOWS:
    - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the new floor/area rug, eliminating any floating sticker artifact.
@@ -18632,8 +18685,25 @@ ${styleDna.map((s) => `   - ${s}`).join("\n")}
 
 4. PRESERVE ORIGINAL FURNITURE POSTURE:
    - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
+${isCloseOrMediumCrop ? `
+5. CLOSE/MEDIUM CROP OPTICS & ZERO CEILING COMPRESSION LOCK:
+   - Reference Image 1 is closely framed on the hero furniture (${shotCode || "close crop"}).
+   - The top edge cuts off at mid-wall level. The ceiling is COMPLETELY OUT OF FRAME.
+   - ABSOLUTE PROHIBITION ON CEILING COMPRESSION: STRICTLY FORBIDDEN to squeeze, draw, or render any ceiling cove, recessed light trough, or ceiling crown molding into the top border! Only the continuous wall panels/marble from Reference Image 2 should appear behind the furniture, extending naturally beyond the top of the image!
+` : isLateralProfileShot ? `
+5. PURE LATERAL PROFILE & ZERO-WALL CLEARANCE LOCK (A06):
+   - Reference Image 1 is captured in a pure side profile view (yaw: ~88\xB0).
+   - The hero sofa's backrest is flush against the continuous living room main backdrop wall from Reference Image 2.
+   - STRICT PROHIBITION ON INVENTED WALLS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner behind the sofa! The back wall must remain the single, continuous living room backdrop wall extending into the deep background.
+` : isAngledShot ? `
+5. 45-DEGREE CAMERA PERSPECTIVE & 2-POINT DEPTH LOCK:
+   - Reference Image 1 is captured from a dynamic 40-to-45 degree diagonal oblique three-quarters angle (yaw: ${cameraSettings?.yawDeg ?? -45}\xB0).
+   - Vanishing lines for floor tiles, wood planks, baseboards, and the main background wall recede diagonally with authentic 2-point perspective depth!
+   - ABSOLUTE PROHIBITION ON 0-DEGREE FLATTENING: NEVER draw a flat, straight-on frontal background parallel to the bottom of the frame! DO NOT copy the flat 0-degree frontal camera perspective from Reference Image 2!
+${cameraSettings ? `   - OPTICAL PARAMETERS: ${cameraSettings.lensMm}mm lens at ${cameraSettings.heightCm}cm height, yaw: ${cameraSettings.yawDeg}\xB0, pitch: ${cameraSettings.pitchDeg}\xB0.` : ""}
+` : ""}
 
-5. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS, NO PEOPLE. Clean pristine commercial catalog photograph.
+${isCloseOrMediumCrop || isLateralProfileShot || isAngledShot ? "6" : "5"}. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS, NO PEOPLE. Clean pristine commercial catalog photograph.
 
 Negative constraints: ${negatives}`;
 }
@@ -19095,7 +19165,10 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           context: input.studioSwapContext,
           lightingHint: input.studioSwapLightingHint,
           hasSceneMasterReference: hasMasterRefForSwap,
-          referenceShotCode: input.referenceShotCode || "A00"
+          referenceShotCode: input.referenceShotCode || "A00",
+          shotCode,
+          cameraSettings: input.cameraSettings,
+          positivePrompt: input.positivePrompt
         });
       } else if (isHumanPass || shotInline) {
         const sanitizedNegative = (negativePrompt || "").replace(/\b(side chair|accent chair|armchair|lounge chair|single chair|3\+1 ensemble|wide empty room panorama|far distant vantage)\b/gi, "").replace(/,\s*,+/g, ",").trim();
@@ -24574,9 +24647,59 @@ MANDATORY QUALITY RULES:
       throw new Error("\u56FE\u50CF\u7CBE\u4FEE\u7F51\u5173\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E");
     }
     let finalImageUrl = imgUrlOrBase64;
+    let imgBuffer = null;
     if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.startsWith("data:")) {
       const base64Clean = imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
-      let imgBuffer = Buffer.from(base64Clean, "base64");
+      imgBuffer = Buffer.from(base64Clean, "base64");
+    } else if (typeof imgUrlOrBase64 === "string" && imgUrlOrBase64.startsWith("http")) {
+      try {
+        const fetchRes = await fetch(imgUrlOrBase64);
+        if (fetchRes.ok) {
+          imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+        }
+      } catch (dlErr) {
+        console.warn("[spaceShootRoutes] Failed to fetch remote gateway image:", dlErr);
+      }
+    }
+    if (imgBuffer && hasMask && maskImage && resolvedBaseImage) {
+      try {
+        const baseClean = resolvedBaseImage.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+        const baseRawBuffer = Buffer.from(baseClean, "base64");
+        const baseMeta = await (0, import_sharp8.default)(baseRawBuffer).metadata();
+        const targetW = baseMeta.width || 2400;
+        const targetH = baseMeta.height || 1800;
+        const basePixelBuf = await (0, import_sharp8.default)(baseRawBuffer).resize(targetW, targetH, { fit: "fill" }).removeAlpha().raw().toBuffer();
+        const genPixelBuf = await (0, import_sharp8.default)(imgBuffer).resize(targetW, targetH, { fit: "fill" }).removeAlpha().raw().toBuffer();
+        const maskClean = String(maskImage).replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+        const maskRawInput = Buffer.from(maskClean, "base64");
+        const maskPixelBuf = await (0, import_sharp8.default)(maskRawInput).resize(targetW, targetH, { fit: "fill" }).blur(1.5).extractChannel(0).raw().toBuffer();
+        const blendedBuf = Buffer.allocUnsafe(targetW * targetH * 3);
+        const totalPixels = targetW * targetH;
+        for (let i = 0; i < totalPixels; i++) {
+          const m = maskPixelBuf[i];
+          const idx = i * 3;
+          if (m === 0) {
+            blendedBuf[idx] = basePixelBuf[idx];
+            blendedBuf[idx + 1] = basePixelBuf[idx + 1];
+            blendedBuf[idx + 2] = basePixelBuf[idx + 2];
+          } else if (m === 255) {
+            blendedBuf[idx] = genPixelBuf[idx];
+            blendedBuf[idx + 1] = genPixelBuf[idx + 1];
+            blendedBuf[idx + 2] = genPixelBuf[idx + 2];
+          } else {
+            const alpha = m / 255;
+            const invAlpha = 1 - alpha;
+            blendedBuf[idx] = Math.round(genPixelBuf[idx] * alpha + basePixelBuf[idx] * invAlpha);
+            blendedBuf[idx + 1] = Math.round(genPixelBuf[idx + 1] * alpha + basePixelBuf[idx + 1] * invAlpha);
+            blendedBuf[idx + 2] = Math.round(genPixelBuf[idx + 2] * alpha + basePixelBuf[idx + 2] * invAlpha);
+          }
+        }
+        imgBuffer = await (0, import_sharp8.default)(blendedBuf, { raw: { width: targetW, height: targetH, channels: 3 } }).webp({ quality: 92 }).toBuffer();
+      } catch (blendErr) {
+        console.warn("[spaceShootRoutes] Mask pixel composite fallback warning:", blendErr);
+      }
+    }
+    if (imgBuffer) {
       try {
         imgBuffer = await (0, import_sharp8.default)(imgBuffer).webp({ quality: 92 }).toBuffer();
       } catch (sharpErr) {
