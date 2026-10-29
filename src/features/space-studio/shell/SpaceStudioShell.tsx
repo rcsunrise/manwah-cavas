@@ -98,6 +98,7 @@ import { SeatAssignment } from '../../../types/spaceStudio';
 import { SpaceStudioPersistenceService } from '../../../services/spaceStudioPersistenceService';
 import { ClearRecordsModal } from '../components/modals/ClearRecordsModal';
 import { InpaintSubmitPayload } from '../components/CanvasInpaintModal';
+import { parseJsonResponse } from '../../../utils/apiUtils';
 
 interface SpaceStudioShellProps {
   projectId?: string;
@@ -2495,8 +2496,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = await parseJsonResponse<any>(res);
+      if (!data.success) {
         throw new Error(data.error || data.message || `PROVIDER UNAVAILABLE: ${res.statusText}`);
       }
 
@@ -2718,7 +2719,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionId: rev.id
         })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse<any>(res);
       if (data.success) {
         setShots((prev) =>
           prev.map((s) => {
@@ -3297,8 +3298,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = await parseJsonResponse<any>(res);
+      if (!data.success) {
         throw new Error(data.error || data.message || `FAILED: ${res.statusText}`);
       }
 
@@ -3496,8 +3497,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = await parseJsonResponse<any>(res);
+      if (!data.success) {
         const errorMsg =
           data.error?.message ||
           (typeof data.error === 'string' ? data.error : '') ||
@@ -3676,8 +3677,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = await parseJsonResponse<any>(res);
+      if (!data.success) {
         const errorMsg =
           data.error?.message ||
           (typeof data.error === 'string' ? data.error : '') ||

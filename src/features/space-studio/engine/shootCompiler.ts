@@ -613,7 +613,7 @@ Camera: 50mm portrait standard prime lens at 95cm eye-level height (level with s
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (outer wide armrest, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
-- SPATIAL & ORIENTATION ANCHOR: Lock the exact architectural background, wall finishes, window lighting direction, and floor texture strictly from the spatial scene master A00. Absolutely DO NOT reverse or mirror window positions, DO NOT flip room layout! Maintain 100% spatial environment continuity!`;
+- SPATIAL & ORIENTATION ANCHOR: Lock the exact architectural background wall finishes, window lighting direction, and floor texture strictly from the spatial scene master A00. The ceiling is strictly 100% OUT OF FRAME above the crop; vertical background consists exclusively of the living room backdrop wall behind the 3-seater sofa extending continuously to the top of the frame. Absolutely DO NOT reverse or mirror window positions, DO NOT flip room layout! Maintain 100% spatial environment continuity!`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A04 2/3 HERO SOFA COMPANION VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
@@ -638,7 +638,15 @@ Camera: 45mm portrait environmental prime lens at 140cm standing eye-level heigh
         'altered wall finish',
         'flipped room layout',
         'mirrored window position',
-        'reversed daylight direction'
+        'reversed daylight direction',
+        'visible ceiling',
+        'ceiling cove',
+        'ceiling light trough',
+        'low ceiling compression',
+        'squeezed ceiling',
+        'cropped ceiling beam',
+        'ceiling slab',
+        'false ceiling'
       );
     } else if (shot.templateCode === 'A05') {
       const footrestMandate = isHumanPassActive
@@ -653,16 +661,16 @@ Camera: 45mm portrait environmental prime lens at 140cm standing eye-level heigh
 
       const linkageDirective = `[DUAL-TRACK LINKAGE: INDEPENDENT 3-SEATER ASSET RE-CREATION WITHIN MASTER SPATIAL ANCHOR]
 - HERO 2/3 ASSET CROP: Strictly construct 2/3 of the hero motion sofa from the isolated 3-seater product asset ground truth (right outer armrest featuring diamond-quilted leather craftsmanship with flush circular metal motion buttons, deep leather seating cushion, ${footrestAction}). DO NOT clone or stretch distant low-res master sofa pixels.
-- SPATIAL & WALL FINISH ANCHOR: Lock the architectural background, feature wall materials, cove lighting, and tailored carpet strictly from the spatial scene master A00. Zero tolerance for background drift! Strictly DO NOT invent unreferenced wall niches, built-in bookcases, or arched display shelves!`;
+- SPATIAL & WALL FINISH ANCHOR: Lock the architectural background strictly from the authentic living room backdrop wall behind the 3-seater hero sofa in A00 (fluted wood paneling, marble slab, and warm 3000K wall sconce) extending continuously to the top of the frame. The ceiling is strictly 100% OUT OF FRAME above the crop! Zero tolerance for background drift! Strictly DO NOT invent unreferenced wall niches, built-in bookcases, or arched display shelves!`;
 
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Customized ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right angle in 3:4 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, metal trim accent, brass closure strip anchor, and warm 3000K ambient wall sconce. ZERO side chair, ZERO coffee table obstruction.`;
+Camera: ${camera.lensMm}mm portrait environmental lens at ${camera.heightCm}cm height with ${camera.yawDeg} degree right angle in 3:4 vertical aspect ratio. Frame approximately 2/3 of the hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, metal trim accent, brass closure strip anchor, and warm 3000K ambient wall sconce. The ceiling is strictly 100% OUT OF FRAME. ZERO side chair, ZERO coffee table obstruction.`;
       } else {
         shotMandate = `[SHOT MANDATE - A05 2/3 HERO SOFA PRIVATE LOUNGE VIEW (Studio Sample 50mm Private Lounge)]:
 ${linkageDirective}
-Camera: 50mm portrait environmental prime lens at 95cm height (seated eye-level slightly low, 0° tilt) with 28 degree right oblique perspective in 3:4 vertical aspect ratio. Frame approximately 2/3 of hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, flush metal trim, brass closure strip anchor, ${footrestAction}, deep seating cushion, ${lifestyleMoment}, and warm 3000K ambient wall sconce from A00. ZERO side chair, ZERO coffee table obstruction!`;
+Camera: 50mm portrait environmental prime lens at 95cm height (seated eye-level slightly low, 0° tilt) with 28 degree right oblique perspective in 3:4 vertical aspect ratio. Frame approximately 2/3 of hero motion sofa (${footrestMandate}), capturing right armrest with diamond quilting detail, flush metal trim, brass closure strip anchor, ${footrestAction}, deep seating cushion, ${lifestyleMoment}, and warm 3000K ambient wall sconce from A00. The ceiling is strictly 100% OUT OF FRAME above the crop. ZERO side chair, ZERO coffee table obstruction!`;
       }
       negativeFramingConstraints.push(
         'flat frontal view',
@@ -686,7 +694,14 @@ Camera: 50mm portrait environmental prime lens at 95cm height (seated eye-level 
         'ceiling cove',
         'ceiling light trough',
         'low ceiling compression',
-        'squeezed ceiling'
+        'squeezed ceiling',
+        'cropped ceiling beam',
+        'ceiling slab',
+        'false ceiling',
+        'recessed ceiling',
+        'downlights on ceiling',
+        'chandelier',
+        'ceiling light'
       );
     } else if (shot.templateCode === 'A06') {
       const closedZeroWallMandate =
@@ -979,17 +994,33 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
     const spaceTopologyGlobal = compileSpaceTopology(spacePreset);
     const styleFinishesGlobal = compileStyleArchitecturalFinishes(stylePreset);
     const spaceFragments = spacePreset.promptFragments || [];
-    const spaceArchitectureClauses = [
-      `space prototype anchor: ${spacePreset.name} (${spacePreset.code})`,
-      spacePreset.ceilingHeight ? `${spacePreset.ceilingHeight}m soaring architectural ceiling headroom` : '',
-      spaceTopologyGlobal.topologyDirective,
-      `focal wall architecture: ${spaceTopologyGlobal.architecturalFocalWall}`,
-      `flooring & elevation topology: ${spaceTopologyGlobal.flooringTopology}`,
-      `ceiling structure: ${spaceTopologyGlobal.ceilingStructure}`,
-      `window & landscape aperture: ${spaceTopologyGlobal.windowAndOutdoorView}`,
-      ...spaceFragments,
-      ...(spacePreset.signatureFeatures ? spacePreset.signatureFeatures.map((f) => `architectural feature: ${f}`) : [])
-    ].filter(Boolean);
+
+    // 局部特写镜头 (A04 2/3亲子, A05 2/3私享, A08 单椅特写)：彻底熔断天花板结构与吊顶灯槽指令，
+    // 画面垂直空间 100% 聚焦于三人位主沙发正后方的饰面背景墙，坚决杜绝吊顶压缩下移！
+    const isCloseOrMediumCropShot = ['A04', 'A05', 'A08'].includes(shot.templateCode);
+
+    const spaceArchitectureClauses = isCloseOrMediumCropShot
+      ? [
+          `space prototype anchor: ${spacePreset.name} (${spacePreset.code})`,
+          spaceTopologyGlobal.topologyDirective,
+          `focal wall architecture: ${spaceTopologyGlobal.architecturalFocalWall}`,
+          `flooring & elevation topology: ${spaceTopologyGlobal.flooringTopology}`,
+          `window & landscape aperture: ${spaceTopologyGlobal.windowAndOutdoorView}`,
+          'background anchor: authentic living room backdrop wall behind the 3-seater sofa from the scene master, extending continuously to the top of the frame with the ceiling completely 100% out of frame',
+          ...spaceFragments.filter((f) => !/ceiling|cove lighting|headroom|挑空|吊顶/i.test(f)),
+          ...(spacePreset.signatureFeatures ? spacePreset.signatureFeatures.filter((f) => !/ceiling|cove lighting|headroom|挑空|吊顶/i.test(f)).map((f) => `architectural feature: ${f}`) : [])
+        ].filter(Boolean)
+      : [
+          `space prototype anchor: ${spacePreset.name} (${spacePreset.code})`,
+          spacePreset.ceilingHeight ? `${spacePreset.ceilingHeight}m soaring architectural ceiling headroom` : '',
+          spaceTopologyGlobal.topologyDirective,
+          `focal wall architecture: ${spaceTopologyGlobal.architecturalFocalWall}`,
+          `flooring & elevation topology: ${spaceTopologyGlobal.flooringTopology}`,
+          `ceiling structure: ${spaceTopologyGlobal.ceilingStructure}`,
+          `window & landscape aperture: ${spaceTopologyGlobal.windowAndOutdoorView}`,
+          ...spaceFragments,
+          ...(spacePreset.signatureFeatures ? spacePreset.signatureFeatures.map((f) => `architectural feature: ${f}`) : [])
+        ].filter(Boolean);
 
     // 美学硬装真实材质与空间色调解构 (Interior Material System & Dominant Palette)
     const styleDna = compileStyleDnaToEnglish(stylePreset);
@@ -1013,7 +1044,9 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
     // 空间一致性四大金科玉律 (Four Spatial Invariance Pillars)
     const fourInvariancePillars = [
       'SPATIAL INVARIANCE ANCHOR: white matte cylindrical planter with indoor foliage plant serving as immutable physical coordinate origin (constant height and distance from window and backdrop wall)',
-      'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming exclusively from the left panoramic window flank, paired with warm ambient cove lighting and wall sconces (3000K) illuminating the interior, casting consistent soft eastward diagonal contact shadows',
+      isCloseOrMediumCropShot
+        ? 'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming from the window flank, paired with warm ambient wall sconces (3000K) on the focal wall, casting consistent soft diagonal contact shadows'
+        : 'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming exclusively from the left panoramic window flank, paired with warm ambient cove lighting and wall sconces (3000K) illuminating the interior, casting consistent soft eastward diagonal contact shadows',
       'CONTACT SHADOW & AO: deep physical ambient occlusion contact shadows grounding all furniture legs, metal table frames, and recliner chassis firmly onto the area rug, completely eliminating floating sticker artifact',
       'TWO-POINT ARCHITECTURAL PERSPECTIVE: plumb vertical architectural lines with vertical shift correction (tilt angle = 0 degrees), window mullions and wall corners strictly parallel to vertical frame edges'
     ];

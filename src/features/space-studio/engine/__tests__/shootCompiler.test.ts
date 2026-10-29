@@ -214,8 +214,13 @@ describe('ShootCompiler (G3 Shoot Phase Core)', () => {
       blueprint
     });
     expect(compiledA05.positivePrompt).not.toContain('wall_shelves');
+    expect(compiledA05.positivePrompt).not.toContain('cove lighting');
+    expect(compiledA05.positivePrompt).not.toContain('ceiling structure');
+    expect(compiledA05.positivePrompt).toContain('The ceiling is strictly 100% OUT OF FRAME');
     expect(compiledA05.negativePrompt).toContain('arched shelves');
     expect(compiledA05.negativePrompt).toContain('bookshelf');
+    expect(compiledA05.negativePrompt).toContain('visible ceiling');
+    expect(compiledA05.negativePrompt).toContain('squeezed ceiling');
 
     // 3. A06: 严禁包含误导为挂墙书架的 wall-mounted，且负向阻断书房与书架
     const tplA06 = STANDARD_SHOT_TEMPLATES.find((t) => t.code === 'A06')!;

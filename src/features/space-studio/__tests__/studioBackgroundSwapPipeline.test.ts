@@ -535,6 +535,57 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
   });
 
+  it('A05 2/3主沙发私享景（全案编排 Mode B）：强力锁定天花板出画，阻断吊顶灯带', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-orchestration-a05',
+      shotCode: 'A05',
+      referenceShotCode: 'A00',
+      positivePrompt: '2/3 HERO SOFA PRIVATE WINE LOUNGE',
+      negativePrompt: '',
+      aspectRatio: '3:4',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'orchestration',
+      productName: '芝华仕头等舱功能沙发三人位',
+      productColor: '焦糖棕',
+      productMaterial: '头层牛皮',
+      primaryProduct: {
+        name: '芝华仕头等舱功能沙发三人位',
+        referenceImage: `data:image/png;base64,${dummyBase64}`
+      },
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      roomName: '顶层天际会所大宅',
+      styleName: '都会收藏家',
+      cameraSettings: { lensMm: 50, heightCm: 95, yawDeg: 28, pitchDeg: 0 },
+      objectKey: 'test/orchestration_a05_ceiling_lock.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.prompt).toContain('ABSOLUTE OUT-OF-FRAME CEILING LOCK');
+    expect(capturedBody.prompt).toContain('visible ceiling');
+    expect(capturedBody.prompt).toContain('ceiling cove');
+    expect(capturedBody.prompt).toContain('squeezed ceiling');
+  });
+
   it('A06 零靠墙侧景：锁定沙发背部贴靠 A00 客厅主立面贯通大墙，严禁发明任何隔断假墙', async () => {
     let capturedBody: any = null;
 

@@ -173,7 +173,11 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
         'separate_accent_single_chair',
         'isolated_armchair',
         'flat_frontal_view',
-        'flipped_room'
+        'flipped_room',
+        'visible_ceiling',
+        'ceiling_cove',
+        'ceiling_light_trough',
+        'squeezed_ceiling'
       ]
     },
     description: '焦段 45mm 微俯视镜头，机位高度 140cm，俯角 -15°，侧偏 -28°，纵向 3:4 画幅，聚焦 2/3 主沙发座面与前沿地毯生活舞台。'
@@ -214,7 +218,11 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
         'isolated_armchair',
         'arched_shelves',
         'bookshelf',
-        'bookcase'
+        'bookcase',
+        'visible_ceiling',
+        'ceiling_cove',
+        'ceiling_light_trough',
+        'squeezed_ceiling'
       ]
     },
     description: '焦段 50mm 标准中焦，机位高度 95cm 平视略低（仰角 0°），右侧偏 28°，纵向 3:4 画幅，聚焦扶手高定菱格压花、金属收边与微距皮革质感。'
