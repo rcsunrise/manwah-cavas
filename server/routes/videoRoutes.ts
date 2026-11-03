@@ -7,6 +7,7 @@ import { supabaseAdmin } from '../../src/lib/supabase';
 import { getAvailableVideoCapabilities, resolveVideoCapability } from '../services/video/videoCapabilityRegistry';
 import { VideoDirectorService } from '../services/video/videoDirectorService';
 import { VideoJobService } from '../services/video/videoJobService';
+import { annotateCapabilityAvailability } from '../services/video/videoModelAvailability';
 import { GcsVideoStorage } from '../services/storage/gcsVideoStorage';
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
 import { AssetRepository } from '../repositories/assetRepository';
@@ -77,8 +78,9 @@ router.post('/api/gateway/video/gcs-diagnostics', optionalAuthenticateToken as a
  * GET /api/gateway/video/config
  * Returns available video capabilities
  */
-router.get('/api/gateway/video/config', (req: Request, res: Response) => {
-  const capabilities = getAvailableVideoCapabilities();
+router.get('/api/gateway/video/config', async (req: Request, res: Response) => {
+  // 标注当前令牌是否开通各模型（探测失败时不阻断，按未知处理）
+  const capabilities = await annotateCapabilityAvailability(getAvailableVideoCapabilities());
   const storageStatus = GcsVideoStorage.getInstance().getStatus();
   const rawDefaultKey = process.env.VIDEO_DEFAULT_MODEL_KEY || 'sd-2.0-fast';
   const defaultModelKey = resolveVideoCapability(rawDefaultKey).key;
@@ -197,7 +199,8 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       referenceImages,
       productTitle,
       productCategory,
-      productDetails
+      productDetails,
+      targetDurationSeconds
     } = req.body;
     if (!canvasId || !userPrompt) {
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'canvasId and userPrompt are required' } });
@@ -218,7 +221,8 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       referenceImages,
       productTitle,
       productCategory,
-      productDetails
+      productDetails,
+      targetDurationSeconds
     });
 
     res.json({ plan });

@@ -9,6 +9,23 @@ import { VideoCapability, VideoSettings } from '../../../src/types/creativeCanva
  * 3. xAI系列 (1个): grok-imagine-video-1.5-preview
  * 4. MiniMax海螺 (1个): MiniMax-H3 (Hailuo-03 全模态视频模型)
  */
+function klingVariants(resolutions: string[], maxDuration: number): VideoCapability['variants'] {
+  const variants: VideoCapability['variants'] = [];
+  for (const resolution of resolutions) {
+    for (const durationSeconds of [5, 10, maxDuration].filter((v, i, arr) => arr.indexOf(v) === i)) {
+      variants.push({
+        mode: 'image_to_video',
+        durationSeconds,
+        resolution,
+        ratios: ['16:9', '9:16', '1:1'],
+        maxImages: 1,
+        audioModes: ['none', 'native']
+      });
+    }
+  }
+  return variants;
+}
+
 export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
   'sd-2.0-fast': {
     key: 'sd-2.0-fast',
@@ -172,7 +189,7 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
     exactModelId: 'wan3.0-video',
     enabled: true,
     tested: false,
-    modes: ['image_to_video'],
+    modes: ['image_to_video', 'first_last_frame'],
     variants: [
       {
         mode: 'image_to_video',
@@ -254,11 +271,11 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
   },
   'MiniMax-H3': {
     key: 'MiniMax-H3',
-    displayName: 'MiniMax-H3 海螺03 (上游渠道维护中)',
+    displayName: 'MiniMax-H3 海螺03 (768P/2K · 比例随底图)',
     exactModelId: 'MiniMax-H3',
     enabled: true,
     tested: false,
-    modes: ['image_to_video'],
+    modes: ['image_to_video', 'first_last_frame'],
     variants: [
       {
         mode: 'image_to_video',
@@ -329,8 +346,48 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
     supportsLookupByClientKey: true,
     evidenceUrl: 'https://vectorengine.apifox.cn/api-358028488',
     verifiedAt: '2026-09-28'
+  },
+  'kling-3.0': {
+    key: 'kling-3.0',
+    displayName: '可灵 Kling 3.0 (首帧 · 可选原生音效)',
+    exactModelId: 'kling-3.0',
+    enabled: true,
+    tested: false,
+    modes: ['image_to_video'],
+    variants: klingVariants(['720p', '1080p'], 15),
+    supportsCancel: false,
+    supportsIdempotency: true,
+    supportsLookupByClientKey: true,
+    evidenceUrl: 'https://tokenmarket.apifox.cn/526974337e0',
+    verifiedAt: '2026-11-03'
+  },
+  'kling-3.0-turbo': {
+    key: 'kling-3.0-turbo',
+    displayName: '可灵 Kling 3.0 Turbo (首帧 · 默认有声)',
+    exactModelId: 'kling-3.0-turbo',
+    enabled: true,
+    tested: false,
+    modes: ['image_to_video'],
+    variants: klingVariants(['720p', '1080p'], 15),
+    supportsCancel: false,
+    supportsIdempotency: true,
+    supportsLookupByClientKey: true,
+    evidenceUrl: 'https://tokenmarket.apifox.cn/526974338e0',
+    verifiedAt: '2026-11-03'
   }
 };
+
+export type VideoProtocol = 'doubao' | 'minimax' | 'grok' | 'wan' | 'kling';
+
+/** 按上游模型 ID 判定所属模型族，决定创建/查询任务使用的接口协议 */
+export function resolveVideoProtocol(exactModelId: string): VideoProtocol {
+  const id = exactModelId.toLowerCase();
+  if (id.startsWith('kling')) return 'kling';
+  if (id.startsWith('minimax') || id.startsWith('hailuo')) return 'minimax';
+  if (id.includes('grok')) return 'grok';
+  if (id.startsWith('wan')) return 'wan';
+  return 'doubao';
+}
 
 /**
  * 历史模型别名自动映射表，确保老节点/旧参数能够平滑兼容升级到对应在售模型
@@ -356,10 +413,11 @@ const MODEL_KEY_ALIASES: Record<string, string> = {
   'video-01-director': 'MiniMax-H3',
   'minimax-h3': 'MiniMax-H3',
   // 可灵及其他兼容映射
-  'kling-v1': 'sd-2.0-fast',
-  'kling-v1-5': 'sd-2.0-fast',
-  'kling-v1-6': 'sd-2.5',
-  'kling-v2-0': 'sd-2.5',
+  'kling-v1': 'kling-3.0',
+  'kling-v1-5': 'kling-3.0',
+  'kling-v1-6': 'kling-3.0',
+  'kling-v2-0': 'kling-3.0',
+  'kling-3.0-omni': 'kling-3.0',
   'luma-dream-machine': 'sd-2.5',
   'dream-machine': 'sd-2.5',
   'sora-2': 'sd-2.5'

@@ -28,7 +28,8 @@ import {
   VideoSettings,
   VideoDirectorPlan,
   VideoJob,
-  VideoShotPlan
+  VideoShotPlan,
+  VideoShotType
 } from '../../../types/creativeCanvasVideo';
 import { useCanvasVideo } from '../../../hooks/useCanvasVideo';
 import { VideoGenerationService } from '../../../services/videoGenerationService';
@@ -50,7 +51,8 @@ interface VideoCreationPanelProps {
 }
 
 const PRESET_FOCUS_POINTS = [
-  '皮面质感与细腻缝线',
+  '整体造型与比例',
+  '面料/皮面质感与缝线工艺',
   '人体工学靠包承托',
   '智能电动伸展/零重力仰躺',
   '稳固实木骨架与金属纤细高脚',
@@ -60,6 +62,13 @@ const PRESET_FOCUS_POINTS = [
   '360度自由旋转底座'
 ];
 
+const SHOT_TYPE_LABELS: Record<VideoShotType, string> = {
+  hero: '全景亮相',
+  function: '功能演示',
+  detail: '材质细节',
+  closing: '收尾'
+};
+
 const DIRECTOR_MODELS = [
   { key: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', desc: 'Google 旗舰多模态 · 精准视觉运镜', tag: '推荐首选' },
   { key: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'Google 新一代超高速多模态', tag: '极速出片' },
@@ -67,6 +76,50 @@ const DIRECTOR_MODELS = [
   { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', desc: 'OpenAI 旗舰基础模型 · 细节严密', tag: '稳定' },
   { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', desc: 'OpenAI 轻量高性价比模型', tag: '高性价比' }
 ];
+
+interface PersistedPanelState {
+  activeTab?: VideoCreationMode;
+  style?: VideoStyle;
+  userPrompt?: string;
+  productTitle?: string;
+  focusPointsList?: string[];
+  selectedFocusPoints?: string[];
+  selectedDirectorModel?: string;
+  selectedModelKey?: string;
+  videoSettings?: VideoSettings;
+  directorPlan?: VideoDirectorPlan | null;
+}
+
+const panelStateKey = (canvasId: string) => `creative-canvas:video-panel:${canvasId}`;
+
+function loadPanelState(canvasId: string): PersistedPanelState | null {
+  if (!canvasId) return null;
+  try {
+    const raw = localStorage.getItem(panelStateKey(canvasId));
+    return raw ? (JSON.parse(raw) as PersistedPanelState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePanelState(canvasId: string, state: PersistedPanelState) {
+  if (!canvasId) return;
+  // data: 内联图片动辄数 MB，会撑爆 localStorage 配额，只保留可重新加载的链接
+  const stripInline = (url?: string) => (url && url.startsWith('data:') ? undefined : url);
+  const directorPlan = state.directorPlan && {
+    ...state.directorPlan,
+    shots: state.directorPlan.shots.map(shot => ({
+      ...shot,
+      keyframeImageUrl: stripInline(shot.keyframeImageUrl),
+      endFrameImageUrl: stripInline(shot.endFrameImageUrl)
+    }))
+  };
+  try {
+    localStorage.setItem(panelStateKey(canvasId), JSON.stringify({ ...state, directorPlan }));
+  } catch {
+    // 存储不可用（隐私模式 / 配额已满）时仅放弃驻留，不影响面板使用
+  }
+}
 
 export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   canvasId,
@@ -108,8 +161,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   // Multi-select Focus Points state
   const [focusPointsList, setFocusPointsList] = useState<string[]>(PRESET_FOCUS_POINTS);
   const [selectedFocusPoints, setSelectedFocusPoints] = useState<string[]>([
-    '皮面质感与细腻缝线',
-    '极简现代空间整体光影搭配'
+    '整体造型与比例',
+    '面料/皮面质感与缝线工艺'
   ]);
   const [customFocusInput, setCustomFocusInput] = useState('');
 
@@ -127,13 +180,54 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
   // Keyframe generation tracking state per shot
   const [generatingKeyframeShotId, setGeneratingKeyframeShotId] = useState<string | null>(null);
+  const [uploadingEndFrameShotId, setUploadingEndFrameShotId] = useState<string | null>(null);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [batchSubmitError, setBatchSubmitError] = useState<string | null>(null);
+  const autoFilledTitleRef = useRef<string | null>(null);
+
+  // 面板状态按画布驻留：刷新页面或关闭面板后，分镜方案、尾帧、参数仍在
+  // 用 state 而不是 ref 标记恢复完成：恢复出的值要到下一次渲染才生效，同一轮提交里写入会用初始值覆盖存档
+  const [hydratedCanvasId, setHydratedCanvasId] = useState<string | null>(null);
+  useEffect(() => {
+    const saved = loadPanelState(canvasId);
+    if (saved) {
+      if (saved.activeTab) setActiveTab(saved.activeTab);
+      if (saved.style) setStyle(saved.style);
+      if (typeof saved.userPrompt === 'string') setUserPrompt(saved.userPrompt);
+      if (typeof saved.productTitle === 'string') setProductTitle(saved.productTitle);
+      if (Array.isArray(saved.focusPointsList)) setFocusPointsList(saved.focusPointsList);
+      if (Array.isArray(saved.selectedFocusPoints)) setSelectedFocusPoints(saved.selectedFocusPoints);
+      if (saved.selectedDirectorModel) setSelectedDirectorModel(saved.selectedDirectorModel);
+      if (saved.selectedModelKey) setSelectedModelKey(saved.selectedModelKey);
+      if (saved.videoSettings) setVideoSettings(saved.videoSettings);
+    }
+    // 切换到没有存档的画布时清掉上一张画布的方案
+    setDirectorPlan(saved?.directorPlan || null);
+    setHydratedCanvasId(canvasId);
+  }, [canvasId, setDirectorPlan]);
+
+  useEffect(() => {
+    // 恢复完成前不写入，避免用初始值覆盖已保存的状态
+    if (hydratedCanvasId !== canvasId) return;
+    savePanelState(canvasId, {
+      activeTab,
+      style,
+      userPrompt,
+      productTitle,
+      focusPointsList,
+      selectedFocusPoints,
+      selectedDirectorModel,
+      selectedModelKey,
+      videoSettings,
+      directorPlan
+    });
+  }, [canvasId, hydratedCanvasId, activeTab, style, userPrompt, productTitle, focusPointsList, selectedFocusPoints, selectedDirectorModel, selectedModelKey, videoSettings, directorPlan]);
 
   // Sync selectedNode image to reference images if not already present
   useEffect(() => {
     if (selectedNode?.imageUrl) {
-      let finalTitle = '现代意式真皮功能沙发';
+      // 不预设材质：导演会看图识别，写死“真皮”会让布艺产品被往皮质方向改画
+      let finalTitle = '';
       const nodeTitle = selectedNode.title || '';
       
       const isPlaceholderId = 
@@ -163,7 +257,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         }
       }
 
-      setProductTitle(finalTitle);
+      // 只覆盖空标题或上次自动填入的标题，用户手填 / 刷新后恢复的标题保留
+      setProductTitle(prev => {
+        const next = !prev || prev === autoFilledTitleRef.current ? finalTitle : prev;
+        autoFilledTitleRef.current = finalTitle;
+        return next;
+      });
       setReferenceImages(prev => {
         const exists = prev.some(img => img.url === selectedNode.imageUrl);
         if (exists) return prev;
@@ -180,11 +279,27 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
   }, [selectedNode, allNodes]);
 
+  // 镜头按面板所选时长提交生成：时长（或切换模型导致的时长）变化时同步到已有分镜方案的展示
+  useEffect(() => {
+    const durationSeconds = videoSettings.durationSeconds;
+    setDirectorPlan(prev => {
+      if (!prev || prev.shots.every(shot => shot.durationSeconds === durationSeconds)) return prev;
+      return {
+        ...prev,
+        shots: prev.shots.map(shot => ({ ...shot, durationSeconds })),
+        estimatedDurationSeconds: durationSeconds * prev.shots.length
+      };
+    });
+  }, [videoSettings.durationSeconds, setDirectorPlan]);
+
   // Sync video model
   useEffect(() => {
     if (capabilities.length > 0) {
-      if (!selectedModelKey || !capabilities.some(c => c.key === selectedModelKey)) {
-        const nextKey = capabilities.some(c => c.key === defaultModelKey) ? defaultModelKey : capabilities[0].key;
+      // 当前选择不存在或令牌未开通时，回落到默认模型 / 第一个可用模型
+      const usable = capabilities.filter(c => c.available !== false);
+      const pool = usable.length > 0 ? usable : capabilities;
+      if (!selectedModelKey || !pool.some(c => c.key === selectedModelKey)) {
+        const nextKey = pool.some(c => c.key === defaultModelKey) ? defaultModelKey : pool[0].key;
         setSelectedModelKey(nextKey);
       }
     }
@@ -243,7 +358,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const handleExpandPrompt = () => {
     const focusStr = selectedFocusPoints.join('、');
     if (!userPrompt.trim()) {
-      setUserPrompt(`镜头45度微仰缓缓推进，室内晨光洒在家具边缘，重点展示【${focusStr || '皮面纹理与空间光影'}】，画面平稳高级，4K电影质感`);
+      setUserPrompt(`镜头45度微仰缓缓推进，室内晨光洒在家具边缘，重点展示【${focusStr || '材质纹理与空间光影'}】，画面平稳高级，4K电影质感`);
     } else {
       setUserPrompt(prev => `${prev}，运镜平稳缓慢推进，聚焦微距展示【${focusStr || '材质工艺'}】，柔和环境光流动，高保真4K超清`);
     }
@@ -264,8 +379,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       sourceImageUrl: primaryImg?.url,
       directorModelKey: selectedDirectorModel,
       referenceImages: referenceImages.map(img => ({ url: img.url, title: img.title })),
-      productTitle: productTitle || selectedNode?.title || '现代意式真皮家具',
-      productCategory: '高端家具与家居'
+      productTitle: productTitle || selectedNode?.title,
+      productCategory: '家具',
+      targetDurationSeconds: videoSettings.durationSeconds
     });
 
     if (onPlanCreated && selectedNode) {
@@ -283,7 +399,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         shotId: shot.shotId,
         prompt: shot.prompt,
         referenceImageUrl: primaryUrl,
-        productTitle: productTitle || selectedNode?.title || '现代意式家具'
+        productTitle: productTitle || selectedNode?.title || ''
       });
 
       if (directorPlan) {
@@ -300,15 +416,42 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   };
 
   // Submit single shot video generation
-  const handleSubmitDirectVideo = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string) => {
+  const supportsLastFrame = Boolean(currentCapability?.modes.includes('first_last_frame'));
+
+  // 为功能镜头上传“动作完成态”尾帧
+  const handleUploadEndFrame = async (shotId: string, file: File) => {
+    setUploadingEndFrameShotId(shotId);
+    try {
+      const res = await VideoGenerationService.uploadReferenceImage(file);
+      setDirectorPlan(prev => prev && {
+        ...prev,
+        shots: prev.shots.map(s => (s.shotId === shotId ? { ...s, endFrameImageUrl: res.url } : s))
+      });
+    } catch (err: any) {
+      alert(`尾帧上传失败: ${err.message || '未知错误'}`);
+    } finally {
+      setUploadingEndFrameShotId(null);
+    }
+  };
+
+  const handleRemoveEndFrame = (shotId: string) => {
+    setDirectorPlan(prev => prev && {
+      ...prev,
+      shots: prev.shots.map(s => (s.shotId === shotId ? { ...s, endFrameImageUrl: undefined } : s))
+    });
+  };
+
+  const handleSubmitDirectVideo = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string) => {
     if (!selectedNode && referenceImages.length === 0) return;
-    const finalPrompt = shotPrompt || userPrompt || '现代意式真皮沙发，微距推进，光影质感流动';
+    const finalPrompt = shotPrompt || userPrompt || '产品静止，镜头缓慢平移，光影自然流动';
     const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl;
 
     const job = await submitVideo({
       sourceNodeId: selectedNode?.id || 'ref-upload',
       sourceAssetVersionId: selectedNode?.assetVersionId,
       sourceImageUrl: effectiveImageUrl,
+      // 尾帧仅对支持首尾帧的模型生效；不支持时面板会提示切换模型
+      lastFrameImageUrl: endFrameUrl && supportsLastFrame ? endFrameUrl : undefined,
       mode: activeTab,
       style,
       modelKey: selectedModelKey,
@@ -322,9 +465,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     return job;
   };
 
-  const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string) => {
+  const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string) => {
     try {
-      await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl);
+      await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl, endFrameUrl);
     } catch {
       // 错误已由 useCanvasVideo 写入 error 状态并在面板展示
     }
@@ -340,7 +483,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       // 单个镜头失败不影响后续镜头提交
       for (const shot of directorPlan.shots) {
         try {
-          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl);
+          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl);
         } catch (err: any) {
           console.warn(`Batch submit failed for shot ${shot.shotId}:`, err);
           failedShots.push(shot.title || shot.shotId);
@@ -658,8 +801,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
               className="w-full text-xs px-3 py-2 border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-600 bg-white"
             >
               {capabilities.map(cap => (
-                <option key={cap.key} value={cap.key}>
-                  {cap.displayName} ({cap.exactModelId})
+                <option key={cap.key} value={cap.key} disabled={cap.available === false}>
+                  {cap.displayName} ({cap.exactModelId}){cap.available === false ? ' · 令牌未开通' : ''}
                 </option>
               ))}
             </select>
@@ -743,6 +886,18 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
               {directorPlan.summary}
             </p>
 
+            {directorPlan.productFacts && (
+              <div className="text-[10px] text-neutral-600 bg-emerald-50/60 border border-emerald-100 rounded-lg p-2 space-y-0.5">
+                <div>
+                  <span className="text-neutral-500">看图识别：</span>
+                  {[directorPlan.productFacts.color, directorPlan.productFacts.material, directorPlan.productFacts.category].filter(Boolean).join(' · ')}
+                </div>
+                {directorPlan.productFacts.functions.length > 0 && (
+                  <div><span className="text-neutral-500">功能：</span>{directorPlan.productFacts.functions.join('、')}</div>
+                )}
+              </div>
+            )}
+
             {/* Invariants */}
             <div className="space-y-1">
               <span className="text-[10px] font-medium text-neutral-500">产品保真与运镜准则:</span>
@@ -776,6 +931,67 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                       <div>构图: <span className="text-neutral-700">{shot.composition}</span></div>
                       <div>运镜: <span className="text-neutral-700">{shot.cameraMotion}</span></div>
                     </div>
+
+                    {(shot.cameraLocked || shot.shotType) && (
+                      <div className="flex flex-wrap gap-1">
+                        {shot.shotType && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                            {SHOT_TYPE_LABELS[shot.shotType]}
+                          </span>
+                        )}
+                        {shot.cameraLocked && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">机位锁定</span>
+                        )}
+                      </div>
+                    )}
+
+                    {shot.firstFrameHint && (
+                      <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded p-1.5">
+                        首帧建议：{shot.firstFrameHint}
+                      </div>
+                    )}
+
+                    {shot.needsEndFrame && (
+                      <div className="space-y-1.5 border border-dashed border-purple-200 rounded p-1.5">
+                        <div className="text-[10px] text-neutral-600">
+                          <span className="font-medium text-purple-700">尾帧（动作完成态）：</span>
+                          {shot.endFrameHint || '请上传动作完成后的实拍图，与首帧同机位'}
+                        </div>
+                        {shot.endFrameImageUrl ? (
+                          <div className="relative rounded overflow-hidden border border-purple-200">
+                            <img src={shot.endFrameImageUrl} alt="End frame" className="w-full h-20 object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEndFrame(shot.shotId)}
+                              className="absolute top-1 right-1 text-[9px] bg-black/60 text-white px-1.5 py-0.5 rounded"
+                            >
+                              移除
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="block text-center py-1 text-[11px] rounded bg-purple-50 hover:bg-purple-100 text-purple-700 cursor-pointer">
+                            {uploadingEndFrameShotId === shot.shotId ? '上传中...' : '上传尾帧实拍图'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={uploadingEndFrameShotId === shot.shotId}
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) handleUploadEndFrame(shot.shotId, file);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        )}
+                        {!shot.endFrameImageUrl && (
+                          <div className="text-[10px] text-amber-700">没有尾帧时模型只能凭空想象机构动作，最容易变形。</div>
+                        )}
+                        {shot.endFrameImageUrl && !supportsLastFrame && (
+                          <div className="text-[10px] text-rose-600">当前视频模型不支持首尾帧，提交时会忽略尾帧，请切换 MiniMax-H3。</div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="text-[10px] text-neutral-600 line-clamp-2 italic">
                       "{shot.prompt}"
@@ -818,7 +1034,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleSubmitDirectVideoClick(shot.prompt, shot.shotId, shot.keyframeImageUrl)}
+                        onClick={() => handleSubmitDirectVideoClick(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl)}
                         disabled={isSubmittingJob}
                         className="py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-2xs disabled:opacity-50"
                       >

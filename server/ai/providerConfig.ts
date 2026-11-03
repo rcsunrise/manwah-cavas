@@ -106,6 +106,33 @@ export async function getUserApiConfig(userId: string) {
   }
 }
 
+// 全站配置读取缓存：Supabase 网络抖动（如代理 ECONNRESET）时 supabase-js 只返回 error 不抛异常，
+// 若不缓存会被误判为“未配置密钥”。成功结果缓存 5 分钟，读取失败时沿用上一次成功结果。
+const GLOBAL_DB_CONFIG_TTL_MS = 5 * 60 * 1000;
+let globalDbConfigCache: { config: ApiProviderConfig | null; fetchedAt: number } | null = null;
+
+async function getGlobalDbConfig(): Promise<ApiProviderConfig | null> {
+  if (globalDbConfigCache && Date.now() - globalDbConfigCache.fetchedAt < GLOBAL_DB_CONFIG_TTL_MS) {
+    return globalDbConfigCache.config;
+  }
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('department_configs')
+        .select('api_base_url, api_key, routing_mode, method1_key')
+        .eq('dept_name', '全站系统')
+        .maybeSingle();
+      if (error) throw error;
+      const config = normalizeConfig(data, null, 'global');
+      globalDbConfigCache = { config, fetchedAt: Date.now() };
+      return config;
+    } catch (error: any) {
+      console.warn(`Failed to fetch global provider config (attempt ${attempt}):`, error?.message || error);
+    }
+  }
+  return globalDbConfigCache?.config ?? null;
+}
+
 async function getGlobalApiConfig(): Promise<ApiProviderConfig | null> {
   if (isProviderKeyValid(process.env.TIANTOKEN_API_KEY)) {
     return {
@@ -127,17 +154,8 @@ async function getGlobalApiConfig(): Promise<ApiProviderConfig | null> {
     };
   }
 
-  try {
-    const { data } = await supabaseAdmin
-      .from('department_configs')
-      .select('api_base_url, api_key, routing_mode, method1_key')
-      .eq('dept_name', '全站系统')
-      .maybeSingle();
-    const config = normalizeConfig(data, null, 'global');
-    if (config) return config;
-  } catch (error) {
-    console.warn('Failed to fetch global provider config:', error);
-  }
+  const dbConfig = await getGlobalDbConfig();
+  if (dbConfig) return dbConfig;
 
   if (isProviderKeyValid(process.env.ROUTERHUB_API_KEY)) {
     return {

@@ -26,6 +26,8 @@ const DETERMINISTIC_SUBMIT_ERROR_PREFIXES = [
   'VALIDATION_FAILED',
   'IMAGE_REQUIRED',
   'MISSING_API_KEY',
+  'RESOLVE_IMAGE_FAILED',
+  'UNSUPPORTED_IMAGE_FORMAT',
   '视频网关拒绝请求',
   '视频网关未返回',
   '视频网关返回非JSON'
@@ -149,6 +151,7 @@ export class VideoJobService {
           prompt: payload.prompt,
           settings: payload.settings,
           shotId: payload.shotId,
+          lastFrameImageUrl: payload.lastFrameImageUrl,
           sourceAssetVersionId: payload.sourceAssetVersionId
         })
       )
@@ -182,6 +185,7 @@ export class VideoJobService {
       requestHash,
       sourceAssetVersionId: payload.sourceAssetVersionId,
       sourceImageUrl: payload.sourceImageUrl || null,
+      lastFrameImageUrl: payload.lastFrameImageUrl || null,
       videoSettings: payload.settings,
       prompt: payload.prompt,
       progressPercent: 5,
@@ -215,6 +219,7 @@ export class VideoJobService {
           modelKey: job.modelKey,
           prompt: job.prompt,
           sourceImageUrl: job.sourceImageUrl || undefined,
+          lastFrameImageUrl: job.lastFrameImageUrl || undefined,
           settings: job.videoSettings
         },
         idempKey,
@@ -307,7 +312,7 @@ export class VideoJobService {
       }
 
       try {
-        const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
+        const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system', job.modelKey);
         job.providerStatus = providerStatus.status;
         job.progressPercent = providerStatus.progressPercent;
         job.updatedAt = new Date().toISOString();
@@ -523,7 +528,7 @@ export class VideoJobService {
     this.saveToDisk();
     this.broadcastJobUpdate(job);
 
-    const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
+    const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system', job.modelKey);
     if (providerStatus.videoUrl) {
       await this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl);
     } else {

@@ -54,6 +54,31 @@ export interface VideoShotPlan {
   referenceAssetVersionIds?: string[];
   keyframeImageUrl?: string;
   transition?: 'cut' | 'dissolve' | 'fade_black';
+  /** 镜头类型：全景亮相 / 功能演示 / 材质细节 / 收尾 */
+  shotType?: VideoShotType;
+  /** 机位锁定：产品自身在动（功能演示）时镜头必须静止 */
+  cameraLocked?: boolean;
+  /** 功能动作镜头需要一张“动作完成态”的实拍尾帧，否则模型会凭空想象机构 */
+  needsEndFrame?: boolean;
+  /** 首帧素材建议（如：用原图裁出控制面板局部） */
+  firstFrameHint?: string;
+  /** 尾帧素材建议（如：躺平状态的正侧面实拍图） */
+  endFrameHint?: string;
+  /** 用户为该镜头上传的尾帧图 */
+  endFrameImageUrl?: string;
+}
+
+export type VideoShotType = 'hero' | 'function' | 'detail' | 'closing';
+
+/** 导演从参考图中识别出的产品事实，提示词中的材质/颜色以此为准 */
+export interface VideoProductFacts {
+  category: string;
+  material: string;
+  color: string;
+  keyFeatures: string[];
+  functions: string[];
+  /** 拼在每条英文提示词开头的产品锚定短语（颜色 + 材质 + 品类 + 关键特征） */
+  anchorEn?: string;
 }
 
 export interface VideoDirectorPlan {
@@ -64,6 +89,7 @@ export interface VideoDirectorPlan {
   estimatedDurationSeconds: number;
   directorModel: string;
   createdAt: string;
+  productFacts?: VideoProductFacts;
 }
 
 export interface VideoCapability {
@@ -86,6 +112,9 @@ export interface VideoCapability {
   supportsLookupByClientKey: boolean;
   evidenceUrl: string;
   verifiedAt: string;
+  /** 当前全站令牌是否开通该模型（来自 GET /v1/models 探测；undefined 表示未能探测） */
+  available?: boolean;
+  availabilityNote?: string;
 }
 
 export interface VideoJob {
@@ -104,6 +133,8 @@ export interface VideoJob {
   requestHash: string;
   sourceAssetVersionId?: string | null;
   sourceImageUrl?: string | null;
+  /** 首尾帧模式下的尾帧图 */
+  lastFrameImageUrl?: string | null;
   assetVersionId?: string | null;
   posterAssetVersionId?: string | null;
   videoSettings: VideoSettings;
@@ -136,6 +167,8 @@ export interface VideoSubmitPayload {
   sourceNodeId: string;
   sourceAssetVersionId?: string | null;
   sourceImageUrl?: string;
+  /** 首尾帧模式下的尾帧图（仅支持 first_last_frame 的模型生效） */
+  lastFrameImageUrl?: string;
   planVersionId?: string;
   shotId?: string;
   mode: VideoCreationMode;
@@ -163,4 +196,6 @@ export interface VideoDirectorBriefRequest {
   productTitle?: string;
   productCategory?: string;
   productDetails?: string;
+  /** 面板所选的单镜头视频时长（秒），方案中每个镜头按此时长生成 */
+  targetDurationSeconds?: number;
 }

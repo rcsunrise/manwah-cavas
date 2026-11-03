@@ -114,6 +114,7 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       productTitle?: string;
       productCategory?: string;
       productDetails?: string;
+      targetDurationSeconds?: number;
     }) => {
       setIsGeneratingPlan(true);
       setError(null);
@@ -140,6 +141,7 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       sourceNodeId: string;
       sourceAssetVersionId?: string | null;
       sourceImageUrl?: string;
+      lastFrameImageUrl?: string;
       planVersionId?: string;
       shotId?: string;
       mode: VideoCreationMode;

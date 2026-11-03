@@ -1,6 +1,6 @@
 // server/services/video/providers/vectorEngineAdapter.ts
 import crypto from 'crypto';
-import { resolveVideoCapability, validateVideoSettings } from '../videoCapabilityRegistry';
+import { resolveVideoCapability, validateVideoSettings, resolveVideoProtocol, VideoProtocol } from '../videoCapabilityRegistry';
 import { VideoSettings } from '../../../../src/types/creativeCanvasVideo';
 import { resolveApiConfig } from '../../../ai/providerConfig';
 import { VideoSourceImageResolver } from '../videoSourceImageResolver';
@@ -19,12 +19,49 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
+// 连接在请求发出前就失败（TLS 握手前被重置、拒绝连接、DNS 失败）时请求一定没有到达上游，可以安全重试
+function isPreSendNetworkError(err: any): boolean {
+  const cause = err?.cause;
+  const code = cause?.code || err?.code;
+  const message = String(cause?.message || '');
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'EAI_AGAIN' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    (code === 'ECONNRESET' && message.includes('before secure TLS connection'))
+  );
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  shouldRetry: (err: any) => boolean,
+  attempts = 4
+): Promise<globalThis.Response> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetchWithTimeout(url, init, timeoutMs);
+    } catch (err) {
+      lastError = err;
+      if (attempt === attempts || !shouldRetry(err)) break;
+      console.warn(`[VectorEngineVideoAdapter] Network error before request was sent (attempt ${attempt}), retrying:`, err?.cause?.code || err?.message);
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 export interface NormalizedVideoInput {
   modelKey: string;
   prompt: string;
   negativePrompt?: string;
   sourceImageUrl?: string;
   referenceImageUrls?: string[];
+  /** 首尾帧模式的尾帧图 */
+  lastFrameImageUrl?: string;
   settings: VideoSettings;
 }
 
@@ -48,23 +85,214 @@ export interface NormalizedProviderStatus {
   errorMessage?: string;
 }
 
+interface ApiTarget {
+  baseUrl: string;
+  apiKey: string;
+}
+
+interface SubmitRequest {
+  path: string;
+  body: Record<string, any>;
+}
+
+// 配置里的 baseUrl 可能是 https://api.tiantoken.com 或 https://api.tiantoken.com/v1，统一去掉版本段再拼接文档路径
+const cleanBaseUrl = (baseUrl: string) => baseUrl.replace(/\/+$/, '').replace(/\/(v1beta|v1)$/, '');
+
+const SUCCEEDED_STATUSES = new Set(['succeeded', 'success', 'completed', 'done']);
+const FAILED_STATUSES = new Set(['failed', 'failure', 'error']);
+const CANCELLED_STATUSES = new Set(['cancelled', 'canceled']);
+const EXPIRED_STATUSES = new Set(['expired', 'timeout']);
+const QUEUED_STATUSES = new Set(['queued', 'pending', 'submitted']);
+
+/**
+ * 按 tokenmarket.apifox.cn 文档为各模型族构造创建任务请求：
+ * - 豆包 sd-*（兼容格式）: POST /v1/video/generations { model, prompt, duration, metadata, references }
+ * - MiniMax-H3: POST /v1/video/generations { model, prompt, duration, images, metadata{resolution 768P/2K, first_frame, last_frame} }
+ * - Grok: POST /v1/videos/generations { model, prompt, duration, resolution, aspect_ratio, image_url }
+ * - 万相: POST /api/v1/services/aigc/video-generation/video-synthesis { model, input{prompt, media}, parameters }
+ * - 可灵 3.0: POST /image-to-video/{model} { contents, settings, options }（模型名在路径中）
+ */
+function buildSubmitRequest(
+  protocol: VideoProtocol,
+  exactModelId: string,
+  input: NormalizedVideoInput,
+  firstFrameUrl: string,
+  lastFrameUrl: string | undefined,
+  idempotencyKey: string
+): SubmitRequest {
+  const resolution = (input.settings.resolution || '720p').toLowerCase();
+  const duration = input.settings.durationSeconds || 5;
+  const ratio = input.settings.ratio || '16:9';
+  const generateAudio = input.settings.audioMode === 'native';
+
+  switch (protocol) {
+    case 'minimax':
+      return {
+        path: '/v1/video/generations',
+        body: {
+          model: exactModelId,
+          prompt: input.prompt,
+          duration,
+          // 首帧/首尾帧场景与 images 参考图场景互斥（混用会被上游 2013 拒绝），图生视频只走首帧
+          metadata: {
+            // 平台档位为 768P / 2K，画面比例由输入图片决定
+            resolution: resolution === '1080p' || resolution === '2k' ? '2K' : '768P',
+            aigc_watermark: false,
+            first_frame: firstFrameUrl,
+            ...(lastFrameUrl ? { last_frame: lastFrameUrl } : {})
+          }
+        }
+      };
+    case 'grok':
+      return {
+        path: '/v1/videos/generations',
+        body: {
+          model: exactModelId,
+          prompt: input.prompt,
+          duration,
+          resolution,
+          aspect_ratio: ratio,
+          image_url: firstFrameUrl
+        }
+      };
+    case 'wan':
+      return {
+        path: '/api/v1/services/aigc/video-generation/video-synthesis',
+        body: {
+          model: exactModelId,
+          input: {
+            prompt: input.prompt,
+            ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
+            media: [
+              { type: 'first_frame', url: firstFrameUrl },
+              ...(lastFrameUrl ? [{ type: 'last_frame', url: lastFrameUrl }] : [])
+            ]
+          },
+          parameters: {
+            resolution: resolution === '1080p' ? '1080P' : '720P',
+            duration,
+            watermark: false,
+            prompt_extend: true
+          }
+        }
+      };
+    case 'kling': {
+      const isTurbo = exactModelId.endsWith('-turbo');
+      return {
+        path: `/image-to-video/${exactModelId}`,
+        body: {
+          contents: [
+            { type: 'prompt', text: input.prompt },
+            { type: 'first_frame', url: firstFrameUrl }
+          ],
+          settings: {
+            resolution,
+            duration,
+            // turbo 默认有声且不接受 audio / multi_shot 参数
+            ...(isTurbo ? {} : { audio: generateAudio ? 'native' : 'off', multi_shot: false })
+          },
+          options: {
+            external_task_id: idempotencyKey.slice(0, 64),
+            watermark_info: { enabled: false }
+          }
+        }
+      };
+    }
+    case 'doubao':
+    default:
+      return {
+        path: '/v1/video/generations',
+        body: {
+          model: exactModelId,
+          prompt: input.prompt,
+          duration,
+          metadata: {
+            resolution,
+            ratio,
+            generate_audio: generateAudio,
+            watermark: false
+          },
+          // 兼容格式的多张 references 是多参考图语义而非首尾帧，这里只传首帧
+          references: [{ type: 'image_url', url: firstFrameUrl }]
+        }
+      };
+  }
+}
+
+function extractTaskId(data: any): string | undefined {
+  return (
+    data?.data?.id ||
+    data?.id ||
+    data?.task_id ||
+    data?.request_id ||
+    data?.data?.task_id ||
+    data?.output?.task_id ||
+    undefined
+  );
+}
+
+function extractVideoUrl(record: any): string | undefined {
+  if (!record || typeof record !== 'object') return undefined;
+  const outputs = Array.isArray(record.outputs) ? record.outputs : [];
+  const videoOutput = outputs.find((o: any) => o?.type === 'video' && o?.url) || outputs.find((o: any) => o?.url);
+  return (
+    record.metadata?.url ||
+    record.video?.url ||
+    videoOutput?.url ||
+    record.content?.video_url ||
+    record.output?.video_url ||
+    record.result?.video_url ||
+    record.result_url ||
+    record.video_url ||
+    (Array.isArray(record.videos) ? record.videos[0]?.url : undefined) ||
+    undefined
+  ) || undefined;
+}
+
+function upstreamErrorMessage(status: number, text: string, displayName: string): string {
+  let parsedMessage = text;
+  try {
+    const parsed = JSON.parse(text);
+    parsedMessage = parsed.message || parsed.error?.message || parsed.msg || parsed.base_resp?.status_msg || text;
+  } catch {}
+  parsedMessage = String(parsedMessage || '').slice(0, 300);
+
+  // 友好化 New-API 分组权限缺失与渠道维护提示
+  if (status === 503 && parsedMessage.includes('No available channel')) {
+    return `模型【${displayName}】在此 Token 权限分组下暂无可用渠道，请在 TianToken 控制台为令牌开通对应分组，或切换豆包 Seedance 2.0 系列。`;
+  }
+  if (parsedMessage.includes('可用渠道不存在')) {
+    return `模型【${displayName}】上游渠道暂时离线或维护中，建议切换豆包 Seedance 2.0 系列。`;
+  }
+  return parsedMessage;
+}
+
 export class VectorEngineVideoAdapter {
   /**
    * Validates input against model capabilities
    */
   public static validate(input: NormalizedVideoInput): { valid: boolean; error?: string } {
     const capability = resolveVideoCapability(input.modelKey);
+    // 尾帧单独按 first_last_frame 能力校验，不占参考图名额
     const count = (input.referenceImageUrls?.length || 0) + (input.sourceImageUrl ? 1 : 0);
     return validateVideoSettings(capability, input.settings, count);
   }
 
+  private static async postJson(target: ApiTarget, path: string, body: Record<string, any>, idempotencyKey: string) {
+    return fetchWithRetry(`${target.baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${target.apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Idempotency-Key': idempotencyKey
+      },
+      body: JSON.stringify(body)
+    }, SUBMIT_TIMEOUT_MS, isPreSendNetworkError);
+  }
+
   /**
-   * Submits a video task to VectorEngine / TianToken / TokenMarket gateway
-   * 严格适配 api.tiantoken.com / tokenmarket.apifox.cn 真实支持的有效端点:
-   * - wan3.0-video: 优先使用 openai: /v1/chat/completions 或 /v1/video/generations
-   * - sd-2.0-fast, sd-2.5, sd-2.0, sd-2.0-mini: /v1/video/generations
-   * - grok-imagine-video-1.5-preview: /v1/video/generations
-   * - MiniMax-H3: /v1/video/generations
+   * Submits a video task to TianToken (tokenmarket) gateway using the per-family documented protocol
    */
   public static async submit(
     input: NormalizedVideoInput,
@@ -77,7 +305,7 @@ export class VectorEngineVideoAdapter {
       throw new Error(`VALIDATION_FAILED: ${validation.error}`);
     }
 
-    let config = await resolveApiConfig(userUuid);
+    const config = await resolveApiConfig(userUuid);
     if (!config.apiKey) {
       if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_MOCK_VIDEO === 'true') {
         return {
@@ -87,370 +315,74 @@ export class VectorEngineVideoAdapter {
           isSimulated: true
         };
       }
-      throw new Error('MISSING_API_KEY: 未检测到有效的向量引擎/AI接口凭证，请在部门设置中配置API密钥');
+      throw new Error('MISSING_API_KEY: 未能读取到 API 凭证（全站配置读取失败或未配置），若密钥已配置多为网络抖动，请稍后重试');
     }
 
-    const cleanBaseUrl = config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
-    const rawImageUrl = input.sourceImageUrl || (input.referenceImageUrls && input.referenceImageUrls[0]);
-
+    const rawImageUrl = input.sourceImageUrl || input.referenceImageUrls?.[0];
     if (!rawImageUrl) {
       throw new Error('IMAGE_REQUIRED: 图生视频必须提供一张参考底图');
     }
 
-    // 关键架构保证: 无论来自画布相对路径、本地asset还是Base64，均统一通过GCS生成公网可下载HTTPS签名直链
-    const imageUrl = await VideoSourceImageResolver.resolveToPublicUrl(rawImageUrl);
-
-    const resolutionValue = (input.settings.resolution || '720p').toLowerCase();
-    const durationValue = input.settings.durationSeconds || 5;
-    const ratioValue = input.settings.ratio || '16:9';
-    const generateAudio = input.settings.audioMode === 'native';
-
-    // 1. 向量引擎专属火山端点适配 (覆盖 Apifox 文档: 358028487, 358028488, 358028489)
-    // 适用于 seedance-1-5-pro, doubao-seedance-1-5-pro-251215 以及 首尾帧任务
-    const isVolcSeedanceModel = 
-      capability.exactModelId.includes('1-5') || 
-      capability.exactModelId.includes('seedance-1') ||
-      capability.exactModelId === 'seedance-1-5-pro';
-
-    if (isVolcSeedanceModel) {
-      try {
-        console.log(`[VectorEngineVideoAdapter] Submitting to VectorEngine Volcengine endpoint: model=${capability.exactModelId}`);
-        const volcUrl = `${cleanBaseUrl}/volc/v1/contents/generations/tasks`;
-        
-        // 火山 Seedance 1.x 通过文本指令携带分辨率/时长/比例参数
-        const contentList: any[] = [
-          {
-            type: 'text',
-            text: `${input.prompt} --resolution ${resolutionValue} --duration ${durationValue} --ratio ${ratioValue}`
-          }
-        ];
-
-        // 处理首尾帧（若提供多张图）或单图参考
-        if (input.referenceImageUrls && input.referenceImageUrls.length >= 2) {
-          const firstUrl = await VideoSourceImageResolver.resolveToPublicUrl(input.referenceImageUrls[0]);
-          const lastUrl = await VideoSourceImageResolver.resolveToPublicUrl(input.referenceImageUrls[1]);
-          contentList.push({
-            type: 'image_url',
-            image_url: { url: firstUrl },
-            role: 'first_frame'
-          });
-          contentList.push({
-            type: 'image_url',
-            image_url: { url: lastUrl },
-            role: 'last_frame'
-          });
-        } else if (imageUrl) {
-          contentList.push({
-            type: 'image_url',
-            image_url: { url: imageUrl },
-            role: 'reference_image'
-          });
-        }
-
-        const volcPayload: Record<string, any> = {
-          model: capability.exactModelId,
-          content: contentList,
-          generate_audio: generateAudio
-        };
-
-        const volcResponse = await fetchWithTimeout(volcUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${config.apiKey}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Idempotency-Key': idempotencyKey
-          },
-          body: JSON.stringify(volcPayload)
-        }, SUBMIT_TIMEOUT_MS);
-
-        if (volcResponse.ok) {
-          const volcData = await volcResponse.json();
-          const taskId = volcData.id || volcData.task_id || volcData.data?.id;
-          if (taskId) {
-            console.log(`[VectorEngineVideoAdapter] Volcengine task created successfully: ${taskId}`);
-            return {
-              providerTaskId: taskId,
-              provider: 'vectorengine_volc_v1',
-              exactModelId: capability.exactModelId,
-              isSimulated: false,
-              rawResponse: volcData
-            };
-          }
-        } else {
-          const errText = await volcResponse.text();
-          console.warn(`[VectorEngineVideoAdapter] Volcengine endpoint returned ${volcResponse.status}: ${errText}`);
-        }
-      } catch (err: any) {
-        console.warn('[VectorEngineVideoAdapter] Volcengine task submission error:', err?.message);
-      }
+    const rawLastFrame = input.lastFrameImageUrl
+      || (input.sourceImageUrl ? input.referenceImageUrls?.[0] : input.referenceImageUrls?.[1]);
+    if (rawLastFrame && !capability.modes.includes('first_last_frame')) {
+      throw new Error(`VALIDATION_FAILED: 模型 ${capability.displayName} 不支持首尾帧，请切换 MiniMax-H3 或去掉尾帧`);
     }
 
-    // 2. 特别处理 wan3.0-video: 依照平台文档，优先尝试 openai /v1/chat/completions 接口
-    if (capability.exactModelId === 'wan3.0-video') {
-      try {
-        console.log(`[VectorEngineVideoAdapter] Submitting wan3.0-video via /v1/chat/completions`);
-        const chatUrl = `${cleanBaseUrl}/v1/chat/completions`;
-        const chatPayload = {
-          model: 'wan3.0-video',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `${input.prompt} (参数要求: 分辨率=${input.settings.resolution || '720p'}, 时长=${input.settings.durationSeconds || 5}秒, 比例=${input.settings.ratio || '16:9'})`
-                },
-                {
-                  type: 'image_url',
-                  image_url: { url: imageUrl }
-                }
-              ]
-            }
-          ],
-          stream: false
-        };
+    // 无论来自画布相对路径、本地 asset 还是 Base64，均统一转换为上游可下载的公网直链；
+    // 同时补边到目标画幅，避免上游裁切首帧后自行脑补被裁掉的产品部分
+    const frameRatio = input.settings.ratio;
+    const firstFrameUrl = await VideoSourceImageResolver.resolveFrameForRatio(rawImageUrl, frameRatio);
+    const lastFrameUrl = rawLastFrame ? await VideoSourceImageResolver.resolveFrameForRatio(rawLastFrame, frameRatio) : undefined;
 
-        const chatResponse = await fetchWithTimeout(chatUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${config.apiKey}`,
-            'Content-Type': 'application/json',
-            'Idempotency-Key': idempotencyKey
-          },
-          body: JSON.stringify(chatPayload)
-        }, SUBMIT_TIMEOUT_MS);
+    const protocol = resolveVideoProtocol(capability.exactModelId);
+    const request = buildSubmitRequest(protocol, capability.exactModelId, input, firstFrameUrl, lastFrameUrl, idempotencyKey);
+    const primary: ApiTarget = { baseUrl: cleanBaseUrl(config.baseUrl), apiKey: config.apiKey };
 
-        if (chatResponse.ok) {
-          const chatResText = await chatResponse.text();
-          try {
-            const chatData = JSON.parse(chatResText);
-            const content = chatData.choices?.[0]?.message?.content || '';
-            const urlMatch = content.match(/https?:\/\/[^\s)"]+\.mp4/i) || content.match(/https?:\/\/[^\s)"]+/i);
-            const taskId = chatData.id || chatData.task_id || chatData.data?.id;
+    console.log(`[VectorEngineVideoAdapter] Submit ${protocol} task: POST ${request.path} model=${capability.exactModelId}`);
+    let response = await this.postJson(primary, request.path, request.body, idempotencyKey);
 
-            if (urlMatch) {
-              return {
-                providerTaskId: taskId || `direct-${Date.now()}`,
-                provider: 'vectorengine_chat_completion',
-                exactModelId: capability.exactModelId,
-                isSimulated: false,
-                rawResponse: chatData,
-                directVideoUrl: urlMatch[0]
-              };
-            } else if (taskId) {
-              return {
-                providerTaskId: taskId,
-                provider: 'vectorengine_chat_completion',
-                exactModelId: capability.exactModelId,
-                isSimulated: false,
-                rawResponse: chatData
-              };
-            }
-          } catch {
-            console.warn('[VectorEngineVideoAdapter] Failed to parse chat completions JSON, falling back to /v1/video/generations');
-          }
-        } else {
-          console.warn(`[VectorEngineVideoAdapter] /v1/chat/completions returned ${chatResponse.status}, falling back to /v1/video/generations`);
-        }
-      } catch (err) {
-        console.warn('[VectorEngineVideoAdapter] wan3.0-video chat endpoint failed, falling back:', err);
+    // 部门专属令牌无渠道 (503) 或限流 (429)：请求确定未被受理，故障转移到全站令牌重试一次
+    if (response.status === 503 || response.status === 429) {
+      const fallbackConfig = await resolveApiConfig('system');
+      if (fallbackConfig.apiKey && fallbackConfig.apiKey !== config.apiKey) {
+        console.log(`[VectorEngineVideoAdapter] Primary token returned ${response.status}, failing over to system token`);
+        response = await this.postJson(
+          { baseUrl: cleanBaseUrl(fallbackConfig.baseUrl), apiKey: fallbackConfig.apiKey },
+          request.path,
+          request.body,
+          `${idempotencyKey}-fb`
+        );
       }
-    }
-
-    // 3. 豆包 2.0 原生多模态任务接口 (覆盖 Apifox 文档: 446220699 创建视频生成任务 API doubao-2.0)
-    const isDoubaoModel = 
-      capability.exactModelId.startsWith('sd-') || 
-      capability.exactModelId.includes('doubao') || 
-      capability.exactModelId.includes('seedance');
-
-    if (isDoubaoModel) {
-      try {
-        console.log(`[VectorEngineVideoAdapter] Dispatching Doubao v3 native task API: model=${capability.exactModelId}, res=${resolutionValue}`);
-        const doubaoUrl = `${cleanBaseUrl}/api/v3/contents/generations/tasks`;
-        const contentList: any[] = [
-          {
-            type: 'text',
-            text: input.prompt
-          }
-        ];
-
-        if (imageUrl) {
-          contentList.push({
-            type: 'image_url',
-            image_url: {
-              url: imageUrl
-            },
-            role: 'reference_image'
-          });
-        }
-
-        const doubaoPayload: Record<string, any> = {
-          model: capability.exactModelId,
-          content: contentList,
-          resolution: resolutionValue,
-          duration: durationValue,
-          ratio: ratioValue,
-          generate_audio: generateAudio,
-          watermark: false
-        };
-
-        const doubaoResponse = await fetchWithTimeout(doubaoUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${config.apiKey}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Idempotency-Key': idempotencyKey
-          },
-          body: JSON.stringify(doubaoPayload)
-        }, SUBMIT_TIMEOUT_MS);
-
-        if (doubaoResponse.ok) {
-          const doubaoData = await doubaoResponse.json();
-          const taskId = doubaoData.id || doubaoData.task_id || doubaoData.data?.id;
-          if (taskId) {
-            console.log(`[VectorEngineVideoAdapter] Doubao v3 native task successfully created: ${taskId}`);
-            return {
-              providerTaskId: taskId,
-              provider: 'doubao_v3_native',
-              exactModelId: capability.exactModelId,
-              isSimulated: false,
-              rawResponse: doubaoData
-            };
-          }
-        } else {
-          const errText = await doubaoResponse.text();
-          console.warn(`[VectorEngineVideoAdapter] Doubao v3 endpoint returned ${doubaoResponse.status}: ${errText}`);
-          
-          // 若部门专属向量 Key 提示渠道不存在 (503) 或限流 (429)，触发智能故障转移
-          if (doubaoResponse.status === 503 || doubaoResponse.status === 429) {
-            console.log('[VectorEngineVideoAdapter] 部门专属渠道不可用，正在自动故障转移至备用全站渠道...');
-            const fallbackConfig = await resolveApiConfig('system');
-            if (fallbackConfig.apiKey && fallbackConfig.apiKey !== config.apiKey) {
-              const fbUrl = `${fallbackConfig.baseUrl.replace(/\/+$/, '')}/api/v3/contents/generations/tasks`;
-              const fbRes = await fetchWithTimeout(fbUrl, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${fallbackConfig.apiKey}`,
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  'Idempotency-Key': `${idempotencyKey}-fb`
-                },
-                body: JSON.stringify(doubaoPayload)
-              }, SUBMIT_TIMEOUT_MS);
-              if (fbRes.ok) {
-                const fbData = await fbRes.json();
-                const fbTaskId = fbData.id || fbData.task_id || fbData.data?.id;
-                if (fbTaskId) {
-                  console.log(`[VectorEngineVideoAdapter] Failover to fallback route succeeded: ${fbTaskId}`);
-                  return {
-                    providerTaskId: fbTaskId,
-                    provider: 'doubao_failover_route',
-                    exactModelId: capability.exactModelId,
-                    isSimulated: false,
-                    rawResponse: fbData
-                  };
-                }
-              }
-            }
-          }
-        }
-      } catch (err: any) {
-        console.warn('[VectorEngineVideoAdapter] Doubao v3 native call failed, falling back:', err?.message);
-      }
-    }
-
-    // 3. 通用官方格式 /v1/video/generations (适用于 grok, MiniMax-H3 及万相标准端点或作为降级备选)
-    const targetUrl = `${cleanBaseUrl}/v1/video/generations`;
-
-    const payload: Record<string, any> = {
-      model: capability.exactModelId,
-      prompt: input.prompt,
-      image_url: imageUrl,
-      img_url: imageUrl,
-      first_frame_image: imageUrl,
-      // 关键修复: TianToken / New-API 豆包计费网关读取的是 size 字段做分辨率计费策略匹配 (如 '720p', '480p', '1080p')
-      size: resolutionValue,
-      resolution: resolutionValue,
-      duration: input.settings.durationSeconds || 5,
-      duration_seconds: input.settings.durationSeconds || 5,
-      aspect_ratio: input.settings.ratio || '16:9',
-      ratio: input.settings.ratio || '16:9'
-    };
-
-    // 针对 Grok 模型的网关特殊校验: 其底层为 Rust 反序列化器，要求 image 为 struct ImageUrl { url: string }
-    if (capability.exactModelId.includes('grok')) {
-      payload.image = { url: imageUrl };
-    }
-
-    console.log(`[VectorEngineVideoAdapter] Submitting video task to ${targetUrl}: model=${capability.exactModelId}, size=${resolutionValue}`);
-
-    const response = await fetchWithTimeout(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': idempotencyKey
-      },
-      body: JSON.stringify(payload)
-    }, SUBMIT_TIMEOUT_MS);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      let parsedMessage = errText;
-      try {
-        const parsed = JSON.parse(errText);
-        parsedMessage = parsed.message || parsed.error?.message || parsed.msg || parsed.base_resp?.status_msg || errText;
-      } catch {}
-
-      // 友好化 New-API 分组权限缺失与渠道维护提示
-      if (response.status === 503 && parsedMessage.includes('No available channel')) {
-        parsedMessage = `模型【${capability.displayName}】在此 Token 权限分组下暂无可用渠道。建议切换至【豆包 Seedance 2.0 (Fast/2.0/Mini/2.5)】，或在 TianToken 控制台将此 Token 关联至相应模型分组。`;
-      } else if (response.status === 500 && parsedMessage.includes('可用渠道不存在')) {
-        parsedMessage = `模型【${capability.displayName}】上游供应商渠道暂时离线或维护中。建议优先选用【豆包 Seedance 2.0 Fast/2.0】生成。`;
-      } else if (parsedMessage.includes('resolution is required')) {
-        parsedMessage = `模型【${capability.displayName}】上游服务渠道接口异常 (resolution is required)。建议切换为稳定在线的【豆包 Seedance 2.0 系列】。`;
-      } else if (parsedMessage.includes('InvalidParameter') || parsedMessage.includes('Invalid URL')) {
-        parsedMessage = `模型底图参数格式不符合该上游接口规范。建议切换至【豆包 Seedance 2.0 系列】。`;
-      }
-
-      console.error(`[VectorEngineVideoAdapter] Video upstream rejected (${response.status}):`, errText);
-      throw new Error(`视频网关拒绝请求 (${response.status}): ${parsedMessage}`);
     }
 
     const resText = await response.text();
+    if (!response.ok) {
+      console.error(`[VectorEngineVideoAdapter] Video upstream rejected (${response.status}):`, resText.slice(0, 500));
+      throw new Error(`视频网关拒绝请求 (${response.status}): ${upstreamErrorMessage(response.status, resText, capability.displayName)}`);
+    }
+
     let data: any;
     try {
       data = JSON.parse(resText);
-    } catch (jsonErr) {
-      console.error('[VectorEngineVideoAdapter] Non-JSON response from upstream:', resText);
+    } catch {
       throw new Error(`视频网关返回非JSON格式数据: ${resText.slice(0, 150)}`);
     }
 
-    // 提取直出视频链接 (部分极速模型同步返回)
-    const immediateVideoUrl = data.video_url || 
-                              data.output?.video_url || 
-                              data.result?.video_url || 
-                              (data.data && Array.isArray(data.data) && data.data[0]?.url) ||
-                              (data.videos && data.videos[0]?.url);
+    // 可灵原生格式：HTTP 200 但 code 非 0 视为拒绝
+    if (typeof data?.code === 'number' && data.code !== 0) {
+      throw new Error(`视频网关拒绝请求 (code ${data.code}): ${data.message || JSON.stringify(data).slice(0, 200)}`);
+    }
 
-    const taskId = data.id || 
-                   data.task_id || 
-                   data.request_id ||
-                   data.output?.task_id || 
-                   data.data?.id || 
-                   data.data?.task_id ||
-                   data.task?.id ||
-                   data.result?.task_id;
-
+    const taskId = extractTaskId(data);
+    const immediateVideoUrl = extractVideoUrl(data) || extractVideoUrl(data?.data);
     if (!taskId && !immediateVideoUrl) {
-      throw new Error(`视频网关未返回有效任务ID或视频链接: ${JSON.stringify(data)}`);
+      throw new Error(`视频网关未返回有效任务ID或视频链接: ${JSON.stringify(data).slice(0, 300)}`);
     }
 
     return {
       providerTaskId: taskId || `sync-task-${Date.now()}`,
-      provider: 'vectorengine_standard',
+      provider: `tiantoken_${protocol}`,
       exactModelId: capability.exactModelId,
       isSimulated: false,
       rawResponse: data,
@@ -458,15 +390,60 @@ export class VectorEngineVideoAdapter {
     };
   }
 
+  private static normalizeRecord(providerTaskId: string, record: any): NormalizedProviderStatus | null {
+    if (!record || typeof record !== 'object') return null;
+    const rawStatus = String(
+      record.status || record.state || record.task_status || record.output?.task_status || record.data?.status || ''
+    ).toLowerCase();
+    const videoUrl = extractVideoUrl(record) || extractVideoUrl(record.data);
+    if (!rawStatus && !videoUrl) return null;
+
+    let progressPercent = 40;
+    const rawProgress = record.progress ?? record.data?.progress;
+    if (rawProgress !== undefined && rawProgress !== null) {
+      const parsed = parseInt(String(rawProgress).replace('%', ''), 10);
+      if (!isNaN(parsed)) progressPercent = parsed;
+    }
+
+    const rawError = record.error?.message || record.error || record.fail_reason || record.data?.fail_reason || record.message;
+    const failReason = typeof rawError === 'string' ? rawError : rawError ? JSON.stringify(rawError) : undefined;
+    const posterUrl = record.poster_url || record.metadata?.poster_url || record.output?.poster_url || record.result?.poster_url;
+    const durationSec = Number(record.video?.duration ?? record.duration ?? NaN);
+    const durationMs = record.duration_ms ? Number(record.duration_ms) : (isNaN(durationSec) ? undefined : durationSec * 1000);
+
+    if (SUCCEEDED_STATUSES.has(rawStatus) || (!rawStatus && videoUrl)) {
+      return { providerTaskId, status: 'succeeded', progressPercent: 100, videoUrl, posterUrl, durationMs };
+    }
+    if (FAILED_STATUSES.has(rawStatus) || EXPIRED_STATUSES.has(rawStatus)) {
+      return {
+        providerTaskId,
+        status: 'failed',
+        progressPercent,
+        errorCode: EXPIRED_STATUSES.has(rawStatus) ? 'PROVIDER_EXPIRED' : undefined,
+        errorMessage: failReason || (EXPIRED_STATUSES.has(rawStatus) ? '上游任务已过期' : '上游生成失败')
+      };
+    }
+    if (CANCELLED_STATUSES.has(rawStatus)) {
+      return { providerTaskId, status: 'cancelled', progressPercent, errorMessage: failReason || '上游任务已取消' };
+    }
+    return {
+      providerTaskId,
+      status: QUEUED_STATUSES.has(rawStatus) ? 'queued' : 'running',
+      progressPercent
+    };
+  }
+
   /**
    * Queries provider task status
-   * 严格对接 Apifox 文档规范:
-   * - 358028492: GET /volc/v1/contents/generations/tasks/{task_id}
-   * - 446220700: GET /api/v3/contents/generations/tasks/{id}
+   * - 豆包兼容 / MiniMax / Grok: GET /v1/videos/{task_id}
+   * - 万相: GET /api/v1/tasks/{task_id}
+   * - 可灵 3.0: GET /tasks?task_ids={id}，结果在 data[0]
+   * 旧任务（豆包原生 cgt- 等）回退到历史端点列表
    */
   public static async query(
     providerTaskId: string,
-    userUuid: string = 'system'
+    userUuid: string = 'system',
+    modelKey?: string
   ): Promise<NormalizedProviderStatus> {
     if (providerTaskId.startsWith('sim-task-')) {
       const parts = providerTaskId.split('-');
@@ -474,38 +451,24 @@ export class VectorEngineVideoAdapter {
       const elapsedSeconds = (Date.now() - createdTs) / 1000;
 
       if (elapsedSeconds < 3) {
-        return {
-          providerTaskId,
-          status: 'queued',
-          progressPercent: 15
-        };
+        return { providerTaskId, status: 'queued', progressPercent: 15 };
       } else if (elapsedSeconds < 8) {
-        return {
-          providerTaskId,
-          status: 'running',
-          progressPercent: Math.min(85, Math.floor(elapsedSeconds * 12))
-        };
-      } else {
-        return {
-          providerTaskId,
-          status: 'succeeded',
-          progressPercent: 100,
-          videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-          posterUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800',
-          durationMs: 5000
-        };
+        return { providerTaskId, status: 'running', progressPercent: Math.min(85, Math.floor(elapsedSeconds * 12)) };
       }
-    }
-
-    if (providerTaskId.startsWith('direct-') || providerTaskId.startsWith('sync-task-')) {
       return {
         providerTaskId,
         status: 'succeeded',
-        progressPercent: 100
+        progressPercent: 100,
+        videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+        posterUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800',
+        durationMs: 5000
       };
     }
 
-    // Upstream query for real tasks
+    if (providerTaskId.startsWith('direct-') || providerTaskId.startsWith('sync-task-')) {
+      return { providerTaskId, status: 'succeeded', progressPercent: 100 };
+    }
+
     let config = await resolveApiConfig(userUuid);
     if (!config.apiKey) {
       config = await resolveApiConfig('system');
@@ -519,116 +482,52 @@ export class VectorEngineVideoAdapter {
       };
     }
 
-    const cleanBaseUrl = config.baseUrl.replace(/\/v1beta\/?$/, '').replace(/\/+$/, '');
+    const baseUrl = cleanBaseUrl(config.baseUrl);
+    const encodedId = encodeURIComponent(providerTaskId);
+    const protocol = modelKey ? resolveVideoProtocol(resolveVideoCapability(modelKey).exactModelId) : null;
 
-    // 轮询端点尝试列表 (覆盖向量引擎火山端点 358028492、豆包原生 v3 端点 446220700 以及主流聚合平台规则)
-    const isDoubaoTaskId = providerTaskId.startsWith('cgt-');
-    const endpointsToTry = [
-      `${cleanBaseUrl}/volc/v1/contents/generations/tasks/${providerTaskId}`,
-      `${cleanBaseUrl}/api/v3/contents/generations/tasks/${providerTaskId}`,
-      ...(isDoubaoTaskId ? [
-        `${cleanBaseUrl}/v3/contents/generations/tasks/${providerTaskId}`
-      ] : []),
-      `${cleanBaseUrl}/v1/video/generations/${providerTaskId}`,
-      `${cleanBaseUrl}/v1/videos/tasks/${providerTaskId}`,
-      `${cleanBaseUrl}/v1/tasks/${providerTaskId}`,
-      `${cleanBaseUrl}/alibailian/api/v1/tasks/${providerTaskId}`
+    const primaryEndpoints: string[] =
+      protocol === 'kling' ? [`${baseUrl}/tasks?task_ids=${encodedId}`]
+      : protocol === 'wan' ? [`${baseUrl}/api/v1/tasks/${encodedId}`]
+      : protocol ? [`${baseUrl}/v1/videos/${encodedId}`]
+      : [];
+    // 历史任务兼容：豆包原生 v3 / 火山端点等
+    const legacyEndpoints = [
+      ...(providerTaskId.startsWith('cgt-') ? [`${baseUrl}/api/v3/contents/generations/tasks/${encodedId}`] : []),
+      `${baseUrl}/v1/videos/${encodedId}`,
+      `${baseUrl}/volc/v1/contents/generations/tasks/${encodedId}`,
+      `${baseUrl}/api/v3/contents/generations/tasks/${encodedId}`,
+      `${baseUrl}/v1/video/generations/${encodedId}`,
+      `${baseUrl}/api/v1/tasks/${encodedId}`
     ];
+    const endpointsToTry = Array.from(new Set([...primaryEndpoints, ...legacyEndpoints]));
 
-    for (const testUrl of endpointsToTry) {
+    for (const url of endpointsToTry) {
       try {
-        const response = await fetchWithTimeout(testUrl, {
-          headers: {
-            'Authorization': `Bearer ${config.apiKey}`
+        // 查询是幂等 GET，网络抖动时直接重试
+        const response = await fetchWithRetry(url, {
+          headers: { 'Authorization': `Bearer ${config.apiKey}`, 'Accept': 'application/json' }
+        }, QUERY_TIMEOUT_MS, () => true, 2);
+        if (!response.ok) continue;
+
+        const data: any = await response.json();
+        // 可灵原生查询结果为数组
+        const record = Array.isArray(data?.data)
+          ? data.data.find((item: any) => item?.id === providerTaskId) || data.data[0]
+          : data;
+        const normalized = this.normalizeRecord(providerTaskId, record);
+        if (normalized) {
+          if (normalized.status === 'succeeded' && !normalized.videoUrl) {
+            console.warn(`[VectorEngineVideoAdapter] Task ${providerTaskId} succeeded without a recognizable video URL:`, JSON.stringify(data).slice(0, 500));
           }
-        }, QUERY_TIMEOUT_MS);
-
-        if (response.ok) {
-          const data = await response.json();
-          // TianToken / Doubao v3 的结构通常为: { id: "...", status: "succeeded", content: { video_url: "..." } }
-          // 或 { code: 'success', data: { status: 'SUCCESS'|'IN_PROGRESS'|'FAILURE', progress: '50%', result_url: '...' } }
-          const innerData = data.data || {};
-          const rawStatus = (
-            data.status || 
-            innerData.status || 
-            data.state || 
-            innerData.data?.status || 
-            data.output?.task_status || 
-            data.task_status || 
-            ''
-          ).toLowerCase();
-
-          const videoUrl = data.content?.video_url ||
-                           innerData.content?.video_url ||
-                           innerData.result_url ||
-                           innerData.video_url || 
-                           innerData.data?.content?.video_url ||
-                           innerData.data?.video_url ||
-                           data.video_url || 
-                           data.output?.video_url || 
-                           data.result?.video_url || 
-                           (data.videos && data.videos[0]?.url) ||
-                           (data.data && Array.isArray(data.data) && data.data[0]?.url);
-
-          const posterUrl = innerData.poster_url || 
-                            innerData.data?.poster_url || 
-                            data.poster_url || 
-                            data.output?.poster_url || 
-                            data.result?.poster_url;
-
-          let progressPercent = 40;
-          const rawProgress = innerData.progress || data.progress;
-          if (rawProgress !== undefined && rawProgress !== null) {
-            const parsed = parseInt(String(rawProgress).replace('%', ''), 10);
-            if (!isNaN(parsed)) progressPercent = parsed;
-          } else if (videoUrl) {
-            progressPercent = 100;
-          }
-
-          const failReason = innerData.fail_reason || 
-                            data.error?.message || 
-                            data.error || 
-                            data.message || 
-                            data.output?.message;
-
-          if (rawStatus || videoUrl) {
-            const isDone = rawStatus === 'success' || rawStatus === 'succeeded' || rawStatus === 'completed' || !!videoUrl;
-            const isFail = rawStatus === 'failed' || rawStatus === 'failure' || rawStatus === 'error' || (!!innerData.fail_reason && innerData.fail_reason.length > 0);
-            const isWait = rawStatus === 'queued' || rawStatus === 'pending' || rawStatus === 'submitted';
-            const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
-            const isExpired = rawStatus === 'expired' || rawStatus === 'timeout';
-
-            if (!isDone && (isCancelled || isExpired)) {
-              return {
-                providerTaskId,
-                status: isCancelled ? 'cancelled' : 'failed',
-                progressPercent,
-                errorCode: isExpired ? 'PROVIDER_EXPIRED' : undefined,
-                errorMessage: failReason || (isExpired ? '上游任务已过期' : '上游任务已取消')
-              };
-            }
-
-            return {
-              providerTaskId,
-              status: isDone ? 'succeeded' : (isFail ? 'failed' : (isWait ? 'queued' : 'running')),
-              progressPercent: isDone ? 100 : progressPercent,
-              videoUrl,
-              posterUrl,
-              durationMs: innerData.duration_ms ? Number(innerData.duration_ms) : (innerData.duration ? Number(innerData.duration) * 1000 : undefined),
-              errorMessage: isFail ? failReason : undefined
-            };
-          }
+          return normalized;
         }
-      } catch (err) {
+      } catch {
         // Try next endpoint
       }
     }
 
-    return {
-      providerTaskId,
-      status: 'running',
-      progressPercent: 40
-    };
+    return { providerTaskId, status: 'running', progressPercent: 40 };
   }
 
   /**
