@@ -16,12 +16,29 @@ import { supabaseAdmin } from '../../../src/lib/supabase';
 const DATA_DIR = path.join(process.cwd(), '.data');
 const STORAGE_FILE = path.join(DATA_DIR, 'video_jobs.json');
 
+// 提交阶段卡住（如进程在提交中途重启）的判定阈值
+const SUBMITTING_STALE_MS = 3 * 60 * 1000;
+// 上游任务从创建起超过该时长仍未结束，判定为超时失败，避免无限轮询
+const MAX_PROVIDER_RUNNING_MS = 30 * 60 * 1000;
+
+// 上游明确拒绝/参数校验失败：任务确定没有创建成功，应直接标记 failed
+const DETERMINISTIC_SUBMIT_ERROR_PREFIXES = [
+  'VALIDATION_FAILED',
+  'IMAGE_REQUIRED',
+  'MISSING_API_KEY',
+  '视频网关拒绝请求',
+  '视频网关未返回',
+  '视频网关返回非JSON'
+];
+
 export class VideoJobService {
   private static instance: VideoJobService;
   private jobs = new Map<string, VideoJob>();
   private idempotencyStore = new Map<string, { job: VideoJob; requestHash: string }>();
   private sseListeners = new Map<string, Set<Response>>();
   private pollingTimer: NodeJS.Timeout | null = null;
+  private isPollingTick = false;
+  private transferringJobIds = new Set<string>();
 
   constructor() {
     this.loadFromDisk();
@@ -101,13 +118,11 @@ export class VideoJobService {
    * Broadcasts job update via SSE
    */
   private broadcastJobUpdate(job: VideoJob): void {
-    const targetSet = this.sseListeners.get(job.canvasId) || new Set();
-    const defaultSet = this.sseListeners.get('canvas-default') || new Set();
-    const merged = new Set<Response>([...targetSet, ...defaultSet]);
+    const targetSet = this.sseListeners.get(job.canvasId);
 
-    if (merged.size > 0) {
+    if (targetSet && targetSet.size > 0) {
       const payload = `data: ${JSON.stringify({ type: 'video_job_updated', job })}\n\n`;
-      for (const res of merged) {
+      for (const res of targetSet) {
         try {
           res.write(payload);
         } catch {
@@ -226,8 +241,13 @@ export class VideoJobService {
       this.broadcastJobUpdate(job);
     } catch (err: any) {
       console.error(`[VideoJobService] Job ${job.id} submission failed:`, err);
-      job.status = 'submission_unknown';
-      job.errorMessage = err.message || 'Submission to video provider encountered an unknown network error';
+      const message: string = err?.message || '';
+      const isDeterministic = DETERMINISTIC_SUBMIT_ERROR_PREFIXES.some(prefix => message.startsWith(prefix));
+      // 明确被拒绝的请求一定没有建任务 → failed；网络中断/超时无法确认上游是否已建任务 → submission_unknown
+      job.status = isDeterministic ? 'failed' : 'submission_unknown';
+      job.errorCode = isDeterministic ? 'SUBMIT_REJECTED' : 'SUBMIT_UNKNOWN';
+      job.retryable = true;
+      job.errorMessage = message || 'Submission to video provider encountered an unknown network error';
       job.updatedAt = new Date().toISOString();
       this.saveToDisk();
       this.broadcastJobUpdate(job);
@@ -239,70 +259,112 @@ export class VideoJobService {
    */
   private startBackgroundWorker(): void {
     if (this.pollingTimer) return;
-    this.pollingTimer = setInterval(async () => {
-      // 1. 查询正在运行和排队中的任务
-      const activeJobs = Array.from(this.jobs.values()).filter(
-        j => j.status === 'running' || j.status === 'queued'
-      );
-
-      for (const job of activeJobs) {
-        if (!job.providerTaskId) continue;
-
-        try {
-          const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
-          job.providerStatus = providerStatus.status;
-          job.progressPercent = providerStatus.progressPercent;
-          job.updatedAt = new Date().toISOString();
-
-          if (providerStatus.status === 'succeeded' && providerStatus.videoUrl) {
-            (job as any).videoUrl = providerStatus.videoUrl;
-            // 立即置为 ready，让前端第一时间呈现并可直接播放
-            job.status = 'ready';
-            job.progressPercent = 100;
-            job.readyAt = new Date().toISOString();
-            this.saveToDisk();
-            this.broadcastJobUpdate(job);
-
-            // 后台异步安全落盘至 GCS + Supabase Storage（非阻塞执行，不阻断其他任务轮询）
-            this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl).catch(e => {
-              console.warn(`[VideoJobService] Background transfer non-fatal error:`, e);
-            });
-          } else if (providerStatus.status === 'failed') {
-            job.status = 'failed';
-            job.errorCode = providerStatus.errorCode || 'PROVIDER_FAILED';
-            job.errorMessage = providerStatus.errorMessage || 'Provider generation failed';
-            this.saveToDisk();
-            this.broadcastJobUpdate(job);
-          } else {
-            this.saveToDisk();
-            this.broadcastJobUpdate(job);
-          }
-        } catch (err) {
-          console.warn(`[VideoJobService] Error querying task ${job.id}:`, err);
-        }
-      }
-
-      // 2. 自动拯救卡在 transferring 状态的历史任务（避免前端无限转圈）
-      const stuckJobs = Array.from(this.jobs.values()).filter(j => {
-        if (j.status !== 'transferring') return false;
-        const updatedTime = new Date(j.updatedAt || j.createdAt).getTime();
-        return Date.now() - updatedTime > 15000;
-      });
-
-      for (const stuckJob of stuckJobs) {
-        const directUrl = (stuckJob as any).videoUrl;
-        if (directUrl) {
-          console.log(`[VideoJobService] Auto-rescuing stuck transferring job ${stuckJob.id}...`);
-          stuckJob.status = 'ready';
-          stuckJob.progressPercent = 100;
-          this.saveToDisk();
-          this.broadcastJobUpdate(stuckJob);
-          this.transferVideoToStorage(stuckJob, directUrl).catch(e => {
-            console.warn(`[VideoJobService] Background rescue transfer error:`, e);
-          });
-        }
-      }
+    this.pollingTimer = setInterval(() => {
+      // 上一轮仍在等待上游响应时跳过本轮，避免同一任务被并发查询、重复转存
+      if (this.isPollingTick) return;
+      this.isPollingTick = true;
+      this.runPollingTick()
+        .catch(err => console.warn('[VideoJobService] Polling tick error:', err))
+        .finally(() => {
+          this.isPollingTick = false;
+        });
     }, 2500);
+  }
+
+  private async runPollingTick(): Promise<void> {
+    const now = Date.now();
+
+    // 0. 提交阶段卡死的任务（进程重启等）无法确认上游状态，转为 submission_unknown
+    for (const job of this.jobs.values()) {
+      if (job.status !== 'submitting' || job.providerTaskId) continue;
+      if (now - new Date(job.updatedAt || job.createdAt).getTime() < SUBMITTING_STALE_MS) continue;
+      job.status = 'submission_unknown';
+      job.errorCode = 'SUBMIT_STALE';
+      job.errorMessage = '提交上游超时未返回，无法确认任务是否已创建，请检查后重新生成';
+      job.retryable = true;
+      job.updatedAt = new Date().toISOString();
+      this.saveToDisk();
+      this.broadcastJobUpdate(job);
+    }
+
+    // 1. 查询正在运行和排队中的任务
+    const activeJobs = Array.from(this.jobs.values()).filter(
+      j => j.status === 'running' || j.status === 'queued'
+    );
+
+    for (const job of activeJobs) {
+      if (!job.providerTaskId) continue;
+
+      if (now - new Date(job.createdAt).getTime() > MAX_PROVIDER_RUNNING_MS) {
+        job.status = 'failed';
+        job.errorCode = 'PROVIDER_TIMEOUT';
+        job.errorMessage = `上游生成超过 ${Math.round(MAX_PROVIDER_RUNNING_MS / 60000)} 分钟仍未完成，已停止跟踪`;
+        job.retryable = true;
+        job.updatedAt = new Date().toISOString();
+        this.saveToDisk();
+        this.broadcastJobUpdate(job);
+        continue;
+      }
+
+      try {
+        const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
+        job.providerStatus = providerStatus.status;
+        job.progressPercent = providerStatus.progressPercent;
+        job.updatedAt = new Date().toISOString();
+
+        if (providerStatus.status === 'succeeded' && providerStatus.videoUrl) {
+          (job as any).videoUrl = providerStatus.videoUrl;
+          // 立即置为 ready，让前端第一时间呈现并可直接播放
+          job.status = 'ready';
+          job.progressPercent = 100;
+          job.readyAt = new Date().toISOString();
+          this.saveToDisk();
+          this.broadcastJobUpdate(job);
+
+          // 后台异步安全落盘至 GCS + Supabase Storage（非阻塞执行，不阻断其他任务轮询）
+          this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl).catch(e => {
+            console.warn(`[VideoJobService] Background transfer non-fatal error:`, e);
+          });
+        } else if (providerStatus.status === 'failed') {
+          job.status = 'failed';
+          job.errorCode = providerStatus.errorCode || 'PROVIDER_FAILED';
+          job.errorMessage = providerStatus.errorMessage || 'Provider generation failed';
+          this.saveToDisk();
+          this.broadcastJobUpdate(job);
+        } else if (providerStatus.status === 'cancelled') {
+          job.status = 'cancelled';
+          job.errorMessage = providerStatus.errorMessage || '上游任务已取消';
+          this.saveToDisk();
+          this.broadcastJobUpdate(job);
+        } else {
+          this.saveToDisk();
+          this.broadcastJobUpdate(job);
+        }
+      } catch (err) {
+        console.warn(`[VideoJobService] Error querying task ${job.id}:`, err);
+      }
+    }
+
+    // 2. 自动拯救卡在 transferring 状态的历史任务（避免前端无限转圈）
+    const stuckJobs = Array.from(this.jobs.values()).filter(j => {
+      if (j.status !== 'transferring' || this.transferringJobIds.has(j.id)) return false;
+      const updatedTime = new Date(j.updatedAt || j.createdAt).getTime();
+      return Date.now() - updatedTime > 15000;
+    });
+
+    for (const stuckJob of stuckJobs) {
+      const directUrl = (stuckJob as any).videoUrl;
+      if (directUrl) {
+        console.log(`[VideoJobService] Auto-rescuing stuck transferring job ${stuckJob.id}...`);
+        stuckJob.status = 'ready';
+        stuckJob.progressPercent = 100;
+        this.saveToDisk();
+        this.broadcastJobUpdate(stuckJob);
+        this.transferVideoToStorage(stuckJob, directUrl).catch(e => {
+          console.warn(`[VideoJobService] Background rescue transfer error:`, e);
+        });
+      }
+    }
   }
 
   /**
@@ -313,6 +375,9 @@ export class VideoJobService {
     videoDownloadUrl: string,
     posterUrl?: string
   ): Promise<void> {
+    // 同一任务只允许一个转存在途，防止重复下载/上传与重复登记资产版本
+    if (this.transferringJobIds.has(job.id)) return;
+    this.transferringJobIds.add(job.id);
     try {
       // 1. Download video buffer with timeout protection
       const controller = new AbortController();
@@ -430,6 +495,8 @@ export class VideoJobService {
       job.updatedAt = new Date().toISOString();
       this.saveToDisk();
       this.broadcastJobUpdate(job);
+    } finally {
+      this.transferringJobIds.delete(job.id);
     }
   }
 
@@ -456,7 +523,7 @@ export class VideoJobService {
     this.saveToDisk();
     this.broadcastJobUpdate(job);
 
-    const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId);
+    const providerStatus = await VectorEngineVideoAdapter.query(job.providerTaskId, job.userId || 'system');
     if (providerStatus.videoUrl) {
       await this.transferVideoToStorage(job, providerStatus.videoUrl, providerStatus.posterUrl);
     } else {
@@ -498,15 +565,19 @@ export class VideoJobService {
     return this.jobs.get(jobId) || null;
   }
 
+  public findJobByAssetOrId(assetVersionIdOrJobId: string): VideoJob | null {
+    for (const job of this.jobs.values()) {
+      if (job.assetVersionId === assetVersionIdOrJobId || job.id === assetVersionIdOrJobId) return job;
+    }
+    return null;
+  }
+
   public listJobsByCanvas(canvasId: string): VideoJob[] {
     const target = String(canvasId || '').trim();
+    if (!target) return [];
+    // 严格按画布隔离，避免任务串到其他画布
     return Array.from(this.jobs.values())
-      .filter(j => {
-        if (!target || target === 'all' || target === '*') return true;
-        if (j.canvasId === target || j.workspaceId === target) return true;
-        if (target === 'canvas-default' || j.canvasId === 'canvas-default') return true;
-        return j.canvasId.includes(target) || target.includes(j.canvasId);
-      })
+      .filter(j => j.canvasId === target)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }

@@ -76,7 +76,7 @@ export const VideoResultNode = memo(({ id, data, selected }: NodeProps) => {
   }, [assetVersionId, directUrl]);
 
   const handleDownload = () => {
-    const downloadTarget = playbackInfo?.playbackUrl || directUrl || (assetVersionId ? `/api/canvases/assets/video?assetId=${assetVersionId}&download=1` : '');
+    const downloadTarget = playbackInfo?.playbackUrl || directUrl || (assetVersionId ? `/api/video-assets/${encodeURIComponent(assetVersionId)}/playback-url` : '');
     if (!downloadTarget) return;
     window.open(downloadTarget, '_blank');
   };

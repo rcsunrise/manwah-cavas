@@ -337,8 +337,7 @@ const handlePlaybackUrl = async (req: Request, res: Response) => {
 
     if (!objectKey) {
       // Find from jobs
-      const jobs = Array.from(VideoJobService.getInstance()['jobs'].values());
-      const matched = jobs.find(j => j.assetVersionId === assetVersionId || j.id === assetVersionId);
+      const matched = VideoJobService.getInstance().findJobByAssetOrId(assetVersionId);
       if (matched) {
         if ((matched as any).videoUrl) {
           directUrl = (matched as any).videoUrl;
@@ -422,9 +421,10 @@ router.get('/api/video-assets/:assetVersionId/stream', handlePlaybackUrl);
  */
 router.post('/api/video-assets/:assetVersionId/download-url', async (req: Request, res: Response) => {
   try {
-    const { assetVersionId } = req.params;
+    const assetVersionId = String(req.params.assetVersionId);
     res.json({
-      downloadUrl: `/api/canvases/assets/video?assetId=${assetVersionId}&download=1`,
+      // 复用 playback-url 的 GET 重定向（按资产记录/任务解析真实存储地址）
+      downloadUrl: `/api/video-assets/${encodeURIComponent(assetVersionId)}/playback-url`,
       filename: `product-showcase-${assetVersionId}.mp4`
     });
   } catch (err: any) {

@@ -1,5 +1,5 @@
 // src/hooks/useCanvasVideo.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   VideoCapability,
   VideoDirectorPlan,
@@ -22,6 +22,8 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [isSubmittingJob, setIsSubmittingJob] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 相同参数的提交在途时复用同一个请求（防双击重复建任务，并保证幂等键一致）
+  const inFlightSubmitsRef = useRef(new Map<string, Promise<VideoJob>>());
 
   // Load capabilities & existing jobs
   useEffect(() => {
@@ -147,21 +149,31 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       prompt: string;
       inputAssetVersionIds?: string[];
     }) => {
-      setIsSubmittingJob(true);
-      setError(null);
-      try {
-        const { job } = await VideoGenerationService.submitGeneration({
-          canvasId,
-          ...params
-        });
-        setJobs(prev => [job, ...prev.filter(j => j.id !== job.id)]);
-        return job;
-      } catch (err: any) {
-        setError(err.message || '提交视频生成失败');
-        throw err;
-      } finally {
-        setIsSubmittingJob(false);
-      }
+      const submitKey = JSON.stringify([canvasId, params]);
+      const inFlight = inFlightSubmitsRef.current.get(submitKey);
+      if (inFlight) return inFlight;
+
+      const idempotencyKey = `idem-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const request = (async () => {
+        setIsSubmittingJob(true);
+        setError(null);
+        try {
+          const { job } = await VideoGenerationService.submitGeneration(
+            { canvasId, ...params },
+            idempotencyKey
+          );
+          setJobs(prev => [job, ...prev.filter(j => j.id !== job.id)]);
+          return job;
+        } catch (err: any) {
+          setError(err.message || '提交视频生成失败');
+          throw err;
+        } finally {
+          inFlightSubmitsRef.current.delete(submitKey);
+          setIsSubmittingJob(inFlightSubmitsRef.current.size > 0);
+        }
+      })();
+      inFlightSubmitsRef.current.set(submitKey, request);
+      return request;
     },
     [canvasId]
   );

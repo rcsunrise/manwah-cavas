@@ -38,8 +38,10 @@ export default function CreativeCanvasPage() {
 
   const {
     nodes,
+    rawNodes,
     setNodes,
     edges,
+    setEdges,
     onNodesChange,
     onEdgesChange,
     uploadState,
@@ -335,11 +337,16 @@ export default function CreativeCanvasPage() {
   }, [nodes, onNodesChange, onEdgesChange]);
 
   const handleJobSubmitted = React.useCallback((job: any, sourceNodeId: string) => {
-    const sourceNode = nodes.find(n => n.id === sourceNodeId);
-    const posX = (sourceNode?.position?.x ?? 200) + 420;
-    const posY = (sourceNode?.position?.y ?? 200) + 120;
-
     const genNodeId = `node-video-gen-${job.id}`;
+    // 同一任务（幂等复用）只落一个节点
+    if (nodes.some(n => n.id === genNodeId)) return;
+
+    const sourceNode = sourceNodeId ? nodes.find(n => n.id === sourceNodeId) : undefined;
+    // 无源节点（仅上传参考图提交）时按已有视频任务节点数错开摆放，避免互相重叠
+    const orphanOffset = sourceNode ? 0 : nodes.filter(n => n.type === 'videoGenerationNode').length * 260;
+    const posX = (sourceNode?.position?.x ?? 200) + 420;
+    const posY = (sourceNode?.position?.y ?? 200) + 120 + orphanOffset;
+
     const newGenNode: any = {
       id: genNodeId,
       type: 'videoGenerationNode',
@@ -358,10 +365,15 @@ export default function CreativeCanvasPage() {
     };
 
     onNodesChange([{ type: 'add', item: newGenNode }]);
-    onEdgesChange([{ type: 'add', item: newEdge }]);
+    if (sourceNode) {
+      onEdgesChange([{ type: 'add', item: newEdge }]);
+    }
   }, [nodes, onNodesChange, onEdgesChange]);
 
   const effectiveCanvasId = canvasId || workspaceId || 'canvas-default';
+
+  const rawNodesRef = React.useRef<any[]>(rawNodes);
+  rawNodesRef.current = rawNodes;
 
   // Dual-track real-time synchronization of video generation jobs to canvas nodes (SSE + Active Polling)
   React.useEffect(() => {
@@ -375,9 +387,22 @@ export default function CreativeCanvasPage() {
         );
         if (targetIndex === -1) return currentNodes;
 
-        const next = [...currentNodes];
-        const existingNode = next[targetIndex];
+        const existingNode = currentNodes[targetIndex];
         const effectiveUrl = updatedJob.videoUrl || (updatedJob as any).supabaseVideoUrl || (updatedJob as any).playbackUrl || '';
+        const prevJob = existingNode.data?.job || {};
+        const needsResultNode = updatedJob.status === 'ready' || !!effectiveUrl;
+        const hasResultNode = currentNodes.some(n => n.id === `node-video-res-${updatedJob.id}`);
+        // 轮询拿到的任务与节点上已有状态一致时不产生新对象，避免无谓重渲染与自动保存比对
+        const unchanged =
+          prevJob.status === updatedJob.status &&
+          prevJob.progressPercent === updatedJob.progressPercent &&
+          prevJob.updatedAt === updatedJob.updatedAt &&
+          prevJob.assetVersionId === updatedJob.assetVersionId &&
+          (prevJob.videoUrl || '') === (effectiveUrl || prevJob.videoUrl || '') &&
+          (!needsResultNode || hasResultNode);
+        if (unchanged) return currentNodes;
+
+        const next = [...currentNodes];
 
         next[targetIndex] = {
           ...existingNode,
@@ -422,19 +447,32 @@ export default function CreativeCanvasPage() {
                 modelKey: updatedJob.modelKey
               }
             };
-            const resultEdge: any = {
-              id: `edge-${existingNode.id}-${resultNodeId}`,
-              source: existingNode.id,
-              target: resultNodeId,
-              style: { stroke: '#10B981', strokeWidth: 2 }
-            };
-            onEdgesChange([{ type: 'add', item: resultEdge }]);
             next.push(resultNode);
           }
         }
 
         return next;
       });
+
+      // 连线在 setNodes 的 updater 之外追加（updater 需保持纯函数），按 id 幂等
+      const effectiveUrl = updatedJob.videoUrl || updatedJob.supabaseVideoUrl || updatedJob.playbackUrl || '';
+      if (updatedJob.status !== 'ready' && !effectiveUrl) return;
+      const genNode = rawNodesRef.current.find(
+        (n: any) => n.id === `node-video-gen-${updatedJob.id}` || n.data?.job?.id === updatedJob.id
+      );
+      if (!genNode) return;
+      const resultNodeId = `node-video-res-${updatedJob.id}`;
+      const resultEdgeId = `edge-${genNode.id}-${resultNodeId}`;
+      setEdges((currentEdges: any[]) =>
+        currentEdges.some(e => e.id === resultEdgeId)
+          ? currentEdges
+          : [...currentEdges, {
+              id: resultEdgeId,
+              source: genNode.id,
+              target: resultNodeId,
+              style: { stroke: '#10B981', strokeWidth: 2 }
+            }]
+      );
     };
 
     // 1. Initial sync & polling fallback to guarantee updates even if SSE drops.
@@ -472,7 +510,7 @@ export default function CreativeCanvasPage() {
       unsubscribe();
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [effectiveCanvasId, setNodes, onEdgesChange]);
+  }, [effectiveCanvasId, setNodes, setEdges]);
 
   // 回调通过 ref 读取最新的生成函数与模型设置，使增强后的节点只在节点本身变化时才重建
   const triggerGenerateRef = React.useRef(handleTriggerGenerateSceneImage);

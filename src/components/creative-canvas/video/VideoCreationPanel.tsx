@@ -128,6 +128,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   // Keyframe generation tracking state per shot
   const [generatingKeyframeShotId, setGeneratingKeyframeShotId] = useState<string | null>(null);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [batchSubmitError, setBatchSubmitError] = useState<string | null>(null);
 
   // Sync selectedNode image to reference images if not already present
   useEffect(() => {
@@ -305,7 +306,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl;
 
     const job = await submitVideo({
-      sourceNodeId: selectedNode?.id || `ref-${Date.now()}`,
+      sourceNodeId: selectedNode?.id || 'ref-upload',
       sourceAssetVersionId: selectedNode?.assetVersionId,
       sourceImageUrl: effectiveImageUrl,
       mode: activeTab,
@@ -316,8 +317,16 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       shotId
     });
 
-    if (onJobSubmitted && selectedNode) {
-      onJobSubmitted(job, selectedNode.id);
+    // 仅用上传参考图提交时也要在画布上落任务节点（无源节点时不连线）
+    onJobSubmitted?.(job, selectedNode?.id || '');
+    return job;
+  };
+
+  const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string) => {
+    try {
+      await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl);
+    } catch {
+      // 错误已由 useCanvasVideo 写入 error 状态并在面板展示
     }
   };
 
@@ -325,12 +334,21 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const handleBatchSubmitAllShots = async () => {
     if (!directorPlan || directorPlan.shots.length === 0) return;
     setIsBatchSubmitting(true);
+    setBatchSubmitError(null);
+    const failedShots: string[] = [];
     try {
+      // 单个镜头失败不影响后续镜头提交
       for (const shot of directorPlan.shots) {
-        await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl);
+        try {
+          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl);
+        } catch (err: any) {
+          console.warn(`Batch submit failed for shot ${shot.shotId}:`, err);
+          failedShots.push(shot.title || shot.shotId);
+        }
       }
-    } catch (err: any) {
-      console.warn('Batch submit warning:', err);
+      if (failedShots.length > 0) {
+        setBatchSubmitError(`${failedShots.length} 个镜头提交失败：${failedShots.join('、')}`);
+      }
     } finally {
       setIsBatchSubmitting(false);
     }
@@ -800,7 +818,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl)}
+                        onClick={() => handleSubmitDirectVideoClick(shot.prompt, shot.shotId, shot.keyframeImageUrl)}
                         disabled={isSubmittingJob}
                         className="py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-2xs disabled:opacity-50"
                       >
@@ -846,6 +864,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
             <div className="leading-tight">{error}</div>
           </div>
         )}
+        {batchSubmitError && (
+          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="leading-tight">{batchSubmitError}</div>
+          </div>
+        )}
       </div>
 
       {/* Bottom Action Footer */}
@@ -872,7 +896,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         ) : (
           <button
             type="button"
-            onClick={() => handleSubmitDirectVideo()}
+            onClick={() => handleSubmitDirectVideoClick()}
             disabled={isSubmittingJob || (referenceImages.length === 0 && !selectedNode)}
             className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-sm transition flex items-center justify-center gap-1.5"
           >

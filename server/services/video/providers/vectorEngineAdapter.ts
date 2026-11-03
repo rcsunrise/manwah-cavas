@@ -5,6 +5,20 @@ import { VideoSettings } from '../../../../src/types/creativeCanvasVideo';
 import { resolveApiConfig } from '../../../ai/providerConfig';
 import { VideoSourceImageResolver } from '../videoSourceImageResolver';
 
+// 上游请求超时：提交可能较慢（同步直出模型），查询应快速失败以免拖住轮询
+const SUBMIT_TIMEOUT_MS = 90_000;
+const QUERY_TIMEOUT_MS = 15_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface NormalizedVideoInput {
   modelKey: string;
   prompt: string;
@@ -87,6 +101,9 @@ export class VectorEngineVideoAdapter {
     const imageUrl = await VideoSourceImageResolver.resolveToPublicUrl(rawImageUrl);
 
     const resolutionValue = (input.settings.resolution || '720p').toLowerCase();
+    const durationValue = input.settings.durationSeconds || 5;
+    const ratioValue = input.settings.ratio || '16:9';
+    const generateAudio = input.settings.audioMode === 'native';
 
     // 1. 向量引擎专属火山端点适配 (覆盖 Apifox 文档: 358028487, 358028488, 358028489)
     // 适用于 seedance-1-5-pro, doubao-seedance-1-5-pro-251215 以及 首尾帧任务
@@ -100,10 +117,11 @@ export class VectorEngineVideoAdapter {
         console.log(`[VectorEngineVideoAdapter] Submitting to VectorEngine Volcengine endpoint: model=${capability.exactModelId}`);
         const volcUrl = `${cleanBaseUrl}/volc/v1/contents/generations/tasks`;
         
+        // 火山 Seedance 1.x 通过文本指令携带分辨率/时长/比例参数
         const contentList: any[] = [
           {
             type: 'text',
-            text: input.prompt
+            text: `${input.prompt} --resolution ${resolutionValue} --duration ${durationValue} --ratio ${ratioValue}`
           }
         ];
 
@@ -132,10 +150,10 @@ export class VectorEngineVideoAdapter {
         const volcPayload: Record<string, any> = {
           model: capability.exactModelId,
           content: contentList,
-          generate_audio: true
+          generate_audio: generateAudio
         };
 
-        const volcResponse = await fetch(volcUrl, {
+        const volcResponse = await fetchWithTimeout(volcUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${config.apiKey}`,
@@ -144,7 +162,7 @@ export class VectorEngineVideoAdapter {
             'Idempotency-Key': idempotencyKey
           },
           body: JSON.stringify(volcPayload)
-        });
+        }, SUBMIT_TIMEOUT_MS);
 
         if (volcResponse.ok) {
           const volcData = await volcResponse.json();
@@ -193,7 +211,7 @@ export class VectorEngineVideoAdapter {
           stream: false
         };
 
-        const chatResponse = await fetch(chatUrl, {
+        const chatResponse = await fetchWithTimeout(chatUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${config.apiKey}`,
@@ -201,7 +219,7 @@ export class VectorEngineVideoAdapter {
             'Idempotency-Key': idempotencyKey
           },
           body: JSON.stringify(chatPayload)
-        });
+        }, SUBMIT_TIMEOUT_MS);
 
         if (chatResponse.ok) {
           const chatResText = await chatResponse.text();
@@ -271,13 +289,13 @@ export class VectorEngineVideoAdapter {
           model: capability.exactModelId,
           content: contentList,
           resolution: resolutionValue,
-          duration: input.settings.durationSeconds || 5,
-          ratio: input.settings.ratio || '16:9',
-          generate_audio: true,
+          duration: durationValue,
+          ratio: ratioValue,
+          generate_audio: generateAudio,
           watermark: false
         };
 
-        const doubaoResponse = await fetch(doubaoUrl, {
+        const doubaoResponse = await fetchWithTimeout(doubaoUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${config.apiKey}`,
@@ -286,7 +304,7 @@ export class VectorEngineVideoAdapter {
             'Idempotency-Key': idempotencyKey
           },
           body: JSON.stringify(doubaoPayload)
-        });
+        }, SUBMIT_TIMEOUT_MS);
 
         if (doubaoResponse.ok) {
           const doubaoData = await doubaoResponse.json();
@@ -311,7 +329,7 @@ export class VectorEngineVideoAdapter {
             const fallbackConfig = await resolveApiConfig('system');
             if (fallbackConfig.apiKey && fallbackConfig.apiKey !== config.apiKey) {
               const fbUrl = `${fallbackConfig.baseUrl.replace(/\/+$/, '')}/api/v3/contents/generations/tasks`;
-              const fbRes = await fetch(fbUrl, {
+              const fbRes = await fetchWithTimeout(fbUrl, {
                 method: 'POST',
                 headers: {
                   'Authorization': `Bearer ${fallbackConfig.apiKey}`,
@@ -320,7 +338,7 @@ export class VectorEngineVideoAdapter {
                   'Idempotency-Key': `${idempotencyKey}-fb`
                 },
                 body: JSON.stringify(doubaoPayload)
-              });
+              }, SUBMIT_TIMEOUT_MS);
               if (fbRes.ok) {
                 const fbData = await fbRes.json();
                 const fbTaskId = fbData.id || fbData.task_id || fbData.data?.id;
@@ -368,7 +386,7 @@ export class VectorEngineVideoAdapter {
 
     console.log(`[VectorEngineVideoAdapter] Submitting video task to ${targetUrl}: model=${capability.exactModelId}, size=${resolutionValue}`);
 
-    const response = await fetch(targetUrl, {
+    const response = await fetchWithTimeout(targetUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.apiKey}`,
@@ -376,7 +394,7 @@ export class VectorEngineVideoAdapter {
         'Idempotency-Key': idempotencyKey
       },
       body: JSON.stringify(payload)
-    });
+    }, SUBMIT_TIMEOUT_MS);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -519,11 +537,11 @@ export class VectorEngineVideoAdapter {
 
     for (const testUrl of endpointsToTry) {
       try {
-        const response = await fetch(testUrl, {
+        const response = await fetchWithTimeout(testUrl, {
           headers: {
             'Authorization': `Bearer ${config.apiKey}`
           }
-        });
+        }, QUERY_TIMEOUT_MS);
 
         if (response.ok) {
           const data = await response.json();
@@ -577,6 +595,18 @@ export class VectorEngineVideoAdapter {
             const isDone = rawStatus === 'success' || rawStatus === 'succeeded' || rawStatus === 'completed' || !!videoUrl;
             const isFail = rawStatus === 'failed' || rawStatus === 'failure' || rawStatus === 'error' || (!!innerData.fail_reason && innerData.fail_reason.length > 0);
             const isWait = rawStatus === 'queued' || rawStatus === 'pending' || rawStatus === 'submitted';
+            const isCancelled = rawStatus === 'cancelled' || rawStatus === 'canceled';
+            const isExpired = rawStatus === 'expired' || rawStatus === 'timeout';
+
+            if (!isDone && (isCancelled || isExpired)) {
+              return {
+                providerTaskId,
+                status: isCancelled ? 'cancelled' : 'failed',
+                progressPercent,
+                errorCode: isExpired ? 'PROVIDER_EXPIRED' : undefined,
+                errorMessage: failReason || (isExpired ? '上游任务已过期' : '上游任务已取消')
+              };
+            }
 
             return {
               providerTaskId,
@@ -584,7 +614,7 @@ export class VectorEngineVideoAdapter {
               progressPercent: isDone ? 100 : progressPercent,
               videoUrl,
               posterUrl,
-              durationMs: innerData.duration_ms || innerData.duration ? Number(innerData.duration) * 1000 : undefined,
+              durationMs: innerData.duration_ms ? Number(innerData.duration_ms) : (innerData.duration ? Number(innerData.duration) * 1000 : undefined),
               errorMessage: isFail ? failReason : undefined
             };
           }

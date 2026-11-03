@@ -4153,6 +4153,7 @@ export function useCreativeCanvasWorkspace(
     rawNodes: nodes,
     setNodes,
     edges,
+    setEdges,
     onNodesChange,
     onEdgesChange,
     uploadState,
