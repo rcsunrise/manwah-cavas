@@ -16,6 +16,7 @@ import { useCreativeCanvasWorkspace } from '../../hooks/useCreativeCanvasWorkspa
 import { downloadFileWithFallback } from '../../lib/storage/fileDownload';
 import { createDefaultNinePlan } from '../../services/posterStudioService';
 import { VideoGenerationService } from '../../services/videoGenerationService';
+import { ACTIVE_VIDEO_JOB_STATUSES } from '../../types/creativeCanvasVideo';
 
 export default function CreativeCanvasPage() {
   const { workspaceId } = useParams<{ workspaceId?: string }>();
@@ -436,25 +437,30 @@ export default function CreativeCanvasPage() {
       });
     };
 
-    // 1. Initial sync & periodic polling fallback (every 2.5s) to guarantee updates even if SSE drops
+    // 1. Initial sync & polling fallback to guarantee updates even if SSE drops.
+    // 有进行中的任务时 2.5s 轮询一次；没有时退到 15s，避免空转请求
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
     const syncActiveJobs = async () => {
+      let hasActiveJob = false;
       try {
         const jobs = await VideoGenerationService.fetchCanvasJobs(effectiveCanvasId);
         if (jobs && jobs.length > 0) {
           for (const j of jobs) {
             applyJobUpdate(j);
           }
+          hasActiveJob = jobs.some(j => ACTIVE_VIDEO_JOB_STATUSES.has(j.status));
         }
       } catch (e) {
         // quiet fallback
       }
+      if (!cancelled) {
+        pollTimer = setTimeout(syncActiveJobs, hasActiveJob ? 2500 : 15000);
+      }
     };
 
     syncActiveJobs();
-
-    const pollInterval = setInterval(() => {
-      syncActiveJobs();
-    }, 2500);
 
     // 2. SSE subscription for instantaneous push updates
     const unsubscribe = VideoGenerationService.subscribeVideoEvents(effectiveCanvasId, (updatedJob: any) => {
@@ -462,84 +468,102 @@ export default function CreativeCanvasPage() {
     });
 
     return () => {
+      cancelled = true;
       unsubscribe();
-      clearInterval(pollInterval);
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [effectiveCanvasId, setNodes, onEdgesChange]);
 
+  // 回调通过 ref 读取最新的生成函数与模型设置，使增强后的节点只在节点本身变化时才重建
+  const triggerGenerateRef = React.useRef(handleTriggerGenerateSceneImage);
+  triggerGenerateRef.current = handleTriggerGenerateSceneImage;
+  const generationSettingsRef = React.useRef({ selectedModel, selectedResolution });
+  generationSettingsRef.current = { selectedModel, selectedResolution };
+
+  const augmentNode = React.useCallback((node: any) => {
+    if (node.type === 'videoGenerationNode') {
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          onCancel: async (jobId: string) => {
+            try {
+              await VideoGenerationService.cancelJob(jobId);
+            } catch (e) {
+              console.error('Cancel job failed:', e);
+            }
+          },
+          onRetryTransfer: async (jobId: string) => {
+            try {
+              await VideoGenerationService.retryTransfer(jobId);
+            } catch (e) {
+              console.error('Retry transfer failed:', e);
+            }
+          }
+        }
+      };
+    }
+    if (node.type === 'generatedImageNode' || node.type === 'generatedImage' || node.id.startsWith('gen-img-node-')) {
+      const sceneIdx = Number(node.data?.sceneIndex) || 1;
+      const sceneKey = `scene-${String(sceneIdx).padStart(2, '0')}`;
+      return {
+        ...node,
+        data: {
+          canvasId: effectiveCanvasId,
+          projectId: effectiveCanvasId,
+          workspaceId: workspaceId || 'default_workspace',
+          productDnaVersionId: productDnaVersionId || undefined,
+          copySkuId: `copy_sku_${effectiveCanvasId}_${sceneKey}`,
+          screenId: `screen-${String(sceneIdx).padStart(2, '0')}`,
+          screenRole: sceneIdx === 1 ? 'PRODUCT_HERO' : 'LIFESTYLE_SCENE',
+          ...node.data,
+          onUpdate: (updated: any) => {
+            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
+          },
+          onGeneratePoster: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, true),
+          onRegenerate: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, false),
+          onOpenAssetVersions: () => {
+            const idx = node.data?.sceneIndex || 1;
+            const key = `scene-${String(idx).padStart(2, '0')}`;
+            setAssetModalTarget({
+              nodeId: node.id,
+              sceneKey: key,
+              imageUrl: (node.data?.imageUrl as string) || ''
+            });
+            setShowAssetModal(true);
+          }
+        }
+      };
+    }
+    if (node.type === 'scenePlanNode' || node.id.startsWith('scene-plan-node-')) {
+      const sceneIdx = Number(node.data?.screenIndex || node.data?.sceneIndex) || 1;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          onUpdate: (updated: any) => {
+            setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
+          },
+          onGenerateImage: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, false),
+          onGeneratePoster: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, true),
+        }
+      };
+    }
+    return node;
+  }, [effectiveCanvasId, workspaceId, productDnaVersionId, setNodes]);
+
+  // 按节点引用缓存：拖拽时未变化的节点保持同一对象，memo 化的节点组件不会重渲染
+  const augmentedNodeCache = React.useMemo(() => new WeakMap<object, any>(), [augmentNode]);
   const augmentedNodes = React.useMemo(() => {
     return nodes.map(node => {
-      if (node.type === 'videoGenerationNode') {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            onCancel: async (jobId: string) => {
-              try {
-                await VideoGenerationService.cancelJob(jobId);
-              } catch (e) {
-                console.error('Cancel job failed:', e);
-              }
-            },
-            onRetryTransfer: async (jobId: string) => {
-              try {
-                await VideoGenerationService.retryTransfer(jobId);
-              } catch (e) {
-                console.error('Retry transfer failed:', e);
-              }
-            }
-          }
-        };
+      let augmented = augmentedNodeCache.get(node);
+      if (!augmented) {
+        augmented = augmentNode(node);
+        augmentedNodeCache.set(node, augmented);
       }
-      if (node.type === 'generatedImageNode' || node.type === 'generatedImage' || node.id.startsWith('gen-img-node-')) {
-        const sceneIdx = Number(node.data?.sceneIndex) || 1;
-        const sceneKey = `scene-${String(sceneIdx).padStart(2, '0')}`;
-        return {
-          ...node,
-          data: {
-            canvasId: effectiveCanvasId,
-            projectId: effectiveCanvasId,
-            workspaceId: workspaceId || 'default_workspace',
-            productDnaVersionId: productDnaVersionId || undefined,
-            copySkuId: `copy_sku_${effectiveCanvasId}_${sceneKey}`,
-            screenId: `screen-${String(sceneIdx).padStart(2, '0')}`,
-            screenRole: sceneIdx === 1 ? 'PRODUCT_HERO' : 'LIFESTYLE_SCENE',
-            ...node.data,
-            onUpdate: (updated: any) => {
-              setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
-            },
-            onGeneratePoster: () => handleTriggerGenerateSceneImage(sceneIdx, undefined, selectedModel, selectedResolution, true),
-            onRegenerate: () => handleTriggerGenerateSceneImage(sceneIdx, undefined, selectedModel, selectedResolution, false),
-            onOpenAssetVersions: () => {
-              const idx = node.data?.sceneIndex || 1;
-              const key = `scene-${String(idx).padStart(2, '0')}`;
-              setAssetModalTarget({
-                nodeId: node.id,
-                sceneKey: key,
-                imageUrl: (node.data?.imageUrl as string) || ''
-              });
-              setShowAssetModal(true);
-            }
-          }
-        };
-      }
-      if (node.type === 'scenePlanNode' || node.id.startsWith('scene-plan-node-')) {
-        const sceneIdx = Number(node.data?.screenIndex || node.data?.sceneIndex) || 1;
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            onUpdate: (updated: any) => {
-              setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
-            },
-            onGenerateImage: () => handleTriggerGenerateSceneImage(sceneIdx, undefined, selectedModel, selectedResolution, false),
-            onGeneratePoster: () => handleTriggerGenerateSceneImage(sceneIdx, undefined, selectedModel, selectedResolution, true),
-          }
-        };
-      }
-      return node;
+      return augmented;
     });
-  }, [nodes, effectiveCanvasId, workspaceId, productDnaVersionId, handleTriggerGenerateSceneImage, selectedModel, selectedResolution]);
+  }, [nodes, augmentNode, augmentedNodeCache]);
 
   const productionImagesMap = React.useMemo(() => {
     const map: Record<string, {

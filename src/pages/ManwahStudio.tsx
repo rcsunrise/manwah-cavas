@@ -311,6 +311,7 @@ const App: React.FC = () => {
              await dbService.deleteTemplate(t.id);
           }
        }
+       dbService.invalidateSystemTemplatesCache();
        alert("预设已成功同步至后台，所有商企用户均可查看！");
        if (hasNewSystem) {
            refreshTemplates();

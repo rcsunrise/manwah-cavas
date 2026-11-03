@@ -27,6 +27,21 @@ import { VideoResultNode } from './video/VideoResultNode';
 import { CanvasToolbar } from './CanvasToolbar';
 import { CheckSquare, Square, Trash2, Copy, X, Upload, Sparkles, Film, Type } from 'lucide-react';
 
+// 节点组件统一 memo 化（同一组件只包一次）：节点对象引用不变时跳过重渲染，拖拽时只重绘被拖动的节点
+const memoizedNodeComponents = new Map<React.ComponentType<any>, React.ComponentType<any>>();
+function memoizeNodeTypes<T extends Record<string, React.ComponentType<any>>>(types: T): T {
+  const result: Record<string, React.ComponentType<any>> = {};
+  for (const [key, component] of Object.entries(types)) {
+    let memoized = memoizedNodeComponents.get(component);
+    if (!memoized) {
+      memoized = React.memo(component);
+      memoizedNodeComponents.set(component, memoized);
+    }
+    result[key] = memoized;
+  }
+  return result as T;
+}
+
 interface CanvasWorkspaceProps {
   workspaceId?: string;
   nodes: Node[];
@@ -305,7 +320,7 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   };
 
   const nodeTypes = useMemo(
-    () => ({
+    () => memoizeNodeTypes({
       // Primary registered nodes
       welcomeNode: WelcomeNode,
       productImageNode: ProductImageNode,

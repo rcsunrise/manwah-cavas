@@ -290,24 +290,21 @@ function isTestOrDevMockMode(): boolean {
   );
 }
 
-let cachedValidUserUuid: string | null = null;
+// 无法识别真实用户时（演示模式、未登录等）统一归到占位 ID。
+// 之前会取 auth 用户表里的第一个用户，导致匿名数据被挂到某个真实账号名下。
 async function resolveValidUserUuid(userId?: string | null): Promise<string> {
   if (userId && isValidUuid(userId)) {
     return userId;
   }
-  if (cachedValidUserUuid) return cachedValidUserUuid;
-  try {
-    const { data } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
-    if (data?.users?.length) {
-      cachedValidUserUuid = data.users[0].id;
-      return cachedValidUserUuid;
-    }
-  } catch (e) {}
   return '00000000-0000-0000-0000-000000000001';
 }
 
+// 本进程内已确认存在的父项目，避免每次保存草稿都多一次云端 upsert
+const ensuredParentProjectIds = new Set<string>();
+
 export async function ensureParentProjectExists(projectId: string, userId: string | null) {
   if (!projectId) return;
+  if (ensuredParentProjectIds.has(String(projectId))) return;
   try {
     const rawProjId = String(projectId);
     const validProjId = isValidUuid(rawProjId) ? rawProjId : toValidUuid(rawProjId);
@@ -325,10 +322,13 @@ export async function ensureParentProjectExists(projectId: string, userId: strin
     };
 
     try {
-      const res1 = await supabaseAdmin.from('creative_projects').upsert(standardProjectUuid, { onConflict: 'id' });
+      // ignoreDuplicates：已有项目不覆盖其标题、所有者与创建时间
+      const res1 = await supabaseAdmin
+        .from('creative_projects')
+        .upsert(standardProjectUuid, { onConflict: 'id', ignoreDuplicates: true });
       if (res1.error) {
         // Fallback for legacy owner_id / name schema
-        await supabaseAdmin.from('creative_projects').upsert({
+        const res2 = await supabaseAdmin.from('creative_projects').upsert({
           id: validProjId,
           owner_id: validUserUuid,
           name: '企划画布项目',
@@ -336,7 +336,10 @@ export async function ensureParentProjectExists(projectId: string, userId: strin
           status: 'active',
           created_at: now,
           updated_at: now
-        }, { onConflict: 'id' });
+        }, { onConflict: 'id', ignoreDuplicates: true });
+        if (!res2.error) ensuredParentProjectIds.add(String(projectId));
+      } else {
+        ensuredParentProjectIds.add(String(projectId));
       }
     } catch (e) {}
   } catch (e) {
@@ -708,17 +711,21 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
 
     const { nodesDraft, edgesDraft, viewportDraft, canvasName, hasExplicitUserClear, isNewCanvas, force } = req.body;
 
-    // Check existing draft for suspicious overwrite protection
+    const isExplicitClear = Boolean(hasExplicitUserClear || isNewCanvas || force);
+
+    // Check existing draft for suspicious overwrite protection（显式清空/新建时无需比对，省去一次云端读取）
     let existing: any = null;
-    try {
-      const validCanvasUuid = isValidUuid(canvasId) ? canvasId : toValidUuid(canvasId);
-      const { data } = await supabaseAdmin
-        .from('creative_canvases')
-        .select('*')
-        .eq('id', validCanvasUuid)
-        .maybeSingle();
-      if (data) existing = data;
-    } catch (e) {}
+    if (!isExplicitClear) {
+      try {
+        const validCanvasUuid = isValidUuid(canvasId) ? canvasId : toValidUuid(canvasId);
+        const { data } = await supabaseAdmin
+          .from('creative_canvases')
+          .select('nodes_draft')
+          .eq('id', validCanvasUuid)
+          .maybeSingle();
+        if (data) existing = data;
+      } catch (e) {}
+    }
 
     if (!existing) {
       existing = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
@@ -727,8 +734,6 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
     const cleanedIncomingNodes = cleanNodes(nodesDraft || []);
     const cleanedIncomingEdges = cleanEdges(edgesDraft || []);
     const cleanedIncomingViewport = cleanViewport(viewportDraft || { x: 0, y: 0, zoom: 1 });
-
-    const isExplicitClear = Boolean(hasExplicitUserClear || isNewCanvas || force);
 
     if (existing && !isExplicitClear) {
       const existingNodes = parseJsonIfNeeded(existing.nodes_draft || existing.nodesDraft, []);
@@ -765,8 +770,7 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
     const userId = sanitizeUserId(user.id);
 
     try {
-      await ensureParentProjectExists(projectId, userId);
-
+      // safeUpsertCanvas 内部已确保父项目存在，这里不再重复 upsert
       const { data, error } = await safeUpsertCanvas({
         id: canvasId,
         project_id: projectId,
@@ -791,19 +795,15 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
     }
 
     if (!savedCanvas) {
-      if (!existing) {
-        existing = {
-          id: canvasId,
-          project_id: projectId,
-          canvas_name: canvasName || '主视觉九屏画布',
-          canvas_status: 'active',
-          current_revision: 0,
-          created_at: now,
-          created_by: userId
-        };
-      }
       savedCanvas = {
-        ...existing,
+        id: canvasId,
+        project_id: projectId,
+        canvas_name: canvasName || '主视觉九屏画布',
+        canvas_status: 'active',
+        current_revision: 0,
+        created_at: now,
+        created_by: userId,
+        ...(existing || {}),
         ...updatePayload
       };
       inMemoryCanvases.set(canvasId, savedCanvas);

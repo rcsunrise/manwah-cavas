@@ -286,6 +286,7 @@ class DBService {
     if (template.id.startsWith('p')) {
       try {
         const { error } = await supabase.from('system_prompts').upsert(template);
+        this.invalidateSystemTemplatesCache();
         if (error) console.warn("Failed to update system prompt. Requires admin privileges or table does not exist:", error);
       } catch (e) {
         console.warn("Exception updating system prompt:", e);
@@ -310,20 +311,39 @@ class DBService {
     });
   }
 
-  async getSystemTemplatesFromDB(): Promise<PromptTemplate[]> {
-    try {
-      const { data, error } = await supabase
-        .from('system_prompts')
-        .select('*')
-        .order('id', { ascending: true }); // p0, p1 etc
+  // 系统预设短期缓存 + 并发去重：页面初始化时多处同时刷新模板，原先会重复请求 system_prompts
+  private systemTemplatesCache: { data: PromptTemplate[]; expiresAt: number } | null = null;
+  private systemTemplatesInflight: Promise<PromptTemplate[]> | null = null;
 
-      if (!error && data && data.length > 0) {
-        return data as PromptTemplate[];
-      }
-    } catch (e) {
-      console.warn("Error fetching system templates from DB", e);
+  invalidateSystemTemplatesCache(): void {
+    this.systemTemplatesCache = null;
+  }
+
+  async getSystemTemplatesFromDB(): Promise<PromptTemplate[]> {
+    if (this.systemTemplatesCache && this.systemTemplatesCache.expiresAt > Date.now()) {
+      return this.systemTemplatesCache.data;
     }
-    return [];
+    if (this.systemTemplatesInflight) return this.systemTemplatesInflight;
+
+    this.systemTemplatesInflight = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('system_prompts')
+          .select('*')
+          .order('id', { ascending: true }); // p0, p1 etc
+
+        if (!error && data && data.length > 0) {
+          this.systemTemplatesCache = { data: data as PromptTemplate[], expiresAt: Date.now() + 30_000 };
+          return data as PromptTemplate[];
+        }
+      } catch (e) {
+        console.warn("Error fetching system templates from DB", e);
+      }
+      return [];
+    })().finally(() => {
+      this.systemTemplatesInflight = null;
+    });
+    return this.systemTemplatesInflight;
   }
 
   async getTemplates(): Promise<PromptTemplate[]> {
@@ -386,6 +406,7 @@ class DBService {
     if (id.startsWith('p')) {
       try {
         const { error } = await supabase.from('system_prompts').delete().eq('id', id);
+        this.invalidateSystemTemplatesCache();
         if (error) console.warn("Failed to delete system prompt. Requires admin privileges or table does not exist:", error);
       } catch (e) {
         console.warn("Exception deleting system prompt:", e);

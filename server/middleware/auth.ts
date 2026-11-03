@@ -10,6 +10,52 @@ if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITY ===
   throw new Error('FATAL: ALLOW_TEST_IDENTITY cannot be true in production environment!');
 }
 
+// token → 用户身份的短期缓存：每个 API 请求原本都要串行访问 Supabase 两次（getUser + profiles）
+const TOKEN_CACHE_TTL_MS = 60_000;
+const TOKEN_CACHE_MAX = 500;
+const tokenUserCache = new Map<string, { user: AuthenticatedUser; expiresAt: number }>();
+const tokenUserInflight = new Map<string, Promise<AuthenticatedUser | null>>();
+
+async function fetchTokenUser(token: string): Promise<AuthenticatedUser | null> {
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  const user = data?.user;
+  if (error || !user || !isValidUuid(user.id)) return null;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, dept_id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const allowedRoles = new Set(['user', 'dept_admin', 'admin']);
+  return {
+    id: user.id,
+    email: user.email,
+    role: profile && allowedRoles.has(profile.role) ? profile.role : 'user',
+    departmentId: profile?.dept_id || undefined
+  };
+}
+
+async function resolveTokenUser(token: string): Promise<AuthenticatedUser | null> {
+  const cached = tokenUserCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) return cached.user;
+
+  let pending = tokenUserInflight.get(token);
+  if (!pending) {
+    pending = fetchTokenUser(token).finally(() => tokenUserInflight.delete(token));
+    tokenUserInflight.set(token, pending);
+  }
+  const user = await pending;
+  if (user) {
+    if (tokenUserCache.size >= TOKEN_CACHE_MAX) {
+      const oldestKey = tokenUserCache.keys().next().value;
+      if (oldestKey !== undefined) tokenUserCache.delete(oldestKey);
+    }
+    tokenUserCache.set(token, { user, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+  }
+  return user;
+}
+
 export async function authenticateToken(
   req: AuthenticatedRequest,
   res: Response,
@@ -26,23 +72,9 @@ export async function authenticateToken(
 
     if (token) {
       try {
-        const { data, error } = await supabaseAdmin.auth.getUser(token);
-        const user = data?.user;
-        if (!error && user && isValidUuid(user.id)) {
-          const { data: profile } = await supabaseAdmin
-            .from('profiles')
-            .select('role, dept_id')
-            .eq('id', user.id)
-            .maybeSingle();
-
-          const allowedRoles = new Set(['user', 'dept_admin', 'admin']);
-          const role = profile && allowedRoles.has(profile.role) ? profile.role : 'user';
-          req.user = {
-            id: user.id,
-            email: user.email,
-            role,
-            departmentId: profile?.dept_id || undefined
-          };
+        const user = await resolveTokenUser(token);
+        if (user) {
+          req.user = { ...user };
           return next();
         }
       } catch (tokenErr) {
@@ -107,30 +139,9 @@ export async function optionalAuthenticateToken(
 
     if (token) {
       try {
-        const { data } = await supabaseAdmin.auth.getUser(token);
-        const user = data?.user;
-        if (user && isValidUuid(user.id)) {
-          const { data: profile, error: profileError } = await supabaseAdmin
-            .from('profiles')
-            .select('role, dept_id')
-            .eq('id', user.id)
-            .single();
-
-          if (!profileError && profile) {
-            const allowedRoles = new Set(['user', 'dept_admin', 'admin']);
-            req.user = {
-              id: user.id,
-              email: user.email,
-              role: allowedRoles.has(profile.role) ? profile.role : 'user',
-              departmentId: profile.dept_id || undefined
-            };
-          } else {
-            req.user = {
-              id: user.id,
-              email: user.email,
-              role: 'user'
-            };
-          }
+        const user = await resolveTokenUser(token);
+        if (user) {
+          req.user = { ...user };
         }
       } catch (tokenErr) {
         // Token error ignored, fallback to xUserUuid

@@ -46,9 +46,9 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-[#E5E0D8] px-4 md:px-6 flex items-center justify-between shrink-0 z-30 select-none">
+    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-[#E5E0D8] px-4 md:px-6 flex items-center justify-between gap-3 shrink-0 z-30 select-none">
       {/* Left: Back button & Title */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0 whitespace-nowrap">
         <button
           onClick={() => navigate('/manwah')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-[#F9F5EF] text-stone-700 hover:text-[#B28C5A] text-xs font-bold transition-all"
@@ -68,7 +68,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
               <h1 className="font-serif font-bold text-sm text-[#2C2A29]">
                 视觉企划画布
               </h1>
-              <span className="text-[10px] font-bold text-[#B28C5A] bg-[#F9F5EF] px-2 py-0.5 rounded-full border border-[#E5E0D8]">
+              <span className="hidden xl:inline text-[10px] font-bold text-[#B28C5A] bg-[#F9F5EF] px-2 py-0.5 rounded-full border border-[#E5E0D8]">
                 无限画布工作流
               </span>
             </div>
@@ -80,7 +80,8 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
       </div>
 
       {/* Right: Save Status, DNA Version Status & Actions */}
-      <div className="flex items-center gap-2.5">
+      {/* 窄屏下按钮不换行：次要按钮只留图标，仍放不下时横向滚动 */}
+      <div className="flex items-center gap-2 min-w-0 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&>*]:shrink-0">
         {/* Product DNA Version Status Pill */}
         <div className="hidden lg:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[#E5E0D8] bg-[#FAF8F5]">
           <Dna className="w-3.5 h-3.5 text-[#B28C5A]" />
@@ -112,7 +113,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border-emerald-200 px-2.5 py-0.5 rounded-full" title="草稿已成功保存（系统每5分钟自动保存一次）">
               <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span className="text-[11px] font-medium">
-                已保存草稿 (5分钟自动) {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                已保存<span className="hidden xl:inline">草稿 (5分钟自动)</span> {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
               </span>
             </span>
           )}
@@ -121,7 +122,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             <span className="flex items-center gap-1.5 text-sky-800 bg-sky-50 border-sky-200 px-2.5 py-0.5 rounded-full" title="已备用保存到本地存储">
               <Check className="w-3.5 h-3.5 text-sky-600" />
               <span className="text-[11px] font-medium">
-                已存本地 (5分钟自动) {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                已存本地<span className="hidden xl:inline"> (5分钟自动)</span> {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
               </span>
             </span>
           )}
@@ -147,7 +148,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           {(saveStatus === 'offline_pending' || saveStatus === 'unsynced') && (
             <span className="flex items-center gap-1.5 text-amber-700 bg-amber-50 border-amber-200 px-2.5 py-0.5 rounded-full" title="有尚未保存的改动，将在5分钟内自动保存">
               <RefreshCw className="w-3 h-3 text-amber-500 animate-pulse" />
-              <span className="text-[11px] font-medium">待自动保存 (5分钟一次)</span>
+              <span className="text-[11px] font-medium">待自动保存<span className="hidden xl:inline"> (5分钟一次)</span></span>
             </span>
           )}
         </div>
@@ -160,7 +161,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             title="立即保存当前工作流草稿（无需等待5分钟自动保存）"
           >
             <Save className="w-3.5 h-3.5 text-stone-500" />
-            <span>存草稿</span>
+            <span className="hidden xl:inline">存草稿</span>
           </button>
         )}
 
@@ -183,7 +184,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           title="查看与恢复历史存档版本"
         >
           <History className="w-3.5 h-3.5 text-[#B28C5A]" />
-          <span>版本历史</span>
+          <span className="hidden xl:inline">版本历史</span>
           {currentRevisionNumber > 0 && (
             <span className="font-mono text-[10px] bg-[#B28C5A] text-white px-1.5 py-0.2 rounded-full">
               v{currentRevisionNumber}
@@ -199,7 +200,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             title="一键查找并清除 Supabase 与本地存储的画布与素材"
           >
             <Database className="w-3.5 h-3.5 text-purple-700" />
-            <span>存储管理</span>
+            <span className="hidden xl:inline">存储管理</span>
           </button>
         )}
 
@@ -211,7 +212,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             title="进入全案海报工作台"
           >
             <LayoutGrid className="w-3.5 h-3.5 text-amber-700" />
-            <span>全案海报</span>
+            <span className="hidden xl:inline">全案海报</span>
           </button>
         )}
 
@@ -223,7 +224,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
             title="展开视频创作与运镜策划面板"
           >
             <Film className="w-3.5 h-3.5 text-emerald-700" />
-            <span>视频创作</span>
+            <span className="hidden xl:inline">视频创作</span>
           </button>
         )}
 

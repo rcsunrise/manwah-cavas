@@ -7,11 +7,13 @@ import {
   VideoPlaybackInfo,
   VideoCreationMode,
   VideoStyle,
-  VideoSettings
+  VideoSettings,
+  ACTIVE_VIDEO_JOB_STATUSES
 } from '../types/creativeCanvasVideo';
 import { VideoGenerationService } from '../services/videoGenerationService';
 
-export function useCanvasVideo(canvasId: string) {
+// enabled=false 时不建立 SSE 也不轮询（面板关闭时由画布页统一同步任务状态）
+export function useCanvasVideo(canvasId: string, enabled = true) {
   const [capabilities, setCapabilities] = useState<VideoCapability[]>([]);
   const [defaultModelKey, setDefaultModelKey] = useState<string>('sd-2.0-fast');
   const [storageInfo, setStorageInfo] = useState<{ provider: string; bucket: string | null } | null>(null);
@@ -23,7 +25,7 @@ export function useCanvasVideo(canvasId: string) {
 
   // Load capabilities & existing jobs
   useEffect(() => {
-    if (!canvasId) return;
+    if (!canvasId || !enabled) return;
 
     VideoGenerationService.fetchConfig()
       .then(config => {
@@ -56,23 +58,32 @@ export function useCanvasVideo(canvasId: string) {
       });
     });
 
-    // Active Jobs fallback polling (covers queued, submitting, running, transferring)
-    const pollInterval = setInterval(async () => {
+    // Active Jobs fallback polling：有进行中任务 2.5s，否则 15s
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      let hasActiveJob = false;
       try {
         const currentJobs = await VideoGenerationService.fetchCanvasJobs(canvasId);
         if (currentJobs && currentJobs.length > 0) {
           setJobs(currentJobs);
+          hasActiveJob = currentJobs.some(j => ACTIVE_VIDEO_JOB_STATUSES.has(j.status));
         }
       } catch (pollErr) {
         // quiet fallback
       }
-    }, 2500);
+      if (!cancelled) {
+        pollTimer = setTimeout(poll, hasActiveJob ? 2500 : 15000);
+      }
+    };
+    pollTimer = setTimeout(poll, 2500);
 
     return () => {
+      cancelled = true;
       unsubscribe();
-      clearInterval(pollInterval);
+      if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [canvasId]);
+  }, [canvasId, enabled]);
 
   const refreshJobs = useCallback(async () => {
     try {

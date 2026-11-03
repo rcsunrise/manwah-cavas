@@ -90,7 +90,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     generatePlan,
     submitVideo,
     retryTransfer
-  } = useCanvasVideo(canvasId);
+  } = useCanvasVideo(canvasId, isOpen);
 
   // Tab & Basic state
   const [activeTab, setActiveTab] = useState<VideoCreationMode>('product_showcase');

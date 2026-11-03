@@ -166,6 +166,14 @@ async function getConversationById(id: string): Promise<AgentConversationRecord 
   return readLocalConversations().find(c => c.id === id) || null;
 }
 
+// 云端表结构与代码不一致（缺列）时，每次写入必然失败；记录后本进程内直接写本地，省去无效的网络往返。
+// 修好表结构后重启服务即可恢复云端写入。
+const cloudWriteDisabled = { conversations: false, messages: false };
+
+function isSchemaMismatchError(error: { code?: string; message?: string }): boolean {
+  return error.code === 'PGRST204' || /schema cache/i.test(error.message || '');
+}
+
 /**
  * Helper to save or update conversation
  */
@@ -178,9 +186,18 @@ async function saveConversationRecord(record: AgentConversationRecord): Promise<
     writeLocalConversations(locals);
     return;
   }
+  if (cloudWriteDisabled.conversations) {
+    const locals = readLocalConversations();
+    const idx = locals.findIndex(c => c.id === record.id);
+    if (idx >= 0) locals[idx] = record;
+    else locals.unshift(record);
+    writeLocalConversations(locals);
+    return;
+  }
   try {
     const { error } = await supabaseAdmin.from('agent_conversations').upsert([record]);
     if (error) {
+      if (isSchemaMismatchError(error)) cloudWriteDisabled.conversations = true;
       console.warn(`[AgentConversationRoutes] Conversation database write error, falling back to local storage:`, error.message);
       const locals = readLocalConversations();
       const idx = locals.findIndex(c => c.id === record.id);
@@ -241,9 +258,18 @@ async function saveMessageRecord(msg: AgentChatMessageRecord): Promise<void> {
     writeLocalMessages(locals);
     return;
   }
+  if (cloudWriteDisabled.messages) {
+    const locals = readLocalMessages();
+    const idx = locals.findIndex(m => m.id === msg.id);
+    if (idx >= 0) locals[idx] = msg;
+    else locals.push(msg);
+    writeLocalMessages(locals);
+    return;
+  }
   try {
     const { error } = await supabaseAdmin.from('agent_messages').upsert([msg]);
     if (error) {
+      if (isSchemaMismatchError(error)) cloudWriteDisabled.messages = true;
       console.warn(`[AgentConversationRoutes] Message database write error, falling back to local storage:`, error.message);
       const locals = readLocalMessages();
       const idx = locals.findIndex(m => m.id === msg.id);
@@ -298,7 +324,7 @@ router.post('/conversations', async (req: AuthenticatedRequest, res: Response) =
     const userId = req.user!.id;
     const { projectId, canvasId, title } = req.body;
     const provider = process.env.AGENT_TEXT_PROVIDER || 'gemini';
-    const model = process.env.AGENT_TEXT_MODEL || 'gemini-2.0-flash';
+    const model = process.env.AGENT_TEXT_MODEL || 'gemini-2.5-flash';
 
     if (!projectId || !canvasId) {
       return res.status(400).json({

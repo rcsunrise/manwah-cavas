@@ -25,6 +25,15 @@ export type VideoJobStatus =
   | 'cancel_requested'
   | 'cancelled';
 
+/** 仍在进行中、需要轮询跟进状态的任务 */
+export const ACTIVE_VIDEO_JOB_STATUSES: ReadonlySet<VideoJobStatus> = new Set<VideoJobStatus>([
+  'queued',
+  'submitting',
+  'running',
+  'transferring',
+  'cancel_requested'
+]);
+
 export interface VideoSettings {
   durationSeconds: number; // e.g. 5, 10
   resolution: string;      // '480p' | '720p' | '1080p'

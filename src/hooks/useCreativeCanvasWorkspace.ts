@@ -96,6 +96,8 @@ export function useCreativeCanvasWorkspace(
   const hasUserMutationRef = useRef<boolean>(false);
   const isRestoringRef = useRef<boolean>(false);
   const hasExplicitUserClearRef = useRef<boolean>(false);
+  // 本地刚新建、尚无任何云端数据的项目 ID：hydrate 时跳过全部远程拉取
+  const freshProjectIdRef = useRef<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -244,6 +246,8 @@ export function useCreativeCanvasWorkspace(
   const fetchDnaVersions = useCallback(async () => {
     try {
       const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
+      // 新建画布还没有 DNA，跳过这次必然 404 的请求
+      if (freshProjectIdRef.current === targetProjectId) return;
       const authHeaders = await getAuthHeaders();
       const res = await fetch(`/api/projects/${targetProjectId}/product-dna`, {
         headers: { ...authHeaders }
@@ -332,18 +336,21 @@ export function useCreativeCanvasWorkspace(
   }, []);
 
   // G0-1: Conversation initialization and load
-  const loadOrInitConversation = useCallback(async (projId: string, canvId: string) => {
+  const loadOrInitConversation = useCallback(async (projId: string, canvId: string, isFreshCanvas = false) => {
     try {
       let list: AgentConversationRecord[] = [];
-      try {
-        list = await AgentChatService.listConversations(canvId, projId);
-      } catch (firstErr) {
+      // 新建画布不可能已有会话，跳过列表查询
+      if (!isFreshCanvas) {
         try {
-          await new Promise(r => setTimeout(r, 800));
           list = await AgentChatService.listConversations(canvId, projId);
-        } catch {
-          // If server API returns 504 or times out, proceed with empty list
-          list = [];
+        } catch (firstErr) {
+          try {
+            await new Promise(r => setTimeout(r, 800));
+            list = await AgentChatService.listConversations(canvId, projId);
+          } catch {
+            // If server API returns 504 or times out, proceed with empty list
+            list = [];
+          }
         }
       }
       setConversationsList(list);
@@ -367,7 +374,7 @@ export function useCreativeCanvasWorkspace(
             title: '全新企划对话',
             status: 'active',
             provider: 'google',
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
@@ -376,6 +383,7 @@ export function useCreativeCanvasWorkspace(
         }
       }
       setCurrentConversation(conv);
+      if (isFreshCanvas) return;
 
       try {
         const historyMsgs = await AgentChatService.loadMessages(conv.id);
@@ -2868,16 +2876,36 @@ export function useCreativeCanvasWorkspace(
   }, [setNodes]);
 
   // Re-bind interactive handlers for restored nodes
+  // 节点回调统一经 ref 调用最新的处理函数：这些函数多数每次渲染都会重建，
+  // 若直接作为依赖，attachNodeHandlers 会每次渲染失效，导致所有节点 data 重建、整画布重渲染
+  const nodeActions = {
+    deleteNodeById,
+    duplicateNodeById,
+    updateNodeData,
+    handleGenerateNineGridPlan,
+    handleReplanSingleScene,
+    handleGenerateSceneImage,
+    handleApproveSceneImage,
+    handleRejectSceneImage,
+    handleReanalyze,
+    handleTriggerBatchMissingModal,
+    handleSelectDnaVersion,
+    handleUploadFile,
+    handleRemoveProductImage
+  };
+  const nodeActionsRef = useRef(nodeActions);
+  nodeActionsRef.current = nodeActions;
+
   const attachNodeHandlers = useCallback(
     (nodeList: Node[]): Node[] => {
       return nodeList.map(node => {
         const data = { ...(node.data || {}) };
 
         // Bind universal edit & delete handlers to every node
-        data.onDelete = () => deleteNodeById(node.id);
-        data.onDuplicate = () => duplicateNodeById(node.id);
-        data.onChange = (updated: any) => updateNodeData(node.id, updated);
-        data.onUpdate = (updated: any) => updateNodeData(node.id, updated);
+        data.onDelete = () => nodeActionsRef.current.deleteNodeById(node.id);
+        data.onDuplicate = () => nodeActionsRef.current.duplicateNodeById(node.id);
+        data.onChange = (updated: any) => nodeActionsRef.current.updateNodeData(node.id, updated);
+        data.onUpdate = (updated: any) => nodeActionsRef.current.updateNodeData(node.id, updated);
 
         const nodeType = String(node.type || '');
         const isDna = node.id === 'dna-node-1' || nodeType === 'productDnaNode' || nodeType === 'productDna';
@@ -2901,7 +2929,8 @@ export function useCreativeCanvasWorkspace(
           data.versionCode = productDnaVersionCode || data.versionCode || 'DNA-V001';
           data.productDnaVersionId = productDnaVersionId || data.productDnaVersionId;
           data.versions = dnaVersions.length > 0 ? dnaVersions : data.versions;
-          data.onSelectDnaVersion = handleSelectDnaVersion;
+          data.onSelectDnaVersion = (...args: Parameters<typeof handleSelectDnaVersion>) =>
+            nodeActionsRef.current.handleSelectDnaVersion(...args);
           if (!data.dna && activeDna) {
             data.dna = activeDna;
             if (data.status === 'idle' || !data.status) data.status = 'completed';
@@ -2911,8 +2940,8 @@ export function useCreativeCanvasWorkspace(
             setSelectedNodeId(node.id);
             setSelectedSceneIndex(null);
           };
-          data.onRegenerateAll = () => handleGenerateNineGridPlan();
-          data.onGenerateMissingImages = () => handleTriggerBatchMissingModal();
+          data.onRegenerateAll = () => nodeActionsRef.current.handleGenerateNineGridPlan();
+          data.onGenerateMissingImages = () => nodeActionsRef.current.handleTriggerBatchMissingModal();
           if (batchState) {
             data.batchProgress = {
               completed: batchState.success + batchState.failed,
@@ -2932,13 +2961,13 @@ export function useCreativeCanvasWorkspace(
             setSelectedNodeId(node.id);
             setSelectedSceneIndex(idx);
           };
-          data.onReplanScene = () => handleReplanSingleScene(idx);
-          data.onGenerateImage = () => handleGenerateSceneImage(idx);
-          data.onGenerateWithText = () => handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
+          data.onReplanScene = () => nodeActionsRef.current.handleReplanSingleScene(idx);
+          data.onGenerateImage = () => nodeActionsRef.current.handleGenerateSceneImage(idx);
+          data.onGenerateWithText = () => nodeActionsRef.current.handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
         } else if (isGenTask) {
           const idxStr = node.id.replace('img-gen-task-', '').replace('screen-', '');
           const idx: number = parseInt(idxStr, 10) || Number(data.screenIndex) || 1;
-          data.onGenerate = () => handleGenerateSceneImage(idx);
+          data.onGenerate = () => nodeActionsRef.current.handleGenerateSceneImage(idx);
         } else if (isGenImg) {
           const idxStr = node.id.replace('gen-img-node-', '').replace('screen-', '');
           const idx: number = parseInt(idxStr, 10) || Number(data.screenIndex) || 1;
@@ -2951,14 +2980,14 @@ export function useCreativeCanvasWorkspace(
             setSelectedNodeId(node.id);
             setSelectedSceneIndex(idx);
           };
-          data.onApprove = () => handleApproveSceneImage(idx);
-          data.onReject = (feedback: string) => handleRejectSceneImage(idx, feedback);
+          data.onApprove = () => nodeActionsRef.current.handleApproveSceneImage(idx);
+          data.onReject = (feedback: string) => nodeActionsRef.current.handleRejectSceneImage(idx, feedback);
           data.onOpenPosterStudio = () => onOpenPosterStudioRef.current?.(idx);
-          data.onGeneratePoster = () => handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
+          data.onGeneratePoster = () => nodeActionsRef.current.handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
         } else if (isProdImg) {
-          data.onUpload = (f: File) => (handleUploadFileRef.current ? handleUploadFileRef.current(f) : handleUploadFile(f));
-          data.onRemove = () => (handleRemoveProductImageRef.current ? handleRemoveProductImageRef.current() : handleRemoveProductImage());
-          data.onReanalyze = () => (handleReanalyzeRef.current ? handleReanalyzeRef.current() : handleReanalyze());
+          data.onUpload = (f: File) => (handleUploadFileRef.current ? handleUploadFileRef.current(f) : nodeActionsRef.current.handleUploadFile(f));
+          data.onRemove = () => (handleRemoveProductImageRef.current ? handleRemoveProductImageRef.current() : nodeActionsRef.current.handleRemoveProductImage());
+          data.onReanalyze = () => (handleReanalyzeRef.current ? handleReanalyzeRef.current() : nodeActionsRef.current.handleReanalyze());
           if (!data.imageUrl && (uploadedImageUrl || uploadedBase64)) {
             data.imageUrl = uploadedImageUrl || uploadedBase64;
             if (data.status === 'idle' || !data.status) data.status = 'completed';
@@ -2969,17 +2998,6 @@ export function useCreativeCanvasWorkspace(
       });
     },
     [
-      deleteNodeById,
-      duplicateNodeById,
-      updateNodeData,
-      handleGenerateNineGridPlan,
-      handleReplanSingleScene,
-      handleGenerateSceneImage,
-      handleApproveSceneImage,
-      handleRejectSceneImage,
-      handleReanalyze,
-      handleTriggerBatchMissingModal,
-      handleSelectDnaVersion,
       batchState,
       dnaCode,
       productDnaVersionCode,
@@ -2991,9 +3009,19 @@ export function useCreativeCanvasWorkspace(
     ]
   );
 
+  // 按节点引用缓存挂好回调的节点：拖拽时只有被拖动的节点对象会变，
+  // 其余节点保持引用稳定，避免整张画布每帧重建 data 并全部重渲染
+  const decoratedNodeCache = useMemo(() => new WeakMap<Node, Node>(), [attachNodeHandlers]);
   const displayNodes = useMemo(() => {
-    return attachNodeHandlers(nodes);
-  }, [nodes, attachNodeHandlers]);
+    return nodes.map(node => {
+      let decorated = decoratedNodeCache.get(node);
+      if (!decorated) {
+        decorated = attachNodeHandlers([node])[0];
+        decoratedNodeCache.set(node, decorated);
+      }
+      return decorated;
+    });
+  }, [nodes, attachNodeHandlers, decoratedNodeCache]);
 
   // 1. Initial Hydrate from Server API or LocalStorage
   useEffect(() => {
@@ -3020,10 +3048,23 @@ export function useCreativeCanvasWorkspace(
       let fetchedHeroUrl: string | null = null;
       let fetchedRun: AgentRun | null = null;
 
-      if (targetProjectId && targetProjectId !== 'new' && targetProjectId !== 'latest') {
+      const isFreshCanvas = Boolean(targetProjectId) && freshProjectIdRef.current === targetProjectId;
+
+      // 画布草稿与项目详情、agent-runs 互不依赖，并行发起
+      const canvasPromise = isFreshCanvas
+        ? null
+        : canvasService.getCanvas(targetCanvasId).then(
+            canvas => ({ canvas, error: null as any }),
+            error => ({ canvas: null, error })
+          );
+
+      if (!isFreshCanvas && targetProjectId && targetProjectId !== 'new' && targetProjectId !== 'latest') {
         try {
           const authHeaders = await getAuthHeaders();
-          const pRes = await fetch(`/api/projects/${targetProjectId}`, { headers: { ...authHeaders } });
+          const [pRes, rRes] = await Promise.all([
+            fetch(`/api/projects/${targetProjectId}`, { headers: { ...authHeaders } }),
+            fetch(`/api/agent-runs?projectId=${targetProjectId}`, { headers: { ...authHeaders } })
+          ]);
           if (pRes.ok) {
             const pData = await pRes.json();
             if (pData.success && pData.project) {
@@ -3054,7 +3095,6 @@ export function useCreativeCanvasWorkspace(
           }
 
           // Check for existing agent runs
-          const rRes = await fetch(`/api/agent-runs?projectId=${targetProjectId}`, { headers: { ...authHeaders } });
           if (rRes.ok) {
             const rData = await rRes.json();
             if (rData.success && rData.agentRuns?.length > 0) {
@@ -3226,7 +3266,9 @@ export function useCreativeCanvasWorkspace(
       let serverSuccess = false;
 
       try {
-        const serverCanvas = await canvasService.getCanvas(targetCanvasId);
+        const canvasResult = canvasPromise ? await canvasPromise : null;
+        if (canvasResult?.error) throw canvasResult.error;
+        const serverCanvas = canvasResult?.canvas;
         if (
           isMounted &&
           serverCanvas &&
@@ -3302,7 +3344,8 @@ export function useCreativeCanvasWorkspace(
         });
       }
 
-      if (!serverSuccess && isMounted) {
+      // 新建画布不读本地缓存，避免 manwah_canvas_latest 把旧画布带进来
+      if (!serverSuccess && isMounted && !isFreshCanvas) {
         // Fallback to LocalStorage - check all candidate keys to ensure no data loss
         try {
           const fallbackKeys = [
@@ -3391,7 +3434,8 @@ export function useCreativeCanvasWorkspace(
           viewport: { x: 0, y: 0, zoom: 1 }
         });
         hasUserMutationRef.current = false;
-        setSaveStatus('cloud_saved');
+        // 新建画布的保存状态由后台初始草稿写入结果决定
+        if (!isFreshCanvas) setSaveStatus('cloud_saved');
 
         logCanvasDiagnostic({
           projectId: targetProjectId,
@@ -3402,10 +3446,12 @@ export function useCreativeCanvasWorkspace(
       }
 
       if (isMounted) {
-        loadOrInitConversation(targetProjectId, targetCanvasId);
+        loadOrInitConversation(targetProjectId, targetCanvasId, isFreshCanvas);
         setHydrationState('hydrated');
         setTimeout(() => {
           if (isMounted) {
+            // 在 ready 时才清除，StrictMode 下 effect 二次执行仍能识别为新建画布
+            if (isFreshCanvas) freshProjectIdRef.current = null;
             setHydrationState('ready');
           }
         }, 100);
@@ -3459,146 +3505,150 @@ export function useCreativeCanvasWorkspace(
       return;
     }
 
-    const cleanNodes = getCleanSerializableNodes(nodes);
-    const cleanEdges = getCleanSerializableEdges(edges);
+    // 拖拽时节点每帧都在变，整画布序列化开销大：等 400ms 无变化后再比对并排期保存
+    const diffTimer = setTimeout(() => {
+      const cleanNodes = getCleanSerializableNodes(nodes);
+      const cleanEdges = getCleanSerializableEdges(edges);
 
-    const serializedPayload = JSON.stringify({
-      nodes: cleanNodes,
-      edges: cleanEdges,
-      viewport,
-      activeDna
-    });
+      const serializedPayload = JSON.stringify({
+        nodes: cleanNodes,
+        edges: cleanEdges,
+        viewport,
+        activeDna
+      });
 
-    if (serializedPayload === prevSerializedRef.current) {
-      return;
-    }
-
-    setSaveStatus('unsynced');
-
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // 5 minutes (300,000ms) interval
-    saveTimeoutRef.current = setTimeout(async () => {
-      setSaveStatus('saving');
-      try {
-        const rawTarget = activeProjectRef.current?.id || workspaceIdParam;
-        const { projectId: targetProjectId, canvasId: targetCanvasId } = normalizeCanvasIds(rawTarget);
-
-        logCanvasDiagnostic({
-          projectId: targetProjectId,
-          canvasId: targetCanvasId,
-          source: 'auto_save_5min_triggered',
-          nodesCount: cleanNodes.length,
-          edgesCount: cleanEdges.length
-        });
-
-        // Save to Server Draft API
-        const res = await canvasService.saveCanvasDraft(targetCanvasId, {
-          nodesDraft: cleanNodes,
-          edgesDraft: cleanEdges,
-          viewportDraft: viewport,
-          hasExplicitUserClear: hasExplicitUserClearRef.current
-        });
-
-        // Backup to LocalStorage
-        const localKey = getStorageKey(targetProjectId, targetCanvasId);
-        let localSuccess = false;
-        try {
-          const localSnapshot = {
-            version: 1,
-            updatedAt: res.lastSavedAt,
-            projectId: targetProjectId,
-            canvasId: targetCanvasId,
-            activeProject: activeProjectRef.current,
-            activeDna,
-            dnaCode,
-            productDnaVersionCode,
-            productDnaVersionId,
-            uploadedImageUrl,
-            uploadedBase64: uploadedBase64Ref.current,
-            uploadState,
-            agentRun,
-            messages,
-            nodes: cleanNodes,
-            edges: cleanEdges,
-            viewport
-          };
-          safeSaveToLocalStorage(localKey, localSnapshot);
-          safeSaveToLocalStorage('manwah_canvas_latest', localSnapshot);
-          localSuccess = true;
-        } catch (e) {
-          console.warn('LocalStorage draft backup skipped or full:', e);
-        }
-
-        prevSerializedRef.current = serializedPayload;
-        hasExplicitUserClearRef.current = false;
-
-        try {
-          const localSnapshot = {
-            version: 1,
-            updatedAt: res.lastSavedAt || new Date().toISOString(),
-            projectId: targetProjectId,
-            canvasId: targetCanvasId,
-            activeProject: activeProjectRef.current,
-            activeDna,
-            dnaCode,
-            productDnaVersionCode,
-            productDnaVersionId,
-            uploadedImageUrl,
-            uploadedBase64: uploadedBase64Ref.current,
-            uploadState,
-            agentRun,
-            messages,
-            nodes: cleanNodes,
-            edges: cleanEdges,
-            viewport
-          };
-          await dbService.saveDraft(localKey, localSnapshot);
-          await dbService.saveDraft('manwah_canvas_latest', localSnapshot);
-        } catch (e) {}
-
-        if (res.storageMedium === 'cloud') {
-          setSaveStatus('cloud_saved');
-        } else {
-          setSaveStatus('local_saved');
-        }
-
-        setLastSavedAt(res.lastSavedAt || new Date().toISOString());
-      } catch (err: any) {
-        console.warn('Canvas auto-save to server failed, applying local IndexedDB backup:', err);
-        const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
-        const targetCanvasId = `canvas_${targetProjectId}`;
-        const localKey = getStorageKey(targetProjectId, targetCanvasId);
-        const nowIso = new Date().toISOString();
-        const localSnapshot = {
-          version: 1,
-          updatedAt: nowIso,
-          projectId: targetProjectId,
-          canvasId: targetCanvasId,
-          activeDna,
-          dnaCode,
-          productDnaVersionCode,
-          nodes: cleanNodes,
-          edges: cleanEdges,
-          viewport
-        };
-
-        try {
-          localStorage.setItem(localKey, JSON.stringify(localSnapshot));
-        } catch (e) {}
-
-        try {
-          await dbService.saveDraft(localKey, localSnapshot);
-        } catch (e) {}
-
-        setSaveStatus('local_saved');
-        setLastSavedAt(nowIso);
+      if (serializedPayload === prevSerializedRef.current) {
+        return;
       }
-    }, 300000); // 5 minutes
+
+      setSaveStatus('unsynced');
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // 5 minutes (300,000ms) interval
+      saveTimeoutRef.current = setTimeout(async () => {
+        setSaveStatus('saving');
+        try {
+          const rawTarget = activeProjectRef.current?.id || workspaceIdParam;
+          const { projectId: targetProjectId, canvasId: targetCanvasId } = normalizeCanvasIds(rawTarget);
+
+          logCanvasDiagnostic({
+            projectId: targetProjectId,
+            canvasId: targetCanvasId,
+            source: 'auto_save_5min_triggered',
+            nodesCount: cleanNodes.length,
+            edgesCount: cleanEdges.length
+          });
+
+          // Save to Server Draft API
+          const res = await canvasService.saveCanvasDraft(targetCanvasId, {
+            nodesDraft: cleanNodes,
+            edgesDraft: cleanEdges,
+            viewportDraft: viewport,
+            hasExplicitUserClear: hasExplicitUserClearRef.current
+          });
+
+          // Backup to LocalStorage
+          const localKey = getStorageKey(targetProjectId, targetCanvasId);
+          let localSuccess = false;
+          try {
+            const localSnapshot = {
+              version: 1,
+              updatedAt: res.lastSavedAt,
+              projectId: targetProjectId,
+              canvasId: targetCanvasId,
+              activeProject: activeProjectRef.current,
+              activeDna,
+              dnaCode,
+              productDnaVersionCode,
+              productDnaVersionId,
+              uploadedImageUrl,
+              uploadedBase64: uploadedBase64Ref.current,
+              uploadState,
+              agentRun,
+              messages,
+              nodes: cleanNodes,
+              edges: cleanEdges,
+              viewport
+            };
+            safeSaveToLocalStorage(localKey, localSnapshot);
+            safeSaveToLocalStorage('manwah_canvas_latest', localSnapshot);
+            localSuccess = true;
+          } catch (e) {
+            console.warn('LocalStorage draft backup skipped or full:', e);
+          }
+
+          prevSerializedRef.current = serializedPayload;
+          hasExplicitUserClearRef.current = false;
+
+          try {
+            const localSnapshot = {
+              version: 1,
+              updatedAt: res.lastSavedAt || new Date().toISOString(),
+              projectId: targetProjectId,
+              canvasId: targetCanvasId,
+              activeProject: activeProjectRef.current,
+              activeDna,
+              dnaCode,
+              productDnaVersionCode,
+              productDnaVersionId,
+              uploadedImageUrl,
+              uploadedBase64: uploadedBase64Ref.current,
+              uploadState,
+              agentRun,
+              messages,
+              nodes: cleanNodes,
+              edges: cleanEdges,
+              viewport
+            };
+            await dbService.saveDraft(localKey, localSnapshot);
+            await dbService.saveDraft('manwah_canvas_latest', localSnapshot);
+          } catch (e) {}
+
+          if (res.storageMedium === 'cloud') {
+            setSaveStatus('cloud_saved');
+          } else {
+            setSaveStatus('local_saved');
+          }
+
+          setLastSavedAt(res.lastSavedAt || new Date().toISOString());
+        } catch (err: any) {
+          console.warn('Canvas auto-save to server failed, applying local IndexedDB backup:', err);
+          const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
+          const targetCanvasId = `canvas_${targetProjectId}`;
+          const localKey = getStorageKey(targetProjectId, targetCanvasId);
+          const nowIso = new Date().toISOString();
+          const localSnapshot = {
+            version: 1,
+            updatedAt: nowIso,
+            projectId: targetProjectId,
+            canvasId: targetCanvasId,
+            activeDna,
+            dnaCode,
+            productDnaVersionCode,
+            nodes: cleanNodes,
+            edges: cleanEdges,
+            viewport
+          };
+
+          try {
+            localStorage.setItem(localKey, JSON.stringify(localSnapshot));
+          } catch (e) {}
+
+          try {
+            await dbService.saveDraft(localKey, localSnapshot);
+          } catch (e) {}
+
+          setSaveStatus('local_saved');
+          setLastSavedAt(nowIso);
+        }
+      }, 300000); // 5 minutes
+    }, 400);
 
     return () => {
+      clearTimeout(diffTimer);
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
@@ -4077,19 +4127,23 @@ export function useCreativeCanvasWorkspace(
     if (localKey) localStorage.removeItem(localKey);
     localStorage.removeItem('manwah_canvas_latest');
 
-    try {
-      await canvasService.saveCanvasDraft(newCanvasId, {
+    freshProjectIdRef.current = newProjectId;
+
+    // 云端初始草稿在后台写入，不阻塞跳转；失败时由自动保存兜底
+    setSaveStatus('saving');
+    canvasService
+      .saveCanvasDraft(newCanvasId, {
         nodesDraft: initialNodes as any,
         edgesDraft: [],
         viewportDraft: { x: 0, y: 0, zoom: 1 },
         canvasName: '新建立体视觉企划案',
         hasExplicitUserClear: true
+      })
+      .then(() => setSaveStatus('cloud_saved'))
+      .catch(err => {
+        console.warn('Failed to save fresh draft to server:', err);
+        setSaveStatus('local_saved');
       });
-      setSaveStatus('cloud_saved');
-    } catch (err) {
-      console.warn('Failed to save fresh draft to server:', err);
-      setSaveStatus('local_saved');
-    }
 
     return newProjectId;
   }, [getStorageKey, activeProject, workspaceIdParam, setNodes, setEdges]);
