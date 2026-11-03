@@ -1,6 +1,6 @@
 // src/services/spaceHumanChoreographyService.ts
 // MANWAH Space Studio｜AI 人物编排构思与角色资产匹配前端服务 V1.0
-import { ModelAsset, HumanSlotAssignment } from '../types/spaceAssetLibrary';
+import { ModelAsset, HumanSlotAssignment, HumanSeatType, HumanFootrestState } from '../types/spaceAssetLibrary';
 
 export interface ChoreographedSlotItem {
   id: string;
@@ -11,6 +11,8 @@ export interface ChoreographedSlotItem {
   matchedModelId?: string;
   matchedModelName?: string;
   matchReason?: string;
+  seatType?: HumanSeatType;
+  footrestState?: HumanFootrestState;
 }
 
 export interface ChoreographedLayoutResult {
@@ -20,6 +22,8 @@ export interface ChoreographedLayoutResult {
   slots: ChoreographedSlotItem[];
   source: 'ai_vision' | 'ai_prompt' | 'heuristic_engine';
   modelUsed?: string;
+  notice?: string;
+  referenceApplied?: boolean;
 }
 
 export interface ChoreographLayoutPayload {
@@ -27,7 +31,10 @@ export interface ChoreographLayoutPayload {
   prompt?: string;
   imageUrl?: string;
   imageBase64?: string;
+  referenceImageUrl?: string;
+  referenceImageBase64?: string;
   characterCount?: number;
+  furnitureInventory?: string[];
   model?: string;
   availableModels?: ModelAsset[];
 }
@@ -101,8 +108,11 @@ export class SpaceHumanChoreographyClientService {
         prompt: payload.prompt,
         imageUrl: payload.imageUrl,
         imageBase64: payload.imageBase64,
+        referenceImageUrl: payload.referenceImageUrl,
+        referenceImageBase64: payload.referenceImageBase64,
         characterCount: payload.characterCount,
-        model: payload.model || 'gemini-3.7-flash',
+        furnitureInventory: payload.furnitureInventory,
+        model: payload.model || 'gemini-3.8-flash',
         availableModels: (payload.availableModels || []).map(m => ({
           id: m.id,
           name: m.name,
@@ -120,7 +130,13 @@ export class SpaceHumanChoreographyClientService {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`AI 编排构思请求失败 (${response.status}): ${errText}`);
+      let message = errText;
+      try {
+        message = JSON.parse(errText)?.error || errText;
+      } catch {
+        // 非 JSON 响应，直接展示原文
+      }
+      throw new Error(`AI 编排构思请求失败 (${response.status})：${message}`);
     }
 
     const json = await response.json();

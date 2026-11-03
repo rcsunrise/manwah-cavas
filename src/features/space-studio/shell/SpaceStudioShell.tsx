@@ -3889,6 +3889,16 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           activeShot={activeShot}
           activeShotIndex={shots.findIndex((s) => s.id === activeShot.id)}
           totalShots={shots.length}
+          a00FurnishedImageUrl={(() => {
+            const a00 = shots.find((s) => s.templateCode === 'A00');
+            if (!a00) return undefined;
+            const current = a00.revisions.find((r) => r.id === a00.currentRevisionId);
+            if (current && !current.isEmptyPlate) return current.imageUrl;
+            const plateParent = current?.parentRevisionId
+              ? a00.revisions.find((r) => r.id === current.parentRevisionId)
+              : undefined;
+            return plateParent?.imageUrl || a00.revisions.find((r) => !r.isEmptyPlate && r.imageUrl)?.imageUrl;
+          })()}
           sceneMaster={(() => {
             const a00 = shots.find((s) => s.templateCode === 'A00');
             const a00Rev = a00?.revisions.find((r) => r.id === a00.currentRevisionId) || a00?.revisions?.[0];

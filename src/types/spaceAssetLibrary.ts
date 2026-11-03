@@ -193,12 +193,25 @@ export interface FamilySceneTemplate {
 }
 
 // 4. 人物编排器 (Human Layout) 核心规范
+/** 结构化座位：生成时据此锚定人物所在家具 */
+export type HumanSeatType =
+  | 'main_sofa_power'
+  | 'main_sofa_middle'
+  | 'main_sofa_end'
+  | 'chaise'
+  | 'single_chair'
+  | 'rug_floor'
+  | 'standing';
+export type HumanFootrestState = 'extended' | 'retracted';
+
 export interface HumanSlotAssignment {
   id: string;
   modelId?: string;          // 绑定的 ModelAsset id
   modelName?: string;        // 模特显示名称
   positionDesc: string;      // 空间位置描述，例如：主沙发一号电动功能位
   actionDesc: string;        // 姿态动作描述，例如：舒展半躺，手持杂志
+  seatType?: HumanSeatType;  // AI 构思给出的结构化座位，优先于 positionDesc 关键词
+  footrestState?: HumanFootrestState;
 }
 
 export interface HumanLayoutConfig {

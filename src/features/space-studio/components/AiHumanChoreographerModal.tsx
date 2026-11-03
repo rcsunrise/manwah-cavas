@@ -34,44 +34,50 @@ import {
   mapStudioSlotsToAssignments
 } from '../data/choreographyPresets';
 
+// 排序与说明来自 2026-11-03 实测（当前镜头图 + 人物参考图，1280px）
 export const CHOREOGRAPHY_MODELS = [
-  {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    badge: '默认推荐 · 极速推理',
-    tag: '⚡ 默认',
-    description: '思考链视觉自校准，生活意图与空间座次高敏锐度推导'
-  },
   {
     id: 'gemini-3.8-flash',
     name: 'Gemini 3.8 Flash',
-    badge: '空间感知进阶',
-    tag: '🚀 空间感知',
-    description: '增强型微观空间层次拆解与多人物互动动线推导'
+    badge: '默认推荐 · 最快最细',
+    tag: '⚡ 默认 · 约 20 秒',
+    description: '识别人物身份、座位、手持物和视线互动最完整'
   },
   {
     id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 4 (Argon) / 3.1 Pro',
-    badge: '空间几何旗舰',
-    tag: '💎 空间切片',
-    description: '原生空间视觉接地 (Visual Grounding)，复杂大平层座次高保真规划'
+    name: 'Gemini 3.1 Pro',
+    badge: '备用 · 稳定',
+    tag: '💎 约 25 秒',
+    description: '座位判断准确，动作描述偏简短'
+  },
+  {
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
+    badge: '描述细腻',
+    tag: '约 35 秒',
+    description: '描述细腻，但响应最慢'
   },
   {
     id: 'gemini-2.5-flash',
     name: 'Gemini 2.5 Flash',
-    badge: '秒级轻量备用',
-    tag: '⏱️ 秒级响应',
-    description: '经典秒级轻量多模态模型，高可用稳定输出'
+    badge: '轻量',
+    tag: '约 25 秒',
+    description: '动作描述过于简略，脚托状态偶有误判，不建议'
   }
 ];
+
+const DEFAULT_SCENE_PROMPT =
+  '三代同堂周末家庭日，爷爷在主沙发一号电动位展开脚托半躺小憩，奶奶在单人真皮单椅品茗，男女主人并坐交谈，小女儿依偎在身旁翻画册，小男孩在地毯上拼装积木。';
 
 interface AiHumanChoreographerModalProps {
   isOpen: boolean;
   onClose: () => void;
   availableModels: ModelAsset[];
   currentShotImageUrl?: string;
+  isCurrentShotUploadedPhoto?: boolean; // 当前镜头是用户上传的实拍图（加模特用法，通常没有 A00 母版）
   sceneMasterImageUrl?: string;
   currentShotCode?: string; // 当前镜头代码，例如 A01~A08
+  furnitureInventory?: string[]; // 产品分析识别出的画面家具清单
   onApplyLayout: (newSlots: HumanSlotAssignment[], mode: '4' | '6' | 'custom') => void;
 }
 
@@ -80,16 +86,17 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
   onClose,
   availableModels,
   currentShotImageUrl,
+  isCurrentShotUploadedPhoto,
   sceneMasterImageUrl,
   currentShotCode,
+  furnitureInventory,
   onApplyLayout
 }) => {
   // 输入方式: prompt | vision
-  const [inputMode, setInputMode] = useState<'prompt' | 'vision'>('prompt');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
-  const [prompt, setPrompt] = useState<string>(
-    '三代同堂周末家庭日，爷爷在主沙发一号电动位展开脚托半躺小憩，奶奶在单人真皮单椅品茗，男女主人并坐交谈，小女儿依偎在身旁翻画册，小男孩在地毯上拼装积木。'
-  );
+  // 当前镜头已有画面（含上传的实拍图）时默认看图构思，座位才能对上画面
+  const [inputMode, setInputMode] = useState<'prompt' | 'vision'>(currentShotImageUrl ? 'vision' : 'prompt');
+  const [selectedModel, setSelectedModel] = useState<string>(CHOREOGRAPHY_MODELS[0].id);
+  const [prompt, setPrompt] = useState<string>(DEFAULT_SCENE_PROMPT);
   const [targetCount, setTargetCount] = useState<number | 'auto'>('auto');
 
   // 图像选择
@@ -125,6 +132,8 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
       setUploadedImageBase64(b64);
       setUploadedImagePreview(b64);
       setSelectedImageSource('upload');
+      // 有了人物参考图就按图复刻；默认的三代同堂描述会和参考图冲突，清掉
+      setPrompt((prev) => (prev === DEFAULT_SCENE_PROMPT ? '' : prev));
     };
     reader.readAsDataURL(file);
   };
@@ -144,16 +153,26 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
 
   // 触发 AI 智能构思
   const handleRunChoreography = async () => {
+    // 提示词模式不带图；识别模式必须有图，否则就不是视觉识别
+    const isVision = inputMode === 'vision';
+    const activeImg = isVision ? getActiveImageUrl() : '';
+    if (isVision && !activeImg) {
+      setErrorMsg('所选空间图还没有画面，请换一张或先上传参考图');
+      return;
+    }
+
     setIsGenerating(true);
     setErrorMsg(null);
 
     try {
-      const activeImg = getActiveImageUrl();
+      // 选了人物参考图：当前镜头图是要编排的空间，参考图提供人物组合与动作
+      const useReference = isVision && selectedImageSource === 'upload';
       const res = await SpaceHumanChoreographyClientService.choreographLayout({
         prompt: prompt.trim(),
-        imageBase64: selectedImageSource === 'upload' ? uploadedImageBase64 : undefined,
-        imageUrl: selectedImageSource !== 'upload' ? activeImg : undefined,
+        imageUrl: useReference ? currentShotImageUrl || undefined : isVision ? activeImg : undefined,
+        referenceImageBase64: useReference ? uploadedImageBase64 : undefined,
         characterCount: typeof targetCount === 'number' ? targetCount : undefined,
+        furnitureInventory,
         model: selectedModel,
         availableModels
       });
@@ -188,7 +207,10 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
     setEditableSlots(prev =>
       prev.map(s => {
         if (s.id !== slotId) return s;
-        return { ...s, [field]: val };
+        // 手动改了位置描述，AI 给的结构化座位可能不再对应，交回文字推断
+        return field === 'positionDesc'
+          ? { ...s, positionDesc: val, seatType: undefined, footrestState: undefined }
+          : { ...s, [field]: val };
       })
     );
   };
@@ -202,7 +224,9 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
       modelId: s.matchedModelId,
       modelName: s.matchedModelName,
       positionDesc: s.positionDesc,
-      actionDesc: s.actionDesc
+      actionDesc: s.actionDesc,
+      seatType: s.seatType,
+      footrestState: s.footrestState
     }));
 
     const count = formattedSlots.length;
@@ -309,11 +333,13 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                   <span>选择待识别的空间沙发环境</span>
                 </span>
                 <span className="text-[10px] text-neutral-400">
-                  AI 将扫描空间家具结构、动线与可用功能座次
+                  {selectedImageSource === 'upload' && currentShotImageUrl
+                    ? 'AI 读取参考图的人物组合与动作，映射到当前镜头的家具上'
+                    : 'AI 将扫描空间家具结构、动线与可用功能座次'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className={`grid gap-3 ${sceneMasterImageUrl ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 {/* 选项 1: 当前机位 */}
                 <div
                   onClick={() => setSelectedImageSource('current_shot')}
@@ -330,10 +356,11 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                       <span className="text-[10px] text-neutral-500">当前镜头尚未渲染</span>
                     )}
                   </div>
-                  <span className="text-[11px] font-bold">当前机位画面</span>
+                  <span className="text-[11px] font-bold">{isCurrentShotUploadedPhoto ? '当前镜头实拍图' : '当前机位画面'}</span>
                 </div>
 
-                {/* 选项 2: 空间母版 */}
+                {/* 选项 2: 空间母版（上传实拍图加模特时没有母版，直接不显示） */}
+                {sceneMasterImageUrl && (
                 <div
                   onClick={() => setSelectedImageSource('scene_master')}
                   className={`p-2.5 rounded-xl border-2 cursor-pointer transition-all flex flex-col items-center gap-2 ${
@@ -343,14 +370,11 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                   }`}
                 >
                   <div className="w-full aspect-video rounded-lg overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center">
-                    {sceneMasterImageUrl ? (
-                      <img src={sceneMasterImageUrl} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-[10px] text-neutral-500">空间母版未就绪</span>
-                    )}
+                    <img src={sceneMasterImageUrl} alt="" className="w-full h-full object-cover" />
                   </div>
-                  <span className="text-[11px] font-bold">A00 空间母版</span>
+                  <span className="text-[11px] font-bold">A00 母版（带家具）</span>
                 </div>
+                )}
 
                 {/* 选项 3: 本地上传 */}
                 <label
@@ -370,7 +394,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                       </>
                     )}
                   </div>
-                  <span className="text-[11px] font-bold">本地实景效果图</span>
+                  <span className="text-[11px] font-bold">人物参考图 · 按图复刻编排</span>
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
               </div>
@@ -383,7 +407,11 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
               <label className="text-neutral-200 font-bold flex items-center gap-1.5 text-xs">
                 <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
                 <span>情景意图描述与编排要求</span>
-                <span className="text-amber-400 font-bold">*</span>
+                {inputMode === 'prompt' ? (
+                  <span className="text-amber-400 font-bold">*</span>
+                ) : (
+                  <span className="text-neutral-500 font-normal">（可选）</span>
+                )}
               </label>
               <span className="text-[10px] text-neutral-400">支持自由描述家庭氛围、人物互动或动作细节</span>
             </div>
@@ -392,7 +420,9 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
               rows={3}
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              placeholder="例如：一家人温馨度过周末，爷爷在展开脚托的头等舱功能位小憩，奶奶在单人椅品茶，年轻夫妻在主沙发交谈，孩子在地毯上互动..."
+              placeholder={inputMode === 'vision' && selectedImageSource === 'upload'
+                ? '可留空：默认按参考图的人物组合与动作复刻。也可补充要求，例如：把男主人换成爷爷'
+                : '例如：一家人温馨度过周末，爷爷在展开脚托的头等舱功能位小憩，奶奶在单人椅品茶，年轻夫妻在主沙发交谈，孩子在地毯上互动...'}
               className="w-full px-3.5 py-2.5 bg-[#12141d] border border-white/20 focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 rounded-xl text-white placeholder-neutral-500 outline-none leading-relaxed text-[11px] transition-all shadow-inner"
             />
 
@@ -556,20 +586,35 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                       推荐 {editableSlots.length} 人组合
                     </span>
                     <span className="text-[10px] text-neutral-400 font-mono">
-                      {result.source === 'ai_vision' ? '视觉多模态分析' : result.source === 'ai_prompt' ? '意图理解构思' : '启发式精选引擎'} · {result.modelUsed || selectedModel}
+                      {result.source === 'ai_vision' ? (result.referenceApplied ? '已按参考图复刻人物编排' : '已看图 · 视觉多模态分析') : result.source === 'ai_prompt' ? '未看图 · 意图理解构思' : '固定模板兜底（AI 未成功）'}{result.modelUsed ? ` · ${result.modelUsed}` : ''}
                     </span>
                   </div>
                   <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">
                     {result.spatialSummary}
                   </p>
                 </div>
+                {result.source !== 'heuristic_engine' && (
                 <div className="shrink-0 text-right">
                   <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     已完成角色库匹配
                   </span>
                 </div>
+                )}
               </div>
+
+              {result.notice && (
+                <div
+                  className={`p-3 rounded-xl border flex items-start gap-2 text-[11px] leading-relaxed ${
+                    result.source === 'heuristic_engine'
+                      ? 'bg-rose-500/10 border-rose-500/40 text-rose-200'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{result.notice}</span>
+                </div>
+              )}
 
               {/* 槽位卡片列表 */}
               <div className="space-y-2.5">

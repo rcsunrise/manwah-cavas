@@ -925,31 +925,48 @@ class SpaceAssetLibraryService {
       const action = slot.actionDesc || '从容就座，自然融入居室环境';
       const mechanicalClauses: string[] = [];
 
-      // 检测是否为展开脚托/电动功能位
-      const isFootrestExtended = /展开脚托|开脚托|伸出脚托|脚托展开|电动功能位|功能位|头等舱|半躺|伸展|零重力/i.test(pos + ' ' + action);
-      if (isFootrestExtended) {
+      // 脚托：优先用 AI 构思给出的结构化状态；没有时只认明确的“展开脚托/半躺/零重力”，
+      // 不再因为出现“功能位”三个字就展开（中间座、贵妃位的人也会被误伤）
+      const footrestState =
+        slot.footrestState ||
+        (/展开脚托|开脚托|伸出脚托|脚托展开|脚托.{0,4}展开|半躺|零重力/i.test(pos + ' ' + action) ? 'extended' : undefined);
+      if (footrestState === 'extended') {
         mechanicalClauses.push(
           `* CRITICAL PRODUCT MOTION MECHANISM: The motorized power recliner footrest of this designated seat MUST BE SMOOTHLY EXTENDED AND ELEVATED FORWARD, comfortably supporting the character's legs and feet in authentic zero-gravity relaxed comfort.`
         );
+      } else if (footrestState === 'retracted') {
+        mechanicalClauses.push(
+          `* FOOTREST STATE: The footrest of this seat stays fully retracted and closed; the character sits upright with feet on the floor.`
+        );
       }
 
-      // 检测就座主体家具 (主沙发 vs 单椅 vs 贵妃 vs 地毯)
-      if (/主沙发|大沙发|三人位|多功能主座|一号电动/i.test(pos)) {
-        mechanicalClauses.push(
-          `* STRICT SEATING ANCHOR: The character MUST BE SEATED ON THE MAIN SECTIONAL LIVING ROOM SOFA (specifically on the #1 power recliner seat of the main sofa). STRICTLY FORBIDDEN to place this character on the separate single accent armchair, side chairs, or coffee table.`
-        );
-      } else if (/单椅|单人|独立/i.test(pos)) {
-        mechanicalClauses.push(
-          `* STRICT SEATING ANCHOR: The character is seated on the standalone single leather accent recliner armchair.`
-        );
-      } else if (/地毯|茶几|席地/i.test(pos)) {
-        mechanicalClauses.push(
-          `* STRICT SEATING ANCHOR: Seated casually on the wool carpet beside the coffee table.`
-        );
-      } else if (/贵妃/i.test(pos)) {
-        mechanicalClauses.push(
-          `* STRICT SEATING ANCHOR: Lounging on the chaise lounge portion of the main sofa.`
-        );
+      // 就座家具：优先用结构化 seatType，没有时再从位置描述推断
+      const seatType =
+        slot.seatType ||
+        (/贵妃/i.test(pos)
+          ? 'chaise'
+          : /地毯|席地/i.test(pos)
+            ? 'rug_floor'
+            : /单椅|单人椅|单人功能椅|单人真皮|独立/i.test(pos)
+              ? 'single_chair'
+              : /中央|中间|中位/i.test(pos) && /沙发|功能位/i.test(pos)
+                ? 'main_sofa_middle'
+                : /主沙发|大沙发|三人位|多功能主座|一号电动/i.test(pos)
+                  ? 'main_sofa_power'
+                  : /站/i.test(pos)
+                    ? 'standing'
+                    : undefined);
+      const seatAnchors: Record<string, string> = {
+        main_sofa_power: `* STRICT SEATING ANCHOR: The character MUST BE SEATED ON THE MAIN SECTIONAL LIVING ROOM SOFA (specifically on the #1 power recliner seat of the main sofa). STRICTLY FORBIDDEN to place this character on the separate single accent armchair, side chairs, or coffee table.`,
+        main_sofa_middle: `* STRICT SEATING ANCHOR: The character MUST BE SEATED ON THE MIDDLE SEAT OF THE MAIN SECTIONAL SOFA, not on the end power recliner seat and not on the separate single armchair.`,
+        main_sofa_end: `* STRICT SEATING ANCHOR: The character MUST BE SEATED ON THE OTHER END SEAT OF THE MAIN SECTIONAL SOFA (opposite the #1 power recliner seat), not on the separate single armchair.`,
+        chaise: `* STRICT SEATING ANCHOR: Lounging on the chaise lounge portion of the main sofa.`,
+        single_chair: `* STRICT SEATING ANCHOR: The character is seated on the standalone single leather accent recliner armchair.`,
+        rug_floor: `* STRICT SEATING ANCHOR: Seated casually on the wool carpet beside the coffee table.`,
+        standing: `* STRICT POSITION ANCHOR: The character stands naturally beside the furniture, not sitting on any seat.`
+      };
+      if (seatType && seatAnchors[seatType]) {
+        mechanicalClauses.push(seatAnchors[seatType]);
       }
 
       // 3. 姿态与交互细化

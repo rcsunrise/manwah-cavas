@@ -80,6 +80,8 @@ interface SpaceStudioRightPanelProps {
   activeShotIndex: number;
   totalShots: number;
   sceneMaster: SceneMaster | null;
+  /** A00 带家具的画面（跳过清除家具得到的空场景），供人物编排识别座位 */
+  a00FurnishedImageUrl?: string;
   aspectRatio: ImageAspectRatio;
   onChangeAspectRatio: (ratio: ImageAspectRatio) => void;
 
@@ -163,6 +165,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
   activeShotIndex,
   totalShots,
   sceneMaster,
+  a00FurnishedImageUrl,
   aspectRatio,
   onChangeAspectRatio,
   computeConfig = DEFAULT_COMPUTE_CONFIG,
@@ -2458,10 +2461,24 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
           availableModels={availableModels}
           currentShotImageUrl={
             activeShot.revisions.find(r => r.id === activeShot.currentRevisionId)?.imageUrl ||
-            activeShot.revisions[activeShot.revisions.length - 1]?.imageUrl
+            activeShot.revisions[activeShot.revisions.length - 1]?.imageUrl ||
+            activeShot.customReferenceImage
           }
-          sceneMasterImageUrl={sceneMaster?.imageUrl}
+          isCurrentShotUploadedPhoto={Boolean(
+            (activeShot as any).isUserUploadedPhoto ||
+            (activeShot.revisions.find(r => r.id === activeShot.currentRevisionId) as any)?.isUserUploaded
+          )}
+          sceneMasterImageUrl={a00FurnishedImageUrl}
           currentShotCode={activeShot.templateCode}
+          furnitureInventory={Array.from(
+            new Set(
+              products.flatMap((p) =>
+                p.detectedProducts && p.detectedProducts.length > 0
+                  ? p.detectedProducts.map((d) => d.name)
+                  : [p.name]
+              ).filter(Boolean)
+            )
+          )}
           onApplyLayout={(newSlots, mode) => {
             updateLayout({
               characterCount: newSlots.length,
