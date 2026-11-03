@@ -62,7 +62,7 @@ export class SceneMasterPromptCompiler {
       if (primaryProduct.materials) productDNAKeywords.push(...primaryProduct.materials);
       if (primaryProduct.colors) productDNAKeywords.push(...primaryProduct.colors);
 
-      const mainColor = translateColorToEnglish(primaryProduct.colors?.[0], 'ivory greige, soft pale grey');
+      const mainColor = translateColorToEnglish(primaryProduct.colors?.[0]);
       const mainMaterial = translateMaterialToEnglish(primaryProduct.materials?.[0], 'genuine top-grain semi-aniline cowhide leather');
       const mainTexture = primaryProduct.surfaceTexture || 'subtle soft natural leather grain pores, precision tailored stitching';
       const rules = primaryProduct.lockedRules?.join('. ') || '';
@@ -145,7 +145,7 @@ export class SceneMasterPromptCompiler {
 
     // 次要家具配搭（仅包含已勾选关联的产品，支持动态名称/材质/色彩纯视觉英文翻译）
     for (const sec of secondaryProducts) {
-      const secColor = translateColorToEnglish(sec.colors?.[0], 'pristine polar milk-white');
+      const secColor = translateColorToEnglish(sec.colors?.[0]);
       const secMat = translateMaterialToEnglish(sec.materials?.[0], 'genuine top-grain semi-aniline leather');
       if (sec.role === 'lounge_chair' || sec.name?.includes('无扶手') || sec.name?.includes('休闲单椅')) {
         productClauses.push(

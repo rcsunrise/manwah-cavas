@@ -64,6 +64,7 @@ import {
   DEFAULT_4_HUMAN_SLOTS,
   DEFAULT_6_HUMAN_SLOTS
 } from '../../../types/spaceAssetLibrary';
+import { describeFallbackChain } from '../../../config/imageModelRegistry';
 import { SceneStyleGalleryModal } from './assets/SceneStyleGalleryModal';
 import { ModelAssetModal } from './assets/ModelAssetModal';
 import { AiHumanChoreographerModal } from './AiHumanChoreographerModal';
@@ -138,7 +139,7 @@ interface SpaceStudioRightPanelProps {
 }
 
 const DEFAULT_COMPUTE_CONFIG: RenderComputeConfig = {
-  model: 'gemini-nano-banana-2.1-preview',
+  model: 'gemini-3-pro-image-preview',
   resolution: '2K',
   aspectRatio: '4:3',
   customAspectRatio: '',
@@ -230,6 +231,13 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
   const isLight = theme === 'light';
   const cfg = computeConfig || DEFAULT_COMPUTE_CONFIG;
+
+  // 判断当前镜头是否为实拍图/已上传原图
+  const isShotUserUploaded = Boolean(
+    activeShot.isUserUploadedPhoto ||
+    activeShot.customReferenceImage ||
+    activeShot.revisions?.some((r: any) => r.isUserUploaded || r.metadata?.isUserUploaded)
+  );
 
   // 当前镜头绑定的产品素材
   const boundProdId = activeShot.boundProductId;
@@ -497,16 +505,16 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
           <div className="w-5 h-5 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
             <Sparkles className="w-3 h-3" />
           </div>
-          <div>
-            <span className={`font-bold text-xs ${isLight ? 'text-stone-900' : 'text-white'}`}>AI 摄影导演工作台</span>
-            <span className="text-[9px] text-amber-500 ml-1.5 font-mono">人居编排 v3.0</span>
+          <div className="whitespace-nowrap">
+            <span className={`font-bold text-xs whitespace-nowrap ${isLight ? 'text-stone-900' : 'text-white'}`}>AI 摄影导演工作台</span>
+            <span className="text-[9px] text-amber-500 ml-1.5 font-mono whitespace-nowrap">人居编排 v3.0</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap ${
             isLight ? 'bg-amber-100/90 text-amber-900 border-amber-300' : 'bg-black/40 text-amber-400 border-amber-500/20'
           }`}>
-            0{activeShotIndex + 1} / 0{totalShots} 镜 ({activeShot.templateCode})
+            {String(activeShotIndex + 1).padStart(2, '0')} / {String(totalShots).padStart(2, '0')} 镜 ({activeShot.templateCode})
           </span>
           {onToggleCollapse && (
             <button
@@ -522,10 +530,25 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
         </div>
       </div>
 
+      {/* 极简影棚背景置换直通状态标识 (Sticky 顶置防遮挡，不论滚动到哪里均清晰提示) */}
+      {(cfg.renderMode === 'studio_swap' || isShotUserUploaded) && (
+        <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] shrink-0 transition-all ${
+          isLight ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200' : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50'
+        }`}>
+          <div className="flex items-center gap-1.5 font-medium min-w-0">
+            <Zap className="w-3.5 h-3.5 text-emerald-500 shrink-0 animate-pulse" />
+            <span className="truncate">当前镜头已激活<strong>极简换景直通</strong> (视角 100% 跟随实拍图)</span>
+          </div>
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 shrink-0 ml-1">
+            零视差
+          </span>
+        </div>
+      )}
+
       {/* 2. Scrollable Body: Exactly Ordered as Requested:
           Scene Style → Model DNA → Human Layout → Lighting → 添加模特
       */}
-      <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 text-xs">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3.5 space-y-3.5 text-xs">
         <motion.div
           key={activeShot.id}
           initial={{ opacity: 0.9, y: 2 }}
@@ -566,7 +589,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="全案机位编排：A00~A08 多机位连续编排、空间母版锁定、模特人居编排与多模态解构"
+                title="全案机位编排：A00~A09 多机位连续编排、空间母版锁定、模特人居编排与多模态解构"
               >
                 <Layers className="w-3.5 h-3.5" />
                 <span>全案机位编排</span>
@@ -599,7 +622,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 </span>
               ) : (
                 <span>
-                  🎬 <strong>全案编排模式：</strong>支持 A00~A08 多机位联动、空间母版继承、模特人居交互与分镜头特写。
+                  🎬 <strong>全案编排模式：</strong>支持 A00~A09 多机位联动、空间母版继承、模特人居交互与分镜头特写。
                 </span>
               )}
             </div>
@@ -619,62 +642,70 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
                 isLight ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
               }`}>
-                {cfg.model.includes('gemini-3.1')
-                  ? 'Google Gemini 3.1 (推荐)'
+                {cfg.model.includes('gemini-3-pro')
+                  ? 'Gemini 3 Pro (旗舰)'
+                  : cfg.model.includes('gemini-3.1')
+                  ? 'Gemini 3.1 Flash (高精)'
                   : cfg.model.includes('banana')
-                  ? 'Nano Banana 2.1'
+                  ? 'Nano Banana 2.1 (极速)'
                   : cfg.model.includes('gpt')
                   ? 'OpenAI GPT Image 2'
-                  : 'Google Gemini 3.1'}
+                  : 'Gemini 3 Pro (旗舰)'}
               </span>
             </div>
 
-            {/* 模型快捷切换 Tabs: Nano Banana 2.1 (系统默认) | Gemini 3.1 | GPT Image 2 */}
+            {/* 模型快捷切换 Tabs: Gemini 3 Pro (商业旗舰) | Gemini 3.1 Flash (高精主力) | GPT Image 2 (写实微调) */}
             <div className={`grid grid-cols-3 gap-1 p-1 rounded-lg border ${
               isLight ? 'bg-stone-100 border-stone-200' : 'bg-black/40 border-white/5'
             }`}>
               <button
                 type="button"
-                onClick={() => onChangeComputeConfig?.({ model: 'gemini-nano-banana-2.1-preview' })}
-                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                  cfg.model.includes('banana')
+                onClick={() => onChangeComputeConfig?.({ model: 'gemini-3-pro-image-preview' })}
+                className={`py-1 px-1 rounded-md text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 min-w-0 leading-tight transition-all cursor-pointer ${
+                  cfg.model.includes('gemini-3-pro')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="Nano Banana 2.1 (极速响应 · 轻量多图融合 · 系统默认推荐)"
+                title="Gemini 3 Pro (商业旗舰 · 3D空间透视与光影深度融合 · 推荐)"
               >
-                <Sparkles className="w-3 h-3 text-amber-950" />
-                <span>Banana</span>
-                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">2.1</span>
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  <Sparkles className="w-3 h-3 text-amber-950" />
+                  <span>Gemini 3</span>
+                </span>
+                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">Pro</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onChangeComputeConfig?.({ model: 'gemini-3.1-flash-image-preview' })}
-                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`py-1 px-1 rounded-md text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 min-w-0 leading-tight transition-all cursor-pointer ${
                   cfg.model.includes('gemini-3.1')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="Gemini 3.1 Flash Image (极速高精)"
+                title="Gemini 3.1 Flash Image (高精主力 · 快速出图)"
               >
-                <Sparkles className="w-3 h-3" />
-                <span>Gemini</span>
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  <Sparkles className="w-3 h-3" />
+                  <span>Gemini</span>
+                </span>
                 <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">3.1</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onChangeComputeConfig?.({ model: 'gpt-image-2' })}
-                className={`py-1.5 px-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`py-1 px-1 rounded-md text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 min-w-0 leading-tight transition-all cursor-pointer ${
                   cfg.model.includes('gpt')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
                 title="GPT Image 2 (电影级写实 · 材质保护)"
               >
-                <Cpu className="w-3 h-3" />
-                <span>GPT 2</span>
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  <Cpu className="w-3 h-3" />
+                  <span>GPT 2</span>
+                </span>
                 <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">v2</span>
               </button>
             </div>
@@ -685,15 +716,15 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               <select
                 value={cfg.model}
                 onChange={(e) => onChangeComputeConfig?.({ model: e.target.value })}
-                className={`flex-1 border rounded px-2 py-1 text-[10px] focus:border-amber-400 outline-none font-mono ${
+                className={`flex-1 w-0 min-w-0 truncate border rounded px-2 py-1 text-[10px] focus:border-amber-400 outline-none font-mono ${
                   isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-black/50 border-white/10 text-amber-300'
                 }`}
               >
-                <optgroup label="Google Gemini 家族 (默认推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (系统默认 · 极速响应 · 轻量多图融合)</option>
-                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (极速高精)</option>
+                <optgroup label="Google Gemini 家族 (旗舰推荐)" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (商业旗舰 · 3D空间透视与光影融合)</option>
+                  <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (高精主力 · 快速响应)</option>
+                  <option value="gemini-nano-banana-2.1-preview">Nano Banana 2.1 (极速草图 · 轻量多图融合)</option>
                   <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
-                  <option value="gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影)</option>
                 </optgroup>
                 <optgroup label="OpenAI GPT Image 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
                   <option value="gpt-image-2">GPT Image 2 (电影级写实 · 材质保护)</option>
@@ -738,10 +769,50 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               </div>
               <p className={`text-[9.5px] mt-1 leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
                 {cfg.autoModelFallback !== false
-                  ? '✓ 开启中：若主模型超时或无图，自动按序轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2，确保出图成功率。'
+                  ? `✓ 开启中：若主模型超时或无图，自动按序轮试 ${describeFallbackChain(cfg.model)}，确保出图成功率。`
                   : '✕ 已关闭：仅严格直连当前模型，遇超时或接口异常直接报错，绝不降级为保底简图。'}
               </p>
             </div>
+
+            {/* 极简换景两步出图：GPT 2.5 Flare 换景保构图 ➔ Nano Banana 2.1 精修（仅 A01~A09 生效） */}
+            {cfg.renderMode === 'studio_swap' && (
+              <div className={`p-2 rounded-lg border transition-all ${
+                cfg.studioSwapRefinePass
+                  ? isLight ? 'bg-emerald-50/70 border-emerald-300' : 'bg-emerald-500/10 border-emerald-500/25'
+                  : isLight ? 'bg-stone-50 border-stone-200' : 'bg-black/30 border-white/5'
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Sparkles className={`w-3.5 h-3.5 shrink-0 ${
+                      cfg.studioSwapRefinePass ? 'text-emerald-500' : isLight ? 'text-stone-400' : 'text-neutral-500'
+                    }`} />
+                    <span className={`text-[11px] font-bold truncate ${isLight ? 'text-stone-800' : 'text-neutral-200'}`}>
+                      两步出图 · 构图 + 精修
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onChangeComputeConfig?.({ studioSwapRefinePass: !cfg.studioSwapRefinePass })}
+                    className={`relative inline-flex h-4.5 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      cfg.studioSwapRefinePass ? 'bg-emerald-500' : isLight ? 'bg-stone-300' : 'bg-neutral-700'
+                    }`}
+                    title={cfg.studioSwapRefinePass ? '点击关闭两步出图，按当前选定模型单次生成' : '点击开启两步出图'}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        cfg.studioSwapRefinePass ? 'translate-x-3.5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className={`text-[9.5px] mt-1 leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
+                  {cfg.studioSwapRefinePass
+                    ? '✓ 开启中：A01~A09 先用 GPT 2.5 Flare 换景保住实拍图角度，再用 Nano Banana 2.1 精修皮革纹理与清晰度（每镜多一次生成）。A00 母版不受影响。'
+                    : '✕ 已关闭：A01~A09 按上方选定模型单次生成。'}
+                </p>
+              </div>
+            )}
 
             {/* 产品功能位置设定 (每一组镜头默认保持关闭收起形态) */}
             <div className="space-y-1.5 pt-1.5 border-t border-white/5">

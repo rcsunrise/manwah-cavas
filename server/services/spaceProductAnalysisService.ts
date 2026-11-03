@@ -527,7 +527,7 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
     "height": 950
   },
   "materials": ["南美进口头层牛皮 (半苯胺)", "德国超静音低压双电机", "高碳钢五金伸缩架"],
-  "colors": ["云雾暖灰 (Warm Greige)", "拉丝黑钛金属"],
+  "colors": ["<按图中该家具真实可见的皮革/面料颜色填写，如 鞍褐焦糖 (Saddle Caramel)，不得照抄示例>", "<五金或次要配色>"],
   "adaptiveStyles": ["意式轻奢", "现代极简", "奶油原木"],
   "surfaceTexture": "细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边",
   "functionCapable": true,

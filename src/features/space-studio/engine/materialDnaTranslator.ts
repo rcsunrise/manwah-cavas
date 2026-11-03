@@ -293,9 +293,15 @@ export function resolveIndustrialColorDna(rawColor?: string): IndustrialColorSta
 /**
  * 将中文或混合色彩名称智能映射为纯视觉英文（支持注入 Hex 工业色值锚点）
  */
+/**
+ * 产品未明确标注颜色时的提示词：颜色以参考图里的实拍原色为准。
+ * 之前回退为固定的「云雾暖灰 / 极地奶白」色卡，会让模型把实拍焦糖色沙发强行改色。
+ */
+export const COLOR_FROM_REFERENCE_EN = 'the exact original color shown in the product reference photo (strictly no recoloring)';
+
 export function translateColorToEnglish(
   rawColor?: string,
-  defaultColor = 'ivory greige, soft warm pale grey (exact color anchor #C8C2BA)',
+  defaultColor = COLOR_FROM_REFERENCE_EN,
   includeHexAnchor = true
 ): string {
   if (!rawColor || typeof rawColor !== 'string') return defaultColor;

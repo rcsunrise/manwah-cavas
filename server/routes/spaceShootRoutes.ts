@@ -87,201 +87,6 @@ const RenderShotSchema = z.object({
 });
 
 /**
- * POST /api/space/shoot/render-shot
- * 触发单镜头渲染并生成规范化的对象版本快照
- */
-router.post('/render-shot', async (req: Request, res: Response) => {
-  try {
-    const parsed = RenderShotSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid render-shot payload',
-        details: parsed.error.issues
-      });
-    }
-
-    const {
-      projectId,
-      shotCode,
-      revisionNumber,
-      camera,
-      intent,
-      productDNA,
-      sceneMasterReference,
-      productReferenceImage,
-      ensembleProducts,
-      promptSnapshot,
-      generationSettings
-    } = parsed.data;
-
-    const revisionId = `rev-${revisionNumber}`;
-
-    // 1. 生成规范化存储 Key (按 Requirement 10 严格统一)
-    // 镜头原图：projects/{id}/shots/{shotCode}/revisions/{rev}/original.webp
-    // 评审结果：projects/{id}/shots/{shotCode}/revisions/{rev}/validation.json
-    // 提示词快照：projects/{id}/shots/{shotCode}/revisions/{rev}/prompt.json
-    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
-      projectId,
-      shotId: shotCode,
-      revisionId,
-      extension: 'webp'
-    });
-
-    const validationKey = SpaceObjectKeyBuilder.shotRevisionValidation({
-      projectId,
-      shotId: shotCode,
-      revisionId
-    });
-
-    const promptKey = SpaceObjectKeyBuilder.shotRevisionPrompt({
-      projectId,
-      shotId: shotCode,
-      revisionId
-    });
-
-    // 2. 真实生成该镜头的影像资产 (继承 A00 空间母版与产品真值图像，严格保证一路延续)
-    const effectiveProductName = productDNA?.name || '敏华芝华仕头等舱功能真皮沙发';
-    const effectiveProductColor = productDNA?.colorCode || '干邑暖橙 (Cognac Amber)';
-    const effectiveProductMaterial = productDNA?.leatherType || '南美进口头层牛皮 (半苯胺)';
-    const effectiveProductRef = productReferenceImage || (productDNA as any)?.referenceImage;
-    // A00 镜头为空间母版自身基准，重新生成或初创时绝不可传入旧母版作为背景真值锁死，否则会导致户型与美学风格无法生效
-    const effectiveSceneMasterRef = shotCode === 'A00' ? undefined : (sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey);
-    const referenceShotCode = (req.body as any)?.referenceShotCode || (sceneMasterReference as any)?.referenceShotCode;
-
-    const positivePrompt = promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode} luxury ${effectiveProductName} in ${effectiveProductColor}`;
-    const negativePrompt = promptSnapshot?.negativePrompt || '';
-
-    const imageResult = await SpaceImageGenerationService.generateAndStore({
-      projectId,
-      shotCode,
-      referenceShotCode,
-      positivePrompt,
-      negativePrompt,
-      aspectRatio: generationSettings?.aspectRatio || '4:3',
-      preferredModel: generationSettings?.model,
-      resolution: generationSettings?.resolution,
-      seed: generationSettings?.seed,
-      autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
-      renderMode: (generationSettings as any)?.renderMode || (req.body as any)?.renderMode,
-      studioSwapContext: (promptSnapshot as any)?.studioSwapContext,
-      productName: effectiveProductName,
-      productColor: effectiveProductColor,
-      productMaterial: effectiveProductMaterial,
-      primaryProduct: {
-        name: effectiveProductName,
-        colors: [effectiveProductColor],
-        materials: [effectiveProductMaterial],
-        referenceImage: effectiveProductRef,
-        isSceneEnsembleSuite: (productDNA as any)?.isSceneEnsembleSuite ?? (req.body as any)?.isSceneEnsembleSuite,
-        sceneEnsembleDossier: (productDNA as any)?.sceneEnsembleDossier ?? (req.body as any)?.sceneEnsembleDossier
-      },
-      ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
-      productReferenceImage: effectiveProductRef,
-      sceneMasterReferenceImage: effectiveSceneMasterRef,
-      roomName: '都会收藏家大平层客厅',
-      styleName: '都会收藏家',
-      cameraSettings: {
-        lensMm: camera.lensMm,
-        heightCm: camera.heightCm,
-        yawDeg: camera.yawDeg,
-        pitchDeg: camera.pitchDeg
-      },
-      objectKey
-    });
-
-    // 3. 调用真正的多模态裁判服务进行生审解耦评测 (Multimodal Decoupled Referee)
-    const validationReport = await SpaceMultimodalRefereeService.evaluateShot({
-      projectId,
-      shotCode,
-      revisionId,
-      camera,
-      intent: {
-        name: intent?.name || '标准视角',
-        productDominancePct: intent?.productDominancePct ?? 65,
-        maxOcclusionPct: intent?.maxOcclusionPct ?? 20
-      },
-      productDNA: {
-        modelNumber: productDNA?.modelNumber || 'MW-CHEERS-S01',
-        name: effectiveProductName,
-        leatherType: effectiveProductMaterial,
-        colorCode: effectiveProductColor
-      },
-      candidateImageKey: objectKey,
-      baselineMasterKey: sceneMasterReference?.objectKey || `projects/${projectId}/scene-masters/master-v01`
-    });
-
-    // 4. 存盘镜头提示词快照 prompt.json 到 GCS
-    const promptBuffer = Buffer.from(
-      JSON.stringify(
-        {
-          projectId,
-          shotCode,
-          revisionNumber,
-          createdAt: new Date().toISOString(),
-          camera,
-          intent,
-          generationSettings,
-          promptSnapshot
-        },
-        null,
-        2
-      ),
-      'utf-8'
-    );
-
-    await storage.put({
-      bucketType: 'generated',
-      objectKey: promptKey,
-      buffer: promptBuffer,
-      contentType: 'application/json'
-    });
-
-    // 5. 存盘镜头评审结果 validation.json 到 GCS
-    const validationBuffer = Buffer.from(
-      JSON.stringify(validationReport, null, 2),
-      'utf-8'
-    );
-
-    await storage.put({
-      bucketType: 'generated',
-      objectKey: validationKey,
-      buffer: validationBuffer,
-      contentType: 'application/json'
-    });
-
-    res.json({
-      success: true,
-      data: {
-        shotCode,
-        revisionNumber,
-        revisionId,
-        objectKey: imageResult.objectKey,
-        imageUrl: imageResult.imageUrl,
-        promptKey,
-        validationKey,
-        status: validationReport.pass ? 'approved' : 'rejected',
-        score: validationReport.score,
-        validationReport,
-        provenance: validationReport.provenance,
-        productionTruth: validationReport.productionTruth,
-        imageAsset: {
-          bytes: imageResult.bytes,
-          sha256: imageResult.sha256,
-          provider: imageResult.provider,
-          model: imageResult.model
-        }
-      }
-    });
-  } catch (err: any) {
-    res.status(500).json({
-      success: false,
-      error: err.message || 'Failed to render shot'
-    });
-  }
-});
-
-/**
  * POST /api/space/shoot/confirm-production-truth
  * 人工审签确权门禁：将通过 L2 裁判的版本正式晋升为 Production Truth (生产真值)
  */
@@ -344,6 +149,16 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
 
     const shotId = (req.body as any).shotId || `shot-${shotCode.toLowerCase()}`;
     const isHumanPass = Boolean((req.body as any).isHumanPass);
+    const effectiveUserId =
+      (req as any).user?.id ||
+      (req.headers?.['x-user-uuid'] as string) ||
+      (req.headers?.['x-user-id'] as string) ||
+      (req.body as any)?.userId ||
+      (req.body as any)?.userUuid;
+    const effectiveDeptId =
+      (req as any).user?.departmentId ||
+      (req.headers?.['x-dept-id'] as string) ||
+      (req.body as any)?.deptId;
 
     // 防抖防并发锁：拦截 2 秒内同镜头的重复提交，避免重复调用生图 API
     lockKey = `${projectId}:${shotCode}:${isHumanPass ? 'human' : 'base'}`;
@@ -379,6 +194,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
       ? undefined
       : (sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey);
     const referenceShotCode = (req.body as any)?.referenceShotCode || (sceneMasterReference as any)?.referenceShotCode;
+    const sceneMasterIsEmptyPlate = shotCode !== 'A00' && Boolean((sceneMasterReference as any)?.isEmptyPlate);
 
     const effectiveStyleName =
       (req.body as any).styleName ||
@@ -402,25 +218,25 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
     const studioSwapVariantSpecs = [
       {
         idx: 1,
-        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 天然通透漫射光`,
+        tag: `影棚背景置换 · 天然通透漫射光`,
         promptAddon: 'soft natural diffuse daylight, clean neutral color temperature',
         cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
       },
       {
         idx: 2,
-        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 午后余晖暖光`,
+        tag: `影棚背景置换 · 午后余晖暖光`,
         promptAddon: 'warm golden hour afternoon sunlight entering through the windows, gentle amber glow',
         cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
       },
       {
         idx: 3,
-        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 柔和氛围灯光`,
+        tag: `影棚背景置换 · 柔和氛围灯光`,
         promptAddon: 'balanced interior ambient cove lighting with soft wall sconce glow, calm evening-ready atmosphere',
         cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
       },
       {
         idx: 4,
-        tag: `${effectiveStyleName} · ${effectiveRoomName} · 影棚换景 · 明亮画册光`,
+        tag: `影棚背景置换 · 明亮画册光`,
         promptAddon: 'bright high-key catalog lighting, crisp airy daylight with soft shadows',
         cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
       }
@@ -496,14 +312,18 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           extension: 'webp'
         });
 
-        const effectiveCamera = {
-          lensMm: v.cameraDelta.lensMm ?? camera.lensMm,
-          heightCm: camera.heightCm,
-          yawDeg: camera.yawDeg,
-          pitchDeg: v.cameraDelta.pitchDeg ?? camera.pitchDeg
-        };
+        const effectiveCamera = isStudioSwapBase
+          ? undefined
+          : {
+              lensMm: v.cameraDelta.lensMm ?? camera.lensMm,
+              heightCm: camera.heightCm,
+              yawDeg: camera.yawDeg,
+              pitchDeg: v.cameraDelta.pitchDeg ?? camera.pitchDeg
+            };
 
-        const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
+        const positivePrompt = isStudioSwapBase
+          ? (promptSnapshot?.positivePrompt || `STUDIO BACKGROUND SWAP SHOT ${shotCode}`)
+          : `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
 
         const preserveBasePhotoOnly = Boolean((req.body as any).preserveBasePhotoOnly);
 
@@ -511,6 +331,8 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
           const imageResult = await SpaceImageGenerationService.generateAndStore({
             projectId,
             shotCode,
+            userId: effectiveUserId,
+            deptId: effectiveDeptId,
             isHumanPass,
             preserveBasePhotoOnly,
             humanLayout,
@@ -524,6 +346,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             functionalPositionState: (generationSettings as any)?.functionalPositionState || (req.body as any).functionalPositionState || 'closed',
             seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx * 137 : undefined,
             autoModelFallback: (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback,
+            studioSwapRefinePass: isStudioSwapBase && shotCode !== 'A00' && Boolean((generationSettings as any)?.studioSwapRefinePass),
             productName: effectiveProductName,
             productColor: effectiveProductColor,
             productMaterial: effectiveProductMaterial,
@@ -538,18 +361,20 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             ensembleProducts: ensembleProducts || (req.body as any)?.ensembleProducts,
             productReferenceImage: effectiveProductRef,
             referenceShotCode,
+            sceneMasterIsEmptyPlate,
             sceneMasterReferenceImage: effectiveSceneMasterRef,
             currentShotReferenceImage: baseShotRef,
-            roomName: effectiveRoomName,
-            styleName: effectiveStyleName,
-            spacePreset: (req.body as any).spacePreset,
-            stylePreset: (req.body as any).stylePreset,
+            roomName: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : effectiveRoomName,
+            styleName: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : effectiveStyleName,
+            spacePreset: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : (req.body as any).spacePreset,
+            stylePreset: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : (req.body as any).stylePreset,
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
             renderMode,
             studioSwapContext,
-            studioSwapLightingHint: isStudioSwapBase ? v.promptAddon : undefined,
+            // 衍生镜头的首个候选与工作流页面指令逐字一致，不附加光线氛围；仅额外候选 (#2~#4) 用光线变体区分
+            studioSwapLightingHint: isStudioSwapBase && (shotCode === 'A00' || v.idx > 1) ? v.promptAddon : undefined,
             objectKey
           });
 
@@ -760,12 +585,25 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
       modelToUse = 'gemini-3.1-flash-image-preview';
     }
 
+    const effectiveUserId =
+      (req as any).user?.id ||
+      (req.headers?.['x-user-uuid'] as string) ||
+      (req.headers?.['x-user-id'] as string) ||
+      (req.body as any)?.userId ||
+      (req.body as any)?.userUuid ||
+      'system';
+    const effectiveDeptId =
+      (req as any).user?.departmentId ||
+      (req.headers?.['x-dept-id'] as string) ||
+      (req.body as any)?.deptId;
+
     const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
     const gatewayRes = await fetch(gatewayUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-uuid': 'system'
+        'x-user-uuid': effectiveUserId,
+        ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
       },
       body: JSON.stringify({
         prompt: directivePrompt,
@@ -774,7 +612,10 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
         resolution,
         images: [{ data: paddedImage, role: 'composition_reference' }],
         mask: maskImage,
-        generationIntent: 'image_edit'
+        generationIntent: 'image_edit',
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
       }),
       signal: AbortSignal.timeout(180000)
     });
@@ -860,7 +701,7 @@ router.post('/inpaint-edit', async (req: Request, res: Response) => {
       editMode = 'modify',   // 'modify' (指令/局部修改) | 'erase' (局部消除) | 'replace_with_ref' (参考图置入替换)
       roomName = '都会大平层',
       styleName = '意式经典',
-      preferredModel = 'gemini-nano-banana-2.1-preview',
+      preferredModel = 'gemini-3-pro-image-preview',
       aspectRatio = '4:3',
       resolution = '2K',
       productName
@@ -986,15 +827,28 @@ MANDATORY QUALITY RULES:
 
     let modelToUse = preferredModel;
     if (!modelToUse || modelToUse === 'gemini-2.5-flash-image') {
-      modelToUse = 'gemini-nano-banana-2.1-preview';
+      modelToUse = 'gemini-3-pro-image-preview';
     }
+
+    const effectiveUserId =
+      (req as any).user?.id ||
+      (req.headers?.['x-user-uuid'] as string) ||
+      (req.headers?.['x-user-id'] as string) ||
+      (req.body as any)?.userId ||
+      (req.body as any)?.userUuid ||
+      'system';
+    const effectiveDeptId =
+      (req as any).user?.departmentId ||
+      (req.headers?.['x-dept-id'] as string) ||
+      (req.body as any)?.deptId;
 
     const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
     const gatewayRes = await fetch(gatewayUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-uuid': 'system'
+        'x-user-uuid': effectiveUserId,
+        ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
       },
       body: JSON.stringify({
         prompt: directivePrompt,
@@ -1003,7 +857,10 @@ MANDATORY QUALITY RULES:
         resolution,
         images: imagesPayload,
         ...(hasMask ? { mask: maskImage } : {}),
-        generationIntent: 'image_edit'
+        generationIntent: 'image_edit',
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
       }),
       signal: AbortSignal.timeout(180000)
     });
@@ -1147,6 +1004,131 @@ MANDATORY QUALITY RULES:
       success: false,
       error: err.message || 'Failed to execute inpaint-edit'
     });
+  }
+});
+
+/**
+ * A00 空间母版「清除家具」空场景生成
+ * 极简换景模式下，衍生镜头若直接以带家具的母版作为窗口2，模型容易整张照搬母版构图；
+ * 先把母版清空成只有硬装的空房间，再作为后续镜头的空间参考，角度可稳定跟随用户上传的实拍图。
+ */
+export const EMPTY_PLATE_PROMPT = `商企-清除家具：以窗口1（空间母版图）为底图，移除画面中所有可移动家具与软装陈设——沙发、单椅、躺椅、茶几、边几、餐桌椅、地毯、落地灯、绿植、摆件与桌面饰品全部清除。
+
+[空间第一性锁定]: 相机机位、视角、透视、地平线、画幅比例与窗口1完全一致；墙面、吊顶与灯带、地面材质与反光、门窗、窗帘、窗景、壁灯与固定硬装造型100%保持不变，只把原来被家具遮挡的墙面与地面按周围材质自然补全，接缝与光影连续。
+
+输出一个空置的真实室内空间，整体为室内建筑摄影风格。
+
+[CRITICAL NEGATIVE INSTRUCTION]: no sofa, no chair, no armchair, no coffee table, no side table, no rug, no carpet, no floor lamp, no plants, no people, no text, no watermark, no labels, no changes to walls, ceiling, floor, windows or camera angle.`;
+
+router.post('/empty-plate', async (req: Request, res: Response) => {
+  try {
+    const {
+      projectId = 'manwah-noble-space-01',
+      shotCode = 'A00',
+      sourceRevisionId,
+      sourceImage,
+      preferredModel = 'gemini-nano-banana-2.1-preview',
+      aspectRatio = '4:3',
+      resolution = '2K'
+    } = req.body || {};
+
+    if (!sourceImage || typeof sourceImage !== 'string') {
+      return res.status(400).json({ success: false, error: '缺少空间母版图 (sourceImage)' });
+    }
+
+    const inline = sourceImage.startsWith('data:')
+      ? null
+      : await SpaceImageGenerationService.resolveImageInline(sourceImage);
+    const sourceDataUrl = inline ? `data:${inline.mimeType};base64,${inline.data}` : sourceImage;
+
+    const effectiveUserId =
+      (req as any).user?.id ||
+      (req.headers?.['x-user-uuid'] as string) ||
+      (req.headers?.['x-user-id'] as string) ||
+      (req.body as any)?.userId ||
+      'system';
+    const effectiveDeptId =
+      (req as any).user?.departmentId ||
+      (req.headers?.['x-dept-id'] as string) ||
+      (req.body as any)?.deptId;
+
+    const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
+    const gatewayRes = await fetch(gatewayUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-uuid': effectiveUserId,
+        ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
+      },
+      body: JSON.stringify({
+        prompt: EMPTY_PLATE_PROMPT,
+        model: preferredModel,
+        aspectRatio,
+        resolution,
+        images: [{ data: sourceDataUrl, role: 'composition_reference' }],
+        generationIntent: 'image_edit',
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
+      }),
+      signal: AbortSignal.timeout(180000)
+    });
+
+    const gatewayData = await gatewayRes.json();
+    if (!gatewayRes.ok || gatewayData.error || gatewayData.success === false) {
+      const errorMsg =
+        gatewayData.error?.message ||
+        (typeof gatewayData.error === 'string' ? gatewayData.error : '') ||
+        gatewayData.message ||
+        '空场景生成失败';
+      throw new Error(errorMsg);
+    }
+
+    const candidatePart = gatewayData.candidates?.[0]?.content?.parts?.find(
+      (p: any) => p?.inlineData?.data || p?.inline_data?.data
+    );
+    const imgUrlOrBase64: string | undefined =
+      gatewayData.imageUrl ||
+      gatewayData.data?.[0]?.url ||
+      gatewayData.data?.[0]?.b64_json ||
+      gatewayData.images?.[0]?.data ||
+      candidatePart?.inlineData?.data ||
+      candidatePart?.inline_data?.data;
+
+    let imgBuffer: Buffer | null = null;
+    if (typeof imgUrlOrBase64 === 'string') {
+      if (imgUrlOrBase64.startsWith('http')) {
+        const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(60000) });
+        if (fetched.ok) imgBuffer = Buffer.from(await fetched.arrayBuffer());
+      } else if (imgUrlOrBase64.length > 100) {
+        imgBuffer = Buffer.from(imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''), 'base64');
+      }
+    }
+    if (!imgBuffer || imgBuffer.length === 0) {
+      throw new Error('空场景生成网关未返回有效图像数据');
+    }
+
+    imgBuffer = await sharp(imgBuffer).webp({ quality: 92 }).toBuffer();
+    const revisionId = `empty-plate-${String(sourceRevisionId || shotCode).toLowerCase()}-${Date.now().toString(36)}`;
+    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId,
+      shotId: shotCode,
+      revisionId,
+      extension: 'webp'
+    });
+    await storage.put({ objectKey, buffer: imgBuffer, contentType: 'image/webp' });
+
+    res.json({
+      success: true,
+      data: {
+        objectKey,
+        imageUrl: `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
+        sourceRevisionId
+      }
+    });
+  } catch (err: any) {
+    console.error('[spaceShootRoutes] Empty-plate error:', err);
+    res.status(500).json({ success: false, error: err.message || '空场景生成失败' });
   }
 });
 

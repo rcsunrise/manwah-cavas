@@ -71,15 +71,15 @@ export async function assertSafeRemoteUrl(value: string): Promise<URL> {
   return url;
 }
 
-async function fetchRemoteImage(value: string, redirectCount = 0): Promise<{ buffer: Buffer; contentType: string; finalUrl: string }> {
+async function fetchRemoteImage(value: string, redirectCount = 0, timeoutMs = 15_000): Promise<{ buffer: Buffer; contentType: string; finalUrl: string }> {
   const url = await assertSafeRemoteUrl(value);
-  const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get('location');
     if (!location || redirectCount >= MAX_REDIRECTS) {
       throw new ProviderError('远程图片重定向无效或次数过多。', 'invalid_image_input', 400, false);
     }
-    return fetchRemoteImage(new URL(location, url).toString(), redirectCount + 1);
+    return fetchRemoteImage(new URL(location, url).toString(), redirectCount + 1, timeoutMs);
   }
   if (!response.ok) {
     throw new ProviderError(`远程图片下载失败（HTTP ${response.status}）。`, 'invalid_image_input', 400, false);
@@ -135,9 +135,12 @@ export function detectImageMimeType(buffer: Buffer): ResolvedImageReference['mim
   return null;
 }
 
-export async function resolveAndValidateImage(reference: NormalizedImageReference): Promise<ResolvedImageReference> {
+export async function resolveAndValidateImage(
+  reference: NormalizedImageReference,
+  options: { timeoutMs?: number } = {}
+): Promise<ResolvedImageReference> {
   const isRemote = /^https?:\/\//i.test(reference.source);
-  const fetched = isRemote ? await fetchRemoteImage(reference.source) : null;
+  const fetched = isRemote ? await fetchRemoteImage(reference.source, 0, options.timeoutMs) : null;
   const decoded = fetched ? null : decodeBase64(reference.source);
   const buffer = fetched?.buffer || decoded!.buffer;
   if (buffer.length > MAX_SINGLE_IMAGE_BYTES) {

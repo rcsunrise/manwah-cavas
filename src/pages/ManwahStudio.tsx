@@ -15,14 +15,13 @@ import {
   Wand2, Settings2, Trash2, Loader2, FileText, Plus, Save, X, 
   Brain, Database, History, Sparkles, UserCircle, BookOpen,
   CheckSquare, Square, PlusCircle, Key, Languages, Pause, Play,
-  ChevronDown, ChevronUp, ScanFace, Tag, Maximize2, Minimize2, MinusCircle, ArrowDownUp, Lightbulb, ImageIcon, LayoutGrid
+  ChevronDown, ChevronUp, ScanFace, Tag, Maximize2, Minimize2, MinusCircle, ArrowDownUp, Lightbulb, ImageIcon
 } from '../components/IconsNew';
 import { generateEditedImage, generateImageDescription, rewritePrompt, analyzeImageAEP, rewritePromptWithAEP, measureImagePixels, generateVideo } from '../services/geminiService';
 import { dbService, MAX_STORAGE_BYTES } from '../services/dbService';
 import { supabase } from '../lib/supabase';
 import { CRAFT_VOCABULARY, CraftVocabItem } from '../data/craftVocab';
 import { ImageAttachment, UIAspRatioOption, Resolution, GeneratedResult, ModelType, SupportedAspectRatio, PromptTemplate, HistoryItem, ProcessingChannel, AEPData, GenerationTask, MAX_HISTORY_TASKS } from '../types';
-import { ProjectDnaModal } from '../components/agent/ProjectDnaModal';
 import { getAuthHeaders } from '../utils/apiUtils';
 
 const API_SUPPORTED_ASPECT_RATIOS = new Set<SupportedAspectRatio>([
@@ -179,6 +178,7 @@ const App: React.FC = () => {
   const [imageAnalysisResult, setImageAnalysisResult] = useState<string | null>(null);
   const [imageAnalysisSuggestions, setImageAnalysisSuggestions] = useState<any[] | null>(null);
   const [selectedSuggestionIndices, setSelectedSuggestionIndices] = useState<number[]>([]);
+  const [autoPurgedNotice, setAutoPurgedNotice] = useState(false);
 
   const [aspectRatio, setAspectRatio] = useState<UIAspRatioOption | string>('Auto'); 
   const [customAspectRatio, setCustomAspectRatio] = useState<string>('');
@@ -217,7 +217,6 @@ const App: React.FC = () => {
   const [aepData, setAepData] = useState<AEPData | null>(null);
   const [showAEPPanel, setShowAEPPanel] = useState(false);
   const [isAepPanelPinned, setIsAepPanelPinned] = useState(true); // Default pinned
-  const [showProjectDnaModal, setShowProjectDnaModal] = useState(false);
   const [currentProjectDnaInfo, setCurrentProjectDnaInfo] = useState<{ project: any; dna: any } | null>(null);
   const [promptMode, setPromptMode] = useState<'auto' | 'manual'>('auto');
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
@@ -626,7 +625,9 @@ const App: React.FC = () => {
       }
 
       setShowAEPPanel(true);
-      setPromptMode('auto');
+      if (promptMode !== 'manual') {
+        setPromptMode('auto');
+      }
       setShowDimensionControls(false);
       // The useEffect will automatically handle rewriting the prompt with the new AEP data
     } catch (e: any) {
@@ -862,7 +863,19 @@ const App: React.FC = () => {
 
     try {
         const inputImages = isSceneEnabled ? [...channel.images, ...sceneImages] : [...channel.images];
-        const finalPromptForGen = imageAnalysisResult ? `参考产品的特征标准化描述：\n${imageAnalysisResult}\n\n设计要求：\n${prompt}` : prompt;
+        // 手动模式下以用户的手动指令为绝对第一优先级，杜绝被旧的图特征分析静默覆盖
+        let finalPromptForGen = (imageAnalysisResult && promptMode !== 'manual')
+          ? `参考产品的特征标准化描述：\n${imageAnalysisResult}\n\n设计要求：\n${prompt}`
+          : prompt;
+
+        // 关键视角第一性原则锁：若提示词包含场景/背景更换且指向窗口2，自动注入视角第一性锁定，杜绝受窗口2平视大平层带偏
+        if (
+          (finalPromptForGen.includes('窗口2') || finalPromptForGen.includes('更换背景') || finalPromptForGen.includes('调性背景墙')) &&
+          !finalPromptForGen.includes('严禁复制窗口2')
+        ) {
+          finalPromptForGen = `${finalPromptForGen}\n\n[机位与景别第一性锁定]: 拍摄视角、相机透视、地平线与家具空间姿态必须100%严格继承窗口1产品图的原图视角（如45度斜侧视角），严禁复制窗口2的0度正面平视或居中对称角度！保证原图透视与尺寸比例完全不变。`;
+        }
+
         const genResponse = await generateEditedImage(finalPromptForGen, inputImages, finalAspectRatio, resolution, model, seed, () => {});
         let finalResult = genResponse.imageUrl;
         let pointsUsed = genResponse.pointsUsed;
@@ -947,7 +960,15 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
         active = [{ ...firstChannel, isEnabled: true }];
     }
 
-    if (!active.length || !prompt.trim()) { setError("Check your inputs."); return; }
+    if (!active.length || !prompt.trim()) { setError("请检查输入内容 (Check your inputs)"); return; }
+
+    const isImageToImageTask = (prompt.includes('窗口') || prompt.includes('产品') || prompt.includes('更换背景')) && !prompt.includes('TEXT_TO_IMAGE');
+    const hasValidImageInChannels = active.some(c => c.images && c.images.length > 0);
+    if (isImageToImageTask && !hasValidImageInChannels) {
+      setError("【产品通道录入】暂无图片：当前设计指令依赖产品实拍素材，请先在左侧产品通道上传产品素材后再生成。");
+      return;
+    }
+
     setIsGenerating(true);
     setIsPaused(false);
     pausedRef.current = false;
@@ -980,6 +1001,33 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
         setIsPaused(false); 
         pausedRef.current = false; 
         refreshStorageStats(); 
+
+        // 核心机制：单次生成后自动执行状态净化（等效于手动强制刷新的全新纯净态）
+        // 1. 净化临时特征描述，杜绝在连续生成中拼入陈旧的正面描述
+        setImageAnalysisResult(null);
+        setImageAnalysisSuggestions(null);
+        setSelectedSuggestionIndices([]);
+
+        // 2. 确保通道1保持原始真值（若曾被 AI 图替换并保留了 originalBackup，自动还原为原始45°实拍图）
+        setChannels(prev => prev.map(c => {
+          if (c.id === 1 && c.images.length > 0 && c.images[0].isAiOptimized && c.images[0].originalBackup) {
+            return {
+              ...c,
+              images: [c.images[0].originalBackup]
+            };
+          }
+          return c;
+        }));
+
+        // 3. 重置随机种子，确保下一次生成拥有全新独立的分支探索
+        if (seed !== undefined) {
+          setSeed(undefined);
+        }
+
+        setAutoPurgedNotice(true);
+        setTimeout(() => setAutoPurgedNotice(false), 4500);
+
+        console.log('[ManwahStudio] 单次生成已完成，已自动执行运行态净化（等效于纯净刷新态）');
     }
   };
 
@@ -1438,56 +1486,6 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
           {/* Sidebar - Control Panel */}
           <div className="lg:col-span-4 flex flex-col gap-6 h-auto md:h-full md:overflow-y-auto pr-0 md:pr-2 custom-scrollbar pb-[8rem] md:pb-10">
             
-            {/* Phase 2: 企划项目与产品 DNA 工作室 */}
-            <div className="p-4 bg-stone-900 text-white rounded-2xl shadow-lg border border-stone-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span className="font-bold text-sm">家具企划 & 产品 DNA</span>
-                </div>
-                {currentProjectDnaInfo?.dna?.confirmed_at && (
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                    DNA已锁定
-                  </span>
-                )}
-              </div>
-
-              {currentProjectDnaInfo ? (
-                <div className="bg-stone-800/80 p-2.5 rounded-xl text-xs space-y-1">
-                  <div className="font-bold text-amber-200">{currentProjectDnaInfo.project?.name}</div>
-                  <div className="text-stone-400 text-[11px]">
-                    {currentProjectDnaInfo.dna?.category} · {currentProjectDnaInfo.dna?.primaryColor} · {currentProjectDnaInfo.dna?.materials?.join(', ')}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[11px] text-stone-400 leading-relaxed">
-                  选择或创建企划项目，上传产品图自动提炼品类、材质、几何与不可篡改的锁定规则。
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  onClick={() => setShowProjectDnaModal(true)}
-                  className="w-full py-2 bg-[#B28C5A] hover:bg-[#A17C4B] text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 shadow"
-                >
-                  <Sparkles className="w-3.5 h-3.5" /> {currentProjectDnaInfo ? '管理 DNA' : 'DNA 工作室'}
-                </button>
-                <button
-                  onClick={() => {
-                    if (currentProjectDnaInfo?.project?.id) {
-                      navigate(`/creative-canvas/${currentProjectDnaInfo.project.id}`);
-                    } else {
-                      navigate('/creative-canvas/new');
-                    }
-                  }}
-                  className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-stone-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 shadow"
-                  title="打开视觉企划画布"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" /> 视觉企划画布
-                </button>
-              </div>
-            </div>
-
             {/* 1. 产品通道录入 (Window 1) - UPDATED with onAddImages distribution */}
             <div className="sidebar-section premium-shadow">
               <div 
@@ -2248,6 +2246,13 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
 
             {error && <div className="p-4 bg-red-50 text-red-500 text-[10px] font-bold rounded-xl border border-red-100 animate-fade-in">{error}</div>}
 
+            {autoPurgedNotice && (
+              <div className="p-2.5 px-3.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-xl border border-emerald-200 dark:border-emerald-800 shadow-sm flex items-center gap-2 animate-fade-in">
+                <Sparkles className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>已自动净化重置生成环境（等效已刷新，可直接连续生成下一张）</span>
+              </div>
+            )}
+
             {/* Persistent Action Bar */}
             <div className="fixed bottom-[6.5rem] px-4 md:px-0 left-0 right-0 z-40 md:sticky md:bottom-0 md:bg-brand-cream/90 md:backdrop-blur-md md:pt-4 flex justify-center md:justify-start gap-4 pointer-events-none md:pointer-events-auto">
                <button onClick={handleReset} className="w-14 h-14 md:w-auto md:h-auto md:p-5 rounded-2xl bg-white/90 md:bg-white backdrop-blur-md md:backdrop-blur-none border border-brand-taupe text-stone-300 hover:text-red-400 transition-colors shadow-lg md:shadow-sm shrink-0 group pointer-events-auto" title="Reset All"><Trash2 className="w-6 h-6 md:w-6 md:h-6 group-hover:scale-110 transition-transform" /></button>
@@ -2329,68 +2334,6 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
       />
 
       {/* Project DNA Modal */}
-      <ProjectDnaModal
-        isOpen={showProjectDnaModal}
-        onClose={() => setShowProjectDnaModal(false)}
-        initialProject={currentProjectDnaInfo?.project || null}
-        initialDna={currentProjectDnaInfo?.dna || null}
-        onSelectProjectAndDna={async (project, dna, assets) => {
-          setCurrentProjectDnaInfo({ project, dna });
-          setShowProjectDnaModal(false);
-
-          let loadedAssets = assets;
-          if (!loadedAssets) {
-            try {
-              const authHeaders = await getAuthHeaders();
-              const res = await fetch(`/api/projects/${project.id}`, { headers: authHeaders });
-              const pData = await res.json();
-              if (pData.success && pData.assets) {
-                loadedAssets = pData.assets;
-              }
-            } catch (e) {}
-          }
-
-          if (loadedAssets && loadedAssets.length > 0) {
-            const resolveAssetUrl = (asset: any): string => {
-              if (!asset) return '';
-              if (asset.url) return asset.url;
-              if (asset.storage_url) return asset.storage_url;
-              if (asset.dataUrl) return asset.dataUrl;
-              const path = asset.storage_path || asset.objectKey || '';
-              if (!path) return '';
-              if (path.startsWith('data:') || path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')) {
-                return path;
-              }
-              return `/api/canvases/assets/${path}`;
-            };
-
-            const updatedChannels: ProcessingChannel[] = INITIAL_CHANNELS.map((ch, idx) => {
-              const asset = loadedAssets![idx];
-              if (asset) {
-                const imgUrl = resolveAssetUrl(asset);
-                if (imgUrl) {
-                  const imgAttachment: ImageAttachment = {
-                    id: asset.id || `asset_${idx}`,
-                    previewUrl: imgUrl,
-                    base64Data: imgUrl.startsWith('data:') ? imgUrl.split(',')[1] : '',
-                    mimeType: asset.mime_type || 'image/png',
-                    width: asset.width || 800,
-                    height: asset.height || 600
-                  };
-                  return {
-                    ...ch,
-                    isEnabled: true,
-                    images: [imgAttachment]
-                  };
-                }
-              }
-              return ch;
-            });
-            setChannels(updatedChannels);
-            setVisibleChannelCount(Math.min(6, Math.max(1, loadedAssets.length)));
-          }
-        }}
-      />
     </div>
   );
 };

@@ -21,6 +21,7 @@ import {
   compileStyleArchitecturalFinishes
 } from './spaceTopologyEngine';
 import { STANDARD_SHOT_TEMPLATES } from '../data/shotTemplates';
+import { deduplicateNegativeConstraints, deduplicatePositiveClauses } from './promptDeduplication';
 
 export interface CompileShotPromptInput {
   shot: ShotInstance;
@@ -31,6 +32,7 @@ export interface CompileShotPromptInput {
   blueprint: PlacementBlueprint;
   aspectRatio?: ImageAspectRatio;
   functionalPositionState?: 'closed' | 'open';
+  renderMode?: 'orchestration' | 'studio_swap';
 }
 
 export interface CompiledShotPrompt {
@@ -263,7 +265,7 @@ export class ShootCompiler {
               ? activeProducts.filter((p) => p.id !== primaryProduct?.id && p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat')
               : activeProducts.filter((p) => p.id !== primaryProduct?.id)));
 
-    const primaryColorEn = translateColorToEnglish(primaryProduct?.colors?.[0], 'ivory greige, soft warm pale grey');
+    const primaryColorEn = translateColorToEnglish(primaryProduct?.colors?.[0]);
     const primaryMaterialEn = translateMaterialToEnglish(primaryProduct?.materials?.[0], 'genuine top-grain semi-aniline cowhide leather', primaryProduct?.role);
 
     const isFabricOrMicrofiber = /fabric|cloth|microfiber|woven|linen|textile|麻|布/i.test(
@@ -903,7 +905,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
     // 6. 搭配产品覆盖指令
     const secondaryClauses: string[] = [];
     for (const sec of secondaryProducts) {
-      const secColorEn = translateColorToEnglish(sec.colors?.[0], 'pristine polar milk-white');
+      const secColorEn = translateColorToEnglish(sec.colors?.[0]);
       const secMatEn = translateMaterialToEnglish(sec.materials?.[0], 'genuine top-grain semi-aniline leather', sec.role);
       const compositeInfo = resolveCompositeMaterialDna(sec.materials?.[0] || sec.name, sec.role);
       mustIncludeClauses.push(secColorEn, secMatEn);
@@ -1065,22 +1067,36 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       ? 'proportional 2:3 vertical catalog composition'
       : 'proportional 4:3 classic commercial catalog composition';
 
+    // 关键修正：A00 空间母版自身必须 100% 编译用户录入的户型拓扑与美学风格；仅衍生换景镜头走精简直通指令
+    const isDerivedStudioSwapMode = input.renderMode === 'studio_swap' && shot.templateCode !== 'A00';
+    if (isDerivedStudioSwapMode) {
+      shotMandate = `[STUDIO BACKGROUND SWAP DIRECTIVE - SHOT ${shot.templateCode}]: Direct visual background replacement. Camera viewpoint, elevation angle, field of view (FOV), optical horizon, and 3D vanishing points 100% strictly follow the user uploaded scene photo (Reference Image 1). All furniture geometry, proportions, spatial arrangement, colors, textures, and physical postures are immutable ground truth. Background architecture, finishes, lighting, and window views are strictly inherited and reprojected from the Space Master (Reference Image 2).`;
+    }
+
     // 核心组合：机位景别 + 构图画幅 + 空间主色调强约束置顶 + 产品与空间搭配 + 空间一致性四大定律
-    const positivePrompt = [
-      shotMandate,
-      ...cameraDirectives.semanticClauses,
-      cameraDirectives.framingDirective,
-      aspectDirective,
-      functionalPostureMandate,
-      styleDna.styleMandateClause,
-      ...fourInvariancePillars,
-      ...intentClauses,
-      ...mustIncludeClauses,
-      ...secondaryClauses,
-      ...sceneMasterHeritage,
-      !isHumanPassActive ? 'pure unoccupied architectural space, pristine showroom furniture presentation, zero human presence, clean empty sofa seat cushions strictly without decorative throw pillows or loose cushions' : '',
-      'commercial furniture catalog masterpiece, authentic luxury materiality, razor sharp optical clarity, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
-    ].filter(Boolean).join(', ');
+    const positivePrompt = isDerivedStudioSwapMode
+      ? deduplicatePositiveClauses(
+          shotMandate,
+          aspectDirective,
+          functionalPostureMandate,
+          'SPATIAL INVARIANCE: authentic physical contact ambient occlusion shadows grounding all furniture legs, bases, and footrests firmly onto the floor, eliminating any floating sticker artifact',
+          'commercial furniture catalog masterpiece, authentic luxury materiality, razor sharp optical clarity, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
+        ).join(', ')
+      : deduplicatePositiveClauses(
+          shotMandate,
+          ...cameraDirectives.semanticClauses,
+          cameraDirectives.framingDirective,
+          aspectDirective,
+          functionalPostureMandate,
+          styleDna.styleMandateClause,
+          ...fourInvariancePillars,
+          ...intentClauses,
+          ...mustIncludeClauses,
+          ...secondaryClauses,
+          ...sceneMasterHeritage,
+          !isHumanPassActive ? 'pure unoccupied architectural space, pristine showroom furniture presentation, zero human presence, clean empty sofa seat cushions strictly without decorative throw pillows or loose cushions' : '',
+          'commercial furniture catalog masterpiece, authentic luxury materiality, razor sharp optical clarity, clean composition, completely free of any text, words, Chinese characters, watermark, or labels, 8k crisp resolution'
+        ).join(', ');
 
     const humanExclusionNegative = !isHumanPassActive
       ? [
@@ -1103,7 +1119,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       return true;
     });
 
-    const negativePrompt = [
+    const negativePrompt = deduplicateNegativeConstraints(
       ...humanExclusionNegative,
       ...negativeFramingConstraints,
       'throw pillow, throw pillows, decorative pillow, decorative pillows, sofa pillow, accent pillow, patterned cushion, floral cushion, cloth pillow, extra cushions on sofa, geometric patterned cushions, blanket on sofa, loose fabric on sofa, clutter on seating',
@@ -1120,14 +1136,14 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       ...spaceTopologyGlobal.negativeConstraints,
       ...styleFinishesGlobal.styleNegativeRules,
       ...(stylePreset.negativeRules || [])
-    ].filter(Boolean).join(', ');
+    );
 
     return {
       shotCode: shot.templateCode,
-      roomName: spacePreset.name.split(' (')[0],
-      spaceCode: spacePreset.code,
-      styleName: stylePreset.name.split(' (')[0],
-      styleCode: stylePreset.code,
+      roomName: isDerivedStudioSwapMode ? undefined : spacePreset.name.split(' (')[0],
+      spaceCode: isDerivedStudioSwapMode ? undefined : spacePreset.code,
+      styleName: isDerivedStudioSwapMode ? undefined : stylePreset.name.split(' (')[0],
+      styleCode: isDerivedStudioSwapMode ? undefined : stylePreset.code,
       aspectRatio: activeAspectRatio,
       positivePrompt,
       negativePrompt,

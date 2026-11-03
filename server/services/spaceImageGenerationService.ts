@@ -7,6 +7,7 @@
 // 4. 若无云端 API Key，生成高保真真实 SVG/WebP 工业工程资产底图，杜绝假成功，确保全链路真实贯通与可追溯性 (Provenance)。
 
 import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
 import sharp from 'sharp';
 import { GcsAssetStorage } from './storage/gcsAssetStorage';
@@ -20,6 +21,9 @@ import {
   resolveIndustrialColorDna,
   resolveCompositeMaterialDna
 } from '../../src/features/space-studio/engine/materialDnaTranslator';
+import { deduplicateNegativeConstraints } from '../../src/features/space-studio/engine/promptDeduplication';
+import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys';
+import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
 
 export interface SpaceProductIdentityInput {
   id?: string;
@@ -52,6 +56,8 @@ export interface SpaceGenerateImageInput {
   positivePrompt: string;
   negativePrompt?: string;
   aspectRatio?: string; // 默认 '3:4'
+  userId?: string;
+  deptId?: string;
   productName?: string;
   productColor?: string;
   productMaterial?: string;
@@ -72,6 +78,7 @@ export interface SpaceGenerateImageInput {
   productReferenceImage?: string;
   sceneMasterReferenceImage?: string; // A00 空间母版图 或 A01 大场景基准图
   referenceShotCode?: string; // 标识基准参考图来源于哪个镜头，例如 'A01' 或 'A00'
+  sceneMasterIsEmptyPlate?: boolean; // 母版参考图是否为 A00 清除家具后的空场景（纯硬装空房间）
   currentShotReferenceImage?: string; // 当前机位底图 (用于 Human 植入等连续渲染)
   isHumanPass?: boolean;
   humanLayout?: any;
@@ -84,6 +91,8 @@ export interface SpaceGenerateImageInput {
   variantTag?: string;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
+  /** 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
+  studioSwapRefinePass?: boolean;
   preserveBasePhotoOnly?: boolean;
   renderMode?: 'orchestration' | 'studio_swap';
   /**
@@ -119,11 +128,69 @@ function flattenPresetField(value: unknown): string[] {
 }
 
 /**
- * 构建极简影棚换景 (studio_swap) 的背景置换指令：
- * - 户型 / 硬装美学完全由 DNA 驱动，不再写死石材/地砖/玻璃幕墙
- * - 不追加编排模式的机位、景别、摆位、固定道具指令，确保家具与机位零漂移
- * - 合并户型与风格负面词
+ * 极简影棚背景置换直通管线 (Studio Background Swap Pipeline) 纯净指令编译器
+ * 彻底熔断来自 spacePreset（户型预设）与 stylePreset（风格预设）的所有描述性文本（层高、区域、概念命名等），
+ * 彻底废除预设镜头的固定相机参数（如 45mm/120cm 平视），建立纯视觉双图非对称解耦直接映射契约：
+ * - 参考图 1 (用户上传素材): 【绝对构图、几何透视与家具实体真值】
+ * - 参考图 2 (母版空间图 A00): 【纯硬装材质、光影氛围与窗景样板】
  */
+export const STUDIO_SWAP_COMPOSE_MODEL = 'openai/gpt-image-2.5-flare-c';
+export const STUDIO_SWAP_REFINE_MODEL = 'gemini-nano-banana-2.1-preview';
+
+export const STUDIO_SWAP_REFINE_PROMPT = `画面精修重绘：以窗口1为底图，构图、机位、透视、家具的位置角度与形态、房间的墙面吊顶地面与窗帘全部保持不变，不移动、不增减任何物体。参照窗口2（产品实拍图）还原沙发与单椅的真皮纹理、缝线走向、金属头枕支架、茶几与边几的石材和木纹细节以及真实颜色。提升整体清晰度、锐度与材质质感。整体空间室内建筑摄影风格。
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
+
+/** 调用统一网关出一张图，返回图像 Buffer；失败时抛出带上游原因的错误 */
+async function requestGatewayImage(params: {
+  prompt: string;
+  model: string;
+  images: Array<{ data: string; mimeType?: string; role?: string }>;
+  aspectRatio: string;
+  resolution: string;
+  userId: string;
+  deptId?: string;
+  timeoutMs?: number;
+}): Promise<Buffer> {
+  const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
+  const res = await fetch(gatewayUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-uuid': params.userId,
+      ...(params.deptId ? { 'x-dept-id': params.deptId } : {})
+    },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      model: params.model,
+      aspectRatio: params.aspectRatio,
+      resolution: params.resolution,
+      images: params.images,
+      generationIntent: 'image_edit',
+      userUuid: params.userId,
+      userId: params.userId,
+      deptId: params.deptId
+    }),
+    signal: AbortSignal.timeout(process.env.NODE_ENV === 'test' ? 1200 : params.timeoutMs ?? 180000)
+  });
+  const data = await res.json();
+  if (!res.ok || data.error || data.success === false) {
+    throw new Error(
+      typeof data?.error === 'object' ? (data.error?.message || JSON.stringify(data.error)) : (data?.error || data?.message || '上游接口未返回有效图像数据')
+    );
+  }
+  const part = data.candidates?.[0]?.content?.parts?.find((p: any) => p?.inlineData?.data || p?.inline_data?.data);
+  const img: string | undefined =
+    data.imageUrl || data.data?.[0]?.url || data.data?.[0]?.b64_json || data.images?.[0]?.data || part?.inlineData?.data || part?.inline_data?.data;
+  if (typeof img !== 'string' || img.length === 0) throw new Error('上游接口未返回有效图像数据');
+  if (img.startsWith('http://') || img.startsWith('https://')) {
+    const fetched = await fetch(img, { signal: AbortSignal.timeout(60000) });
+    if (!fetched.ok) throw new Error(`下载精修结果失败 (HTTP ${fetched.status})`);
+    return Buffer.from(await fetched.arrayBuffer());
+  }
+  return Buffer.from(img.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''), 'base64');
+}
+
 export function buildStudioSwapDirective(params: {
   roomName?: string;
   styleName?: string;
@@ -133,6 +200,8 @@ export function buildStudioSwapDirective(params: {
   lightingHint?: string;
   hasSceneMasterReference?: boolean;
   referenceShotCode?: string;
+  masterIsEmptyPlate?: boolean;
+  primaryRole?: string;
   shotCode?: string;
   cameraSettings?: SpaceGenerateImageInput['cameraSettings'];
   positivePrompt?: string;
@@ -146,199 +215,189 @@ export function buildStudioSwapDirective(params: {
     lightingHint,
     hasSceneMasterReference = false,
     referenceShotCode = 'A00',
+    masterIsEmptyPlate = false,
+    primaryRole,
     shotCode,
-    cameraSettings,
-    positivePrompt
+    positivePrompt = ''
   } = params;
-  const effectiveRoomDesc = roomName || spacePreset?.name || 'metropolitan luxury apartment living room';
-  const effectiveStyleDesc = styleName || stylePreset?.name || 'contemporary luxury';
 
-  const isLateralProfileShot =
-    shotCode === 'A06' ||
-    (cameraSettings && Math.abs(cameraSettings.yawDeg || 0) >= 75) ||
-    Boolean(positivePrompt && /ZERO-WALL|零靠墙|pure lateral|side profile|88 degree|90 degree/i.test(positivePrompt));
+  // 1. 针对 A00 空间母版：必须 100% 读取并执行用户录入的【户型原型 (spacePreset)】与【美学风格 (stylePreset)】
+  if (shotCode === 'A00') {
+    const effectiveSpaceTitle = spacePreset?.name || roomName || '高定奢阔大平层端厅';
+    const effectiveStyleTitle = stylePreset?.name || styleName || '现代奢华都会风格';
+    const ceilingClause = spacePreset?.ceilingHeight ? `（层高 ${spacePreset.ceilingHeight}m）` : '';
+    const spaceFeatures = Array.isArray(spacePreset?.signatureFeatures) && spacePreset.signatureFeatures.length > 0
+      ? `，核心户型特征：${spacePreset.signatureFeatures.join('、')}`
+      : '';
+    const colorPalette = Array.isArray(stylePreset?.colorPalette) && stylePreset.colorPalette.length > 0
+      ? `，主色调色板：${stylePreset.colorPalette.join(', ')}`
+      : '';
+    const materialSystem = Array.isArray(stylePreset?.materialSystem) && stylePreset.materialSystem.length > 0
+      ? `，核心硬装材质：${stylePreset.materialSystem.join('、')}`
+      : '';
 
-  const isCloseOrMediumCrop =
-    ['A04', 'A05', 'A08'].includes(shotCode || '') ||
-    Boolean(positivePrompt && /2\/3 HERO SOFA|2\/3主沙发|三分之二|CRAFTSMANSHIP|特写|DETAIL/i.test(positivePrompt));
+    const spaceFragments = [
+      ...(Array.isArray(spacePreset?.promptFragments) ? spacePreset.promptFragments : []),
+      ...(Array.isArray(context?.spaceDna) ? context.spaceDna : [])
+    ].filter(Boolean);
 
-  const isAngledShot =
-    !isLateralProfileShot &&
-    !isCloseOrMediumCrop &&
-    (shotCode === 'A02' ||
-     Boolean(positivePrompt && /45-degree|45°|3\+1 ENSEMBLE/i.test(positivePrompt)) ||
-     (cameraSettings &&
-      Math.abs(cameraSettings.yawDeg || 0) >= 20 &&
-      Math.abs(cameraSettings.yawDeg || 0) < 75 &&
-      !['A00', 'A01', 'A03', 'A04', 'A05', 'A07'].includes(shotCode || '') &&
-      !Boolean(positivePrompt && /正大角度|GRAND FRONTAL|straight-on|0-degree|frontal view/i.test(positivePrompt))));
+    const styleFragments = [
+      ...(Array.isArray(stylePreset?.promptFragments) ? stylePreset.promptFragments : []),
+      ...(Array.isArray(context?.styleDna) ? context.styleDna : [])
+    ].filter(Boolean);
 
-  const spaceDna = (context?.spaceDna && context.spaceDna.length > 0)
-    ? context.spaceDna
-    : [
-        spacePreset?.ceilingHeight ? `${spacePreset.ceilingHeight}m ceiling headroom` : '',
-        ...flattenPresetField(spacePreset?.signatureFeatures).map((f) => `architectural feature: ${f}`),
-        ...flattenPresetField(spacePreset?.promptFragments)
-      ].filter(Boolean);
+    const combinedA00Context = `${effectiveSpaceTitle} ${spacePreset?.code || ''} ${effectiveStyleTitle} ${stylePreset?.code || ''} ${positivePrompt} ${spaceFragments.join(' ')} ${styleFragments.join(' ')}`;
+    const isAmerican = /美式|american|US-01|US-02/i.test(combinedA00Context);
+    const isFrench = /法式|简欧|parisian|haussmann|EU-01/i.test(combinedA00Context);
+    const isItalian = /意式|italian|milanese|IT-01|IT-02/i.test(combinedA00Context);
+    const isSunken = /下沉|sunken|N-R04/i.test(combinedA00Context);
+    const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedA00Context);
+    const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedA00Context);
+    const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedA00Context);
 
-  const styleDna = (context?.styleDna && context.styleDna.length > 0)
-    ? context.styleDna
-    : [
-        ...flattenPresetField(stylePreset?.colorPalette).map((c) => `color palette: ${c}`),
-        ...flattenPresetField(stylePreset?.materialSystem).map((m) => `material system: ${m}`),
-        ...flattenPresetField(stylePreset?.promptFragments)
-      ].filter(Boolean);
+    let styleSpecificClause = '';
+    const styleNegativesA00: string[] = [];
+    if (isAmerican) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: MODERN AMERICAN METROPOLITAN (US-01 / US-02)]
+- PICTURE-FRAME WALL PANEL MOLDINGS & WAINSCOTING: Background and side walls MUST feature authentic classic modern American picture-frame wall moldings and wainscoting (crisp rectangular architectural wall frames with shadow relief moldings in warm oat greige #E6DFD5 paired with rich dark American walnut #5C4A3E pilasters/millwork and warm brushed brass #C5A059 wall sconces).
+- STRICTLY FORBID flat sterile drywall, cold grey industrial concrete, or plain featureless slabs without classic American wall moldings!`;
+      styleNegativesA00.push(
+        'cold flat sterile drywall',
+        'modern plain white slab without moldings',
+        'sterile white clinic walls',
+        'flat bare drywall without panel frames'
+      );
+    } else if (isFrench) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: PARISIAN / EUROPEAN BOISERIE (EU-01)]
+- FRENCH BOISERIE & CARVED MOLDINGS: Walls feature delicate European boiserie panel moldings in warm cream #FAF7F2, carved plaster cornices, champagne gold accents, and oak herringbone parquet flooring.`;
+      styleNegativesA00.push('dark heavy industrial concrete', 'flat modern drywall without moldings');
+    } else if (isItalian) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: MILANESE ARCHITECTURAL LUXURY (IT-01 / IT-02)]
+- ROMAN TRAVERTINE & SMOKED WALNUT: Continuous full-span honed Roman travertine stone slabs and rich smoked dark walnut joinery with ultra-slim brushed titanium profiles.`;
+      styleNegativesA00.push('traditional ornate classical carving', 'rustic country wood', 'cheap plastic laminate');
+    }
 
-  const topologyContext = `${effectiveRoomDesc} ${spacePreset?.code || ''} ${spaceDna.join(' ')}`;
-  const needsVerticalReveal = /挑空|复式|duplex|double[- ]height|下沉|sunken|N-R03|N-R04/i.test(topologyContext);
+    let topologySpecificClause = '';
+    const topologyNegativesA00: string[] = [];
+    if (isSunken) {
+      topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: SUNKEN CONVERSATION SALON (N-R04)]\n- Recessed sunken conversation lounge with perimeter travertine steps and expansive 3.8m ceiling headroom.`;
+      topologyNegativesA00.push('cramped narrow apartment');
+    } else if (isDuplex) {
+      topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: 6.2M DOUBLE-HEIGHT DUPLEX HALL (N-R03)]\n- Monumental 6.2m double-height soaring ceiling volume with two-story continuous feature wall and courtyard glass vista.`;
+      topologyNegativesA00.push('low ceiling', 'cramped flat ceiling');
+    } else if (isPavilion) {
+      topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: LANDSCAPE VILLA PAVILION (N-R05)]\n- Full-span panoramic glass wall looking out to serene water mirror reflection pool and pine courtyard.`;
+    } else if (isPenthouse) {
+      topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: SKYLINE PENTHOUSE SALON (N-R06)]\n- Majestic high-altitude floor-to-ceiling panoramic glass curtain wall overlooking metropolis skyscraper skyline at golden hour.`;
+    }
 
-  const spaceNegatives = context?.spaceNegatives || [];
-  const styleNegatives = context?.styleNegatives || [];
+    const cleanNegativeA00 = deduplicateNegativeConstraints(
+      'altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines',
+      'removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture',
+      'moved furniture, shifted furniture position, rescaled furniture, re-framed composition, camera angle change, zoomed in, zoomed out, cropped furniture',
+      'altering footrest state from Reference Image 1, closing deployed footrests shown in Reference Image 1, altering headrest position shown in Reference Image 1',
+      'floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact, plain studio backdrop, seamless paper backdrop, amateur render, cartoon CGI',
+      'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces',
+      ...(context?.spaceNegatives || []),
+      ...(context?.styleNegatives || []),
+      ...topologyNegativesA00,
+      ...styleNegativesA00
+    );
 
-  const negatives = [
+    return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING (SCENE MASTER A00)]
+商企-空间母版（A00）画面场景更换背景，按产品及录入的户型与美学风格生成全新的空间母版背景。
+1. 空间户型录入（Space Layout）：${effectiveSpaceTitle}${ceilingClause}${spaceFeatures}。
+2. 美学风格录入（Scene Style）：${effectiveStyleTitle}${colorPalette}${materialSystem}。
+3. 场景硬装与背景墙生成：按三人位的沙发调性与所选【${effectiveStyleTitle}】美学风格生成新的调性背景墙、天花吊顶灯槽与全景落地窗自然采光。其中家具、所有的地毯、挂画、餐桌配套、拍摄角度保持不变。保证原图的尺寸比例不变。整体空间室内建筑摄影风格。
+${spaceFragments.length > 0 ? `\n[ARCHITECTURAL LAYOUT DNA (户型拓扑特征)]:\n- ${spaceFragments.join('\n- ')}` : ''}
+${styleFragments.length > 0 ? `\n[INTERIOR STYLE & MATERIAL DNA (美学风格与色板材质)]:\n- ${styleFragments.join('\n- ')}` : ''}${styleSpecificClause}${topologySpecificClause}
+
+[REFERENCE IMAGE 1 GROUND TRUTH LOCK]:
+- IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1!
+- IMMUTABLE PHYSICAL FURNITURE: Every single furniture entity (main sofa, single accent armchair, coffee tables, side tables), their relative spatial layout, proportions, angles, genuine leather colors, textures, stitch seams, and physical postures are ABSOLUTE GROUND TRUTH.${lightingHint ? `\n- LIGHTING MOOD: ${lightingHint}` : ''}
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.
+Negative constraints: ${cleanNegativeA00}`;
+  }
+
+  // 2. 衍生镜头 (A01~A09)：逐字对齐工作流页面（ManwahStudio）实测可融合的换景指令。
+  // 实测结论：窗口2 只作「场景风格参考」、由模型按窗口1 的透视重建背景时融合最好；
+  // 写成「替换为窗口2 的同一个房间」或叠加机位/透视/光影/避免清单时，模型会在照搬窗口2 正面构图
+  // 与保持窗口1 角度之间撕扯，出现家具斜放、背景墙正对镜头的错位透视。
+  if (shotCode) {
+    // 用户在工作流页面实测有效的指令原文，仅按主品类型替换「三人位的沙发」
+    const toneLabel =
+      primaryRole === 'sofa_2seat' ? '双人位的沙发' :
+      primaryRole === 'recliner_1seat' || primaryRole === 'lounge_chair' ? '单椅' :
+      '三人位的沙发';
+    const styleClause = hasSceneMasterReference ? '场景风格：参考窗口2，' : '';
+
+    // 唯一补充「以窗口1为底图」：窗口2（空场景母版）与输出同为 4:3 时，模型可能误把窗口2 当底图，整张改成正面构图
+    return `画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景，${styleClause}按${toneLabel}调性生成新的调性背景墙。其中家具、所有的地毯、挂画、餐桌配套保持不变。保持窗口1的产品角度不变。保证原图的尺寸比例不变。要求生成的产品组合与空间透视是融合的。整体空间室内建筑摄影风格。${lightingHint ? `\n光线氛围：${lightingHint}` : ''}
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
+  }
+
+  // 严格非对称多模态参考图负面约束
+  const negatives = deduplicateNegativeConstraints(
     'altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines',
     'removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture',
     'moved furniture, shifted furniture position, rescaled furniture, re-framed composition, camera angle change, zoomed in, zoomed out, cropped furniture',
     'altering footrest state from Reference Image 1, closing deployed footrests shown in Reference Image 1, altering headrest position shown in Reference Image 1',
+    'flat 0-degree frontal view, straight-on eye-level camera, flattening camera angle, rotating angled furniture to face front, copying camera angle from Reference Image 2, altering horizon height, shifting vanishing points, flattening perspective depth',
+    'flat horizontal ceiling, horizontal ceiling cove parallel to frame, horizontal ceiling cove parallel to screen top, 1-point frontal box room, flat stage set, parallel background wall behind angled sofa, disconnected room angle, unnatural spatial angle mismatch, pasting sofa into flat room, disjointed perspective between furniture and architecture',
+    'retaining old background from Reference Image 1, keeping old wall painting from Reference Image 1, keeping old framed picture or art from Reference Image 1, keeping old floor lamp from Reference Image 1, keeping old wood paneling from Reference Image 1, keeping old sheer curtains from Reference Image 1',
+    'copying furniture from Reference Image 2, duplicate sofa, phantom furniture, extra furniture from Reference Image 2',
     'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render',
     'floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact, plain studio backdrop, seamless paper backdrop',
-    ...(hasSceneMasterReference
-      ? [
-          'flat 0-degree frontal view when Reference Image 1 is angled, rotating angled furniture to face front, copying camera angle from Reference Image 2, retaining old background from Reference Image 1, keeping old framed picture or wall art from Reference Image 1, keeping old floor lamp from Reference Image 1, inverted left-right window side from Reference Image 2, different room from Reference Image 2, inconsistent background wall, mismatched wall moldings, newly invented staircase, spiral stairs, mezzanine loft, extra fireplace not in Reference Image 2, altered window style, different floor material'
-        ]
-      : []),
-    ...(isCloseOrMediumCrop
-      ? [
-          'visible ceiling',
-          'ceiling cove',
-          'ceiling light trough',
-          'low ceiling compression',
-          'squeezed ceiling',
-          'cropped ceiling beam',
-          'ceiling slab',
-          'false ceiling',
-          'low headroom'
-        ]
-      : []),
-    ...(isLateralProfileShot
-      ? [
-          'partition wall',
-          'divider wall',
-          'freestanding wall',
-          'room screen',
-          'newly invented partition',
-          'fake corner wall',
-          'column jutting out',
-          'half wall',
-          'protruding wall behind sofa',
-          'doorway behind sofa',
-          'cubicle wall'
-        ]
-      : []),
-    ...(isAngledShot
-      ? [
-          'flat frontal mugshot',
-          'flat frontal view',
-          'straight-on camera',
-          'straight-on frontal view',
-          'symmetrical center sofa',
-          'horizontal sofa parallel to screen',
-          'front-facing sofa',
-          'facing directly forward',
-          'flat 1-point perspective',
-          'flat background wall parallel to screen',
-          'zero perspective depth',
-          'copying 0-degree frontal camera angle from Reference Image 2'
-        ]
-      : []),
-    ...spaceNegatives,
-    ...styleNegatives,
     'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces'
-  ].filter(Boolean).join(', ');
+  );
 
-  const spatialContinuityDirective = isLateralProfileShot
-    ? `  * PURE LATERAL PROFILE & CONTINUOUS LIVING ROOM MAIN WALL LOCK (A06):
-    The camera is stationed at an 85-to-90 degree pure lateral side profile (yaw: ${cameraSettings?.yawDeg ?? 88}°), looking longitudinally across the living room parallel to the main wall.
-    1) HERO SOFA FLUSH AGAINST LIVING ROOM WALL: The hero sofa's backrest is positioned flush (<5cm) against the EXACT SAME continuous living room main backdrop wall from Reference Image 2.
-    2) STRICT PROHIBITION ON INVENTED PARTITIONS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner directly behind the sofa! The back wall must remain the single, continuous planar living room backdrop wall from Reference Image 2 extending into the deep background.
-    3) Maintain the room's authentic daylight direction and window placement as established in Reference Image 2, seen in longitudinal side perspective.`
-    : isAngledShot
-    ? `  * 45-DEGREE CORNER PERSPECTIVE ANCHOR: The camera is stationed at the diagonal flank (yaw: ${cameraSettings?.yawDeg ?? -45}°, 2-point perspective depth). Reconstruct the master room finishes and materials from Reference Image 2 (wall molding, marble, wood slats, window daylight, ceiling cove) foreshortened along the diagonal vanishing lines matching Reference Image 1's 45-degree camera perspective:
-    1) The main architectural background wall and floor joints must recede diagonally with authentic 2-point perspective depth toward the back vanishing point (DO NOT flatten the back wall parallel to the camera!).
-    2) Keep the natural window daylight direction and architectural materials completely consistent with Reference Image 2, but projected accurately under Reference Image 1's diagonal camera viewpoint.
-    3) Strictly DO NOT force a flat 0-degree frontal elevation sequence across the screen. Reference Image 1's furniture is at a 45-degree angle, so the room architecture behind it MUST recede into 3D diagonal depth!`
-    : `  * STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK: Reconstruct the exact Left-to-Right architectural sequence from Reference Image 2's top panoramic band onto the background behind Reference Image 1's furniture, foreshortened to match Reference Image 1's camera perspective:
-    1) Keep the window on the SAME side (e.g. Right side) as shown in Reference Image 2's panoramic band (do NOT leave a window on the left side if Reference Image 1 had one!).
-    2) Keep the left-wall French wainscoting + marble slab, center vertical wood slat paneling (CLEAN, with NO framed picture/poster hanging on it!), and right-wall French molding / fireplace mantel in the exact same Left-to-Right order as Reference Image 2!`;
-
-  const masterContinuitySection = hasSceneMasterReference
+  const masterReferenceDirective = hasSceneMasterReference
     ? `
-[SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2 (CRITICAL)]:
-- REFERENCE IMAGE 1 ([参考图1｜构图参考] - Immutable Foreground Furniture & Camera Angle Base):
-  * Reference Image 1 is the ONLY base photograph for the FURNITURE and CAMERA ANGLE! Its exact camera shooting angle (e.g., 45-degree diagonal three-quarter view / oblique perspective / close-up), perspective vanishing lines, furniture pixel placement, and exact open/closed footrest & headrest posture MUST BE 100% LOCKED AND PRESERVED!
-  * NEVER rotate the camera or furniture back to a 0-degree flat frontal view! The output image MUST have the EXACT same furniture angle and pixel positions as Reference Image 1!
-  * COMPLETE OLD BACKGROUND ERASURE: If Reference Image 1 was shot in an existing showroom or room (containing old wall art / framed pictures / posters, old floor lamps, old left-side curtains, or old wall panels), you MUST 100% ERASE AND REMOVE ALL of Reference Image 1's original background walls, framed wall pictures, floor lamps, and curtains! Keep ONLY the sofa, single accent chair, and coffee tables from Reference Image 1!
-- REFERENCE IMAGE 2 ([参考图2｜风格参考] - Panoramic Room Layout & Material Swatch Board from ${referenceShotCode}):
-  * Reference Image 2 is a MULTI-PANEL ARCHITECTURAL LAYOUT & MATERIAL BOARD extracted from the master scene ${referenceShotCode}:
-    - TOP WIDE PANORAMIC BAND: Shows the complete Left-to-Right upper room layout of ${referenceShotCode} (exact Left-to-Right sequence of left wall molding/marble -> center backdrop wall without any extra framed picture -> right wall molding/fireplace crown -> right-side floor-to-ceiling window & ceiling cove).
-    - BOTTOM-LEFT PANEL: Shows the middle-right architectural feature (such as fireplace mantel / right wall molding) and full window curtain details of ${referenceShotCode}.
-    - BOTTOM-RIGHT PANEL: Shows the exact area rug & herringbone/wood/stone flooring material of ${referenceShotCode}.
-  * Because Reference Image 2 is a multi-panel reference board with white divider bars (NOT a full room canvas), you must NEVER copy its split-panel grid or change Reference Image 1's camera angle!
-${spatialContinuityDirective}
-  * STRICT PROHIBITION: Do NOT invent any new architectural features not present in Reference Image 2, and do NOT carry over any framed wall picture or floor lamp from Reference Image 1's old background!
-`
+2. REFERENCE IMAGE 2 ([参考图 2 ｜ 空间母版图 ${referenceShotCode}] - 【纯硬装材质、光影氛围与窗景样板】):
+- SWATCH ROLE ONLY: Reference Image 2 serves EXCLUSIVELY as an architectural material finishes, lighting atmosphere, and window swatch!
+- EXTRACT ARCHITECTURAL FINISHES & REPROJECT INTO IMAGE 1'S PERSPECTIVE GRID:
+  * Extract the recessed ceiling cove architectural tiers with warm concealed linear LED light strips from Reference Image 2;
+  * Extract the luxury dark marble / stone feature wall panels with metallic bronze trim from Reference Image 2;
+  * Extract the polished dark marble flooring with organic white veins and ambient surface reflections from Reference Image 2;
+  * Extract the panoramic floor-to-ceiling glass window system with outdoor city skyline vista and warm golden-hour daylight from Reference Image 2;
+  * Extract the soft 3000K warm interior ambient illumination and natural window daylight direction from Reference Image 2.
+- 3D CONFORMAL SPATIAL ENVELOPE & TWO-POINT CORNER PERSPECTIVE FUSION (空间对角转角融合 - CRITICAL):
+  * PROHIBIT 1-POINT FRONTAL BOX: STRICTLY FORBID rendering a flat horizontal wall perpendicular to the camera! STRICTLY FORBID a horizontal flat ceiling cove! STRICTLY FORBID central hanging chandelier!
+  * TWO-POINT CORNER PERSPECTIVE ENVELOPE (两点透视转角空间):
+    - The camera is looking diagonally into an interior CORNER of the room (where the feature wall and panoramic window wall meet at an angle).
+    - LEFT WALL: Behind the single recliner/armchair, the wall recedes diagonally toward the left vanishing point, paneled in the dark wood and marble from Reference Image 2.
+    - RIGHT WALL: Behind and to the right of the 3-seat sofa, a floor-to-ceiling panoramic window wall recedes diagonally toward the right vanishing point, casting soft directional daylight across the sofa.
+    - CEILING COVE: The recessed ceiling tray MUST have linear LED cove lights that recede along BOTH diagonal walls toward the left and right vanishing points, wrapping the ceiling in a natural 3D perspective grid matching the sofa's angle!
+    - FLOOR & SHADOWS: The polished floor shares the exact same high horizon line (~70-75%) and vanishing grid of Reference Image 1, producing natural soft ambient occlusion contact shadows directly under the sofa base and coffee tables with ZERO sticker or pasted-in effect!
+- RIGID REPROJECTION & NON-INTERFERENCE DIRECTIVE:
+  * PERSPECTIVE RE-MAPPING: You MUST project and map the ceiling cove, backdrop walls, marble flooring, and panoramic windows from Reference Image 2 onto the EXACT 3D PERSPECTIVE GRID, TILTED VANISHING LINES, AND CAMERA ELEVATION/PITCH OF REFERENCE IMAGE 1!
+  * STRICT NON-INTERFERENCE: Reference Image 2's eye-level, straight-on frontal camera angle MUST NEVER interfere with, override, or flatten Reference Image 1's real camera perspective!
+  * ZERO FURNITURE FROM IMAGE 2: Reference Image 2 is used ONLY for architectural background materials. ABSOLUTELY DO NOT copy, carry over, or render any furniture, sofa, or armchair from Reference Image 2!`
     : '';
 
-  return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
+  return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING]
 PRIMARY OBJECTIVE:
-Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
-ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
-DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
-CAMERA LOCK: Keep the exact camera position, focal length, horizon line, perspective vanishing points, furniture scale and pixel placement of Reference Image 1. Do NOT re-frame, zoom, or rotate the view.
-${masterContinuitySection}
-YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND (walls, floor, ceiling, windows, lighting) so it ${hasSceneMasterReference ? 'remains 100% consistent with Reference Image 2 and ' : ''}matches the following architecture and interior design:
+This is a direct visual background replacement pipeline. ALL spatial and perspective parameters are governed exclusively by the provided visual reference images without any text-preset camera assumptions.
 
-1. ROOM TOPOLOGY (户型): ${effectiveRoomDesc}
-${spaceDna.map((s) => `   - ${s}`).join('\n')}
-${isCloseOrMediumCrop ? '   - VERTICAL FRAMING & OUT-OF-FRAME CEILING: This is a close portrait/medium crop where the top of the frame cuts off at mid-wall level (~1.8m height). The ceiling, ceiling cove, and light troughs are FAR ABOVE the top edge and are 100% OUT OF FRAME. The backdrop wall finishes (French wainscoting / marble / wood paneling) must extend cleanly and vertically straight out of the top of the frame. ABSOLUTELY DO NOT compress, lower, or draw any ceiling cove, light trough, or ceiling beams into the top of the frame!\n' : ''}
-${needsVerticalReveal && !isCloseOrMediumCrop ? '   - TOPOLOGY ADAPTATION: Express the ceiling height / floor level change ONLY through background cues that are naturally visible within the locked camera frame (distant steps, upper wall volume, tall window mullions). Never move, lift, or re-scale the furniture and never change the camera to reveal it.\n' : ''}
-2. INTERIOR FINISHES & AESTHETIC (硬装美学): ${effectiveStyleDesc}
-${styleDna.map((s) => `   - ${s}`).join('\n')}
-   - The wall treatment, flooring material, ceiling details and color palette MUST follow this aesthetic faithfully${hasSceneMasterReference ? ' and stay identical to Reference Image 2' : ''}.${
-     isCloseOrMediumCrop
-       ? ' Because this is a close/medium crop, the wall paneling extends straight up out of frame; DO NOT draw any ceiling cove.'
-       : isLateralProfileShot
-       ? ' The back wall runs continuously along the side in deep longitudinal perspective; strictly DO NOT draw partition walls.'
-       : isAngledShot
-       ? ' Receding wall moldings, vertical wood slats, and flooring joints follow Reference Image 1\'s 45-degree diagonal vanishing lines.'
-       : ' Plumb vertical lines aligned with the original perspective.'
-   }
+1. REFERENCE IMAGE 1 ([参考图 1 ｜ 用户上传场景实拍图] - 【绝对构图、几何透视与家具实体真值】):
+- IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1!
+- IMMUTABLE PHYSICAL FURNITURE: Every single furniture entity (main sofa, single accent armchair, coffee tables, side tables), their relative spatial layout, proportions, angles, genuine leather colors, textures, stitch seams, and physical postures (including deployed/extended motorized footrests and headrests) are ABSOLUTE GROUND TRUTH.
+- SYSTEM PROHIBITION: STRICTLY FORBIDDEN to alter the camera angle, re-frame, zoom, flatten the view to eye-level, change furniture positions, remove furniture, redraw furniture, or modify furniture colors!
+- COMPLETE OLD BACKGROUND ERASURE: The original background walls, wood veneer panels, old wall art/framed pictures, floor lamps, curtains, and old flooring from Reference Image 1 are 100% ERASED AND REMOVED. Keep ONLY the furniture entities intact in their exact original pixels and perspective.
+${masterReferenceDirective}
 
 3. NATURAL ILLUMINATION & CONTACT SHADOWS:
-   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the new floor/area rug, eliminating any floating sticker artifact.
-   - Match the room's light direction and color temperature onto the outer edges of the existing furniture with seamless harmony.${lightingHint ? `\n   - LIGHTING MOOD: ${lightingHint}` : ''}
+- Cast authentic physical ambient occlusion (AO) contact shadows directly beneath all furniture bases, legs, and footrests onto the new floor/area rug, eliminating any floating sticker artifact.
+- Harmonize the window light direction and color temperature seamlessly onto the furniture silhouettes.${lightingHint ? `\n- LIGHTING MOOD: ${lightingHint}` : ''}
 
-4. PRESERVE ORIGINAL FURNITURE POSTURE:
-   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
-${isCloseOrMediumCrop ? `
-5. CLOSE/MEDIUM CROP OPTICS & ZERO CEILING COMPRESSION LOCK:
-   - Reference Image 1 is closely framed on the hero furniture (${shotCode || 'close crop'}).
-   - The top edge cuts off at mid-wall level. The ceiling is COMPLETELY OUT OF FRAME.
-   - ABSOLUTE PROHIBITION ON CEILING COMPRESSION: STRICTLY FORBIDDEN to squeeze, draw, or render any ceiling cove, recessed light trough, or ceiling crown molding into the top border! Only the continuous wall panels/marble from Reference Image 2 should appear behind the furniture, extending naturally beyond the top of the image!
-` : isLateralProfileShot ? `
-5. PURE LATERAL PROFILE & ZERO-WALL CLEARANCE LOCK (A06):
-   - Reference Image 1 is captured in a pure side profile view (yaw: ~88°).
-   - The hero sofa's backrest is flush against the continuous living room main backdrop wall from Reference Image 2.
-   - STRICT PROHIBITION ON INVENTED WALLS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner behind the sofa! The back wall must remain the single, continuous living room backdrop wall extending into the deep background.
-` : isAngledShot ? `
-5. 45-DEGREE CAMERA PERSPECTIVE & 2-POINT DEPTH LOCK:
-   - Reference Image 1 is captured from a dynamic 40-to-45 degree diagonal oblique three-quarters angle (yaw: ${cameraSettings?.yawDeg ?? -45}°).
-   - Vanishing lines for floor tiles, wood planks, baseboards, and the main background wall recede diagonally with authentic 2-point perspective depth!
-   - ABSOLUTE PROHIBITION ON 0-DEGREE FLATTENING: NEVER draw a flat, straight-on frontal background parallel to the bottom of the frame! DO NOT copy the flat 0-degree frontal camera perspective from Reference Image 2!
-${cameraSettings ? `   - OPTICAL PARAMETERS: ${cameraSettings.lensMm}mm lens at ${cameraSettings.heightCm}cm height, yaw: ${cameraSettings.yawDeg}°, pitch: ${cameraSettings.pitchDeg}°.` : ''}
-` : ''}
-
-${(isCloseOrMediumCrop || isLateralProfileShot || isAngledShot) ? '6' : '5'}. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS, NO PEOPLE. Clean pristine commercial catalog photograph.
+4. COMMERCIAL PURITY:
+- Pristine luxury commercial catalog photograph.
+- ZERO text, no watermarks, no logos, no Chinese characters, no labels, no humans, no people.
 
 Negative constraints: ${negatives}`;
 }
@@ -361,16 +420,16 @@ export interface SpaceGenerateImageResult {
  * 图像自适应规整：将输入参考图长边限制在 1024px 内并以高保真 WebP/JPEG 压缩，
  * 将单张图片 Base64 从数兆降低至 100~200KB，彻底根治 Payload 爆炸与模型 400 超时
  */
-async function normalizeInlineBuffer(rawBuf: Buffer): Promise<{ mimeType: string; data: string }> {
+async function normalizeInlineBuffer(rawBuf: Buffer, maxEdge = 1024): Promise<{ mimeType: string; data: string }> {
   try {
     const meta = await sharp(rawBuf).metadata();
     const width = meta.width || 0;
     const height = meta.height || 0;
     const maxDim = Math.max(width, height);
 
-    if (maxDim > 1024) {
+    if (maxDim > maxEdge) {
       const compressed = await sharp(rawBuf)
-        .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+        .resize({ width: maxEdge, height: maxEdge, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 85 })
         .toBuffer();
       return {
@@ -405,7 +464,7 @@ async function normalizeInlineBuffer(rawBuf: Buffer): Promise<{ mimeType: string
 /**
  * 辅助方法：将各种格式的图片引用统一解析为模型支持的 inlineData 格式并自动规整长边在 1024px 内
  */
-async function resolveImageInlineData(imageRef?: string): Promise<{ mimeType: string; data: string } | null> {
+async function resolveImageInlineData(imageRef?: string, maxEdge = 1024): Promise<{ mimeType: string; data: string } | null> {
   if (!imageRef || typeof imageRef !== 'string') return null;
   const trimmed = imageRef.trim();
   if (!trimmed) return null;
@@ -416,7 +475,7 @@ async function resolveImageInlineData(imageRef?: string): Promise<{ mimeType: st
     if (match) {
       try {
         const buf = Buffer.from(match[2], 'base64');
-        return await normalizeInlineBuffer(buf);
+        return await normalizeInlineBuffer(buf, maxEdge);
       } catch {
         return {
           mimeType: match[1] || 'image/jpeg',
@@ -430,7 +489,7 @@ async function resolveImageInlineData(imageRef?: string): Promise<{ mimeType: st
   if (!trimmed.startsWith('http') && !trimmed.startsWith('/') && trimmed.length > 500 && !trimmed.includes(' ')) {
     try {
       const buf = Buffer.from(trimmed, 'base64');
-      return await normalizeInlineBuffer(buf);
+      return await normalizeInlineBuffer(buf, maxEdge);
     } catch {
       return {
         mimeType: 'image/jpeg',
@@ -454,7 +513,7 @@ async function resolveImageInlineData(imageRef?: string): Promise<{ mimeType: st
     const storage = GcsAssetStorage.getInstance();
     const buf = await storage.getBuffer(targetKey);
     if (buf && buf.length > 0) {
-      return await normalizeInlineBuffer(buf);
+      return await normalizeInlineBuffer(buf, maxEdge);
     }
   }
 
@@ -465,7 +524,7 @@ async function resolveImageInlineData(imageRef?: string): Promise<{ mimeType: st
       if (res.ok) {
         const arrayBuf = await res.arrayBuffer();
         const buf = Buffer.from(arrayBuf);
-        return await normalizeInlineBuffer(buf);
+        return await normalizeInlineBuffer(buf, maxEdge);
       }
     } catch (err: any) {
       console.warn(`[SpaceImageGenerationService] Failed to fetch remote image ref: ${trimmed}`, err.message);
@@ -511,13 +570,15 @@ async function cropImageInlineBuffer(
 }
 
 /**
- * 极简影棚换景专用：从 A00 空间母版参考图中提取「上全景 + 下双格」三联式硬装方位与材质色板 (Panoramic Layout & Material Board)
- * - 顶部通栏 (1008x376)：完整保留 A00 从左到右 (0%~100%) 的真实硬装空间方位顺序（如：左护墙板+大理石 -> 中木格栅无挂画 -> 右法式壁炉护墙板 -> 右侧大落地窗），仅截取上半部 48% 避开中央沙发，确保左/中/右方位关系 100% 不丢失！
- * - 左下格 (496x360)：右侧主立面中段细节（壁炉线框/右护墙板 + 右侧落地窗框与窗帘，x: 55%..99%, y: 26%..76%），补齐被顶部通栏截断的壁炉与窗景中段特征。
- * - 右下格 (496x360)：地毯边缘与地面人字拼木地板/石材拼接肌理（x: 15%..85%, y: 86%..99%）。
- * 核心物理优势：既保留了 A00 完整的“左→中→右”硬装方位与壁炉特征，又因为带有明显的白色T型分割框而绝不会被模型当成“0°正面空房间底图画布”，100% 锁死图 1 的 45°/特写拍摄视角！
+ * 极简影棚背景置换 / 衍生镜头硬装样本板提取函数：
+ * 将母版空间图 (A00) 转化为完全不含任何家具（沙发/茶几/单椅）的“纯硬装材质与窗景样板板 (Hard-finish Architectural Swatch Board)”：
+ * - 顶部通栏 (1024x380)：天花吊顶层级、暗藏暖光带、主景墙顶部材质 (y: 0%..34%)
+ * - 左下格 (504x370)：大面积全景落地窗与城市天际线/窗景 (x: 78%..100%, y: 15%..75%) - 0家具
+ * - 右下格 (504x370)：高光大理石/地砖地面肌理与自然反光 (x: 0%..30%, y: 86%..100%) - 0家具
+ * 核心物理优势：从视觉输入源头彻底切断“母版图里的平视沙发与居中布局”，大模型只接收纯硬装、纯光影与纯窗景，
+ * 绝不会把母版图当成“0°正面底图画布”，100% 锁死图 1（实拍图）的 45°/俯仰/灭点拍摄视角与家具实体！
  */
-async function extractEmptyRoomFromMasterInline(
+export async function extractPureHardFinishSwatch(
   masterInline: { mimeType: string; data: string }
 ): Promise<{ mimeType: string; data: string }> {
   try {
@@ -527,63 +588,76 @@ async function extractEmptyRoomFromMasterInline(
       return masterInline;
     }
 
-    const w = 1024;
-    const h = 768;
-    const normalized = await sharp(rawBuf).resize({ width: w, height: h, fit: 'fill' }).toBuffer();
+    const w = meta.width;
+    const h = meta.height;
 
-    const [topPanorama, bottomLeftFeature, bottomRightFloor] = await Promise.all([
-      // 顶部通栏 (1008x376): 完整从左到右 (x: 0..100%, y: 0..48%) 的硬装空间序列与吊顶
-      sharp(normalized)
-        .extract({
-          left: 0,
-          top: 0,
-          width: w,
-          height: Math.round(h * 0.48)
-        })
-        .resize(1008, 376, { fit: 'cover' })
-        .toBuffer(),
-      // 左下格 (496x360): 右侧壁炉线框/护墙板中段 + 右侧落地窗与窗帘 (x: 55%..99%, y: 26%..76%)
-      sharp(normalized)
-        .extract({
-          left: Math.round(w * 0.55),
-          top: Math.round(h * 0.26),
-          width: Math.round(w * 0.44),
-          height: Math.round(h * 0.50)
-        })
-        .resize(496, 360, { fit: 'cover' })
-        .toBuffer(),
-      // 右下格 (496x360): 地毯与人字拼木地板/石材地面肌理 (x: 15%..85%, y: 86%..99%)
-      sharp(normalized)
-        .extract({
-          left: Math.round(w * 0.15),
-          top: Math.round(h * 0.86),
-          width: Math.round(w * 0.70),
-          height: Math.round(h * 0.13)
-        })
-        .resize(496, 360, { fit: 'cover' })
-        .toBuffer()
-    ]);
+    // 1. 主景墙大理石/奢石肌理局部特写 (纯材质肌理，避免截取平视房间与居中吊灯)
+    const marbleCrop = await sharp(rawBuf)
+      .extract({
+        left: Math.floor(w * 0.40),
+        top: Math.floor(h * 0.20),
+        width: Math.min(Math.floor(w * 0.20), w - Math.floor(w * 0.40)),
+        height: Math.min(Math.floor(h * 0.25), h - Math.floor(h * 0.20))
+      })
+      .resize(504, 370, { fit: 'cover' })
+      .toBuffer();
 
-    const board = await sharp({
-      create: { width: w, height: h, channels: 3, background: { r: 255, g: 255, b: 255 } }
+    // 2. 柜体/木饰面板材肌理局部特写 (纯材质肌理，x: 18%..36%, y: 20%..45%)
+    const woodCrop = await sharp(rawBuf)
+      .extract({
+        left: Math.floor(w * 0.18),
+        top: Math.floor(h * 0.20),
+        width: Math.min(Math.floor(w * 0.18), w - Math.floor(w * 0.18)),
+        height: Math.min(Math.floor(h * 0.25), h - Math.floor(h * 0.20))
+      })
+      .resize(504, 370, { fit: 'cover' })
+      .toBuffer();
+
+    // 3. 右侧全景落地窗与城市天际线/夕阳窗景 (x: 78%..100%, y: 15%..75%) - 0 家具
+    const windowVista = await sharp(rawBuf)
+      .extract({
+        left: Math.floor(w * 0.78),
+        top: Math.floor(h * 0.15),
+        width: Math.max(10, Math.floor(w * 0.22)),
+        height: Math.max(10, Math.floor(h * 0.60))
+      })
+      .resize(504, 370, { fit: 'cover' })
+      .toBuffer();
+
+    // 4. 左下暗色高光大理石/木地板地面肌理与自然反光 (x: 0%..30%, y: 86%..100%) - 0 家具
+    const floorMarble = await sharp(rawBuf)
+      .extract({
+        left: 0,
+        top: Math.floor(h * 0.86),
+        width: Math.max(10, Math.floor(w * 0.30)),
+        height: Math.max(10, Math.floor(h * 0.14))
+      })
+      .resize(504, 370, { fit: 'cover' })
+      .toBuffer();
+
+    const swatchBoard = await sharp({
+      create: { width: 1024, height: 768, channels: 3, background: { r: 18, g: 18, b: 18 } }
     })
       .composite([
-        { input: topPanorama, left: 8, top: 8 },
-        { input: bottomLeftFeature, left: 8, top: 400 },
-        { input: bottomRightFloor, left: 520, top: 400 }
+        { input: marbleCrop, left: 0, top: 0 },
+        { input: woodCrop, left: 520, top: 0 },
+        { input: windowVista, left: 0, top: 390 },
+        { input: floorMarble, left: 520, top: 390 }
       ])
-      .webp({ quality: 85 })
+      .webp({ quality: 90 })
       .toBuffer();
 
     return {
       mimeType: 'image/webp',
-      data: board.toString('base64')
+      data: swatchBoard.toString('base64')
     };
   } catch (err) {
-    console.warn('[SpaceImageGenerationService] Fallback on extractEmptyRoomFromMasterInline:', err);
+    console.warn('[SpaceImageGenerationService] Fallback on extractPureHardFinishSwatch:', err);
     return masterInline;
   }
 }
+
+export const extractEmptyRoomFromMasterInline = extractPureHardFinishSwatch;
 
 export class SpaceImageGenerationService {
   private static storage = GcsAssetStorage.getInstance();
@@ -622,6 +696,13 @@ export class SpaceImageGenerationService {
       characterReferenceImages,
       functionalPositionState = 'closed'
     } = input;
+
+    const effectiveObjectKey = objectKey || SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId: projectId || 'manwah-space-default',
+      shotId: shotCode || 'A00',
+      revisionId: `rev-gen-${Date.now().toString(36)}`,
+      extension: 'webp'
+    });
 
     const isFunctionalClosed = functionalPositionState !== 'open';
 
@@ -692,19 +773,25 @@ export class SpaceImageGenerationService {
         : (activePrimaryProduct?.referenceImage || (primaryProduct as any)?.referenceImage);
     }
 
-    // 平滑自愈保护：如果选出的 effectiveProductImageRef 为空，自动兜底为主沙发的 productReferenceImage 或 sceneMasterReferenceImage
+    // 平滑自愈保护：如果选出的 effectiveProductImageRef 为空，自动兜底为主沙发的 productReferenceImage、当前镜头实拍图或 sceneMasterReferenceImage
     if (!effectiveProductImageRef || (typeof effectiveProductImageRef === 'string' && effectiveProductImageRef.trim().length === 0)) {
-      effectiveProductImageRef = productReferenceImage || (primaryProduct as any)?.referenceImage || (primaryProduct as any)?.cropImageUrl || sceneMasterReferenceImage;
+      effectiveProductImageRef = productReferenceImage || (primaryProduct as any)?.referenceImage || (primaryProduct as any)?.cropImageUrl || currentShotReferenceImage || sceneMasterReferenceImage;
     }
 
+    // 极简换景与工作流页面对齐：参考图按 1536px 长边传入（与前端 compressImageForAnalysis 一致），
+    // 1024px 会削弱实拍图的透视与家具细节，使模型更倾向于照搬母版画面
+    const referenceMaxEdge = input.renderMode === 'studio_swap' ? 1536 : 1024;
     let [productInline, masterInline, shotInline] = await Promise.all([
-      resolveImageInlineData(effectiveProductImageRef),
-      resolveImageInlineData(sceneMasterReferenceImage),
-      resolveImageInlineData(currentShotReferenceImage)
+      resolveImageInlineData(effectiveProductImageRef, referenceMaxEdge),
+      resolveImageInlineData(sceneMasterReferenceImage, referenceMaxEdge),
+      resolveImageInlineData(currentShotReferenceImage, referenceMaxEdge)
     ]);
 
-    // 关键防线：若 productInline 解析为 null 但 masterInline 存在，自动以 masterInline 借用为 productInline，确保大模型多模态指令必有物理基石
-    if (!productInline && masterInline) {
+    // 关键防线：若 productInline 解析为 null 但 shotInline 存在，以 shotInline 借用为 productInline；
+    // 仅在非极简换景模式下，才允许兜底借用 masterInline，严禁换景模式下母版空间图窜入产品真值位
+    if (!productInline && shotInline) {
+      productInline = shotInline;
+    } else if (!productInline && masterInline && input.renderMode !== 'studio_swap') {
       productInline = masterInline;
     }
 
@@ -726,7 +813,7 @@ export class SpaceImageGenerationService {
     ).filter((item): item is { mimeType: string; data: string } => item !== null);
 
     // 确定有效色彩与材质描述 (采用中英文权威词典与 Hex 工业色卡精准绑定)
-    const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0], 'ivory greige, soft warm pale grey (exact color anchor #C8C2BA)');
+    const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0]);
     const effectiveMaterial = translateMaterialToEnglish(productMaterial || activePrimaryProduct?.materials?.[0], 'genuine top-grain semi-aniline cowhide leather', activePrimaryProduct?.role);
     
     let effectiveProductName = 'luxury power motion sofa';
@@ -773,7 +860,7 @@ export class SpaceImageGenerationService {
 
       const rawColor = sec.colors?.[0] || sec.color;
       const rawMat = sec.materials?.[0] || sec.material;
-      const colorEn = translateColorToEnglish(rawColor, 'pristine polar milk-white (exact color anchor #F5F3EF)');
+      const colorEn = translateColorToEnglish(rawColor);
       const matEn = translateMaterialToEnglish(rawMat, 'genuine top-grain semi-aniline cowhide leather', sec.role);
       const compositeInfo = resolveCompositeMaterialDna(rawMat, sec.role);
 
@@ -826,6 +913,7 @@ export class SpaceImageGenerationService {
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
     const config = await resolveApiConfig('system');
     let wasFallbackUsed = false;
+    let refineNotice: string | undefined;
     let primaryModel = 'manwah-spatial-renderer-v1';
 
     if (!isProviderKeyValid(config?.apiKey) || process.env.NODE_ENV === 'test') {
@@ -844,7 +932,7 @@ export class SpaceImageGenerationService {
       usedModel = 'manwah-spatial-renderer-v1';
       provenance = 'SOLVER_RESOLVED';
     } else {
-      const rawPreferred = input.preferredModel?.trim() || 'gpt-image-2';
+      const rawPreferred = input.preferredModel?.trim() || 'gemini-3-pro-image-preview';
       
       // 统一模型别名映射
       let targetModel = rawPreferred;
@@ -883,7 +971,30 @@ export class SpaceImageGenerationService {
       const maxSecItems = targetModel.includes('gpt') ? 1 : 3;
       const pushedSecondaryInlines = allowedSecondaryInlines.slice(0, maxSecItems);
 
-      if (shotInline) {
+      if (isStudioSwapImageSet) {
+        // 极简影棚背景置换直通管线 (Studio Background Swap Pipeline):
+        // 确立纯视觉双图非对称契约：
+        // 参考图 1: 用户实拍素材真值 (shotInline 或 productInline，锁定绝对构图、几何透视与家具实体真值)
+        // 参考图 2: 空间母版图 A00 (去家具化硬装色板，仅继承硬装吊顶、大理石墙地面、全景落地窗光影)
+        // 与工作流页面（ManwahStudio）的换景调用保持一致：窗口1 = 产品场景实拍图（主产品参考），
+        // 窗口2 = 完整空间母版图（风格参考）。网关会按角色在每张图前插入「[参考图N｜角色]」标签。
+        const userPhotoInline = shotInline || productInline;
+        if (userPhotoInline) {
+          images.push({
+            data: `data:${userPhotoInline.mimeType};base64,${userPhotoInline.data}`,
+            mimeType: userPhotoInline.mimeType,
+            role: 'primary_product'
+          });
+        }
+
+        if (masterInline && shotCode !== 'A00') {
+          images.push({
+            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
+            mimeType: masterInline.mimeType,
+            role: 'style_reference'
+          });
+        }
+      } else if (shotInline) {
         // 人物添加模式：以当前镜头真实底图为最高物理基石
         images.push({
           data: `data:${shotInline.mimeType};base64,${shotInline.data}`,
@@ -933,14 +1044,11 @@ export class SpaceImageGenerationService {
           });
         }
         // 在全案编排或极简影棚换景 (studio_swap) 的衍生镜头 (非 A00) 中，只要存在空间母版图 (masterInline)，
-        // 极简换景下先将 A00 母版中心 0° 家具剥离为纯空景背景样板 (style_reference)，确保锁定本镜 45°/侧面拍摄视角的同时 100% 继承母版房间背景！
+        // 即以完整母版图作为空间参考（换景下为 style_reference，编排下为 scene_reference）
         if (masterInline && (!isStudioSwapImageSet || shotCode !== 'A00')) {
-          const effectiveMasterForRef = isStudioSwapImageSet
-            ? await extractEmptyRoomFromMasterInline(masterInline)
-            : masterInline;
           images.push({
-            data: `data:${effectiveMasterForRef.mimeType};base64,${effectiveMasterForRef.data}`,
-            mimeType: effectiveMasterForRef.mimeType,
+            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
+            mimeType: masterInline.mimeType,
             role: isStudioSwapImageSet ? 'style_reference' : 'scene_reference'
           });
         }
@@ -988,9 +1096,9 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
         )
       ).join(', ');
 
-      // 极简影棚换景：仅在非人物入座、非底图锚定时生效；人物入座必须走 Human Pass 分支，
-      // 否则 studio_swap 的 "no people" 负面约束会导致人物植入失败。
-      const useStudioSwapDirective = isStudioSwapImageSet && Boolean(productInline) && !shotInline;
+      // 极简影棚换景：仅在非人物入座时生效（用户实拍素材可来自 productInline 或 shotInline）；
+      // 人物入座必须走 Human Pass 分支，否则 studio_swap 的 "no people" 负面约束会导致人物植入失败。
+      const useStudioSwapDirective = isStudioSwapImageSet && Boolean(productInline || shotInline);
 
       if (useStudioSwapDirective) {
         const hasMasterRefForSwap = Boolean(masterInline && shotCode !== 'A00');
@@ -1003,6 +1111,8 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           lightingHint: input.studioSwapLightingHint,
           hasSceneMasterReference: hasMasterRefForSwap,
           referenceShotCode: input.referenceShotCode || 'A00',
+          masterIsEmptyPlate: Boolean(input.sceneMasterIsEmptyPlate),
+          primaryRole: activePrimaryProduct?.role,
           shotCode,
           cameraSettings: input.cameraSettings,
           positivePrompt: input.positivePrompt
@@ -1036,7 +1146,10 @@ STRICT OCCUPANCY & COMPOSITION RULES:
 
 ${positivePrompt}
 
-Negative constraints: ${sanitizedNegative ? `${sanitizedNegative}, ` : ''}zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${deduplicateNegativeConstraints(
+  sanitizedNegative,
+  'zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people'
+)}`;
         } else {
           // 模式 A-2: 模特植入 (通用)：强制原图机位零漂移，家具绝对不位移，仅将人物自然坐入
           directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
@@ -1057,7 +1170,7 @@ STRICT COMMERCIAL MANDATES:
 1. POPULATE THE HERO SOFA: The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with realistic body weight, folds in clothes, and authentic contact shadows on the leather cushions.
 ${shotCode === 'A03' ? `   - A03 HERO 3-SEATER FAMILY LEISURE: Depict a genuine warm family moment with parents and young daughter seated together on the 3-seater hero sofa. Functional footrests ${isFunctionalClosed ? 'strictly remain completely closed and retracted under the base in standard upright comfortable configuration' : 'outer motion seats may be gently deployed for relaxed human occupancy'}. Natural, relaxed, joyful expressions. Center coffee table in foreground with coffee cups and art books within the authentic living room.` : ''}
 ${shotCode === 'A04' ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly max 2 occupants, mother and daughter, zero extra crowd), captured from 140cm eye level with -15 degree downward pitch looking down onto the deep seating cushion and rug stage. Depict an affectionate mother and young daughter companion moment. The motorized footrests ${isFunctionalClosed ? 'strictly remain completely closed and tucked flush under the base in standard upright configuration' : 'outer motorized footrest is smoothly deployed, comfortably supporting the mother and daughter relaxing together'}. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ''}
-${shotCode === 'A05' ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? 'completely retracted under the base in standard upright closed posture' : 'smoothly deployed supporting private lounge relaxation'}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ''}
+${shotCode === 'A05' ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? 'completely retracted under the base in standard upright closed posture' : 'smoothly deployed supporting private lounge relaxation'}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ''}
 ${shotCode === 'A06' ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW: Lateral side profile (75-90 degrees) in 16:9 widescreen (CAPACITY LOCK: strictly 1 occupant). Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music.` : ''}
 ${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective (CAPACITY LOCK: strictly 1 single occupant). Motorized footrest is ${isFunctionalClosed ? 'completely retracted and closed in standard upright reading posture' : 'deployed in ergonomic comfort contour'} supporting a relaxed individual comfortably browsing an iPad/tablet within the authentic living room.` : ''}
 2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a 100% clean pristine photograph.
@@ -1069,7 +1182,12 @@ ${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicate
 
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ''}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ''}${isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开, ' : ''}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${deduplicateNegativeConstraints(
+  negativePrompt,
+  antiStickerNegatives,
+  isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开' : '',
+  'camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people'
+)}`;
         }
       } else if (productInline && masterInline) {
         // 模式 B: A01~A08 衍生镜头生图：确立“机位与景别第一性原则”，同时坚决锁定 A00 母版硬装与窗景背景一致性
@@ -1343,7 +1461,7 @@ CORE INVARIANTS:
 
         const isAngledOrProfile = ['A02', 'A04', 'A05', 'A06', 'A07', 'A08'].includes(shotCode) || isAngledHero || isZeroWallProfile;
 
-        const cleanNegativeConstraints = [
+        const cleanNegativeConstraints = deduplicateNegativeConstraints(
           negativePrompt,
           antiStickerNegatives,
           (shotCode === 'A02' || isAngledHero) ? 'flat frontal view, straight-on camera, straight-on frontal view, symmetrical center sofa, horizontal sofa parallel to screen, front-facing sofa, flat 1-point perspective, mugshot view, zero perspective depth, copying frontal composition of reference 2, boxy closed small room, missing coffee table, missing rug, cramped narrow space, center dividing pillar' : '',
@@ -1363,7 +1481,7 @@ CORE INVARIANTS:
           !hasHumanOccupant ? 'people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs' : '',
           brownNegativeFilter,
           'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo'
-        ].filter(Boolean).join(', ');
+        );
 
         directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraints}`;
       } else if (productInline) {
@@ -1485,7 +1603,7 @@ CORE INVARIANTS:
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
 
-        const cleanNegativeConstraintsA00 = [
+        const cleanNegativeConstraintsA00 = deduplicateNegativeConstraints(
           negativePrompt,
           antiStickerNegatives,
           isEnsemble && isDualTone ? `${mainSofaColor} recliner, ${mainSofaColor} armchair, identical ${mainSofaColor} single chair, monochromatic seating` : '',
@@ -1500,7 +1618,7 @@ CORE INVARIANTS:
           'deployed footrest, extended footrest, open recliner mechanism, raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, 抬起的头枕, 翘起的头枕, excessive empty rug void in foreground, cut-off ceiling',
           (!isEnsemble && !hasRecliner && secondaryInlines.length === 0) ? 'lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance' : 'disconnected furniture, chair pushed against window, lopsided dark wall imbalance',
           'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces'
-        ].filter(Boolean).join(', ');
+        );
 
         directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraintsA00}`;
       }
@@ -1517,15 +1635,13 @@ CORE INVARIANTS:
 
       const isAutoFallback = input.autoModelFallback !== false;
       primaryModel = targetModel;
+      // 两步出图：衍生镜头第一步固定用 GPT 2.5 Flare（实测唯一能稳定保住实拍图构图与透视的模型）
+      const useRefinePass = Boolean(input.studioSwapRefinePass) && useStudioSwapDirective && shotCode !== 'A00';
+      if (useRefinePass) primaryModel = STUDIO_SWAP_COMPOSE_MODEL;
       const candidateModels: string[] = [primaryModel];
 
       if (isAutoFallback) {
-        const fallbacks = [
-          'gemini-3.1-flash-image-preview',
-          'openai/gpt-image-2.5-flare-c',
-          'gpt-image-2-c'
-        ];
-        for (const fb of fallbacks) {
+        for (const { id: fb } of SPACE_AUTO_FALLBACK_MODELS) {
           if (!candidateModels.includes(fb)) {
             candidateModels.push(fb);
           }
@@ -1551,13 +1667,32 @@ CORE INVARIANTS:
         );
 
         const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : 180000;
+        const effectiveUserId = input.userId || 'system';
+        const effectiveDeptId = input.deptId;
+
+        // 开发环境排查用：把每次发往网关的提示词与参考图落盘到 .data/debug/gateway，便于核对模型实际看到的输入
+        if ((process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') || process.env.SPACE_DEBUG_DUMP === '1') {
+          try {
+            const dumpDir = path.join(process.cwd(), '.data', 'debug', 'gateway', `${shotCode}-${Date.now()}-${currentModelToAttempt.replace(/[^\w.-]/g, '_')}`);
+            fs.mkdirSync(dumpDir, { recursive: true });
+            fs.writeFileSync(path.join(dumpDir, 'prompt.txt'), `model=${currentModelToAttempt}\nrenderMode=${input.renderMode || 'orchestration'}\naspectRatio=${mappedAspectRatio}\n\n${directivePrompt}`);
+            images.forEach((img, idx) => {
+              const b64 = String(img.data).replace(/^data:[^;]+;base64,/, '');
+              const ext = (img.mimeType || 'image/png').split('/')[1] || 'png';
+              fs.writeFileSync(path.join(dumpDir, `ref${idx + 1}_${img.role || 'unknown'}.${ext}`), Buffer.from(b64, 'base64'));
+            });
+          } catch (dumpErr) {
+            console.warn('[SpaceImageGenerationService] Debug dump skipped:', dumpErr);
+          }
+        }
 
         try {
           const gatewayRes = await fetch(gatewayUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-user-uuid': 'system'
+              'x-user-uuid': effectiveUserId,
+              ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
             },
             body: JSON.stringify({
               prompt: directivePrompt,
@@ -1566,7 +1701,10 @@ CORE INVARIANTS:
               resolution: currentResolution,
               seed: typeof input.seed === 'number' ? input.seed : undefined,
               images,
-              generationIntent
+              generationIntent,
+              userUuid: effectiveUserId,
+              userId: effectiveUserId,
+              deptId: effectiveDeptId
             }),
             signal: AbortSignal.timeout(timeoutMs)
           });
@@ -1623,11 +1761,39 @@ CORE INVARIANTS:
         }
       }
 
+      // 第二步：以 GPT 结果为底图、实拍图为材质参考，用 Nano Banana 2.1 精修清晰度与皮革质感；失败时保留第一步结果
+      if (useRefinePass && rawImageBuffer && rawImageBuffer.length > 0 && images[0]) {
+        try {
+          const composedInline = await normalizeInlineBuffer(rawImageBuffer, 1536);
+          const refined = await requestGatewayImage({
+            prompt: STUDIO_SWAP_REFINE_PROMPT,
+            model: STUDIO_SWAP_REFINE_MODEL,
+            images: [
+              { data: `data:${composedInline.mimeType};base64,${composedInline.data}`, mimeType: composedInline.mimeType, role: 'composition_reference' },
+              { data: images[0].data, mimeType: images[0].mimeType, role: 'primary_product' }
+            ],
+            aspectRatio: mappedAspectRatio,
+            resolution: validResolution,
+            userId: input.userId || 'system',
+            deptId: input.deptId,
+            // Nano Banana 2K 精修实测 50~180s，网关断连重试还会再叠加，给足 240s
+            timeoutMs: 240000
+          });
+          if (refined.length > 0) {
+            rawImageBuffer = refined;
+            usedModel = `${usedModel} + ${STUDIO_SWAP_REFINE_MODEL} 精修`;
+          }
+        } catch (refineErr: any) {
+          refineNotice = `精修步骤 (${STUDIO_SWAP_REFINE_MODEL}) 未完成，已保留 GPT 2.5 Flare 换景结果：${refineErr?.message || refineErr}`;
+          console.warn(`[SpaceImageGenerationService] ${shotCode} refine pass failed:`, refineErr?.message || refineErr);
+        }
+      }
+
       if (rawImageBuffer && rawImageBuffer.length > 0) {
-        if (objectKey.endsWith('.webp')) {
+        if (effectiveObjectKey.endsWith('.webp')) {
           imageBuffer = await sharp(rawImageBuffer).webp({ quality: 90 }).toBuffer();
           contentType = 'image/webp';
-        } else if (objectKey.endsWith('.jpg') || objectKey.endsWith('.jpeg')) {
+        } else if (effectiveObjectKey.endsWith('.jpg') || effectiveObjectKey.endsWith('.jpeg')) {
           imageBuffer = await sharp(rawImageBuffer).jpeg({ quality: 90 }).toBuffer();
           contentType = 'image/jpeg';
         } else {
@@ -1652,7 +1818,7 @@ CORE INVARIANTS:
       // 4. 严格持久化写入 GCS 对象存储系统 (GcsAssetStorage)
       await this.storage.put({
         bucketType: 'generated',
-        objectKey,
+        objectKey: effectiveObjectKey,
         buffer: imageBuffer,
         contentType,
         metadata: {
@@ -1667,14 +1833,15 @@ CORE INVARIANTS:
       });
 
       // 5. 优先使用受控同源代理 URL，确保客户端在任何网络环境下（包括无外网代理的国内浏览器）100% 畅通稳定加载
-      const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
+      const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(effectiveObjectKey)}`;
 
-      const warningNotice = wasFallbackUsed
-        ? `主选模型 (${primaryModel}) 响应受阻，已自动故障转移至 (${usedModel}) 成功生成真实大图！`
-        : undefined;
+      const warningNotice = [
+        wasFallbackUsed ? `主选模型 (${primaryModel}) 响应受阻，已自动故障转移至 (${usedModel}) 成功生成真实大图！` : '',
+        refineNotice || ''
+      ].filter(Boolean).join(' ') || undefined;
 
       return {
-        objectKey,
+        objectKey: effectiveObjectKey,
         imageUrl: proxyUrl,
         provider: usedProvider,
         model: usedModel,

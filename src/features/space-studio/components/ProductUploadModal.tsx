@@ -173,7 +173,7 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   );
   const [newMaterialInput, setNewMaterialInput] = useState<string>('');
   const [colors, setColors] = useState<string[]>(
-    initialProduct?.colors || ['云雾暖灰 (Warm Greige)', '曜石深灰']
+    initialProduct?.colors || []
   );
   const [newColorInput, setNewColorInput] = useState<string>('');
   const [adaptiveStyles, setAdaptiveStyles] = useState<string[]>(
@@ -341,7 +341,7 @@ interface CanvasDraftPayload {
       setDepth(initialProduct.dimensions?.depth || 1080);
       setHeight(initialProduct.dimensions?.height || 950);
       setMaterials(initialProduct.materials || ['南美进口头层牛皮 (半苯胺)', '德国超静音低压双电机', '高碳钢五金伸缩架']);
-      setColors(initialProduct.colors || ['云雾暖灰 (Warm Greige)', '曜石深灰']);
+      setColors(initialProduct.colors || []);
       setAdaptiveStyles(initialProduct.adaptiveStyles || ['意式轻奢', '现代极简']);
       setIsEnsembleIncluded(initialProduct.isEnsembleIncluded ?? true);
       setSurfaceTexture(initialProduct.surfaceTexture || '细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边');
@@ -405,7 +405,7 @@ interface CanvasDraftPayload {
       setDepth(1080);
       setHeight(950);
       setMaterials(['南美进口头层牛皮 (半苯胺)', '德国超静音低压双电机', '高碳钢五金伸缩架']);
-      setColors(['云雾暖灰 (Warm Greige)', '曜石深灰']);
+      setColors([]);
       setAdaptiveStyles(['意式轻奢', '现代极简']);
       setIsEnsembleIncluded(true);
       setSurfaceTexture('细腻平纹半苯胺牛皮，天然微透气毛孔，手工法式立体双缝线包边');
@@ -1339,7 +1339,7 @@ interface CanvasDraftPayload {
         height: Number(height) || 950
       },
       materials: materials.length > 0 ? materials : ['优质头层牛皮', '天然实木/奢石'],
-      colors: colors.length > 0 ? colors : ['焦糖棕', '浅米白'],
+      colors,
       surfaceTexture: surfaceTexture || '全案多品类协同材质：优质半苯胺真皮、大理石纹理与金属实木质感',
       functionCapable: functionCapable,
       referenceImages: uploadedImages.map((img, idx) => ({
@@ -1366,7 +1366,7 @@ interface CanvasDraftPayload {
         name: effectiveName,
         ensembleCategory: '影棚全案套组',
         dossierSummary: '免识别直通原图真值资产，包含原图完整组合',
-        dominantColors: colors.length > 0 ? colors : ['焦糖棕', '浅米白'],
+        dominantColors: colors,
         sourceImageUrl: firstImg.base64,
         readoutConfidence: 100,
         adaptiveStyles: adaptiveStyles.length > 0 ? adaptiveStyles : ['现代美式都会宅', '意式经典', '现代轻奢'],

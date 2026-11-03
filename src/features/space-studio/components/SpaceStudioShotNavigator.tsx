@@ -348,7 +348,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
           <Camera className="w-3.5 h-3.5 text-amber-500" />
           <span className="whitespace-nowrap font-bold">画册机位</span>
           <span className={`text-[10px] font-mono px-1 py-0.2 rounded ${isLight ? 'text-stone-500 bg-stone-200/60' : 'text-stone-400 bg-stone-800'}`}>
-            {readyCount}/9
+            {readyCount}/{shots.length}
           </span>
 
           {/* 针对选定镜头上传拍摄照片的专属功能按钮组 */}
@@ -436,7 +436,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
 
                 let statusBadge = (
                   <span
-                    className={`flex items-center gap-1 text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                    className={`flex items-center gap-1 whitespace-nowrap text-[9px] px-1.5 py-0.2 rounded font-mono ${
                       isLight ? 'text-stone-500 bg-stone-100' : 'text-stone-400 bg-stone-800'
                     }`}
                   >
@@ -446,7 +446,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
 
                 if (shot.status === 'generating') {
                   statusBadge = (
-                    <span className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded font-mono">
+                    <span className="flex items-center gap-1 whitespace-nowrap text-[9px] text-amber-600 dark:text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded font-mono">
                       <RefreshCw className="w-2 h-2 animate-spin" />
                       <span>生成中</span>
                       {onCancelRendering && (
@@ -466,13 +466,13 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                   );
                 } else if (previewImage && shot.hasHumanPass) {
                   statusBadge = (
-                    <span className="flex items-center gap-1 text-[9px] text-purple-400 bg-purple-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
+                    <span className="flex items-center gap-1 whitespace-nowrap text-[9px] text-purple-400 bg-purple-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
                       <CheckCircle2 className="w-2 h-2" /> 已添模特
                     </span>
                   );
                 } else if (previewImage) {
                   statusBadge = (
-                    <span className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
+                    <span className="flex items-center gap-1 whitespace-nowrap text-[9px] text-emerald-600 dark:text-emerald-300 bg-emerald-500/20 px-1.5 py-0.2 rounded font-mono font-semibold">
                       <CheckCircle2 className="w-2 h-2" /> 待添模特
                     </span>
                   );
@@ -487,9 +487,8 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                 const boundLayout = shotHumanLayouts[shot.templateCode];
                 const recTpl = getRecommendedStudioTemplate(shot.templateCode);
                 const modelCount = boundLayout ? boundLayout.slots.length : recTpl.count;
-                const modelSummary = boundLayout
-                  ? `${modelCount}人模特`
-                  : `${recTpl.count}人·${recTpl.badge.split('·')[0].trim()}`;
+                // 卡片宽度有限，只显示人数，动作详情放在 title 悬停提示里
+                const modelSummary = `${modelCount}人`;
 
                 const isDragTarget = dragOverShotId === shot.id;
 
@@ -775,9 +774,9 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
 
                   {/* 状态微标与当前镜头绑定的模特/动作参数微标 */}
                   <div className="w-full mt-1 flex items-center justify-between gap-1">
-                    <div>{statusBadge}</div>
+                    <div className="shrink-0">{statusBadge}</div>
                     <span
-                      className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 truncate max-w-[65px]"
+                      className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 truncate min-w-0"
                       title={`镜头预设模特与动作：${recTpl.name} (${modelCount}人)`}
                     >
                       {modelSummary}

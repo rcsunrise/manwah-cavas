@@ -82,9 +82,10 @@ import { PlacementEngine } from '../engine/placementEngine';
 import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
-import { STANDARD_SHOT_TEMPLATES, getShotTemplateByCode } from '../data/shotTemplates';
+import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
+import { buildRenderCandidatesPayload, STUDIO_SWAP_ANGLE_GUARD_PREFIX } from '../engine/renderPayloadBuilder';
 import { ValidationEngine } from '../engine/validationEngine';
 import { RevisionGraphModal } from '../components/RevisionGraphModal';
 import { RevisionGraphEngine } from '../engine/revisionGraphEngine';
@@ -98,7 +99,7 @@ import { SeatAssignment } from '../../../types/spaceStudio';
 import { SpaceStudioPersistenceService } from '../../../services/spaceStudioPersistenceService';
 import { ClearRecordsModal } from '../components/modals/ClearRecordsModal';
 import { InpaintSubmitPayload } from '../components/CanvasInpaintModal';
-import { parseJsonResponse } from '../../../utils/apiUtils';
+import { parseJsonResponse, getAuthHeaders } from '../../../utils/apiUtils';
 
 interface SpaceStudioShellProps {
   projectId?: string;
@@ -109,288 +110,22 @@ interface SpaceStudioShellProps {
   onToggleTheme?: () => void;
 }
 
-const DEFAULT_SHOTS: ShotInstance[] = [
-  {
-    id: 'shot-a00',
-    templateCode: 'A00',
-    name: '空间母版 (Scene Master)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 26,
-      heightCm: 130,
-      yawDeg: 0,
-      pitchDeg: -1,
-      rollDeg: 0,
-      target: { type: 'product', id: 'p1' },
-      framing: 'wide',
-      mustInclude: ['hero_sofa', 'coffee_table', 'ceiling_architecture', 'balanced_living_ensemble', 'wide_bay_vista'],
-      mustExclude: ['human', 'excessive_empty_rug', 'isolated_center_pillar', 'narrow_tunnel_walls']
-    },
-    intent: {
-      intentCode: 'SI-01',
-      name: '空间与产品平衡 (Space/Product Balance)',
-      productDominancePct: 60,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 5,
-      description: '全景展示空间户型、建筑结构与敏华主产品的平衡关系'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
+const DEFAULT_SHOTS: ShotInstance[] = [SCENE_MASTER_TEMPLATE, ...STANDARD_SHOT_TEMPLATES].map((tpl) => ({
+  id: `shot-${tpl.code.toLowerCase()}`,
+  templateCode: tpl.code,
+  name: tpl.name,
+  aspectRatio: (tpl.recommendedAspectRatio as ImageAspectRatio) || '4:3',
+  camera: {
+    ...tpl.defaultCamera,
+    target: { ...tpl.defaultCamera.target },
+    mustInclude: [...(tpl.defaultCamera.mustInclude || [])],
+    mustExclude: [...(tpl.defaultCamera.mustExclude || [])]
   },
-  {
-    id: 'shot-a01',
-    templateCode: 'A01',
-    name: '空间主大场景 (Grand Frontal Architectural Panorama)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 35,
-      heightCm: 115,
-      yawDeg: 0,
-      pitchDeg: 0,
-      rollDeg: 0,
-      target: { type: 'zone', id: 'living_room' },
-      framing: 'wide',
-      mustInclude: ['strictly_straight_on_frontal_view', 'centered_marble_backdrop_wall_axis', 'panoramic_full_height_left_window', 'open_right_corridor_and_dining_flow', 'complete_3_plus_1_sofa_ensemble', 'designer_coffee_table', 'generous_living_area_rug', 'white_matte_cylindrical_planter_anchor'],
-      mustExclude: ['angled_side_perspective', 'diagonal_camera_view', 'tilted_off_center', 'cramped_framing', 'excessive_empty_wooden_floor_in_foreground', 'vast_barren_foreground_floor_void', 'deployed_footrest_without_people', 'blank_featureless_white_ceiling']
-    },
-    intent: {
-      intentCode: 'SI-01',
-      name: '空间主大场景 (Grand Frontal Horizon)',
-      productDominancePct: 45,
-      backgroundSuppression: 'low',
-      maxOcclusionPct: 5,
-      description: '客餐厅一体全案大平层生活方式；展示 3+1 沙发组、茶几、地毯与右侧餐厅的整体空间流动感。锚定居中背景墙、左侧通高落地窗、右侧开阔过道与餐厅区。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a02',
-    templateCode: 'A02',
-    name: '45° 3+1 组合大全景 (45° 3+1 Living Ensemble View)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 45,
-      heightCm: 115,
-      yawDeg: 40,
-      pitchDeg: -3,
-      rollDeg: 0,
-      target: { type: 'product', id: 'living_ensemble' },
-      framing: 'wide',
-      mustInclude: ['three_seater_sofa', 'matching_side_chair', 'center_coffee_table', 'ensemble_spatial_depth', 'left_side_daylight_sheen', 'floor_diagonal_vanishing_lines', 'white_matte_cylindrical_planter_anchor'],
-      mustExclude: ['flat_frontal_mugshot', 'straight_on_camera', 'symmetrical_center_sofa', 'facing_directly_forward', 'tight_single_product_crop', 'cropping_out_side_chair', 'cropping_out_main_sofa']
-    },
-    intent: {
-      intentCode: 'SI-02',
-      name: '45° 3+1 组合全景聚焦 (3+1 Ensemble Living Focus)',
-      productDominancePct: 65,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 8,
-      description: '展示“3人位+单人位”围合布局与开阔度；呈现左侧自然采光下皮质的光泽度与落座动线。锚定地板对角线灭点、地毯铺设基准区、窗帘垂坠边界。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a03',
-    templateCode: 'A03',
-    name: '三人位主沙发场景 (Hero 3-Seater Living Focus)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 50,
-      heightCm: 95,
-      yawDeg: 0,
-      pitchDeg: 0,
-      rollDeg: 0,
-      target: { type: 'product', id: 'primary_sofa' },
-      framing: 'product',
-      mustInclude: ['three_seater_sofa', 'symmetrical_marble_backdrop_axis', 'dual_curved_sconce_midline', 'sofa_leather_texture', 'foreground_coffee_table'],
-      mustExclude: ['separate_accent_single_chair', 'side_armchair', 'lounge_chair', 'angled_view', 'deployed_footrests_when_no_human']
-    },
-    intent: {
-      intentCode: 'SI-03',
-      name: '三人位主沙发场景 (Hero 3-Seater Focus)',
-      productDominancePct: 75,
-      backgroundSuppression: 'high',
-      maxOcclusionPct: 5,
-      description: '主推核心单品（C位三人位）；展示靠背饱满支撑感、双向扶手体量与背景墙的对称高级感。锚定大理石背景墙中轴对称线、双弧形壁灯高度中线。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a04',
-    templateCode: 'A04',
-    name: '三分之二主沙亲子陪伴场景 (2/3 Hero Sofa Companion View)',
-    aspectRatio: '3:4',
-    camera: {
-      lensMm: 45,
-      heightCm: 140,
-      yawDeg: -28,
-      pitchDeg: -15,
-      rollDeg: 0,
-      target: { type: 'product', id: 'primary_sofa_left_two_thirds' },
-      framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa', 'wide_seating_depth', 'foreground_play_rug_stage', 'sheer_curtain_window_light', 'white_matte_cylindrical_planter_anchor'],
-      mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'stiff_emotionless_posing']
-    },
-    intent: {
-      intentCode: 'SI-08',
-      name: '三分之二主沙亲子陪伴 (2/3 Hero Companion View)',
-      productDominancePct: 70,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 15,
-      description: '情感化/家庭生活方式：聚焦 2/3 座面与前沿地毯，突出宽大座深供亲子互动、地毯玩耍的温馨感。锚定地板光影渐变区、左侧落地窗白色纱帘透光处、固定绿植。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a05',
-    templateCode: 'A05',
-    name: '三分之二主沙私享休闲景 (2/3 Hero Sofa Private Lounge View)',
-    aspectRatio: '3:4',
-    camera: {
-      lensMm: 50,
-      heightCm: 95,
-      yawDeg: 28,
-      pitchDeg: 0,
-      rollDeg: 0,
-      target: { type: 'product', id: 'primary_sofa_right_two_thirds' },
-      framing: 'lifestyle',
-      mustInclude: ['two_thirds_hero_sofa_right', 'right_armrest_quilting', 'metal_trim_accent', 'brass_closure_strip_anchor', 'warm_ambient_wall_sconce'],
-      mustExclude: ['flat_frontal_view', 'full_100_percent_wide_sofa_panorama', 'isolated_single_chair', 'separate_recliner_chair', 'casual_messy_elements']
-    },
-    intent: {
-      intentCode: 'SI-05',
-      name: '三分之二主沙私享休闲 (2/3 Hero Private Lounge)',
-      productDominancePct: 70,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 12,
-      description: '品质感/工艺细节：聚焦扶手立体菱格纹压花、金属收边、皮质微距触感与后方温暖壁灯。锚定背景墙右侧铜条收口线、悬浮发光层板下边缘。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a06',
-    templateCode: 'A06',
-    name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile View)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 60,
-      heightCm: 90,
-      yawDeg: 88,
-      pitchDeg: 0,
-      rollDeg: 0,
-      target: { type: 'product', id: 'zero_wall_mechanism' },
-      framing: 'lifestyle',
-      mustInclude: ['zero_wall_back_clearance_against_wall', 'flush_wall_placement', 'pure_lateral_profile_60mm', 'side_armrest_quilting_detail', 'fully_retracted_closed_footrest', 'vertical_plumb_lines'],
-      mustExclude: ['flat_frontal_mugshot', 'three_quarters_generic_angle', 'deployed_footrest', 'extended_footrest', 'reclined_backrest', 'unfolded_mechanism', 'crowded_foreground']
-    },
-    intent: {
-      intentCode: 'SI-07',
-      name: '零靠墙功能闭合侧景 (Zero-Wall Clearance Profile)',
-      productDominancePct: 75,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 15,
-      description: '核心硬核卖点：直观量化“零靠墙”省空间功能；展现沙发背部贴墙极小距离（<5cm）与侧面紧凑线条。锚定背景墙侧面厚度基准、窗框竖柱与地平线垂直线。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a07',
-    templateCode: 'A07',
-    name: '沙发茶几组群中景 (Ensemble Living Composition)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 55,
-      heightCm: 95,
-      yawDeg: -35,
-      pitchDeg: -5,
-      rollDeg: 0,
-      target: { type: 'product', id: 'living_ensemble' },
-      framing: 'product',
-      mustInclude: ['hero_main_sofa', 'natural_marble_coffee_table', 'golden_height_drop_450mm_vs_400mm', 'carpet_geometric_pattern_anchor', 'foliage_shadow_falloff_anchor', 'deep_contact_ao_shadow'],
-      mustExclude: ['messy_foreground', 'extreme_close_up', 'isolated_single_furniture_item', 'empty_room_void']
-    },
-    intent: {
-      intentCode: 'SI-01',
-      name: '沙发茶几组群中景 (Ensemble Living)',
-      productDominancePct: 75,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 10,
-      description: '配套材质与围合感：展示大理石茶几、深色方几、绿植与主沙发的黄金高低差（450mm vs 400mm）。锚定地毯中央几何图案定位区、绿植阴影投射区。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a08',
-    templateCode: 'A08',
-    name: '单椅五档功能状态景 (Single Recliner 5-Mode Function Matrix)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 50,
-      heightCm: 95,
-      yawDeg: 38,
-      pitchDeg: -3,
-      rollDeg: 0,
-      target: { type: 'product', id: 'power_recliner_modes' },
-      framing: 'lifestyle',
-      mustInclude: ['manwah_power_recliner_chair', 'golden_diagonal_perspective_50mm', 'open_spacious_living_room_placement', 'window_daylight_shadow_boundary', 'deep_contact_ao_shadow'],
-      mustExclude: ['camera_angle_drift', 'three_seater_sofa_dominant', 'flat_frontal_view', 'distorted_vanishing_lines']
-    },
-    intent: {
-      intentCode: 'SI-06',
-      name: '单椅五档功能状态景 (Recliner 5-Mode Showcase)',
-      productDominancePct: 80,
-      backgroundSuppression: 'high',
-      maxOcclusionPct: 15,
-      description: '单人位核心功能体验：五档调节、电动脚踏展开、后仰舒适弧度；搭配雪茄盒/红酒杯营造个人私享角。锚定大落地窗明暗分界线、左下角地毯边缘留白区。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  },
-  {
-    id: 'shot-a09',
-    templateCode: 'A09',
-    name: '餐桌配套展示景 (Dining Suite Ensemble View)',
-    aspectRatio: '4:3',
-    camera: {
-      lensMm: 40,
-      heightCm: 115,
-      yawDeg: 0,
-      pitchDeg: 0,
-      rollDeg: 0,
-      target: { type: 'zone', id: 'dining_room' },
-      framing: 'wide',
-      mustInclude: ['luxury_marble_dining_table', 'matching_leather_dining_chairs', 'dining_credenza_sideboard', 'champagne_bar_cart', 'right_wall_panel_anchor', 'art_painting_axis_anchor'],
-      mustExclude: ['cramped_table_crop', 'living_room_sofa_dominant', 'cluttered_dirty_dishes', 'harsh_shadows']
-    },
-    intent: {
-      intentCode: 'SI-09',
-      name: '餐厅配套展示组 (Dining Suite Ensemble)',
-      productDominancePct: 75,
-      backgroundSuppression: 'medium',
-      maxOcclusionPct: 10,
-      description: '整家配套延伸：展现同色系大理石餐桌、皮革餐椅、餐边柜与酒水推车，强化“买全屋配齐”的客单拉力。锚定右侧背景墙壁板、独立艺术挂画中轴线。'
-    },
-    status: 'draft',
-    revisions: [],
-    hasHumanPass: false
-  }
-];
+  intent: { ...tpl.intent },
+  status: 'draft',
+  revisions: [],
+  hasHumanPass: false
+}));
 
 export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   projectId = 'manwah-noble-space-01',
@@ -580,7 +315,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   // 自动将当前镜头列表对齐至最新的实拍标准校对名称与推荐画幅 (强制纠偏旧快照中的画幅错位)
-  // 标准画幅映射：A01(16:9), A02(4:3), A03(4:3), A04(2:3), A05(2:3), A06~A09(16:9)
+  // 标准画幅映射（以 shotTemplates.recommendedAspectRatio 为准）：A04/A05 为 3:4 竖构图，其余镜头为 4:3
   useEffect(() => {
     setShots((prevShots) => {
       let changed = false;
@@ -1254,10 +989,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 渲染引擎配置选项 (系统默认使用 Nano Banana 2.1 极速响应·轻量多图融合，默认 4:3 空间透视画幅，默认开启多模型故障自动轮换)
+  // 渲染引擎配置选项 (系统默认使用商业旗舰 Gemini 3 Pro 深度空间透视与光影融合，默认 4:3 空间透视画幅，默认开启多模型故障自动轮换)
   const [computeConfig, setComputeConfig] = useState<RenderComputeConfig & { candidateCount?: number }>(() => {
     let initialAspect: ImageAspectRatio = '4:3';
-    let initialModel = 'gemini-3.1-flash-image-preview';
+    let initialModel = 'gemini-3-pro-image-preview';
     let initialRes: RenderResolution = '2K';
     let initialFuncPos: 'closed' | 'open' = 'closed';
     let initialAutoFallback = true;
@@ -1268,7 +1003,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         initialAspect = savedAspect;
       }
       const savedModel = localStorage.getItem('space_studio_model');
-      if (savedModel) {
+      if (savedModel && savedModel !== 'gemini-nano-banana-2.1-preview') {
         initialModel = savedModel;
       }
       const savedRes = localStorage.getItem('space_studio_resolution') as RenderResolution;
@@ -1335,6 +1070,164 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       return next;
     });
   };
+
+  // 切换激活镜头时：若目标镜头具备用户实拍原图，自动切入极简影棚背景置换直通模式 (studio_swap)
+  useEffect(() => {
+    const cur = shots.find((s) => s.id === activeShotId);
+    if (cur) {
+      const hasUploadedPhoto = Boolean(
+        cur.isUserUploadedPhoto ||
+        cur.customReferenceImage ||
+        cur.revisions?.some((r: any) => r.isUserUploaded || r.metadata?.isUserUploaded)
+      );
+      if (hasUploadedPhoto && computeConfig.renderMode !== 'studio_swap') {
+        handleUpdateComputeConfig({ renderMode: 'studio_swap' });
+      }
+    }
+  }, [activeShotId]);
+
+  // 核心主品是产品组合实拍场景图（极简影棚直通资产 / 多产品实景组合）时，自动切入极简影棚换景：
+  // 全案编排会按镜头模板机位与文本色卡重新出图，无法复刻实拍图的拍摄角度与真实颜色。
+  // 仅在核心主品切换时触发一次，用户之后仍可手动切回全案编排。
+  const primaryScenePhotoProductId = useMemo(() => {
+    const primary = products.find((p) => p.priority === 'primary') || products[0];
+    return primary?.isSceneEnsembleSuite && primary?.sourceMasterImageUrl ? primary.id : null;
+  }, [products]);
+  useEffect(() => {
+    if (primaryScenePhotoProductId && computeConfig.renderMode !== 'studio_swap') {
+      handleUpdateComputeConfig({ renderMode: 'studio_swap' });
+    }
+  }, [primaryScenePhotoProductId]);
+
+  // 极简换景：A00 母版定稿后自动「清除家具」生成空场景，作为一个新版本放进 A00 生成记录；
+  // 用户在记录中选中后「设为场景参考」，衍生镜头即以它作为窗口2的空间参考。
+  // 带家具的母版作为参考时，模型容易整张照搬母版构图，空场景只提供硬装，角度可稳定跟随实拍图。
+  const [emptyPlateJobs, setEmptyPlateJobs] = useState<Record<string, { status: 'generating' | 'failed'; error?: string }>>({});
+  const emptyPlateAttemptedRef = useRef<Set<string>>(new Set());
+  const a00ShotForPlate = shots.find((s) => s.templateCode === 'A00');
+  const a00CurrentRevForPlate =
+    a00ShotForPlate?.revisions.find((r) => r.id === a00ShotForPlate.currentRevisionId) || a00ShotForPlate?.revisions[0];
+  // 空场景的来源母版：当前展示的若本身是空场景，则回溯到它的父版本
+  const a00PlateSourceRev = a00CurrentRevForPlate?.isEmptyPlate
+    ? a00ShotForPlate?.revisions.find((r) => r.id === a00CurrentRevForPlate.parentRevisionId)
+    : a00CurrentRevForPlate;
+  const a00HasPlateForSource = Boolean(
+    a00PlateSourceRev && a00ShotForPlate?.revisions.some((r) => r.isEmptyPlate && r.parentRevisionId === a00PlateSourceRev.id)
+  );
+
+  const handleGenerateEmptyPlate = async (sourceRev: ShotRevision | undefined = a00PlateSourceRev) => {
+    const sourceImage = sourceRev?.imageUrl || sourceRev?.objectKey;
+    if (!sourceRev || !a00ShotForPlate || !sourceImage) return;
+    emptyPlateAttemptedRef.current.add(sourceRev.id);
+    setEmptyPlateJobs((prev) => ({ ...prev, [sourceRev.id]: { status: 'generating' } }));
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/space/shoot/empty-plate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({
+          projectId,
+          shotCode: 'A00',
+          sourceRevisionId: sourceRev.id,
+          sourceImage,
+          preferredModel: computeConfig.model,
+          aspectRatio: a00ShotForPlate.aspectRatio || computeConfig.aspectRatio || '4:3',
+          resolution: computeConfig.resolution || '2K'
+        })
+      });
+      const data = await parseJsonResponse<any>(res);
+      if (!data.success) {
+        throw new Error(data.error?.message || (typeof data.error === 'string' ? data.error : '') || '空场景生成失败');
+      }
+      setShots((prev) =>
+        prev.map((s) => {
+          if (s.id !== a00ShotForPlate.id) return s;
+          const nextRevNum = Math.max(0, ...s.revisions.map((r) => r.revisionNumber || 0)) + 1;
+          const plateRevision: ShotRevision = {
+            id: `rev-empty-plate-${Date.now().toString(36)}`,
+            shotId: s.id,
+            revisionNumber: nextRevNum,
+            revisionType: 'scene',
+            label: `空场景 v${nextRevNum}`,
+            metaSummary: '清除家具 · 可设为后续镜头场景参考',
+            parentRevisionId: sourceRev.id,
+            objectKey: data.data.objectKey,
+            imageUrl: data.data.imageUrl,
+            thumbnailUrl: data.data.imageUrl,
+            promptSnapshotId: `empty-plate-${sourceRev.id}`,
+            status: 'approved',
+            provenance: 'AI_ESTIMATED',
+            productionTruth: false,
+            createdAt: new Date().toISOString(),
+            isEmptyPlate: true
+          };
+          return { ...s, revisions: [plateRevision, ...s.revisions] };
+        })
+      );
+      setEmptyPlateJobs((prev) => {
+        const next = { ...prev };
+        delete next[sourceRev.id];
+        return next;
+      });
+    } catch (err: any) {
+      console.warn('[SpaceStudioShell] 空场景生成失败:', err);
+      setEmptyPlateJobs((prev) => ({ ...prev, [sourceRev.id]: { status: 'failed', error: err?.message || '空场景生成失败' } }));
+    }
+  };
+
+  // 兼容旧数据：此前空场景以 emptyPlateImageUrl 字段挂在母版版本上，迁移为独立的空场景版本，避免重复生成扣费
+  useEffect(() => {
+    const legacyRevs = (a00ShotForPlate?.revisions || []).filter((r: any) => r.emptyPlateImageUrl || r.emptyPlateObjectKey);
+    if (!a00ShotForPlate || legacyRevs.length === 0) return;
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.id !== a00ShotForPlate.id) return s;
+        let nextRevNum = Math.max(0, ...s.revisions.map((r) => r.revisionNumber || 0));
+        const migratedPlates: ShotRevision[] = [];
+        const cleaned = s.revisions.map((r: any) => {
+          if (!(r.emptyPlateImageUrl || r.emptyPlateObjectKey)) return r;
+          const { emptyPlateImageUrl, emptyPlateObjectKey, ...rest } = r;
+          if (!s.revisions.some((x) => x.isEmptyPlate && x.parentRevisionId === r.id)) {
+            nextRevNum += 1;
+            migratedPlates.push({
+              id: `rev-empty-plate-${r.id}`,
+              shotId: s.id,
+              revisionNumber: nextRevNum,
+              revisionType: 'scene',
+              label: `空场景 v${nextRevNum}`,
+              metaSummary: '清除家具 · 可设为后续镜头场景参考',
+              parentRevisionId: r.id,
+              objectKey: emptyPlateObjectKey || '',
+              imageUrl: emptyPlateImageUrl,
+              thumbnailUrl: emptyPlateImageUrl,
+              promptSnapshotId: `empty-plate-${r.id}`,
+              status: 'approved',
+              provenance: 'AI_ESTIMATED',
+              productionTruth: false,
+              createdAt: new Date().toISOString(),
+              isEmptyPlate: true
+            });
+          }
+          return rest as ShotRevision;
+        });
+        return { ...s, revisions: [...migratedPlates, ...cleaned] };
+      })
+    );
+  }, [a00ShotForPlate?.revisions]);
+
+  const handleSetSceneReference = (revisionId: string | null) => {
+    if (!a00ShotForPlate) return;
+    setShots((prev) =>
+      prev.map((s) => (s.id === a00ShotForPlate.id ? { ...s, sceneReferenceRevisionId: revisionId || undefined } : s))
+    );
+  };
+
+  useEffect(() => {
+    const rev = a00PlateSourceRev;
+    if (computeConfig.renderMode !== 'studio_swap' || !rev || a00HasPlateForSource) return;
+    if (!(rev.imageUrl || rev.objectKey) || rev.revisionType === 'human' || emptyPlateAttemptedRef.current.has(rev.id)) return;
+    handleGenerateEmptyPlate(rev);
+  }, [computeConfig.renderMode, a00PlateSourceRev?.id, a00PlateSourceRev?.imageUrl, a00HasPlateForSource]);
 
   const handleShotAspectRatioChange = (newRatio: ImageAspectRatio) => {
     setAspectRatio(newRatio);
@@ -2178,10 +2071,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     const controller = new AbortController();
     abortControllersRef.current.set(targetShot.id, controller);
 
+    // 两步出图（GPT 换景 + Banana 精修）总耗时可达 4~6 分钟，放宽到 480s，避免前端先于服务端放弃
+    const renderTimeoutSec =
+      computeConfig.studioSwapRefinePass && computeConfig.renderMode === 'studio_swap' && targetShot.templateCode !== 'A00' ? 480 : 300;
     const timeout = setTimeout(() => {
-      console.warn(`[SpaceStudioShell] 镜头 ${targetShot.templateCode} 渲染 300s 超时，触发主动超时打断`);
-      controller.abort('Render timeout after 300s');
-    }, 300000);
+      console.warn(`[SpaceStudioShell] 镜头 ${targetShot.templateCode} 渲染 ${renderTimeoutSec}s 超时，触发主动超时打断`);
+      controller.abort(`Render timeout after ${renderTimeoutSec}s`);
+    }, renderTimeoutSec * 1000);
     renderTimeoutsRef.current.set(targetShot.id, timeout);
 
     // 将镜头加入并发队列，支持用户切换查看其他镜头
@@ -2191,12 +2087,19 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
 
     const jobId = `job-shoot-${targetShot.templateCode.toLowerCase()}-${Date.now()}`;
+    const isTargetShotUserUploaded = Boolean(
+      targetShot.isUserUploadedPhoto ||
+      targetShot.customReferenceImage ||
+      targetShot.revisions?.some((r: any) => r.isUserUploaded || r.metadata?.isUserUploaded)
+    );
+
     const activeSettings: GenerationSettings = {
-      model: customSettings?.model || computeConfig.model,
+      model: customSettings?.model || computeConfig.model || 'gemini-3-pro-image-preview',
       resolution: (customSettings as any)?.resolution || computeConfig.resolution || '2K',
       aspectRatio: (customSettings as any)?.aspectRatio || targetShot.aspectRatio || computeConfig.aspectRatio,
       autoModelFallback: (customSettings as any)?.autoModelFallback ?? computeConfig.autoModelFallback,
-      renderMode: (customSettings as any)?.renderMode || computeConfig.renderMode || 'orchestration',
+      renderMode: (customSettings as any)?.renderMode || (isTargetShotUserUploaded ? 'studio_swap' : (computeConfig.renderMode || 'orchestration')),
+      studioSwapRefinePass: (customSettings as any)?.studioSwapRefinePass ?? computeConfig.studioSwapRefinePass,
       ...(computeConfig.seed !== undefined ? { seed: computeConfig.seed } : {}),
       useRandomSeed: computeConfig.seed === undefined,
       ...customSettings
@@ -2208,7 +2111,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gemini-nano-banana-2.1-preview',
+      provider: activeSettings.model || 'gemini-3-pro-image-preview',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -2220,280 +2123,31 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     );
 
     try {
-      const activeEnsemble = products.filter(
-        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
-      );
-
       const effectiveSceneMaster = overrideSceneMaster || sceneMasterRef.current || sceneMaster;
-
-      const compiled = ShootCompiler.compileShotPrompt({
-        shot: targetShot,
-        sceneMaster: effectiveSceneMaster || {
-          id: 'temp-master',
-          projectId: 'manwah-noble-space-01',
-          objectKey: '',
-          isLocked: true,
-          lockedAt: new Date().toISOString(),
-          locks: {
-            productIdentity: true,
-            placement: true,
-            architecture: true,
-            style: true,
-            material: true,
-            lighting: true,
-            camera: true,
-            human: false
-          },
-          promptSnapshotId: 'rev-01'
-        },
-        products: activeEnsemble,
-        spacePreset: selectedSpace,
-        stylePreset: selectedStyle,
+      const payload = buildRenderCandidatesPayload({
+        projectId,
+        targetShot,
+        candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
+        activeSettings,
+        selectedSpace,
+        selectedStyle,
+        products,
+        shots,
+        sceneMaster,
+        overrideSceneMaster: effectiveSceneMaster || undefined,
         blueprint,
-        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio,
-        functionalPositionState: computeConfig.functionalPositionState || 'closed'
+        computeConfig
       });
 
-      setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: compiled } : null));
-
-      // 核心工业逻辑：针对专属镜头 (A03 主焦点景, A04 2/3亲子景, A05 2/3私享景, A06 零靠墙侧景, A08 单椅五档景)，
-      // 必须精准锁定关联的单独产品资产（如三人位.png、单人位.png），优先提取其独立切片/原图，绝不允许拿错单椅或大图
-      const targetShotCode = targetShot.templateCode;
-      const isHeroSofaDedicatedShot = ['A03', 'A04', 'A05', 'A06'].includes(targetShotCode);
-      const isReclinerDedicatedShot = ['A08'].includes(targetShotCode);
-      const isDiningDedicatedShot = ['A09'].includes(targetShotCode);
-
-      const hero3SeatSofa = activeEnsemble.find(
-        (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
-      );
-      const reclinerChair = activeEnsemble.find(
-        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
-      ) || activeEnsemble.find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
-      const diningTableProd = activeEnsemble.find(
-        (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
-      );
-
-      // 0. 支持当前镜头单独绑定指定产品素材 (支持用户在右侧面板自由切换绑定)
-      const boundProd = targetShot.boundProductId
-        ? products.find((p) => p.id === targetShot.boundProductId)
-        : null;
-
-      const primaryProd = boundProd
-        || ((isHeroSofaDedicatedShot && hero3SeatSofa)
-          ? hero3SeatSofa
-          : (isReclinerDedicatedShot && reclinerChair)
-          ? reclinerChair
-          : (isDiningDedicatedShot && diningTableProd)
-          ? diningTableProd
-          : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]));
-
-      // 提取该核心单品的独立真值资产：当命中专属多角度工业真值(如45度/侧面)或专属镜头素材时优先采用
-      const shotCustomRef = targetShot.customReferenceImage;
-      const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
-      const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
-      const isStudioSwapFullPhotoPreferred = activeSettings.renderMode === 'studio_swap';
-      const primaryRef =
-        shotCustomRef ||
-        (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
-        (isStudioSwapFullPhotoPreferred
-          ? (
-              bestPrimaryView.reference?.publicUrl ||
-              bestPrimaryView.reference?.objectKey ||
-              primaryProd?.sourceMasterImageUrl ||
-              primaryProd?.referenceImages?.[0]?.publicUrl ||
-              primaryProd?.referenceImages?.[0]?.objectKey ||
-              (primaryProd as any)?.uploadedImageUrl ||
-              primaryProd?.cropImageUrl ||
-              primaryProd?.cropBase64
-            )
-          : (
-              primaryProd?.cropImageUrl ||
-              primaryProd?.cropBase64 ||
-              bestPrimaryView.reference?.publicUrl ||
-              bestPrimaryView.reference?.objectKey ||
-              primaryProd?.referenceImages?.[0]?.publicUrl ||
-              primaryProd?.referenceImages?.[0]?.objectKey ||
-              (primaryProd as any)?.uploadedImageUrl
-            )) ||
-        (primaryProd as any)?.referenceImage ||
-        products[0]?.cropImageUrl ||
-        products[0]?.cropBase64 ||
-        products[0]?.referenceImages?.[0]?.publicUrl ||
-        (products[0] as any)?.referenceImage;
-
-      // 搭配品精准过滤：
-      // 1. A04 / A05 / A06 (主沙发特写/侧剖)：严格剔除所有搭配品，只保留独立单品资产，确保 100% 聚焦！
-      // 2. A08 (单椅功能特写)：若录入了带切片图的单椅，聚焦单椅；若单椅未切片，保留主沙发母本以自愈派生
-      // 3. A03 (3人位主沙发组合焦点景)：只保留主沙发与中岛茶几，严格剔除侧边单椅！
-      // 4. A09 (餐桌展示景)：若上传了餐桌，严格剔除主沙发，防止双家具冲突！
-      const filteredEnsemble = activeEnsemble.filter((p) => {
-        if (['A04', 'A05', 'A06'].includes(targetShotCode)) {
-          return p.id === primaryProd.id;
-        }
-        if (targetShotCode === 'A08') {
-          const hasReclinerImage = Boolean(
-            reclinerChair?.cropImageUrl ||
-            reclinerChair?.cropBase64 ||
-            reclinerChair?.referenceImages?.[0]?.publicUrl ||
-            (reclinerChair as any)?.uploadedImageUrl ||
-            (reclinerChair as any)?.referenceImage
-          );
-          if (hasReclinerImage && reclinerChair) {
-            return p.id === reclinerChair.id;
-          }
-          return true;
-        }
-        if (targetShotCode === 'A03') {
-          return p.id === primaryProd.id || p.role === 'coffee_table';
-        }
-        if (targetShotCode === 'A09' && diningTableProd) {
-          return p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat';
-        }
-        return true;
-      });
+      setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: payload.promptSnapshot } : null));
 
       // 调用后端 4 候选方案生成接口 (严格继承 A00 空间与家具世界，单变量改变 Camera DNA)
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         signal: controller.signal,
-        body: JSON.stringify({
-          projectId: 'manwah-noble-space-01',
-          shotId: targetShot.id,
-          shotCode: targetShot.templateCode,
-          revisionNumber: (targetShot.revisions.length || 0) + 1,
-          candidateCount: (customSettings as any)?.candidateCount || (computeConfig as any).candidateCount || 1,
-          resolution: activeSettings.resolution,
-          autoModelFallback: activeSettings.autoModelFallback,
-          renderMode: activeSettings.renderMode,
-          roomName: selectedSpace.name.split(' (')[0],
-          spaceCode: selectedSpace.code,
-          styleName: selectedStyle.name.split(' (')[0],
-          styleCode: selectedStyle.code,
-          spacePreset: {
-            id: selectedSpace.id,
-            code: selectedSpace.code,
-            name: selectedSpace.name,
-            ceilingHeight: selectedSpace.ceilingHeight,
-            signatureFeatures: selectedSpace.signatureFeatures,
-            promptFragments: selectedSpace.promptFragments
-          },
-          stylePreset: {
-            id: selectedStyle.id,
-            code: selectedStyle.code,
-            name: selectedStyle.name,
-            colorPalette: selectedStyle.colorPalette,
-            materialSystem: selectedStyle.materialSystem,
-            promptFragments: selectedStyle.promptFragments
-          },
-          camera: compiled.cameraSpec,
-          intent: targetShot.intent,
-          productDNA: {
-            modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.name || (primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa'),
-            leatherType: primaryProd?.materials?.[0] || '真皮',
-            colorCode: primaryProd?.colors?.[0] || '标准色',
-            referenceImage: primaryRef,
-            isSceneEnsembleSuite: (primaryProd as any)?.isSceneEnsembleSuite,
-            sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
-          },
-          ...(() => {
-            if (
-              targetShotCode === 'A00' ||
-              (targetShot.decoupleOldMaster && activeSettings.renderMode !== 'studio_swap')
-            ) {
-              return { sceneMasterReference: undefined, referenceShotCode: undefined };
-            }
-            const a00Shot = shots.find((s) => s.templateCode === 'A00');
-            const a00Rev =
-              a00Shot?.revisions.find((r) => r.id === a00Shot.currentRevisionId) ||
-              (a00Shot?.revisions && a00Shot.revisions[0]);
-            const hasA00RevImage = Boolean(a00Rev?.imageUrl || a00Rev?.objectKey);
-            const a00MasterRef = hasA00RevImage && a00Rev
-              ? { objectKey: a00Rev.objectKey, imageUrl: a00Rev.imageUrl }
-              : effectiveSceneMaster && (effectiveSceneMaster.imageUrl || effectiveSceneMaster.objectKey)
-              ? { objectKey: effectiveSceneMaster.objectKey, imageUrl: effectiveSceneMaster.imageUrl }
-              : undefined;
-
-            const a01Shot = shots.find((s) => s.templateCode === 'A01');
-            const a01Rev =
-              a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) ||
-              (a01Shot?.revisions && a01Shot.revisions[0]);
-            const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
-
-            // 在极简影棚换景 (studio_swap) 模式下，或当 A00 母版比 A01 更新时，优先以 A00 当前选定的空间母版作为全场唯一权威背景基准，
-            // 确保 A01~A09 所有镜头的背景硬装与窗景 100% 统一锚定至母版 A00！
-            const isA00NewerThanA01 = Boolean(
-              a00Rev?.createdAt && a01Rev?.createdAt && a00Rev.createdAt >= a01Rev.createdAt
-            );
-            const preferA00Master =
-              activeSettings.renderMode === 'studio_swap' || targetShotCode === 'A01' || isA00NewerThanA01;
-
-            if (preferA00Master && a00MasterRef) {
-              return {
-                sceneMasterReference: a00MasterRef,
-                referenceShotCode: 'A00'
-              };
-            }
-
-            // 当 A01 空间主大场景已生成且未解耦时，作为现场基准
-            if (targetShotCode !== 'A01' && hasA01Image && a01Rev) {
-              return {
-                sceneMasterReference: {
-                  objectKey: a01Rev.objectKey,
-                  imageUrl: a01Rev.imageUrl
-                },
-                referenceShotCode: 'A01'
-              };
-            }
-
-            return {
-              sceneMasterReference: a00MasterRef,
-              referenceShotCode: 'A00'
-            };
-          })(),
-          productReferenceImage: primaryRef,
-          ensembleProducts: filteredEnsemble.map((p) => {
-            const bestView = ShootCompiler.selectBestProductReferenceForShot(p, targetShot.templateCode);
-            const refImg =
-              p.cropImageUrl ||
-              p.cropBase64 ||
-              bestView.reference?.publicUrl ||
-              bestView.reference?.objectKey ||
-              p.referenceImages?.[0]?.publicUrl ||
-              p.referenceImages?.[0]?.objectKey ||
-              (p as any)?.uploadedImageUrl ||
-              (p as any)?.referenceImage;
-
-            return {
-              id: p.id,
-              sku: p.sku,
-              role: p.role,
-              priority: p.priority,
-              name: p.name,
-              color: p.colors?.[0] || '标准色',
-              colors: p.colors || [],
-              material: p.materials?.[0] || '真皮',
-              materials: p.materials || [],
-              referenceImage: refImg,
-              views: {
-                front: p.referenceImages?.find(r => r.type === 'front')?.publicUrl || p.referenceImages?.find(r => r.type === 'front')?.objectKey,
-                '45_deg': p.referenceImages?.find(r => r.type === '45_deg')?.publicUrl || p.referenceImages?.find(r => r.type === '45_deg')?.objectKey,
-                side: p.referenceImages?.find(r => r.type === 'side')?.publicUrl || p.referenceImages?.find(r => r.type === 'side')?.objectKey,
-                function_open: p.referenceImages?.find(r => r.type === 'function_open')?.publicUrl || p.referenceImages?.find(r => r.type === 'function_open')?.objectKey,
-                detail: p.referenceImages?.find(r => r.type === 'detail')?.publicUrl || p.referenceImages?.find(r => r.type === 'detail')?.objectKey,
-              },
-              matchedViewType: bestView.viewType,
-              sourceMasterImageUrl: p.sourceMasterImageUrl,
-              sourceBoundingBox: p.sourceBoundingBox,
-              cropImageUrl: p.cropImageUrl,
-              dimensions: p.dimensions,
-              functionCapable: p.functionCapable
-            };
-          }),
-          generationSettings: activeSettings,
-          promptSnapshot: compiled
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await parseJsonResponse<any>(res);
@@ -2619,6 +2273,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       } else {
         const errorMessage = err instanceof Error ? err.message : 'PROVIDER UNAVAILABLE / FAILED';
         console.error('Failed to render shot:', err);
+        if (errorMessage.startsWith(STUDIO_SWAP_ANGLE_GUARD_PREFIX)) {
+          setToastMessage(errorMessage);
+        }
         setCurrentJob((j) =>
           j
             ? {
@@ -3022,7 +2679,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'compiling',
       progress: 15,
-      provider: activeSettings.model || 'gemini-nano-banana-2.1-preview',
+      provider: activeSettings.model || 'gemini-3-pro-image-preview',
       settings: activeSettings,
       createdAt: new Date().toISOString()
     };
@@ -3042,109 +2699,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         allModels
       );
 
-      const activeEnsemble = products.filter(
-        (p) => p.priority === 'primary' || p.isEnsembleIncluded !== false
-      );
-
-      const baseCompiled = ShootCompiler.compileShotPrompt({
-        shot: targetShot,
-        sceneMaster: sceneMaster || {
-          id: 'temp-master',
-          projectId: 'manwah-noble-space-01',
-          objectKey: '',
-          isLocked: true,
-          lockedAt: new Date().toISOString(),
-          locks: {
-            productIdentity: true,
-            placement: true,
-            architecture: true,
-            style: true,
-            material: true,
-            lighting: true,
-            camera: true,
-            human: false
-          },
-          promptSnapshotId: 'rev-01'
-        },
-        products: activeEnsemble,
-        spacePreset: selectedSpace,
-        stylePreset: selectedStyle,
-        blueprint,
-        aspectRatio: (targetShot.aspectRatio || computeConfig.aspectRatio || '4:3') as ImageAspectRatio
-      });
-
-      setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40 } : null));
-
-      const targetShotCode = targetShot.templateCode;
-      const isHeroSofaDedicatedShot = ['A03', 'A04', 'A05', 'A06'].includes(targetShotCode);
-      const isReclinerDedicatedShot = ['A08'].includes(targetShotCode);
-      const isDiningDedicatedShot = ['A09'].includes(targetShotCode);
-
-      const hero3SeatSofa = activeEnsemble.find(
-        (p) => p.role === 'sofa_3seat' || p.role === 'sofa_2seat' || /(三人|3人|主沙发|直排)/.test(p.name || '')
-      );
-      const reclinerChair = activeEnsemble.find(
-        (p) => p.role === 'recliner_1seat' || p.role === 'lounge_chair' || /(单人|单椅|头等舱|单机位|大师|休闲椅|扶手椅)/.test(p.name || '')
-      ) || activeEnsemble.find((p) => p.priority === 'secondary' || (p.role !== 'sofa_3seat' && p.role !== 'sofa_2seat' && p.role !== 'coffee_table' && p.role !== 'dining_table'));
-      const diningTableProd = activeEnsemble.find(
-        (p) => p.role === 'dining_table' || p.role === 'dining_chair' || /(餐桌|餐椅|餐边柜|餐台|餐车|餐厅)/.test(p.name || '')
-      );
-
-      // 支持当前镜头单独绑定指定产品素材或专属上传素材 (如用户单独为本镜头上传的 45°/特写素材)
-      const boundProd = targetShot.boundProductId
-        ? products.find((p) => p.id === targetShot.boundProductId)
-        : null;
-
-      const primaryProd = boundProd
-        || ((isHeroSofaDedicatedShot && hero3SeatSofa)
-          ? hero3SeatSofa
-          : (isReclinerDedicatedShot && reclinerChair)
-          ? reclinerChair
-          : (isDiningDedicatedShot && diningTableProd)
-          ? diningTableProd
-          : (activeEnsemble.find((p) => p.priority === 'primary') || activeEnsemble[0] || products[0]));
-
-      const shotCustomRef = targetShot.customReferenceImage;
-      const bestPrimaryView = ShootCompiler.selectBestProductReferenceForShot(primaryProd, targetShot.templateCode);
-      const hasSpecificAngleView = bestPrimaryView.viewType !== 'front' && Boolean(bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey);
-      const isStudioSwapFullPhotoPreferred = computeConfig.renderMode === 'studio_swap';
-      const primaryRef =
-        shotCustomRef ||
-        (hasSpecificAngleView ? (bestPrimaryView.reference?.publicUrl || bestPrimaryView.reference?.objectKey) : null) ||
-        (isStudioSwapFullPhotoPreferred
-          ? (
-              bestPrimaryView.reference?.publicUrl ||
-              bestPrimaryView.reference?.objectKey ||
-              primaryProd?.sourceMasterImageUrl ||
-              primaryProd?.referenceImages?.[0]?.publicUrl ||
-              primaryProd?.referenceImages?.[0]?.objectKey ||
-              (primaryProd as any)?.uploadedImageUrl ||
-              primaryProd?.cropImageUrl ||
-              primaryProd?.cropBase64
-            )
-          : (
-              primaryProd?.cropImageUrl ||
-              primaryProd?.cropBase64 ||
-              bestPrimaryView.reference?.publicUrl ||
-              bestPrimaryView.reference?.objectKey ||
-              primaryProd?.referenceImages?.[0]?.publicUrl ||
-              primaryProd?.referenceImages?.[0]?.objectKey ||
-              (primaryProd as any)?.uploadedImageUrl
-            )) ||
-        (primaryProd as any)?.referenceImage ||
-        products[0]?.cropImageUrl ||
-        products[0]?.cropBase64 ||
-        products[0]?.referenceImages?.[0]?.publicUrl ||
-        (products[0] as any)?.referenceImage;
-
-      // 获取当前机位的底图基准（若未生成母版，自动使用当前风格或户型资产作为高可靠视觉基准）
-      const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || targetShot.revisions[0];
-      const isBaseUploaded = Boolean(
-        currentRev?.provenance === 'PROVIDED' ||
-        currentRev?.label?.includes('实拍') ||
-        (currentRev as any)?.isUserUploaded ||
-        (targetShot as any)?.isUserUploadedPhoto
-      );
+      const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || (targetShot.revisions && targetShot.revisions[0]);
 
       const baseShotImage = currentRev?.imageUrl || 
         (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) || 
@@ -3153,149 +2708,40 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         activeAssets.style?.coverImage ||
         'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
 
-      const activeSettings = {
-        model: computeConfig.model,
-        resolution: computeConfig.resolution,
-        aspectRatio: (targetShot.aspectRatio || aspectRatio || '4:3') as ImageAspectRatio,
-        seed: computeConfig.seed
-      };
+      const isBaseUploaded = Boolean(
+        (targetShot as any)?.isCustomUploadedShot ||
+        (currentRev as any)?.isUserUploaded ||
+        (targetShot as any)?.isUserUploadedPhoto
+      );
 
-      const hasBaseBaseline = Boolean(baseShotImage);
+      const payload = buildRenderCandidatesPayload({
+        projectId,
+        targetShot,
+        candidateCount: 1,
+        activeSettings,
+        selectedSpace,
+        selectedStyle,
+        products,
+        shots,
+        sceneMaster,
+        blueprint,
+        computeConfig,
+        isHumanPass: true,
+        baseShotImage,
+        isBaseUploaded,
+        activeTargetHumanLayout,
+        allModels,
+        compiledHuman
+      });
 
+      setCurrentJob((j) => (j ? { ...j, status: 'generating', progress: 40, promptSnapshot: payload.promptSnapshot } : null));
+
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/space/shoot/render-candidates', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         signal: controller.signal,
-        body: JSON.stringify({
-          projectId: 'manwah-noble-space-01',
-          shotId: targetShot.id,
-          shotCode: targetShot.templateCode,
-          revisionNumber: (targetShot.revisions.length || 0) + 1,
-          candidateCount: 1,
-          isHumanPass: true,
-          preserveBasePhotoOnly: hasBaseBaseline,
-          roomName: isBaseUploaded ? '实拍原图环境' : selectedSpace.name.split(' (')[0],
-          spaceCode: isBaseUploaded ? 'custom_photo' : selectedSpace.code,
-          styleName: isBaseUploaded ? '实拍原画质感' : selectedStyle.name.split(' (')[0],
-          styleCode: isBaseUploaded ? 'custom_photo' : selectedStyle.code,
-          spacePreset: isBaseUploaded ? undefined : {
-            id: selectedSpace.id,
-            code: selectedSpace.code,
-            name: selectedSpace.name,
-            ceilingHeight: selectedSpace.ceilingHeight,
-            signatureFeatures: selectedSpace.signatureFeatures,
-            promptFragments: selectedSpace.promptFragments
-          },
-          stylePreset: isBaseUploaded ? undefined : {
-            id: selectedStyle.id,
-            code: selectedStyle.code,
-            name: selectedStyle.name,
-            colorPalette: selectedStyle.colorPalette,
-            materialSystem: selectedStyle.materialSystem,
-            promptFragments: selectedStyle.promptFragments
-          },
-          baseShotReferenceImage: baseShotImage,
-          currentShotReferenceImage: baseShotImage,
-          humanLayout: activeTargetHumanLayout,
-          selectedModels: (() => {
-            const assignedIds = activeTargetHumanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
-            const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
-            return matched.length > 0 ? matched : allModels.slice(0, activeTargetHumanLayout.characterCount);
-          })(),
-          characterReferenceImages: (() => {
-            const assignedIds = activeTargetHumanLayout.slots.map(s => s.modelId).filter(Boolean) as string[];
-            const matched = assignedIds.map(id => allModels.find(m => m.id === id)).filter(Boolean) as ModelAsset[];
-            const targetList = matched.length > 0 ? matched : allModels.slice(0, activeTargetHumanLayout.characterCount);
-            return targetList
-              .map((m) => ({
-                modelId: m.id,
-                name: m.nameZh || m.name,
-                imageUrl: m.views?.portrait || m.views?.front || m.thumbnail || m.coverImage,
-                role: 'person_reference'
-              }))
-              .filter((c) => Boolean(c.imageUrl));
-          })(),
-          camera: targetShot.camera,
-          intent: targetShot.intent,
-          productDNA: {
-            modelNumber: primaryProd?.sku || primaryProd?.id,
-            name: primaryProd?.name || (primaryProd?.role === 'recliner_1seat' ? 'ergonomic power motion recliner chair' : 'luxury power motion genuine leather sofa'),
-            leatherType: primaryProd?.materials?.[0] || '真皮',
-            colorCode: primaryProd?.colors?.[0] || '标准色',
-            referenceImage: primaryRef,
-            isSceneEnsembleSuite: (primaryProd as any)?.isSceneEnsembleSuite,
-            sceneEnsembleDossier: (primaryProd as any)?.sceneEnsembleDossier
-          },
-          ...(() => {
-            if (
-              targetShot.templateCode === 'A00' ||
-              isBaseUploaded ||
-              (targetShot.decoupleOldMaster && computeConfig.renderMode !== 'studio_swap')
-            ) {
-              return { sceneMasterReference: undefined, referenceShotCode: undefined };
-            }
-            const a00Shot = shots.find((s) => s.templateCode === 'A00');
-            const a00Rev = a00Shot?.revisions.find((r) => r.id === a00Shot.currentRevisionId) || (a00Shot?.revisions && a00Shot.revisions[0]);
-            const a00MasterRef = (a00Rev?.imageUrl || a00Rev?.objectKey)
-              ? { objectKey: a00Rev.objectKey, imageUrl: a00Rev.imageUrl }
-              : sceneMaster
-                ? { objectKey: sceneMaster.objectKey, imageUrl: sceneMaster.imageUrl }
-                : undefined;
-
-            const a01Shot = shots.find((s) => s.templateCode === 'A01');
-            const a01Rev = a01Shot?.revisions.find((r) => r.id === a01Shot.currentRevisionId) || (a01Shot?.revisions && a01Shot.revisions[0]);
-            const hasA01Image = Boolean(a01Rev?.imageUrl || a01Rev?.objectKey);
-
-            // 极简影棚换景模式下，或者当 A00 母版比 A01 更新时，优先直接锚定 A00 空间母版
-            const isStudioSwapMode = computeConfig.renderMode === 'studio_swap';
-            const a00Time = a00Rev?.createdAt ? new Date(a00Rev.createdAt).getTime() : 0;
-            const a01Time = a01Rev?.createdAt ? new Date(a01Rev.createdAt).getTime() : 0;
-            const preferA00OverA01 = isStudioSwapMode || (Boolean(a00MasterRef) && a00Time > a01Time);
-
-            // 批量衍生时，除 A00/A01 以外的所有衍生镜头 (A02, A03 等) 优先继承 A01 成果图（非极简换景且 A01 为最新时）
-            if (!preferA00OverA01 && targetShot.templateCode !== 'A01' && hasA01Image && a01Rev) {
-              return {
-                sceneMasterReference: {
-                  objectKey: a01Rev.objectKey,
-                  imageUrl: a01Rev.imageUrl
-                },
-                referenceShotCode: 'A01'
-              };
-            }
-
-            return {
-              sceneMasterReference: a00MasterRef,
-              referenceShotCode: 'A00'
-            };
-          })(),
-          productReferenceImage: primaryRef,
-          ensembleProducts: isBaseUploaded ? [] : activeEnsemble.map((p) => ({
-            id: p.id,
-            sku: p.sku,
-            role: p.role,
-            priority: p.priority,
-            name: p.name,
-            color: p.colors?.[0] || '标准色',
-            colors: p.colors || [],
-            material: p.materials?.[0] || '真皮',
-            materials: p.materials || [],
-            referenceImage: p.referenceImages?.[0]?.publicUrl || p.referenceImages?.[0]?.objectKey || (p as any)?.uploadedImageUrl,
-            dimensions: p.dimensions,
-            functionCapable: p.functionCapable
-          })),
-          generationSettings: activeSettings,
-          promptSnapshot: {
-            ...baseCompiled,
-            positivePrompt: hasBaseBaseline
-              ? `${compiledHuman.positivePrompt}, zero camera drift inpainting, strictly 100% preserve and freeze Reference Image 1 camera field of view, focal length, distance, optical horizon, and all surrounding furniture (including side chairs, coffee tables, and wall decor) completely untouched and uncropped, photorealistically seat real human model(s) into the sofa with realistic body weight and contact shadows`
-              : `${compiledHuman.positivePrompt}, ${baseCompiled.positivePrompt}`,
-            negativePrompt: hasBaseBaseline
-              ? `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions, altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style, zooming in, zoom in, cropped sofa, cropping furniture, displaced sofa, extra furniture, missing furniture`
-              : `${compiledHuman.negativePrompt}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
-            isHumanPass: true,
-            preserveBasePhotoOnly: hasBaseBaseline
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await parseJsonResponse<any>(res);
@@ -3458,7 +2904,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'generating',
       progress: 30,
-      provider: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+      provider: computeConfig.model || 'gemini-3-pro-image-preview',
       settings: {
         model: computeConfig.model,
         resolution: computeConfig.resolution,
@@ -3470,9 +2916,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setCurrentJob(initialJob);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/space/shoot/outpaint', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         signal: controller.signal,
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
@@ -3486,7 +2933,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           promptSupplement: params.promptSupplement,
           roomName: selectedSpace.name.split(' (')[0],
           styleName: selectedStyle.name.split(' (')[0],
-          preferredModel: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+          preferredModel: computeConfig.model || 'gemini-3-pro-image-preview',
           aspectRatio: params.targetAspectRatio,
           resolution: computeConfig.resolution || '2K',
           originalScenePrompt: currentPositivePrompt,
@@ -3640,7 +3087,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       targetCode: targetShot.templateCode,
       status: 'generating',
       progress: 30,
-      provider: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+      provider: computeConfig.model || 'gemini-3-pro-image-preview',
       settings: {
         model: computeConfig.model,
         resolution: computeConfig.resolution,
@@ -3652,9 +3099,10 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setCurrentJob(initialJob);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/space/shoot/inpaint-edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         signal: controller.signal,
         body: JSON.stringify({
           projectId: 'manwah-noble-space-01',
@@ -3670,7 +3118,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           editMode: payload.editMode,
           roomName: selectedSpace.name.split(' (')[0],
           styleName: selectedStyle.name.split(' (')[0],
-          preferredModel: computeConfig.model || 'gemini-nano-banana-2.1-preview',
+          preferredModel: computeConfig.model || 'gemini-3-pro-image-preview',
           aspectRatio: computeConfig.aspectRatio || '4:3',
           resolution: computeConfig.resolution || '2K',
           productName: primaryProductForCanvas?.name
@@ -4241,6 +3689,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           resolution={computeConfig.resolution || '2K'}
           onChangeResolution={(res) => handleUpdateComputeConfig({ resolution: res })}
           renderMode={computeConfig.renderMode}
+          emptyPlate={
+            activeShot.templateCode === 'A00' && computeConfig.renderMode === 'studio_swap' && a00PlateSourceRev
+              ? emptyPlateJobs[a00PlateSourceRev.id] || { status: a00HasPlateForSource ? 'ready' : 'idle' }
+              : undefined
+          }
+          onGenerateEmptyPlate={() => handleGenerateEmptyPlate()}
+          sceneReferenceRevisionId={activeShot.templateCode === 'A00' ? activeShot.sceneReferenceRevisionId : undefined}
+          onSetSceneReference={activeShot.templateCode === 'A00' ? handleSetSceneReference : undefined}
           isGenerating={isGeneratingCurrentShot || (isRenderingHuman && renderingShotIds.includes(activeShot.id)) || isOutpainting || isInpainting}
           onCancelRendering={() => handleCancelRendering(activeShot.id)}
           renderingShotCode={renderingShotCode}
@@ -4290,7 +3746,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
             // 2. 校验镜头当前活跃的通用候选批次
             const rawBatch = candidateBatches[activeShot.id];
-            if (!rawBatch || !currentRev) return null;
+            // 空场景版本不属于任何候选批次，必须直接展示空场景大图
+            if (!rawBatch || !currentRev || currentRev.isEmptyPlate) return null;
 
             const isRawBatchHuman = Boolean(
               rawBatch.candidates?.some((c) =>
@@ -4473,7 +3930,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
               reader.readAsDataURL(file);
             });
             if (dataUrl) {
-              setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: dataUrl } : s));
+              setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: dataUrl, isUserUploadedPhoto: true } : s));
+              handleUpdateComputeConfig({ renderMode: 'studio_swap' });
             }
           }}
           onRemoveCustomShotRef={(shotId) => {

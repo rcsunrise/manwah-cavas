@@ -426,6 +426,8 @@ export const IMAGE_ASPECT_SPECS: Record<string, ImageSizeSpec> = {
 
 // 5.6 COMPUTE & RENDER ENGINE CONFIGURATION
 export type ComputeModelTier =
+  | 'gemini-3-pro-image-preview'
+  | 'gemini-3.1-flash-image-preview'
   | 'gemini-2.5-flash'
   | 'gemini-3.1-flash-image'
   | 'google/gemini-3-pro-image'
@@ -525,6 +527,7 @@ export interface RenderComputeConfig {
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean; // 多模型故障自动轮换开关 (开启时主模型失败自动轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2)
   renderMode?: 'orchestration' | 'studio_swap'; // 生产模式：'orchestration' (全案机位编排，默认) | 'studio_swap' (极简影棚背景置换/直通图生图)
+  studioSwapRefinePass?: boolean; // 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图 ➔ Nano Banana 2.1 精修清晰度
 }
 
 export type UIThemeMode = 'dark' | 'light';
@@ -631,6 +634,8 @@ export interface ShotRevision {
   provenance: ProvenanceLevel;
   productionTruth: boolean;
   createdAt: string;
+  /** A00 母版清除家具后生成的空场景版本（只有硬装的空房间） */
+  isEmptyPlate?: boolean;
 }
 
 export interface ShotInstance {
@@ -647,7 +652,9 @@ export interface ShotInstance {
   error?: string; // 记录最近一次生成失败的显式异常原因（网络超时/上游接口异常等）
   boundProductId?: string; // 用户为当前镜头指定的专属主品资产ID (支持切换素材)
   customReferenceImage?: string; // 用户为当前镜头单独上传的专属参考底图 (如专属45度特写图)
+  isUserUploadedPhoto?: boolean; // 标记当前镜头是否为用户自定义实拍上传图
   decoupleOldMaster?: boolean; // 是否解除旧A00/A01母版绑定，以全新素材为准重绘
+  sceneReferenceRevisionId?: string; // 仅 A00：用户指定作为后续镜头空间参考的版本（如清除家具后的空场景）
 }
 
 // 8. HUMAN MODEL & PASS (HUMAN)
@@ -751,6 +758,7 @@ export interface GenerationSettings {
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
   renderMode?: 'orchestration' | 'studio_swap';
+  studioSwapRefinePass?: boolean;
 }
 
 export interface GenerationJob {

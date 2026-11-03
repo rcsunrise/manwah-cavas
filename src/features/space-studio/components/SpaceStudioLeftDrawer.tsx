@@ -551,8 +551,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                     }`}
                     title="录入产品资产与多模态读数 (支持本地上传、拖拽或直接按 Ctrl+V 粘贴截图)"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>录入产品图</span>
+                    <Upload className="w-3.5 h-3.5 shrink-0" />
+                    <span className="whitespace-nowrap">录入产品</span>
                   </button>
 
                   {onSyncFromCanvas && (
@@ -566,8 +566,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                       }`}
                       title="从视觉企划创意画布一键导入解析出的产品真值"
                     >
-                      <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
-                      <span>同步画布产品</span>
+                      <RefreshCw className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="whitespace-nowrap">同步画布</span>
                     </button>
                   )}
                 </div>
@@ -980,7 +980,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                             <div className="flex items-start justify-between gap-1">
                               <span className={`shrink-0 ${isLight ? 'text-stone-400' : 'text-stone-500'}`}>原厂色彩:</span>
                               <span className={`text-right font-medium truncate ${isLight ? 'text-stone-800' : 'text-stone-200'}`}>
-                                {primaryProduct.colors?.join(' / ') || '极地米白 / 云雾暖灰'}
+                                {primaryProduct.colors?.join(' / ') || '以实拍原图为准'}
                               </span>
                             </div>
                             {primaryProduct.surfaceTexture && (

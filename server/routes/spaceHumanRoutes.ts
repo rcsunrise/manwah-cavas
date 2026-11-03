@@ -231,7 +231,7 @@ router.post('/generate-human-revision', async (req: Request, res: Response) => {
 
     // 5. 真实生成带模特的人体工学空间画面 (底图严格锚定当前机位原图，保证家具空间零漂移)
     const effectiveProductName = primaryProduct?.name || '敏华芝华仕头等舱功能真皮沙发';
-    const effectiveProductColor = primaryProduct?.colors?.[0] || '干邑暖橙 (Cognac Amber)';
+    const effectiveProductColor = primaryProduct?.colors?.[0] || '与产品参考图一致的实拍原色';
     const effectiveProductMaterial = primaryProduct?.materials?.[0] || '南美进口头层牛皮 (半苯胺)';
     const effectiveCurrentShotRef = baseShotReference?.imageUrl || baseShotReference?.objectKey;
 

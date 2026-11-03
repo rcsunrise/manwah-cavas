@@ -73,9 +73,9 @@ loadEnvFiles();
 var import_express22 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_multer3 = __toESM(require("multer"), 1);
-var import_path24 = __toESM(require("path"), 1);
+var import_path25 = __toESM(require("path"), 1);
 var import_sharp11 = __toESM(require("sharp"), 1);
-var import_fs27 = __toESM(require("fs"), 1);
+var import_fs28 = __toESM(require("fs"), 1);
 var import_os = __toESM(require("os"), 1);
 
 // src/lib/supabase.ts
@@ -308,7 +308,7 @@ function createMockSupabaseClient() {
   const mockStorageMap = /* @__PURE__ */ new Map();
   const mockStorage = {
     from: (bucket) => ({
-      upload: async (path25, fileData, options) => {
+      upload: async (path26, fileData, options) => {
         let buf;
         if (Buffer.isBuffer(fileData)) {
           buf = fileData;
@@ -319,21 +319,21 @@ function createMockSupabaseClient() {
         } else {
           buf = Buffer.from(String(fileData));
         }
-        mockStorageMap.set(`${bucket}:${path25}`, {
+        mockStorageMap.set(`${bucket}:${path26}`, {
           buffer: buf,
           contentType: options?.contentType || "image/png"
         });
-        return { data: { path: path25 || `obj_${Date.now()}.png` }, error: null };
+        return { data: { path: path26 || `obj_${Date.now()}.png` }, error: null };
       },
-      getPublicUrl: (path25) => ({
-        data: { publicUrl: `/api/canvases/assets/${path25}` }
+      getPublicUrl: (path26) => ({
+        data: { publicUrl: `/api/canvases/assets/${path26}` }
       }),
-      createSignedUrl: async (path25, _expiresIn) => ({
-        data: { signedUrl: `/api/canvases/assets/${path25}` },
+      createSignedUrl: async (path26, _expiresIn) => ({
+        data: { signedUrl: `/api/canvases/assets/${path26}` },
         error: null
       }),
-      download: async (path25) => {
-        const item = mockStorageMap.get(`${bucket}:${path25}`);
+      download: async (path26) => {
+        const item = mockStorageMap.get(`${bucket}:${path26}`);
         if (item) {
           return { data: new Blob([item.buffer], { type: item.contentType }), error: null };
         }
@@ -764,23 +764,23 @@ function createLazyAuth() {
 function createLazyStorage() {
   return {
     from: (bucket) => ({
-      upload: async (path25, fileData, options) => {
+      upload: async (path26, fileData, options) => {
         const client = await initRuntimeSupabase();
-        return client.storage.from(bucket).upload(path25, fileData, options);
+        return client.storage.from(bucket).upload(path26, fileData, options);
       },
-      getPublicUrl: (path25) => {
+      getPublicUrl: (path26) => {
         if (activeClient && activeClient.storage) {
-          return activeClient.storage.from(bucket).getPublicUrl(path25);
+          return activeClient.storage.from(bucket).getPublicUrl(path26);
         }
-        return { data: { publicUrl: `/api/canvases/assets/${path25}` } };
+        return { data: { publicUrl: `/api/canvases/assets/${path26}` } };
       },
-      createSignedUrl: async (path25, expiresIn) => {
+      createSignedUrl: async (path26, expiresIn) => {
         const client = await initRuntimeSupabase();
-        return client.storage.from(bucket).createSignedUrl(path25, expiresIn);
+        return client.storage.from(bucket).createSignedUrl(path26, expiresIn);
       },
-      download: async (path25) => {
+      download: async (path26) => {
         const client = await initRuntimeSupabase();
-        return client.storage.from(bucket).download(path25);
+        return client.storage.from(bucket).download(path26);
       }
     }),
     listBuckets: async () => {
@@ -1660,60 +1660,60 @@ function sanitizeManifest(manifest) {
   assertManifestSize(purified);
   return purified;
 }
-function assertNoBase64(obj, path25 = "manifest") {
+function assertNoBase64(obj, path26 = "manifest") {
   if (!obj) return;
   if (typeof obj === "string") {
     if (obj.startsWith("data:image/")) {
-      throw new Error(`[ManifestPurification] Base64 image detected at ${path25}`);
+      throw new Error(`[ManifestPurification] Base64 image detected at ${path26}`);
     }
     if (obj.length > 500 && /^[A-Za-z0-9+/=]+$/.test(obj)) {
-      throw new Error(`[ManifestPurification] Raw Base64 string payload detected at ${path25}`);
+      throw new Error(`[ManifestPurification] Raw Base64 string payload detected at ${path26}`);
     }
     return;
   }
   if (Array.isArray(obj)) {
-    obj.forEach((item, idx) => assertNoBase64(item, `${path25}[${idx}]`));
+    obj.forEach((item, idx) => assertNoBase64(item, `${path26}[${idx}]`));
     return;
   }
   if (typeof obj === "object") {
     for (const [k, v] of Object.entries(obj)) {
-      assertNoBase64(v, `${path25}.${k}`);
+      assertNoBase64(v, `${path26}.${k}`);
     }
   }
 }
-function assertNoBlobUrl(obj, path25 = "manifest") {
+function assertNoBlobUrl(obj, path26 = "manifest") {
   if (!obj) return;
   if (typeof obj === "string") {
     if (obj.startsWith("blob:")) {
-      throw new Error(`[ManifestPurification] Blob URL detected at ${path25}: ${obj}`);
+      throw new Error(`[ManifestPurification] Blob URL detected at ${path26}: ${obj}`);
     }
     return;
   }
   if (Array.isArray(obj)) {
-    obj.forEach((item, idx) => assertNoBlobUrl(item, `${path25}[${idx}]`));
+    obj.forEach((item, idx) => assertNoBlobUrl(item, `${path26}[${idx}]`));
     return;
   }
   if (typeof obj === "object") {
     for (const [k, v] of Object.entries(obj)) {
-      assertNoBlobUrl(v, `${path25}.${k}`);
+      assertNoBlobUrl(v, `${path26}.${k}`);
     }
   }
 }
-function assertNoSignedUrl(obj, path25 = "manifest") {
+function assertNoSignedUrl(obj, path26 = "manifest") {
   if (!obj) return;
   if (typeof obj === "string") {
     if (obj.includes("/storage/v1/object/sign/") || obj.includes("X-Amz-Signature=") || obj.includes("token=") && obj.includes("supabase.co")) {
-      throw new Error(`[ManifestPurification] Short-lived signed URL detected at ${path25}: ${obj.slice(0, 50)}...`);
+      throw new Error(`[ManifestPurification] Short-lived signed URL detected at ${path26}: ${obj.slice(0, 50)}...`);
     }
     return;
   }
   if (Array.isArray(obj)) {
-    obj.forEach((item, idx) => assertNoSignedUrl(item, `${path25}[${idx}]`));
+    obj.forEach((item, idx) => assertNoSignedUrl(item, `${path26}[${idx}]`));
     return;
   }
   if (typeof obj === "object") {
     for (const [k, v] of Object.entries(obj)) {
-      assertNoSignedUrl(v, `${path25}.${k}`);
+      assertNoSignedUrl(v, `${path26}.${k}`);
     }
   }
 }
@@ -3760,13 +3760,13 @@ function buildResponsesEndpoint(baseUrl) {
   }
   url.search = "";
   url.hash = "";
-  const path25 = url.pathname.replace(/\/+$/, "");
-  if (/\/responses$/i.test(path25)) {
-    url.pathname = path25;
-  } else if (/\/v1(?:beta|alpha)?$/i.test(path25)) {
-    url.pathname = path25.replace(/\/v1(?:beta|alpha)?$/i, "/v1/responses");
+  const path26 = url.pathname.replace(/\/+$/, "");
+  if (/\/responses$/i.test(path26)) {
+    url.pathname = path26;
+  } else if (/\/v1(?:beta|alpha)?$/i.test(path26)) {
+    url.pathname = path26.replace(/\/v1(?:beta|alpha)?$/i, "/v1/responses");
   } else {
-    url.pathname = `${path25}/v1/responses`.replace(/\/{2,}/g, "/");
+    url.pathname = `${path26}/v1/responses`.replace(/\/{2,}/g, "/");
   }
   return url.toString();
 }
@@ -15842,7 +15842,7 @@ var posterRoutes_default = router13;
 
 // server/routes/videoRoutes.ts
 var import_express14 = require("express");
-var import_fs23 = __toESM(require("fs"), 1);
+var import_fs24 = __toESM(require("fs"), 1);
 var import_crypto22 = __toESM(require("crypto"), 1);
 var import_multer2 = __toESM(require("multer"), 1);
 
@@ -18186,6 +18186,8 @@ var VideoJobService = class _VideoJobService {
 };
 
 // server/services/spaceImageGenerationService.ts
+var import_fs22 = __toESM(require("fs"), 1);
+var import_path22 = __toESM(require("path"), 1);
 var import_crypto20 = __toESM(require("crypto"), 1);
 var import_sharp4 = __toESM(require("sharp"), 1);
 
@@ -18440,7 +18442,8 @@ function resolveIndustrialColorDna(rawColor) {
   }
   return fallback;
 }
-function translateColorToEnglish(rawColor, defaultColor = "ivory greige, soft warm pale grey (exact color anchor #C8C2BA)", includeHexAnchor = true) {
+var COLOR_FROM_REFERENCE_EN = "the exact original color shown in the product reference photo (strictly no recoloring)";
+function translateColorToEnglish(rawColor, defaultColor = COLOR_FROM_REFERENCE_EN, includeHexAnchor = true) {
   if (!rawColor || typeof rawColor !== "string") return defaultColor;
   const trimmed = rawColor.trim();
   if (!trimmed) return defaultColor;
@@ -18537,19 +18540,185 @@ function translateMaterialToEnglish(rawMat, defaultMat = "genuine top-grain semi
   return defaultMat;
 }
 
-// server/services/spaceImageGenerationService.ts
-function flattenPresetField(value) {
-  if (!value) return [];
-  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
-  if (typeof value === "number" || typeof value === "boolean") return [String(value)];
-  if (Array.isArray(value)) return value.flatMap((v) => flattenPresetField(v));
-  if (typeof value === "object") {
-    return Object.entries(value).flatMap(([k, v]) => {
-      const parts = flattenPresetField(v);
-      return parts.length > 0 ? [`${k}: ${parts.join(", ")}`] : [];
-    });
+// src/features/space-studio/engine/promptDeduplication.ts
+function deduplicateNegativeConstraints(...clauses) {
+  const seen = /* @__PURE__ */ new Set();
+  const tokens = [];
+  for (const clause of clauses) {
+    if (!clause || typeof clause !== "string") continue;
+    const parts = clause.split(",");
+    for (const raw of parts) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const normalized = trimmed.toLowerCase();
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        tokens.push(trimmed);
+      }
+    }
   }
-  return [];
+  return tokens.join(", ");
+}
+
+// src/shared/storage/spaceObjectKeys.ts
+var SpaceObjectKeyBuilder = class {
+  /**
+   * 基础项目根路径
+   */
+  static projectRoot(projectId) {
+    if (!projectId || projectId.trim() === "") {
+      throw new Error("[SpaceObjectKeyBuilder] projectId is required");
+    }
+    return `projects/${projectId.trim()}`;
+  }
+  /**
+   * 产品参考图路径
+   * projects/{projectId}/products/{assetId}/refs/{referenceId}/{filename}
+   */
+  static productReference(params) {
+    const { projectId, assetId, referenceId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/products/${assetId}/refs/${referenceId}/original.${extension}`;
+  }
+  /**
+   * 空间户型参考图路径
+   * projects/{projectId}/spaces/{spacePresetId}/refs/{referenceId}/{filename}
+   */
+  static spaceReference(params) {
+    const { projectId, spacePresetId, referenceId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/spaces/${spacePresetId}/refs/${referenceId}/original.${extension}`;
+  }
+  /**
+   * 风格系统参考图路径
+   * projects/{projectId}/styles/{stylePresetId}/refs/{referenceId}/{filename}
+   */
+  static styleReference(params) {
+    const { projectId, stylePresetId, referenceId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/styles/${stylePresetId}/refs/${referenceId}/original.${extension}`;
+  }
+  /**
+   * A00 空间母版标准统一路径
+   * projects/{id}/scene-masters/master-{rev}.webp
+   */
+  static sceneMasterCanonical(params) {
+    const { projectId, revisionId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/scene-masters/master-${revisionId}.${extension}`;
+  }
+  /**
+   * 镜头评审结果存储路径
+   * projects/{id}/shots/{shotCode}/revisions/{rev}/validation.json
+   */
+  static shotRevisionValidation(params) {
+    const { projectId, shotId, revisionId } = params;
+    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/validation.json`;
+  }
+  /**
+   * 镜头提示词快照存储路径
+   * projects/{id}/shots/{shotCode}/revisions/{rev}/prompt.json
+   */
+  static shotRevisionPrompt(params) {
+    const { projectId, shotId, revisionId } = params;
+    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/prompt.json`;
+  }
+  /**
+   * A00 空间母版 (Scene Master) 路径
+   * projects/{projectId}/scene-masters/{sceneMasterId}/{revisionId}/master.{extension}
+   */
+  static sceneMaster(params) {
+    const { projectId, sceneMasterId, revisionId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/scene-masters/${sceneMasterId}/${revisionId}/master.${extension}`;
+  }
+  /**
+   * 镜头修订版本原图路径
+   * projects/{projectId}/shots/{shotId}/revisions/{revisionId}/original.{extension}
+   */
+  static shotRevisionOriginal(params) {
+    const { projectId, shotId, revisionId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/original.${extension}`;
+  }
+  /**
+   * 镜头修订版本缩略图路径
+   * projects/{projectId}/shots/{shotId}/revisions/{revisionId}/thumb.{extension}
+   */
+  static shotRevisionThumbnail(params) {
+    const { projectId, shotId, revisionId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/thumb.${extension}`;
+  }
+  /**
+   * 模特资产参考图路径
+   * projects/{projectId}/humans/{humanAssetId}/refs/{referenceId}/original.{extension}
+   */
+  static humanReference(params) {
+    const { projectId, humanAssetId, referenceId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/humans/${humanAssetId}/refs/${referenceId}/original.${extension}`;
+  }
+  /**
+   * 模特植入合成版本路径 (Human Pass)
+   * projects/{projectId}/human-composites/{compositeId}/{revisionId}/original.{extension}
+   */
+  static humanComposite(params) {
+    const { projectId, compositeId, revisionId, extension = "webp" } = params;
+    return `${this.projectRoot(projectId)}/human-composites/${compositeId}/${revisionId}/original.${extension}`;
+  }
+  /**
+   * 最终全案导出包路径
+   * projects/{projectId}/exports/{exportId}/{filename}
+   */
+  static exportPackage(params) {
+    const { projectId, exportId, fileName } = params;
+    return `${this.projectRoot(projectId)}/exports/${exportId}/${fileName}`;
+  }
+};
+
+// src/config/imageModelRegistry.ts
+var SPACE_AUTO_FALLBACK_MODELS = [
+  { id: "gemini-3.1-flash-image-preview", label: "Gemini 3.1" },
+  { id: "openai/gpt-image-2.5-flare-c", label: "GPT 2.5 Flare" },
+  { id: "gpt-image-2-c", label: "GPT 2-c" }
+];
+
+// server/services/spaceImageGenerationService.ts
+var STUDIO_SWAP_COMPOSE_MODEL = "openai/gpt-image-2.5-flare-c";
+var STUDIO_SWAP_REFINE_MODEL = "gemini-nano-banana-2.1-preview";
+var STUDIO_SWAP_REFINE_PROMPT = `\u753B\u9762\u7CBE\u4FEE\u91CD\u7ED8\uFF1A\u4EE5\u7A97\u53E31\u4E3A\u5E95\u56FE\uFF0C\u6784\u56FE\u3001\u673A\u4F4D\u3001\u900F\u89C6\u3001\u5BB6\u5177\u7684\u4F4D\u7F6E\u89D2\u5EA6\u4E0E\u5F62\u6001\u3001\u623F\u95F4\u7684\u5899\u9762\u540A\u9876\u5730\u9762\u4E0E\u7A97\u5E18\u5168\u90E8\u4FDD\u6301\u4E0D\u53D8\uFF0C\u4E0D\u79FB\u52A8\u3001\u4E0D\u589E\u51CF\u4EFB\u4F55\u7269\u4F53\u3002\u53C2\u7167\u7A97\u53E32\uFF08\u4EA7\u54C1\u5B9E\u62CD\u56FE\uFF09\u8FD8\u539F\u6C99\u53D1\u4E0E\u5355\u6905\u7684\u771F\u76AE\u7EB9\u7406\u3001\u7F1D\u7EBF\u8D70\u5411\u3001\u91D1\u5C5E\u5934\u6795\u652F\u67B6\u3001\u8336\u51E0\u4E0E\u8FB9\u51E0\u7684\u77F3\u6750\u548C\u6728\u7EB9\u7EC6\u8282\u4EE5\u53CA\u771F\u5B9E\u989C\u8272\u3002\u63D0\u5347\u6574\u4F53\u6E05\u6670\u5EA6\u3001\u9510\u5EA6\u4E0E\u6750\u8D28\u8D28\u611F\u3002\u6574\u4F53\u7A7A\u95F4\u5BA4\u5185\u5EFA\u7B51\u6444\u5F71\u98CE\u683C\u3002
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
+async function requestGatewayImage(params) {
+  const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
+  const res = await fetch(gatewayUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-user-uuid": params.userId,
+      ...params.deptId ? { "x-dept-id": params.deptId } : {}
+    },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      model: params.model,
+      aspectRatio: params.aspectRatio,
+      resolution: params.resolution,
+      images: params.images,
+      generationIntent: "image_edit",
+      userUuid: params.userId,
+      userId: params.userId,
+      deptId: params.deptId
+    }),
+    signal: AbortSignal.timeout(process.env.NODE_ENV === "test" ? 1200 : params.timeoutMs ?? 18e4)
+  });
+  const data = await res.json();
+  if (!res.ok || data.error || data.success === false) {
+    throw new Error(
+      typeof data?.error === "object" ? data.error?.message || JSON.stringify(data.error) : data?.error || data?.message || "\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E"
+    );
+  }
+  const part = data.candidates?.[0]?.content?.parts?.find((p) => p?.inlineData?.data || p?.inline_data?.data);
+  const img = data.imageUrl || data.data?.[0]?.url || data.data?.[0]?.b64_json || data.images?.[0]?.data || part?.inlineData?.data || part?.inline_data?.data;
+  if (typeof img !== "string" || img.length === 0) throw new Error("\u4E0A\u6E38\u63A5\u53E3\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E");
+  if (img.startsWith("http://") || img.startsWith("https://")) {
+    const fetched = await fetch(img, { signal: AbortSignal.timeout(6e4) });
+    if (!fetched.ok) throw new Error(`\u4E0B\u8F7D\u7CBE\u4FEE\u7ED3\u679C\u5931\u8D25 (HTTP ${fetched.status})`);
+    return Buffer.from(await fetched.arrayBuffer());
+  }
+  return Buffer.from(img.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ""), "base64");
 }
 function buildStudioSwapDirective(params) {
   const {
@@ -18561,160 +18730,183 @@ function buildStudioSwapDirective(params) {
     lightingHint,
     hasSceneMasterReference = false,
     referenceShotCode = "A00",
+    masterIsEmptyPlate = false,
+    primaryRole,
     shotCode,
-    cameraSettings,
-    positivePrompt
+    positivePrompt = ""
   } = params;
-  const effectiveRoomDesc = roomName || spacePreset?.name || "metropolitan luxury apartment living room";
-  const effectiveStyleDesc = styleName || stylePreset?.name || "contemporary luxury";
-  const isLateralProfileShot = shotCode === "A06" || cameraSettings && Math.abs(cameraSettings.yawDeg || 0) >= 75 || Boolean(positivePrompt && /ZERO-WALL|零靠墙|pure lateral|side profile|88 degree|90 degree/i.test(positivePrompt));
-  const isCloseOrMediumCrop = ["A04", "A05", "A08"].includes(shotCode || "") || Boolean(positivePrompt && /2\/3 HERO SOFA|2\/3主沙发|三分之二|CRAFTSMANSHIP|特写|DETAIL/i.test(positivePrompt));
-  const isAngledShot = !isLateralProfileShot && !isCloseOrMediumCrop && (shotCode === "A02" || Boolean(positivePrompt && /45-degree|45°|3\+1 ENSEMBLE/i.test(positivePrompt)) || cameraSettings && Math.abs(cameraSettings.yawDeg || 0) >= 20 && Math.abs(cameraSettings.yawDeg || 0) < 75 && !["A00", "A01", "A03", "A04", "A05", "A07"].includes(shotCode || "") && !Boolean(positivePrompt && /正大角度|GRAND FRONTAL|straight-on|0-degree|frontal view/i.test(positivePrompt)));
-  const spaceDna = context?.spaceDna && context.spaceDna.length > 0 ? context.spaceDna : [
-    spacePreset?.ceilingHeight ? `${spacePreset.ceilingHeight}m ceiling headroom` : "",
-    ...flattenPresetField(spacePreset?.signatureFeatures).map((f) => `architectural feature: ${f}`),
-    ...flattenPresetField(spacePreset?.promptFragments)
-  ].filter(Boolean);
-  const styleDna = context?.styleDna && context.styleDna.length > 0 ? context.styleDna : [
-    ...flattenPresetField(stylePreset?.colorPalette).map((c) => `color palette: ${c}`),
-    ...flattenPresetField(stylePreset?.materialSystem).map((m) => `material system: ${m}`),
-    ...flattenPresetField(stylePreset?.promptFragments)
-  ].filter(Boolean);
-  const topologyContext = `${effectiveRoomDesc} ${spacePreset?.code || ""} ${spaceDna.join(" ")}`;
-  const needsVerticalReveal = /挑空|复式|duplex|double[- ]height|下沉|sunken|N-R03|N-R04/i.test(topologyContext);
-  const spaceNegatives = context?.spaceNegatives || [];
-  const styleNegatives = context?.styleNegatives || [];
-  const negatives = [
+  if (shotCode === "A00") {
+    const effectiveSpaceTitle = spacePreset?.name || roomName || "\u9AD8\u5B9A\u5962\u9614\u5927\u5E73\u5C42\u7AEF\u5385";
+    const effectiveStyleTitle = stylePreset?.name || styleName || "\u73B0\u4EE3\u5962\u534E\u90FD\u4F1A\u98CE\u683C";
+    const ceilingClause = spacePreset?.ceilingHeight ? `\uFF08\u5C42\u9AD8 ${spacePreset.ceilingHeight}m\uFF09` : "";
+    const spaceFeatures = Array.isArray(spacePreset?.signatureFeatures) && spacePreset.signatureFeatures.length > 0 ? `\uFF0C\u6838\u5FC3\u6237\u578B\u7279\u5F81\uFF1A${spacePreset.signatureFeatures.join("\u3001")}` : "";
+    const colorPalette = Array.isArray(stylePreset?.colorPalette) && stylePreset.colorPalette.length > 0 ? `\uFF0C\u4E3B\u8272\u8C03\u8272\u677F\uFF1A${stylePreset.colorPalette.join(", ")}` : "";
+    const materialSystem = Array.isArray(stylePreset?.materialSystem) && stylePreset.materialSystem.length > 0 ? `\uFF0C\u6838\u5FC3\u786C\u88C5\u6750\u8D28\uFF1A${stylePreset.materialSystem.join("\u3001")}` : "";
+    const spaceFragments = [
+      ...Array.isArray(spacePreset?.promptFragments) ? spacePreset.promptFragments : [],
+      ...Array.isArray(context?.spaceDna) ? context.spaceDna : []
+    ].filter(Boolean);
+    const styleFragments = [
+      ...Array.isArray(stylePreset?.promptFragments) ? stylePreset.promptFragments : [],
+      ...Array.isArray(context?.styleDna) ? context.styleDna : []
+    ].filter(Boolean);
+    const combinedA00Context = `${effectiveSpaceTitle} ${spacePreset?.code || ""} ${effectiveStyleTitle} ${stylePreset?.code || ""} ${positivePrompt} ${spaceFragments.join(" ")} ${styleFragments.join(" ")}`;
+    const isAmerican = /美式|american|US-01|US-02/i.test(combinedA00Context);
+    const isFrench = /法式|简欧|parisian|haussmann|EU-01/i.test(combinedA00Context);
+    const isItalian = /意式|italian|milanese|IT-01|IT-02/i.test(combinedA00Context);
+    const isSunken = /下沉|sunken|N-R04/i.test(combinedA00Context);
+    const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedA00Context);
+    const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedA00Context);
+    const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedA00Context);
+    let styleSpecificClause = "";
+    const styleNegativesA00 = [];
+    if (isAmerican) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: MODERN AMERICAN METROPOLITAN (US-01 / US-02)]
+- PICTURE-FRAME WALL PANEL MOLDINGS & WAINSCOTING: Background and side walls MUST feature authentic classic modern American picture-frame wall moldings and wainscoting (crisp rectangular architectural wall frames with shadow relief moldings in warm oat greige #E6DFD5 paired with rich dark American walnut #5C4A3E pilasters/millwork and warm brushed brass #C5A059 wall sconces).
+- STRICTLY FORBID flat sterile drywall, cold grey industrial concrete, or plain featureless slabs without classic American wall moldings!`;
+      styleNegativesA00.push(
+        "cold flat sterile drywall",
+        "modern plain white slab without moldings",
+        "sterile white clinic walls",
+        "flat bare drywall without panel frames"
+      );
+    } else if (isFrench) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: PARISIAN / EUROPEAN BOISERIE (EU-01)]
+- FRENCH BOISERIE & CARVED MOLDINGS: Walls feature delicate European boiserie panel moldings in warm cream #FAF7F2, carved plaster cornices, champagne gold accents, and oak herringbone parquet flooring.`;
+      styleNegativesA00.push("dark heavy industrial concrete", "flat modern drywall without moldings");
+    } else if (isItalian) {
+      styleSpecificClause = `
+[MANDATORY INTERIOR ARCHITECTURAL STYLE: MILANESE ARCHITECTURAL LUXURY (IT-01 / IT-02)]
+- ROMAN TRAVERTINE & SMOKED WALNUT: Continuous full-span honed Roman travertine stone slabs and rich smoked dark walnut joinery with ultra-slim brushed titanium profiles.`;
+      styleNegativesA00.push("traditional ornate classical carving", "rustic country wood", "cheap plastic laminate");
+    }
+    let topologySpecificClause = "";
+    const topologyNegativesA00 = [];
+    if (isSunken) {
+      topologySpecificClause = `
+[MANDATORY ARCHITECTURAL TOPOLOGY: SUNKEN CONVERSATION SALON (N-R04)]
+- Recessed sunken conversation lounge with perimeter travertine steps and expansive 3.8m ceiling headroom.`;
+      topologyNegativesA00.push("cramped narrow apartment");
+    } else if (isDuplex) {
+      topologySpecificClause = `
+[MANDATORY ARCHITECTURAL TOPOLOGY: 6.2M DOUBLE-HEIGHT DUPLEX HALL (N-R03)]
+- Monumental 6.2m double-height soaring ceiling volume with two-story continuous feature wall and courtyard glass vista.`;
+      topologyNegativesA00.push("low ceiling", "cramped flat ceiling");
+    } else if (isPavilion) {
+      topologySpecificClause = `
+[MANDATORY ARCHITECTURAL TOPOLOGY: LANDSCAPE VILLA PAVILION (N-R05)]
+- Full-span panoramic glass wall looking out to serene water mirror reflection pool and pine courtyard.`;
+    } else if (isPenthouse) {
+      topologySpecificClause = `
+[MANDATORY ARCHITECTURAL TOPOLOGY: SKYLINE PENTHOUSE SALON (N-R06)]
+- Majestic high-altitude floor-to-ceiling panoramic glass curtain wall overlooking metropolis skyscraper skyline at golden hour.`;
+    }
+    const cleanNegativeA00 = deduplicateNegativeConstraints(
+      "altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines",
+      "removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture",
+      "moved furniture, shifted furniture position, rescaled furniture, re-framed composition, camera angle change, zoomed in, zoomed out, cropped furniture",
+      "altering footrest state from Reference Image 1, closing deployed footrests shown in Reference Image 1, altering headrest position shown in Reference Image 1",
+      "floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact, plain studio backdrop, seamless paper backdrop, amateur render, cartoon CGI",
+      "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces",
+      ...context?.spaceNegatives || [],
+      ...context?.styleNegatives || [],
+      ...topologyNegativesA00,
+      ...styleNegativesA00
+    );
+    return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING (SCENE MASTER A00)]
+\u5546\u4F01-\u7A7A\u95F4\u6BCD\u7248\uFF08A00\uFF09\u753B\u9762\u573A\u666F\u66F4\u6362\u80CC\u666F\uFF0C\u6309\u4EA7\u54C1\u53CA\u5F55\u5165\u7684\u6237\u578B\u4E0E\u7F8E\u5B66\u98CE\u683C\u751F\u6210\u5168\u65B0\u7684\u7A7A\u95F4\u6BCD\u7248\u80CC\u666F\u3002
+1. \u7A7A\u95F4\u6237\u578B\u5F55\u5165\uFF08Space Layout\uFF09\uFF1A${effectiveSpaceTitle}${ceilingClause}${spaceFeatures}\u3002
+2. \u7F8E\u5B66\u98CE\u683C\u5F55\u5165\uFF08Scene Style\uFF09\uFF1A${effectiveStyleTitle}${colorPalette}${materialSystem}\u3002
+3. \u573A\u666F\u786C\u88C5\u4E0E\u80CC\u666F\u5899\u751F\u6210\uFF1A\u6309\u4E09\u4EBA\u4F4D\u7684\u6C99\u53D1\u8C03\u6027\u4E0E\u6240\u9009\u3010${effectiveStyleTitle}\u3011\u7F8E\u5B66\u98CE\u683C\u751F\u6210\u65B0\u7684\u8C03\u6027\u80CC\u666F\u5899\u3001\u5929\u82B1\u540A\u9876\u706F\u69FD\u4E0E\u5168\u666F\u843D\u5730\u7A97\u81EA\u7136\u91C7\u5149\u3002\u5176\u4E2D\u5BB6\u5177\u3001\u6240\u6709\u7684\u5730\u6BEF\u3001\u6302\u753B\u3001\u9910\u684C\u914D\u5957\u3001\u62CD\u6444\u89D2\u5EA6\u4FDD\u6301\u4E0D\u53D8\u3002\u4FDD\u8BC1\u539F\u56FE\u7684\u5C3A\u5BF8\u6BD4\u4F8B\u4E0D\u53D8\u3002\u6574\u4F53\u7A7A\u95F4\u5BA4\u5185\u5EFA\u7B51\u6444\u5F71\u98CE\u683C\u3002
+${spaceFragments.length > 0 ? `
+[ARCHITECTURAL LAYOUT DNA (\u6237\u578B\u62D3\u6251\u7279\u5F81)]:
+- ${spaceFragments.join("\n- ")}` : ""}
+${styleFragments.length > 0 ? `
+[INTERIOR STYLE & MATERIAL DNA (\u7F8E\u5B66\u98CE\u683C\u4E0E\u8272\u677F\u6750\u8D28)]:
+- ${styleFragments.join("\n- ")}` : ""}${styleSpecificClause}${topologySpecificClause}
+
+[REFERENCE IMAGE 1 GROUND TRUTH LOCK]:
+- IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1!
+- IMMUTABLE PHYSICAL FURNITURE: Every single furniture entity (main sofa, single accent armchair, coffee tables, side tables), their relative spatial layout, proportions, angles, genuine leather colors, textures, stitch seams, and physical postures are ABSOLUTE GROUND TRUTH.${lightingHint ? `
+- LIGHTING MOOD: ${lightingHint}` : ""}
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.
+Negative constraints: ${cleanNegativeA00}`;
+  }
+  if (shotCode) {
+    const toneLabel = primaryRole === "sofa_2seat" ? "\u53CC\u4EBA\u4F4D\u7684\u6C99\u53D1" : primaryRole === "recliner_1seat" || primaryRole === "lounge_chair" ? "\u5355\u6905" : "\u4E09\u4EBA\u4F4D\u7684\u6C99\u53D1";
+    const styleClause = hasSceneMasterReference ? "\u573A\u666F\u98CE\u683C\uFF1A\u53C2\u8003\u7A97\u53E32\uFF0C" : "";
+    return `\u753B\u9762\u91CD\u7ED8\uFF0C\u4EE5\u7A97\u53E31\u4E3A\u5E95\u56FE\uFF0C\u5546\u4F01-\u753B\u9762\u573A\u666F\u66F4\u6362\u80CC\u666F\uFF0C\u6309\u4EA7\u54C1\u7684\u8C03\u6027\u751F\u6210\u65B0\u7684\u7A7A\u95F4\u80CC\u666F\uFF0C${styleClause}\u6309${toneLabel}\u8C03\u6027\u751F\u6210\u65B0\u7684\u8C03\u6027\u80CC\u666F\u5899\u3002\u5176\u4E2D\u5BB6\u5177\u3001\u6240\u6709\u7684\u5730\u6BEF\u3001\u6302\u753B\u3001\u9910\u684C\u914D\u5957\u4FDD\u6301\u4E0D\u53D8\u3002\u4FDD\u6301\u7A97\u53E31\u7684\u4EA7\u54C1\u89D2\u5EA6\u4E0D\u53D8\u3002\u4FDD\u8BC1\u539F\u56FE\u7684\u5C3A\u5BF8\u6BD4\u4F8B\u4E0D\u53D8\u3002\u8981\u6C42\u751F\u6210\u7684\u4EA7\u54C1\u7EC4\u5408\u4E0E\u7A7A\u95F4\u900F\u89C6\u662F\u878D\u5408\u7684\u3002\u6574\u4F53\u7A7A\u95F4\u5BA4\u5185\u5EFA\u7B51\u6444\u5F71\u98CE\u683C\u3002${lightingHint ? `
+\u5149\u7EBF\u6C1B\u56F4\uFF1A${lightingHint}` : ""}
+
+[CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
+  }
+  const negatives = deduplicateNegativeConstraints(
     "altering furniture, modifying sofa, modifying chair, changing sofa color, changing chair color, changing leather color, distorted furniture, deformed furniture structure, warped sofa lines",
     "removing sofa, removing chair, missing single chair, missing coffee table, missing furniture pieces, lonely drifting furniture",
     "moved furniture, shifted furniture position, rescaled furniture, re-framed composition, camera angle change, zoomed in, zoomed out, cropped furniture",
     "altering footrest state from Reference Image 1, closing deployed footrests shown in Reference Image 1, altering headrest position shown in Reference Image 1",
+    "flat 0-degree frontal view, straight-on eye-level camera, flattening camera angle, rotating angled furniture to face front, copying camera angle from Reference Image 2, altering horizon height, shifting vanishing points, flattening perspective depth",
+    "flat horizontal ceiling, horizontal ceiling cove parallel to frame, horizontal ceiling cove parallel to screen top, 1-point frontal box room, flat stage set, parallel background wall behind angled sofa, disconnected room angle, unnatural spatial angle mismatch, pasting sofa into flat room, disjointed perspective between furniture and architecture",
+    "retaining old background from Reference Image 1, keeping old wall painting from Reference Image 1, keeping old framed picture or art from Reference Image 1, keeping old floor lamp from Reference Image 1, keeping old wood paneling from Reference Image 1, keeping old sheer curtains from Reference Image 1",
+    "copying furniture from Reference Image 2, duplicate sofa, phantom furniture, extra furniture from Reference Image 2",
     "fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, plastic textures, cartoon CGI render, low-poly, amateur render",
     "floating furniture, missing contact shadows, sticker effect, poorly blended furniture, cut-out artifact, plain studio backdrop, seamless paper backdrop",
-    ...hasSceneMasterReference ? [
-      "flat 0-degree frontal view when Reference Image 1 is angled, rotating angled furniture to face front, copying camera angle from Reference Image 2, retaining old background from Reference Image 1, keeping old framed picture or wall art from Reference Image 1, keeping old floor lamp from Reference Image 1, inverted left-right window side from Reference Image 2, different room from Reference Image 2, inconsistent background wall, mismatched wall moldings, newly invented staircase, spiral stairs, mezzanine loft, extra fireplace not in Reference Image 2, altered window style, different floor material"
-    ] : [],
-    ...isCloseOrMediumCrop ? [
-      "visible ceiling",
-      "ceiling cove",
-      "ceiling light trough",
-      "low ceiling compression",
-      "squeezed ceiling",
-      "cropped ceiling beam",
-      "ceiling slab",
-      "false ceiling",
-      "low headroom"
-    ] : [],
-    ...isLateralProfileShot ? [
-      "partition wall",
-      "divider wall",
-      "freestanding wall",
-      "room screen",
-      "newly invented partition",
-      "fake corner wall",
-      "column jutting out",
-      "half wall",
-      "protruding wall behind sofa",
-      "doorway behind sofa",
-      "cubicle wall"
-    ] : [],
-    ...isAngledShot ? [
-      "flat frontal mugshot",
-      "flat frontal view",
-      "straight-on camera",
-      "straight-on frontal view",
-      "symmetrical center sofa",
-      "horizontal sofa parallel to screen",
-      "front-facing sofa",
-      "facing directly forward",
-      "flat 1-point perspective",
-      "flat background wall parallel to screen",
-      "zero perspective depth",
-      "copying 0-degree frontal camera angle from Reference Image 2"
-    ] : [],
-    ...spaceNegatives,
-    ...styleNegatives,
     "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, people, human, faces"
-  ].filter(Boolean).join(", ");
-  const spatialContinuityDirective = isLateralProfileShot ? `  * PURE LATERAL PROFILE & CONTINUOUS LIVING ROOM MAIN WALL LOCK (A06):
-    The camera is stationed at an 85-to-90 degree pure lateral side profile (yaw: ${cameraSettings?.yawDeg ?? 88}\xB0), looking longitudinally across the living room parallel to the main wall.
-    1) HERO SOFA FLUSH AGAINST LIVING ROOM WALL: The hero sofa's backrest is positioned flush (<5cm) against the EXACT SAME continuous living room main backdrop wall from Reference Image 2.
-    2) STRICT PROHIBITION ON INVENTED PARTITIONS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner directly behind the sofa! The back wall must remain the single, continuous planar living room backdrop wall from Reference Image 2 extending into the deep background.
-    3) Maintain the room's authentic daylight direction and window placement as established in Reference Image 2, seen in longitudinal side perspective.` : isAngledShot ? `  * 45-DEGREE CORNER PERSPECTIVE ANCHOR: The camera is stationed at the diagonal flank (yaw: ${cameraSettings?.yawDeg ?? -45}\xB0, 2-point perspective depth). Reconstruct the master room finishes and materials from Reference Image 2 (wall molding, marble, wood slats, window daylight, ceiling cove) foreshortened along the diagonal vanishing lines matching Reference Image 1's 45-degree camera perspective:
-    1) The main architectural background wall and floor joints must recede diagonally with authentic 2-point perspective depth toward the back vanishing point (DO NOT flatten the back wall parallel to the camera!).
-    2) Keep the natural window daylight direction and architectural materials completely consistent with Reference Image 2, but projected accurately under Reference Image 1's diagonal camera viewpoint.
-    3) Strictly DO NOT force a flat 0-degree frontal elevation sequence across the screen. Reference Image 1's furniture is at a 45-degree angle, so the room architecture behind it MUST recede into 3D diagonal depth!` : `  * STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK: Reconstruct the exact Left-to-Right architectural sequence from Reference Image 2's top panoramic band onto the background behind Reference Image 1's furniture, foreshortened to match Reference Image 1's camera perspective:
-    1) Keep the window on the SAME side (e.g. Right side) as shown in Reference Image 2's panoramic band (do NOT leave a window on the left side if Reference Image 1 had one!).
-    2) Keep the left-wall French wainscoting + marble slab, center vertical wood slat paneling (CLEAN, with NO framed picture/poster hanging on it!), and right-wall French molding / fireplace mantel in the exact same Left-to-Right order as Reference Image 2!`;
-  const masterContinuitySection = hasSceneMasterReference ? `
-[SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2 (CRITICAL)]:
-- REFERENCE IMAGE 1 ([\u53C2\u8003\u56FE1\uFF5C\u6784\u56FE\u53C2\u8003] - Immutable Foreground Furniture & Camera Angle Base):
-  * Reference Image 1 is the ONLY base photograph for the FURNITURE and CAMERA ANGLE! Its exact camera shooting angle (e.g., 45-degree diagonal three-quarter view / oblique perspective / close-up), perspective vanishing lines, furniture pixel placement, and exact open/closed footrest & headrest posture MUST BE 100% LOCKED AND PRESERVED!
-  * NEVER rotate the camera or furniture back to a 0-degree flat frontal view! The output image MUST have the EXACT same furniture angle and pixel positions as Reference Image 1!
-  * COMPLETE OLD BACKGROUND ERASURE: If Reference Image 1 was shot in an existing showroom or room (containing old wall art / framed pictures / posters, old floor lamps, old left-side curtains, or old wall panels), you MUST 100% ERASE AND REMOVE ALL of Reference Image 1's original background walls, framed wall pictures, floor lamps, and curtains! Keep ONLY the sofa, single accent chair, and coffee tables from Reference Image 1!
-- REFERENCE IMAGE 2 ([\u53C2\u8003\u56FE2\uFF5C\u98CE\u683C\u53C2\u8003] - Panoramic Room Layout & Material Swatch Board from ${referenceShotCode}):
-  * Reference Image 2 is a MULTI-PANEL ARCHITECTURAL LAYOUT & MATERIAL BOARD extracted from the master scene ${referenceShotCode}:
-    - TOP WIDE PANORAMIC BAND: Shows the complete Left-to-Right upper room layout of ${referenceShotCode} (exact Left-to-Right sequence of left wall molding/marble -> center backdrop wall without any extra framed picture -> right wall molding/fireplace crown -> right-side floor-to-ceiling window & ceiling cove).
-    - BOTTOM-LEFT PANEL: Shows the middle-right architectural feature (such as fireplace mantel / right wall molding) and full window curtain details of ${referenceShotCode}.
-    - BOTTOM-RIGHT PANEL: Shows the exact area rug & herringbone/wood/stone flooring material of ${referenceShotCode}.
-  * Because Reference Image 2 is a multi-panel reference board with white divider bars (NOT a full room canvas), you must NEVER copy its split-panel grid or change Reference Image 1's camera angle!
-${spatialContinuityDirective}
-  * STRICT PROHIBITION: Do NOT invent any new architectural features not present in Reference Image 2, and do NOT carry over any framed wall picture or floor lamp from Reference Image 1's old background!
-` : "";
-  return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT]
+  );
+  const masterReferenceDirective = hasSceneMasterReference ? `
+2. REFERENCE IMAGE 2 ([\u53C2\u8003\u56FE 2 \uFF5C \u7A7A\u95F4\u6BCD\u7248\u56FE ${referenceShotCode}] - \u3010\u7EAF\u786C\u88C5\u6750\u8D28\u3001\u5149\u5F71\u6C1B\u56F4\u4E0E\u7A97\u666F\u6837\u677F\u3011):
+- SWATCH ROLE ONLY: Reference Image 2 serves EXCLUSIVELY as an architectural material finishes, lighting atmosphere, and window swatch!
+- EXTRACT ARCHITECTURAL FINISHES & REPROJECT INTO IMAGE 1'S PERSPECTIVE GRID:
+  * Extract the recessed ceiling cove architectural tiers with warm concealed linear LED light strips from Reference Image 2;
+  * Extract the luxury dark marble / stone feature wall panels with metallic bronze trim from Reference Image 2;
+  * Extract the polished dark marble flooring with organic white veins and ambient surface reflections from Reference Image 2;
+  * Extract the panoramic floor-to-ceiling glass window system with outdoor city skyline vista and warm golden-hour daylight from Reference Image 2;
+  * Extract the soft 3000K warm interior ambient illumination and natural window daylight direction from Reference Image 2.
+- 3D CONFORMAL SPATIAL ENVELOPE & TWO-POINT CORNER PERSPECTIVE FUSION (\u7A7A\u95F4\u5BF9\u89D2\u8F6C\u89D2\u878D\u5408 - CRITICAL):
+  * PROHIBIT 1-POINT FRONTAL BOX: STRICTLY FORBID rendering a flat horizontal wall perpendicular to the camera! STRICTLY FORBID a horizontal flat ceiling cove! STRICTLY FORBID central hanging chandelier!
+  * TWO-POINT CORNER PERSPECTIVE ENVELOPE (\u4E24\u70B9\u900F\u89C6\u8F6C\u89D2\u7A7A\u95F4):
+    - The camera is looking diagonally into an interior CORNER of the room (where the feature wall and panoramic window wall meet at an angle).
+    - LEFT WALL: Behind the single recliner/armchair, the wall recedes diagonally toward the left vanishing point, paneled in the dark wood and marble from Reference Image 2.
+    - RIGHT WALL: Behind and to the right of the 3-seat sofa, a floor-to-ceiling panoramic window wall recedes diagonally toward the right vanishing point, casting soft directional daylight across the sofa.
+    - CEILING COVE: The recessed ceiling tray MUST have linear LED cove lights that recede along BOTH diagonal walls toward the left and right vanishing points, wrapping the ceiling in a natural 3D perspective grid matching the sofa's angle!
+    - FLOOR & SHADOWS: The polished floor shares the exact same high horizon line (~70-75%) and vanishing grid of Reference Image 1, producing natural soft ambient occlusion contact shadows directly under the sofa base and coffee tables with ZERO sticker or pasted-in effect!
+- RIGID REPROJECTION & NON-INTERFERENCE DIRECTIVE:
+  * PERSPECTIVE RE-MAPPING: You MUST project and map the ceiling cove, backdrop walls, marble flooring, and panoramic windows from Reference Image 2 onto the EXACT 3D PERSPECTIVE GRID, TILTED VANISHING LINES, AND CAMERA ELEVATION/PITCH OF REFERENCE IMAGE 1!
+  * STRICT NON-INTERFERENCE: Reference Image 2's eye-level, straight-on frontal camera angle MUST NEVER interfere with, override, or flatten Reference Image 1's real camera perspective!
+  * ZERO FURNITURE FROM IMAGE 2: Reference Image 2 is used ONLY for architectural background materials. ABSOLUTELY DO NOT copy, carry over, or render any furniture, sofa, or armchair from Reference Image 2!` : "";
+  return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING]
 PRIMARY OBJECTIVE:
-Reference Image 1 is the 100% UNTOUCHABLE PHYSICAL FURNITURE PHOTOGRAPH.
-ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables, cushions, colors, textures, leather grain, stitch lines, and silhouettes shown in Reference Image 1 MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT!
-DO NOT redraw the furniture! DO NOT change the furniture's colors! DO NOT remove any chairs, sofas, or tables! DO NOT alter cushion shapes or headrests!
-CAMERA LOCK: Keep the exact camera position, focal length, horizon line, perspective vanishing points, furniture scale and pixel placement of Reference Image 1. Do NOT re-frame, zoom, or rotate the view.
-${masterContinuitySection}
-YOUR TASK IS EXCLUSIVELY TO REPLACE AND EXTEND THE SURROUNDING BACKGROUND (walls, floor, ceiling, windows, lighting) so it ${hasSceneMasterReference ? "remains 100% consistent with Reference Image 2 and " : ""}matches the following architecture and interior design:
+This is a direct visual background replacement pipeline. ALL spatial and perspective parameters are governed exclusively by the provided visual reference images without any text-preset camera assumptions.
 
-1. ROOM TOPOLOGY (\u6237\u578B): ${effectiveRoomDesc}
-${spaceDna.map((s) => `   - ${s}`).join("\n")}
-${isCloseOrMediumCrop ? "   - VERTICAL FRAMING & OUT-OF-FRAME CEILING: This is a close portrait/medium crop where the top of the frame cuts off at mid-wall level (~1.8m height). The ceiling, ceiling cove, and light troughs are FAR ABOVE the top edge and are 100% OUT OF FRAME. The backdrop wall finishes (French wainscoting / marble / wood paneling) must extend cleanly and vertically straight out of the top of the frame. ABSOLUTELY DO NOT compress, lower, or draw any ceiling cove, light trough, or ceiling beams into the top of the frame!\n" : ""}
-${needsVerticalReveal && !isCloseOrMediumCrop ? "   - TOPOLOGY ADAPTATION: Express the ceiling height / floor level change ONLY through background cues that are naturally visible within the locked camera frame (distant steps, upper wall volume, tall window mullions). Never move, lift, or re-scale the furniture and never change the camera to reveal it.\n" : ""}
-2. INTERIOR FINISHES & AESTHETIC (\u786C\u88C5\u7F8E\u5B66): ${effectiveStyleDesc}
-${styleDna.map((s) => `   - ${s}`).join("\n")}
-   - The wall treatment, flooring material, ceiling details and color palette MUST follow this aesthetic faithfully${hasSceneMasterReference ? " and stay identical to Reference Image 2" : ""}.${isCloseOrMediumCrop ? " Because this is a close/medium crop, the wall paneling extends straight up out of frame; DO NOT draw any ceiling cove." : isLateralProfileShot ? " The back wall runs continuously along the side in deep longitudinal perspective; strictly DO NOT draw partition walls." : isAngledShot ? " Receding wall moldings, vertical wood slats, and flooring joints follow Reference Image 1's 45-degree diagonal vanishing lines." : " Plumb vertical lines aligned with the original perspective."}
+1. REFERENCE IMAGE 1 ([\u53C2\u8003\u56FE 1 \uFF5C \u7528\u6237\u4E0A\u4F20\u573A\u666F\u5B9E\u62CD\u56FE] - \u3010\u7EDD\u5BF9\u6784\u56FE\u3001\u51E0\u4F55\u900F\u89C6\u4E0E\u5BB6\u5177\u5B9E\u4F53\u771F\u503C\u3011):
+- IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1!
+- IMMUTABLE PHYSICAL FURNITURE: Every single furniture entity (main sofa, single accent armchair, coffee tables, side tables), their relative spatial layout, proportions, angles, genuine leather colors, textures, stitch seams, and physical postures (including deployed/extended motorized footrests and headrests) are ABSOLUTE GROUND TRUTH.
+- SYSTEM PROHIBITION: STRICTLY FORBIDDEN to alter the camera angle, re-frame, zoom, flatten the view to eye-level, change furniture positions, remove furniture, redraw furniture, or modify furniture colors!
+- COMPLETE OLD BACKGROUND ERASURE: The original background walls, wood veneer panels, old wall art/framed pictures, floor lamps, curtains, and old flooring from Reference Image 1 are 100% ERASED AND REMOVED. Keep ONLY the furniture entities intact in their exact original pixels and perspective.
+${masterReferenceDirective}
 
 3. NATURAL ILLUMINATION & CONTACT SHADOWS:
-   - Cast authentic physical ambient occlusion contact shadows directly underneath all furniture legs, bases, and chassis onto the new floor/area rug, eliminating any floating sticker artifact.
-   - Match the room's light direction and color temperature onto the outer edges of the existing furniture with seamless harmony.${lightingHint ? `
-   - LIGHTING MOOD: ${lightingHint}` : ""}
+- Cast authentic physical ambient occlusion (AO) contact shadows directly beneath all furniture bases, legs, and footrests onto the new floor/area rug, eliminating any floating sticker artifact.
+- Harmonize the window light direction and color temperature seamlessly onto the furniture silhouettes.${lightingHint ? `
+- LIGHTING MOOD: ${lightingHint}` : ""}
 
-4. PRESERVE ORIGINAL FURNITURE POSTURE:
-   - All functional positions, motorized footrests, and adjustable headrests strictly remain completely in their original configuration from Reference Image 1.
-${isCloseOrMediumCrop ? `
-5. CLOSE/MEDIUM CROP OPTICS & ZERO CEILING COMPRESSION LOCK:
-   - Reference Image 1 is closely framed on the hero furniture (${shotCode || "close crop"}).
-   - The top edge cuts off at mid-wall level. The ceiling is COMPLETELY OUT OF FRAME.
-   - ABSOLUTE PROHIBITION ON CEILING COMPRESSION: STRICTLY FORBIDDEN to squeeze, draw, or render any ceiling cove, recessed light trough, or ceiling crown molding into the top border! Only the continuous wall panels/marble from Reference Image 2 should appear behind the furniture, extending naturally beyond the top of the image!
-` : isLateralProfileShot ? `
-5. PURE LATERAL PROFILE & ZERO-WALL CLEARANCE LOCK (A06):
-   - Reference Image 1 is captured in a pure side profile view (yaw: ~88\xB0).
-   - The hero sofa's backrest is flush against the continuous living room main backdrop wall from Reference Image 2.
-   - STRICT PROHIBITION ON INVENTED WALLS: Strictly DO NOT invent any partition wall, floating divider screen, freestanding wall, jutting pillar, or room corner behind the sofa! The back wall must remain the single, continuous living room backdrop wall extending into the deep background.
-` : isAngledShot ? `
-5. 45-DEGREE CAMERA PERSPECTIVE & 2-POINT DEPTH LOCK:
-   - Reference Image 1 is captured from a dynamic 40-to-45 degree diagonal oblique three-quarters angle (yaw: ${cameraSettings?.yawDeg ?? -45}\xB0).
-   - Vanishing lines for floor tiles, wood planks, baseboards, and the main background wall recede diagonally with authentic 2-point perspective depth!
-   - ABSOLUTE PROHIBITION ON 0-DEGREE FLATTENING: NEVER draw a flat, straight-on frontal background parallel to the bottom of the frame! DO NOT copy the flat 0-degree frontal camera perspective from Reference Image 2!
-${cameraSettings ? `   - OPTICAL PARAMETERS: ${cameraSettings.lensMm}mm lens at ${cameraSettings.heightCm}cm height, yaw: ${cameraSettings.yawDeg}\xB0, pitch: ${cameraSettings.pitchDeg}\xB0.` : ""}
-` : ""}
-
-${isCloseOrMediumCrop || isLateralProfileShot || isAngledShot ? "6" : "5"}. ZERO TEXT, NO WATERMARKS, NO LABELS, NO CHINESE CHARACTERS, NO PEOPLE. Clean pristine commercial catalog photograph.
+4. COMMERCIAL PURITY:
+- Pristine luxury commercial catalog photograph.
+- ZERO text, no watermarks, no logos, no Chinese characters, no labels, no humans, no people.
 
 Negative constraints: ${negatives}`;
 }
-async function normalizeInlineBuffer(rawBuf) {
+async function normalizeInlineBuffer(rawBuf, maxEdge = 1024) {
   try {
     const meta = await (0, import_sharp4.default)(rawBuf).metadata();
     const width = meta.width || 0;
     const height = meta.height || 0;
     const maxDim = Math.max(width, height);
-    if (maxDim > 1024) {
-      const compressed = await (0, import_sharp4.default)(rawBuf).resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
+    if (maxDim > maxEdge) {
+      const compressed = await (0, import_sharp4.default)(rawBuf).resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true }).webp({ quality: 85 }).toBuffer();
       return {
         mimeType: "image/webp",
         data: compressed.toString("base64")
@@ -18741,7 +18933,7 @@ async function normalizeInlineBuffer(rawBuf) {
     };
   }
 }
-async function resolveImageInlineData(imageRef) {
+async function resolveImageInlineData(imageRef, maxEdge = 1024) {
   if (!imageRef || typeof imageRef !== "string") return null;
   const trimmed = imageRef.trim();
   if (!trimmed) return null;
@@ -18750,7 +18942,7 @@ async function resolveImageInlineData(imageRef) {
     if (match) {
       try {
         const buf = Buffer.from(match[2], "base64");
-        return await normalizeInlineBuffer(buf);
+        return await normalizeInlineBuffer(buf, maxEdge);
       } catch {
         return {
           mimeType: match[1] || "image/jpeg",
@@ -18762,7 +18954,7 @@ async function resolveImageInlineData(imageRef) {
   if (!trimmed.startsWith("http") && !trimmed.startsWith("/") && trimmed.length > 500 && !trimmed.includes(" ")) {
     try {
       const buf = Buffer.from(trimmed, "base64");
-      return await normalizeInlineBuffer(buf);
+      return await normalizeInlineBuffer(buf, maxEdge);
     } catch {
       return {
         mimeType: "image/jpeg",
@@ -18782,7 +18974,7 @@ async function resolveImageInlineData(imageRef) {
     const storage5 = GcsAssetStorage.getInstance();
     const buf = await storage5.getBuffer(targetKey);
     if (buf && buf.length > 0) {
-      return await normalizeInlineBuffer(buf);
+      return await normalizeInlineBuffer(buf, maxEdge);
     }
   }
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -18791,7 +18983,7 @@ async function resolveImageInlineData(imageRef) {
       if (res.ok) {
         const arrayBuf = await res.arrayBuffer();
         const buf = Buffer.from(arrayBuf);
-        return await normalizeInlineBuffer(buf);
+        return await normalizeInlineBuffer(buf, maxEdge);
       }
     } catch (err) {
       console.warn(`[SpaceImageGenerationService] Failed to fetch remote image ref: ${trimmed}`, err.message);
@@ -18818,55 +19010,6 @@ async function cropImageInlineBuffer(imageRef, box) {
   } catch (err) {
     console.warn("[SpaceImageGenerationService] Fallback on cropImageInlineBuffer:", err);
     return null;
-  }
-}
-async function extractEmptyRoomFromMasterInline(masterInline) {
-  try {
-    const rawBuf = Buffer.from(masterInline.data, "base64");
-    const meta = await (0, import_sharp4.default)(rawBuf).metadata();
-    if (!meta.width || !meta.height || meta.width < 120 || meta.height < 120) {
-      return masterInline;
-    }
-    const w = 1024;
-    const h = 768;
-    const normalized = await (0, import_sharp4.default)(rawBuf).resize({ width: w, height: h, fit: "fill" }).toBuffer();
-    const [topPanorama, bottomLeftFeature, bottomRightFloor] = await Promise.all([
-      // 顶部通栏 (1008x376): 完整从左到右 (x: 0..100%, y: 0..48%) 的硬装空间序列与吊顶
-      (0, import_sharp4.default)(normalized).extract({
-        left: 0,
-        top: 0,
-        width: w,
-        height: Math.round(h * 0.48)
-      }).resize(1008, 376, { fit: "cover" }).toBuffer(),
-      // 左下格 (496x360): 右侧壁炉线框/护墙板中段 + 右侧落地窗与窗帘 (x: 55%..99%, y: 26%..76%)
-      (0, import_sharp4.default)(normalized).extract({
-        left: Math.round(w * 0.55),
-        top: Math.round(h * 0.26),
-        width: Math.round(w * 0.44),
-        height: Math.round(h * 0.5)
-      }).resize(496, 360, { fit: "cover" }).toBuffer(),
-      // 右下格 (496x360): 地毯与人字拼木地板/石材地面肌理 (x: 15%..85%, y: 86%..99%)
-      (0, import_sharp4.default)(normalized).extract({
-        left: Math.round(w * 0.15),
-        top: Math.round(h * 0.86),
-        width: Math.round(w * 0.7),
-        height: Math.round(h * 0.13)
-      }).resize(496, 360, { fit: "cover" }).toBuffer()
-    ]);
-    const board = await (0, import_sharp4.default)({
-      create: { width: w, height: h, channels: 3, background: { r: 255, g: 255, b: 255 } }
-    }).composite([
-      { input: topPanorama, left: 8, top: 8 },
-      { input: bottomLeftFeature, left: 8, top: 400 },
-      { input: bottomRightFloor, left: 520, top: 400 }
-    ]).webp({ quality: 85 }).toBuffer();
-    return {
-      mimeType: "image/webp",
-      data: board.toString("base64")
-    };
-  } catch (err) {
-    console.warn("[SpaceImageGenerationService] Fallback on extractEmptyRoomFromMasterInline:", err);
-    return masterInline;
   }
 }
 var SpaceImageGenerationService = class {
@@ -18906,6 +19049,12 @@ var SpaceImageGenerationService = class {
       characterReferenceImages,
       functionalPositionState = "closed"
     } = input;
+    const effectiveObjectKey = objectKey || SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId: projectId || "manwah-space-default",
+      shotId: shotCode || "A00",
+      revisionId: `rev-gen-${Date.now().toString(36)}`,
+      extension: "webp"
+    });
     const isFunctionalClosed = functionalPositionState !== "open";
     let imageBuffer = null;
     let cloudError = null;
@@ -18947,14 +19096,17 @@ var SpaceImageGenerationService = class {
       effectiveProductImageRef = activePrimaryProduct && activePrimaryProduct !== primaryProduct ? activePrimaryProduct?.cropImageUrl || activePrimaryProduct?.cropBase64 || activePrimaryProduct?.referenceImage || activePrimaryProduct?.uploadedImageUrl || activePrimaryProduct?.referenceImage : activePrimaryProduct?.referenceImage || primaryProduct?.referenceImage;
     }
     if (!effectiveProductImageRef || typeof effectiveProductImageRef === "string" && effectiveProductImageRef.trim().length === 0) {
-      effectiveProductImageRef = productReferenceImage || primaryProduct?.referenceImage || primaryProduct?.cropImageUrl || sceneMasterReferenceImage;
+      effectiveProductImageRef = productReferenceImage || primaryProduct?.referenceImage || primaryProduct?.cropImageUrl || currentShotReferenceImage || sceneMasterReferenceImage;
     }
+    const referenceMaxEdge = input.renderMode === "studio_swap" ? 1536 : 1024;
     let [productInline, masterInline, shotInline] = await Promise.all([
-      resolveImageInlineData(effectiveProductImageRef),
-      resolveImageInlineData(sceneMasterReferenceImage),
-      resolveImageInlineData(currentShotReferenceImage)
+      resolveImageInlineData(effectiveProductImageRef, referenceMaxEdge),
+      resolveImageInlineData(sceneMasterReferenceImage, referenceMaxEdge),
+      resolveImageInlineData(currentShotReferenceImage, referenceMaxEdge)
     ]);
-    if (!productInline && masterInline) {
+    if (!productInline && shotInline) {
+      productInline = shotInline;
+    } else if (!productInline && masterInline && input.renderMode !== "studio_swap") {
       productInline = masterInline;
     }
     const rawCharImages = [];
@@ -18969,7 +19121,7 @@ var SpaceImageGenerationService = class {
       }
     }
     const charInlines = (await Promise.all(rawCharImages.slice(0, 2).map((imgUrl) => resolveImageInlineData(imgUrl)))).filter((item) => item !== null);
-    const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0], "ivory greige, soft warm pale grey (exact color anchor #C8C2BA)");
+    const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0]);
     const effectiveMaterial = translateMaterialToEnglish(productMaterial || activePrimaryProduct?.materials?.[0], "genuine top-grain semi-aniline cowhide leather", activePrimaryProduct?.role);
     let effectiveProductName = "luxury power motion sofa";
     if (activePrimaryProduct?.role === "sofa_2seat") {
@@ -18995,7 +19147,7 @@ var SpaceImageGenerationService = class {
       const secRef = sec?.cropImageUrl || sec.referenceImage || sec?.referenceImages?.[0]?.publicUrl || sec?.referenceImages?.[0]?.objectKey || sec?.uploadedImageUrl;
       const rawColor = sec.colors?.[0] || sec.color;
       const rawMat = sec.materials?.[0] || sec.material;
-      const colorEn = translateColorToEnglish(rawColor, "pristine polar milk-white (exact color anchor #F5F3EF)");
+      const colorEn = translateColorToEnglish(rawColor);
       const matEn = translateMaterialToEnglish(rawMat, "genuine top-grain semi-aniline cowhide leather", sec.role);
       const compositeInfo = resolveCompositeMaterialDna(rawMat, sec.role);
       const isArmlessOrNonFunctional = sec.role === "lounge_chair" || sec.functionCapable === false || sec.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.name);
@@ -19031,6 +19183,7 @@ var SpaceImageGenerationService = class {
     }
     const config = await resolveApiConfig("system");
     let wasFallbackUsed = false;
+    let refineNotice;
     let primaryModel = "manwah-spatial-renderer-v1";
     if (!isProviderKeyValid(config?.apiKey) || process.env.NODE_ENV === "test") {
       imageBuffer = this.renderDeterministicSpatialAsset({
@@ -19048,7 +19201,7 @@ var SpaceImageGenerationService = class {
       usedModel = "manwah-spatial-renderer-v1";
       provenance = "SOLVER_RESOLVED";
     } else {
-      const rawPreferred = input.preferredModel?.trim() || "gpt-image-2";
+      const rawPreferred = input.preferredModel?.trim() || "gemini-3-pro-image-preview";
       let targetModel = rawPreferred;
       if (targetModel === "gemini-2.5-flash") targetModel = "gemini-2.5-flash-image";
       else if (targetModel === "google/gemini-3-pro-image" || targetModel === "gemini-3-pro-image-preview") targetModel = "gemini-3-pro-image";
@@ -19075,7 +19228,23 @@ var SpaceImageGenerationService = class {
       });
       const maxSecItems = targetModel.includes("gpt") ? 1 : 3;
       const pushedSecondaryInlines = allowedSecondaryInlines.slice(0, maxSecItems);
-      if (shotInline) {
+      if (isStudioSwapImageSet) {
+        const userPhotoInline = shotInline || productInline;
+        if (userPhotoInline) {
+          images.push({
+            data: `data:${userPhotoInline.mimeType};base64,${userPhotoInline.data}`,
+            mimeType: userPhotoInline.mimeType,
+            role: "primary_product"
+          });
+        }
+        if (masterInline && shotCode !== "A00") {
+          images.push({
+            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
+            mimeType: masterInline.mimeType,
+            role: "style_reference"
+          });
+        }
+      } else if (shotInline) {
         images.push({
           data: `data:${shotInline.mimeType};base64,${shotInline.data}`,
           mimeType: shotInline.mimeType,
@@ -19117,10 +19286,9 @@ var SpaceImageGenerationService = class {
           });
         }
         if (masterInline && (!isStudioSwapImageSet || shotCode !== "A00")) {
-          const effectiveMasterForRef = isStudioSwapImageSet ? await extractEmptyRoomFromMasterInline(masterInline) : masterInline;
           images.push({
-            data: `data:${effectiveMasterForRef.mimeType};base64,${effectiveMasterForRef.data}`,
-            mimeType: effectiveMasterForRef.mimeType,
+            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
+            mimeType: masterInline.mimeType,
             role: isStudioSwapImageSet ? "style_reference" : "scene_reference"
           });
         }
@@ -19154,7 +19322,7 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           allowedSecondaryInlines.map((s) => s.antiStickerNegative).filter(Boolean)
         )
       ).join(", ");
-      const useStudioSwapDirective = isStudioSwapImageSet && Boolean(productInline) && !shotInline;
+      const useStudioSwapDirective = isStudioSwapImageSet && Boolean(productInline || shotInline);
       if (useStudioSwapDirective) {
         const hasMasterRefForSwap = Boolean(masterInline && shotCode !== "A00");
         directivePrompt = buildStudioSwapDirective({
@@ -19166,6 +19334,8 @@ ${isArmless ? "- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           lightingHint: input.studioSwapLightingHint,
           hasSceneMasterReference: hasMasterRefForSwap,
           referenceShotCode: input.referenceShotCode || "A00",
+          masterIsEmptyPlate: Boolean(input.sceneMasterIsEmptyPlate),
+          primaryRole: activePrimaryProduct?.role,
           shotCode,
           cameraSettings: input.cameraSettings,
           positivePrompt: input.positivePrompt
@@ -19192,7 +19362,10 @@ STRICT OCCUPANCY & COMPOSITION RULES:
 
 ${positivePrompt}
 
-Negative constraints: ${sanitizedNegative ? `${sanitizedNegative}, ` : ""}zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${deduplicateNegativeConstraints(
+            sanitizedNegative,
+            "zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people"
+          )}`;
         } else {
           directivePrompt = `[CRITICAL MANDATE: SEAT REAL PEOPLE INTO THIS LIVING ROOM - NEVER RETURN AN EMPTY ROOM]
 PRIMARY OBJECTIVE:
@@ -19214,7 +19387,7 @@ STRICT COMMERCIAL MANDATES:
 1. POPULATE THE HERO SOFA: The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with realistic body weight, folds in clothes, and authentic contact shadows on the leather cushions.
 ${shotCode === "A03" ? `   - A03 HERO 3-SEATER FAMILY LEISURE: Depict a genuine warm family moment with parents and young daughter seated together on the 3-seater hero sofa. Functional footrests ${isFunctionalClosed ? "strictly remain completely closed and retracted under the base in standard upright comfortable configuration" : "outer motion seats may be gently deployed for relaxed human occupancy"}. Natural, relaxed, joyful expressions. Center coffee table in foreground with coffee cups and art books within the authentic living room.` : ""}
 ${shotCode === "A04" ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly max 2 occupants, mother and daughter, zero extra crowd), captured from 140cm eye level with -15 degree downward pitch looking down onto the deep seating cushion and rug stage. Depict an affectionate mother and young daughter companion moment. The motorized footrests ${isFunctionalClosed ? "strictly remain completely closed and tucked flush under the base in standard upright configuration" : "outer motorized footrest is smoothly deployed, comfortably supporting the mother and daughter relaxing together"}. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ""}
-${shotCode === "A05" ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 2:3 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? "completely retracted under the base in standard upright closed posture" : "smoothly deployed supporting private lounge relaxation"}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ""}
+${shotCode === "A05" ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? "completely retracted under the base in standard upright closed posture" : "smoothly deployed supporting private lounge relaxation"}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ""}
 ${shotCode === "A06" ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW: Lateral side profile (75-90 degrees) in 16:9 widescreen (CAPACITY LOCK: strictly 1 occupant). Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music.` : ""}
 ${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective (CAPACITY LOCK: strictly 1 single occupant). Motorized footrest is ${isFunctionalClosed ? "completely retracted and closed in standard upright reading posture" : "deployed in ergonomic comfort contour"} supporting a relaxed individual comfortably browsing an iPad/tablet within the authentic living room.` : ""}
 2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a 100% clean pristine photograph.
@@ -19226,7 +19399,12 @@ ${shotCode === "A08" ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicate
 
 ${positivePrompt}
 
-Negative constraints: ${negativePrompt ? `${negativePrompt}, ` : ""}${antiStickerNegatives ? `${antiStickerNegatives}, ` : ""}${isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00, " : ""}camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people`;
+Negative constraints: ${deduplicateNegativeConstraints(
+            negativePrompt,
+            antiStickerNegatives,
+            isFunctionalClosed ? "deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, \u5C55\u5F00\u7684\u811A\u8E0F, \u4F38\u51FA\u7684\u811A\u6258, \u529F\u80FD\u4F4D\u5C55\u5F00, \u9760\u80CC\u503E\u659C\u540E\u4EF0\u5C55\u5F00" : "",
+            "camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people"
+          )}`;
         }
       } else if (productInline && masterInline) {
         const isFrontalPanorama = shotCode === "A01" || (positivePrompt.includes("GRAND FRONTAL") || positivePrompt.includes("\u6B63\u5927\u89C6\u89D2"));
@@ -19480,7 +19658,7 @@ CORE INVARIANTS:
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.
 - SHOWROOM POSTURE: ${shotCode === "A02" ? "Main sofa motorized footrests strictly remain closed and flush. The matching single recliner armchair may have its motorized footrest comfortably extended into ergonomic contour as in reference." : isFunctionalClosed ? "All sofa and chair motorized footrests and motion mechanisms strictly remain 100% CLOSED and retracted flush under base." : "Motion mechanism may be deployed as specified."}`;
         const isAngledOrProfile = ["A02", "A04", "A05", "A06", "A07", "A08"].includes(shotCode) || isAngledHero || isZeroWallProfile;
-        const cleanNegativeConstraints = [
+        const cleanNegativeConstraints = deduplicateNegativeConstraints(
           negativePrompt,
           antiStickerNegatives,
           shotCode === "A02" || isAngledHero ? "flat frontal view, straight-on camera, straight-on frontal view, symmetrical center sofa, horizontal sofa parallel to screen, front-facing sofa, flat 1-point perspective, mugshot view, zero perspective depth, copying frontal composition of reference 2, boxy closed small room, missing coffee table, missing rug, cramped narrow space, center dividing pillar" : "",
@@ -19500,7 +19678,7 @@ CORE INVARIANTS:
           !hasHumanOccupant ? "people, human, person, man, woman, lady, girl, boy, child, human model, occupants, crowd, human face, human hands, distorted limbs" : "",
           brownNegativeFilter,
           "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, logo"
-        ].filter(Boolean).join(", ");
+        );
         directivePrompt += `
 
 Negative constraints: ${cleanNegativeConstraints}`;
@@ -19607,7 +19785,7 @@ CORE INVARIANTS:
 - ZERO CLUTTER OR PILLOWS: Clean pristine commercial catalog sofa presentation. Strictly ZERO decorative throw pillows, NO loose cushions, NO patterned or floral pillows on sofa. Clean empty luxury leather seating surfaces.
 - COMPOSITE CRAFTSMANSHIP: Genuine luxury stone/wood materiality with organic veining, chamfered bevels, and realistic ambient occlusion contact shadows. Zero plastic CGI sheen.
 - ZERO TEXT: Clean pristine commercial catalog photograph, completely free of any text, letters, Chinese characters, labels, or watermarks.`;
-        const cleanNegativeConstraintsA00 = [
+        const cleanNegativeConstraintsA00 = deduplicateNegativeConstraints(
           negativePrompt,
           antiStickerNegatives,
           isEnsemble && isDualTone ? `${mainSofaColor} recliner, ${mainSofaColor} armchair, identical ${mainSofaColor} single chair, monochromatic seating` : "",
@@ -19622,7 +19800,7 @@ CORE INVARIANTS:
           "deployed footrest, extended footrest, open recliner mechanism, raised headrest, lifted headrest, popped headrest, popped-up headrest, asymmetric headrests, uneven headrests, \u62AC\u8D77\u7684\u5934\u6795, \u7FD8\u8D77\u7684\u5934\u6795, excessive empty rug void in foreground, cut-off ceiling",
           !isEnsemble && !hasRecliner && secondaryInlines.length === 0 ? "lonely drifting side chair, disconnected furniture, chair pushed against window, lopsided dark wall imbalance" : "disconnected furniture, chair pushed against window, lopsided dark wall imbalance",
           "text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces"
-        ].filter(Boolean).join(", ");
+        );
         directivePrompt += `
 
 Negative constraints: ${cleanNegativeConstraintsA00}`;
@@ -19630,14 +19808,11 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
       const mappedAspectRatio = aspectRatio === "3:4" ? "3:4" : aspectRatio === "16:9" ? "16:9" : aspectRatio === "1:1" ? "1:1" : aspectRatio === "4:3" ? "4:3" : aspectRatio === "9:16" ? "9:16" : aspectRatio === "2:3" ? "2:3" : aspectRatio === "3:2" ? "3:2" : aspectRatio || "4:3";
       const isAutoFallback = input.autoModelFallback !== false;
       primaryModel = targetModel;
+      const useRefinePass = Boolean(input.studioSwapRefinePass) && useStudioSwapDirective && shotCode !== "A00";
+      if (useRefinePass) primaryModel = STUDIO_SWAP_COMPOSE_MODEL;
       const candidateModels = [primaryModel];
       if (isAutoFallback) {
-        const fallbacks = [
-          "gemini-3.1-flash-image-preview",
-          "openai/gpt-image-2.5-flare-c",
-          "gpt-image-2-c"
-        ];
-        for (const fb of fallbacks) {
+        for (const { id: fb } of SPACE_AUTO_FALLBACK_MODELS) {
           if (!candidateModels.includes(fb)) {
             candidateModels.push(fb);
           }
@@ -19655,12 +19830,33 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
           `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway (\u5C1D\u8BD5 ${mIdx + 1}/${candidateModels.length}): model=${currentModelToAttempt}, res=${currentResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
         );
         const timeoutMs = process.env.NODE_ENV === "test" ? 1200 : 18e4;
+        const effectiveUserId = input.userId || "system";
+        const effectiveDeptId = input.deptId;
+        if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test" || process.env.SPACE_DEBUG_DUMP === "1") {
+          try {
+            const dumpDir = import_path22.default.join(process.cwd(), ".data", "debug", "gateway", `${shotCode}-${Date.now()}-${currentModelToAttempt.replace(/[^\w.-]/g, "_")}`);
+            import_fs22.default.mkdirSync(dumpDir, { recursive: true });
+            import_fs22.default.writeFileSync(import_path22.default.join(dumpDir, "prompt.txt"), `model=${currentModelToAttempt}
+renderMode=${input.renderMode || "orchestration"}
+aspectRatio=${mappedAspectRatio}
+
+${directivePrompt}`);
+            images.forEach((img, idx) => {
+              const b64 = String(img.data).replace(/^data:[^;]+;base64,/, "");
+              const ext = (img.mimeType || "image/png").split("/")[1] || "png";
+              import_fs22.default.writeFileSync(import_path22.default.join(dumpDir, `ref${idx + 1}_${img.role || "unknown"}.${ext}`), Buffer.from(b64, "base64"));
+            });
+          } catch (dumpErr) {
+            console.warn("[SpaceImageGenerationService] Debug dump skipped:", dumpErr);
+          }
+        }
         try {
           const gatewayRes = await fetch(gatewayUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-user-uuid": "system"
+              "x-user-uuid": effectiveUserId,
+              ...effectiveDeptId ? { "x-dept-id": effectiveDeptId } : {}
             },
             body: JSON.stringify({
               prompt: directivePrompt,
@@ -19669,7 +19865,10 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
               resolution: currentResolution,
               seed: typeof input.seed === "number" ? input.seed : void 0,
               images,
-              generationIntent
+              generationIntent,
+              userUuid: effectiveUserId,
+              userId: effectiveUserId,
+              deptId: effectiveDeptId
             }),
             signal: AbortSignal.timeout(timeoutMs)
           });
@@ -19713,11 +19912,37 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
           console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} deferred: ${errMsg}`);
         }
       }
+      if (useRefinePass && rawImageBuffer && rawImageBuffer.length > 0 && images[0]) {
+        try {
+          const composedInline = await normalizeInlineBuffer(rawImageBuffer, 1536);
+          const refined = await requestGatewayImage({
+            prompt: STUDIO_SWAP_REFINE_PROMPT,
+            model: STUDIO_SWAP_REFINE_MODEL,
+            images: [
+              { data: `data:${composedInline.mimeType};base64,${composedInline.data}`, mimeType: composedInline.mimeType, role: "composition_reference" },
+              { data: images[0].data, mimeType: images[0].mimeType, role: "primary_product" }
+            ],
+            aspectRatio: mappedAspectRatio,
+            resolution: validResolution,
+            userId: input.userId || "system",
+            deptId: input.deptId,
+            // Nano Banana 2K 精修实测 50~180s，网关断连重试还会再叠加，给足 240s
+            timeoutMs: 24e4
+          });
+          if (refined.length > 0) {
+            rawImageBuffer = refined;
+            usedModel = `${usedModel} + ${STUDIO_SWAP_REFINE_MODEL} \u7CBE\u4FEE`;
+          }
+        } catch (refineErr) {
+          refineNotice = `\u7CBE\u4FEE\u6B65\u9AA4 (${STUDIO_SWAP_REFINE_MODEL}) \u672A\u5B8C\u6210\uFF0C\u5DF2\u4FDD\u7559 GPT 2.5 Flare \u6362\u666F\u7ED3\u679C\uFF1A${refineErr?.message || refineErr}`;
+          console.warn(`[SpaceImageGenerationService] ${shotCode} refine pass failed:`, refineErr?.message || refineErr);
+        }
+      }
       if (rawImageBuffer && rawImageBuffer.length > 0) {
-        if (objectKey.endsWith(".webp")) {
+        if (effectiveObjectKey.endsWith(".webp")) {
           imageBuffer = await (0, import_sharp4.default)(rawImageBuffer).webp({ quality: 90 }).toBuffer();
           contentType = "image/webp";
-        } else if (objectKey.endsWith(".jpg") || objectKey.endsWith(".jpeg")) {
+        } else if (effectiveObjectKey.endsWith(".jpg") || effectiveObjectKey.endsWith(".jpeg")) {
           imageBuffer = await (0, import_sharp4.default)(rawImageBuffer).jpeg({ quality: 90 }).toBuffer();
           contentType = "image/jpeg";
         } else {
@@ -19736,7 +19961,7 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
     const sha256 = import_crypto20.default.createHash("sha256").update(imageBuffer).digest("hex");
     await this.storage.put({
       bucketType: "generated",
-      objectKey,
+      objectKey: effectiveObjectKey,
       buffer: imageBuffer,
       contentType,
       metadata: {
@@ -19749,10 +19974,13 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
         productColor: effectiveColor
       }
     });
-    const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`;
-    const warningNotice = wasFallbackUsed ? `\u4E3B\u9009\u6A21\u578B (${primaryModel}) \u54CD\u5E94\u53D7\u963B\uFF0C\u5DF2\u81EA\u52A8\u6545\u969C\u8F6C\u79FB\u81F3 (${usedModel}) \u6210\u529F\u751F\u6210\u771F\u5B9E\u5927\u56FE\uFF01` : void 0;
+    const proxyUrl = `/api/space/storage/local-file?key=${encodeURIComponent(effectiveObjectKey)}`;
+    const warningNotice = [
+      wasFallbackUsed ? `\u4E3B\u9009\u6A21\u578B (${primaryModel}) \u54CD\u5E94\u53D7\u963B\uFF0C\u5DF2\u81EA\u52A8\u6545\u969C\u8F6C\u79FB\u81F3 (${usedModel}) \u6210\u529F\u751F\u6210\u771F\u5B9E\u5927\u56FE\uFF01` : "",
+      refineNotice || ""
+    ].filter(Boolean).join(" ") || void 0;
     return {
-      objectKey,
+      objectKey: effectiveObjectKey,
       imageUrl: proxyUrl,
       provider: usedProvider,
       model: usedModel,
@@ -20023,7 +20251,7 @@ Negative constraints: ${cleanNegativeConstraintsA00}`;
 
 // scripts/gcs_diagnostic_self_check.ts
 var import_storage3 = require("@google-cloud/storage");
-var import_fs22 = __toESM(require("fs"), 1);
+var import_fs23 = __toESM(require("fs"), 1);
 var import_crypto21 = __toESM(require("crypto"), 1);
 async function runGcsDiagnosticCheck(customBucket, customProject) {
   const projectId = customProject || process.env.GCP_PROJECT_ID || "gen-lang-client-0557963301";
@@ -20112,7 +20340,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     results.authMethod = `GOOGLE_APPLICATION_CREDENTIALS (${process.env.GOOGLE_APPLICATION_CREDENTIALS})`;
     try {
-      const content = import_fs22.default.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf-8");
+      const content = import_fs23.default.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf-8");
       const parsed = JSON.parse(content);
       results.effectiveStorageIdentity = parsed.client_email || "from-key-file";
     } catch {
@@ -20131,7 +20359,7 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
     results.authMethod = `GCS_KEY_FILE (${process.env.GCS_KEY_FILE})`;
     storageOptions.keyFilename = process.env.GCS_KEY_FILE;
     try {
-      const content = import_fs22.default.readFileSync(process.env.GCS_KEY_FILE, "utf-8");
+      const content = import_fs23.default.readFileSync(process.env.GCS_KEY_FILE, "utf-8");
       const parsed = JSON.parse(content);
       results.effectiveStorageIdentity = parsed.client_email || "from-key-file";
     } catch {
@@ -20194,8 +20422,8 @@ async function runGcsDiagnosticCheck(customBucket, customProject) {
   }
   const samplePath = ".data/videos/ws-default/test-canvas-003/vjob-1789096395593-bb7914a6/av-vid-1789096405682-ee9181/original.mp4";
   let sampleBuffer;
-  if (import_fs22.default.existsSync(samplePath)) {
-    sampleBuffer = import_fs22.default.readFileSync(samplePath).subarray(0, 32768);
+  if (import_fs23.default.existsSync(samplePath)) {
+    sampleBuffer = import_fs23.default.readFileSync(samplePath).subarray(0, 32768);
   } else {
     sampleBuffer = Buffer.from("TEST_DIAGNOSTIC_MP4_PAYLOAD_" + Date.now());
   }
@@ -20782,7 +21010,7 @@ router14.get("/api/canvases/assets/video", (req, res) => {
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
     const chunkSize = end - start + 1;
-    const file = import_fs23.default.createReadStream(filePath, { start, end });
+    const file = import_fs24.default.createReadStream(filePath, { start, end });
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Accept-Ranges": "bytes",
@@ -20796,7 +21024,7 @@ router14.get("/api/canvases/assets/video", (req, res) => {
       "Content-Type": "video/mp4",
       "Accept-Ranges": "bytes"
     });
-    import_fs23.default.createReadStream(filePath).pipe(res);
+    import_fs24.default.createReadStream(filePath).pipe(res);
   }
 });
 var videoRoutes_default = router14;
@@ -20805,11 +21033,11 @@ var videoRoutes_default = router14;
 var import_express15 = require("express");
 
 // server/services/storageManagementService.ts
-var import_fs24 = __toESM(require("fs"), 1);
-var import_path22 = __toESM(require("path"), 1);
+var import_fs25 = __toESM(require("fs"), 1);
+var import_path23 = __toESM(require("path"), 1);
 var StorageManagementService = class {
   static {
-    this.DATA_DIR = import_path22.default.join(process.cwd(), ".data");
+    this.DATA_DIR = import_path23.default.join(process.cwd(), ".data");
   }
   /**
    * Recursively list files inside a Supabase Storage bucket
@@ -20924,9 +21152,9 @@ var StorageManagementService = class {
       console.warn("[StorageManagement] Failed to scan Supabase storage buckets:", e);
     }
     try {
-      const storageFile = import_path22.default.join(this.DATA_DIR, "video_jobs.json");
-      if (import_fs24.default.existsSync(storageFile)) {
-        const raw = import_fs24.default.readFileSync(storageFile, "utf-8");
+      const storageFile = import_path23.default.join(this.DATA_DIR, "video_jobs.json");
+      if (import_fs25.default.existsSync(storageFile)) {
+        const raw = import_fs25.default.readFileSync(storageFile, "utf-8");
         const parsed = JSON.parse(raw);
         if (parsed.jobs && Array.isArray(parsed.jobs)) {
           for (const [, j] of parsed.jobs) {
@@ -20953,20 +21181,20 @@ var StorageManagementService = class {
       console.warn("[StorageManagement] Failed to scan video jobs:", e);
     }
     try {
-      if (import_fs24.default.existsSync(this.DATA_DIR)) {
+      if (import_fs25.default.existsSync(this.DATA_DIR)) {
         const subDirs = ["canvases", "revisions", "projects", "product_dnas", "canvas_assets", "videos"];
         for (const sub of subDirs) {
-          const folderPath = import_path22.default.join(this.DATA_DIR, sub);
-          if (import_fs24.default.existsSync(folderPath)) {
+          const folderPath = import_path23.default.join(this.DATA_DIR, sub);
+          if (import_fs25.default.existsSync(folderPath)) {
             const scanDirRecursive = (dir) => {
-              const entries = import_fs24.default.readdirSync(dir, { withFileTypes: true });
+              const entries = import_fs25.default.readdirSync(dir, { withFileTypes: true });
               for (const entry of entries) {
-                const fullF = import_path22.default.join(dir, entry.name);
+                const fullF = import_path23.default.join(dir, entry.name);
                 if (entry.isDirectory()) {
                   scanDirRecursive(fullF);
                 } else if (entry.isFile()) {
                   try {
-                    const stat = import_fs24.default.statSync(fullF);
+                    const stat = import_fs25.default.statSync(fullF);
                     localDiskItems.push({
                       fileName: entry.name,
                       folder: sub,
@@ -21010,18 +21238,18 @@ var StorageManagementService = class {
           }
         }
       }
-      const spaceStorageDir = import_path22.default.join(this.DATA_DIR, "space-storage");
-      if (import_fs24.default.existsSync(spaceStorageDir)) {
+      const spaceStorageDir = import_path23.default.join(this.DATA_DIR, "space-storage");
+      if (import_fs25.default.existsSync(spaceStorageDir)) {
         const scanSpaceStorage = (dir) => {
-          const entries = import_fs24.default.readdirSync(dir, { withFileTypes: true });
+          const entries = import_fs25.default.readdirSync(dir, { withFileTypes: true });
           for (const entry of entries) {
-            const fullF = import_path22.default.join(dir, entry.name);
+            const fullF = import_path23.default.join(dir, entry.name);
             if (entry.isDirectory()) {
               scanSpaceStorage(fullF);
             } else if (entry.isFile()) {
               try {
-                const stat = import_fs24.default.statSync(fullF);
-                const relKey = import_path22.default.relative(spaceStorageDir, fullF).replace(/\\/g, "/");
+                const stat = import_fs25.default.statSync(fullF);
+                const relKey = import_path23.default.relative(spaceStorageDir, fullF).replace(/\\/g, "/");
                 localDiskItems.push({
                   fileName: entry.name,
                   folder: "space-storage",
@@ -21050,15 +21278,15 @@ var StorageManagementService = class {
         };
         scanSpaceStorage(spaceStorageDir);
       }
-      const spaceProjectsDir = import_path22.default.join(this.DATA_DIR, "space-projects");
-      if (import_fs24.default.existsSync(spaceProjectsDir)) {
-        const pEntries = import_fs24.default.readdirSync(spaceProjectsDir);
+      const spaceProjectsDir = import_path23.default.join(this.DATA_DIR, "space-projects");
+      if (import_fs25.default.existsSync(spaceProjectsDir)) {
+        const pEntries = import_fs25.default.readdirSync(spaceProjectsDir);
         for (const f of pEntries) {
           if (f.endsWith(".json")) {
             try {
-              const fullF = import_path22.default.join(spaceProjectsDir, f);
-              const stat = import_fs24.default.statSync(fullF);
-              const raw = import_fs24.default.readFileSync(fullF, "utf-8");
+              const fullF = import_path23.default.join(spaceProjectsDir, f);
+              const stat = import_fs25.default.statSync(fullF);
+              const raw = import_fs25.default.readFileSync(fullF, "utf-8");
               const parsed = JSON.parse(raw);
               const pId = parsed.projectId || f.replace(".json", "");
               const pName = parsed.summary?.productName || parsed.title || pId;
@@ -21121,21 +21349,21 @@ var StorageManagementService = class {
         } catch (e) {
         }
         try {
-          const diskPath = import_path22.default.join(this.DATA_DIR, "canvases", `${cid}.json`);
-          if (import_fs24.default.existsSync(diskPath)) {
-            const stat = import_fs24.default.statSync(diskPath);
+          const diskPath = import_path23.default.join(this.DATA_DIR, "canvases", `${cid}.json`);
+          if (import_fs25.default.existsSync(diskPath)) {
+            const stat = import_fs25.default.statSync(diskPath);
             freedBytesEstimate += stat.size;
-            import_fs24.default.unlinkSync(diskPath);
+            import_fs25.default.unlinkSync(diskPath);
             deletedDiskFilesCount++;
           }
         } catch (e) {
         }
         try {
-          const spaceProjPath = import_path22.default.join(this.DATA_DIR, "space-projects", `${cid}.json`);
-          if (import_fs24.default.existsSync(spaceProjPath)) {
-            const stat = import_fs24.default.statSync(spaceProjPath);
+          const spaceProjPath = import_path23.default.join(this.DATA_DIR, "space-projects", `${cid}.json`);
+          if (import_fs25.default.existsSync(spaceProjPath)) {
+            const stat = import_fs25.default.statSync(spaceProjPath);
             freedBytesEstimate += stat.size;
-            import_fs24.default.unlinkSync(spaceProjPath);
+            import_fs25.default.unlinkSync(spaceProjPath);
             deletedCanvasesCount++;
           }
         } catch (e) {
@@ -21150,11 +21378,11 @@ var StorageManagementService = class {
         } catch (e) {
         }
         try {
-          const diskPath = import_path22.default.join(this.DATA_DIR, "revisions", `${rid}.json`);
-          if (import_fs24.default.existsSync(diskPath)) {
-            const stat = import_fs24.default.statSync(diskPath);
+          const diskPath = import_path23.default.join(this.DATA_DIR, "revisions", `${rid}.json`);
+          if (import_fs25.default.existsSync(diskPath)) {
+            const stat = import_fs25.default.statSync(diskPath);
             freedBytesEstimate += stat.size;
-            import_fs24.default.unlinkSync(diskPath);
+            import_fs25.default.unlinkSync(diskPath);
             deletedDiskFilesCount++;
           }
         } catch (e) {
@@ -21172,11 +21400,11 @@ var StorageManagementService = class {
         if (bucket === "space-storage") {
           for (const p of paths) {
             try {
-              const fullF = import_path22.default.join(this.DATA_DIR, "space-storage", p);
-              if (import_fs24.default.existsSync(fullF)) {
-                const stat = import_fs24.default.statSync(fullF);
+              const fullF = import_path23.default.join(this.DATA_DIR, "space-storage", p);
+              if (import_fs25.default.existsSync(fullF)) {
+                const stat = import_fs25.default.statSync(fullF);
                 freedBytesEstimate += stat.size;
-                import_fs24.default.unlinkSync(fullF);
+                import_fs25.default.unlinkSync(fullF);
                 deletedStorageFilesCount++;
               }
             } catch (e) {
@@ -21202,11 +21430,11 @@ var StorageManagementService = class {
     if (options.diskFiles && options.diskFiles.length > 0) {
       for (const df of options.diskFiles) {
         try {
-          const fullP = import_path22.default.join(this.DATA_DIR, df.folder, df.fileName);
-          if (import_fs24.default.existsSync(fullP)) {
-            const stat = import_fs24.default.statSync(fullP);
+          const fullP = import_path23.default.join(this.DATA_DIR, df.folder, df.fileName);
+          if (import_fs25.default.existsSync(fullP)) {
+            const stat = import_fs25.default.statSync(fullP);
             freedBytesEstimate += stat.size;
-            import_fs24.default.unlinkSync(fullP);
+            import_fs25.default.unlinkSync(fullP);
             deletedDiskFilesCount++;
           }
         } catch (e) {
@@ -21324,8 +21552,8 @@ var storageManagementRoutes_default = router15;
 // server/routes/spaceStorageRoutes.ts
 var import_express16 = require("express");
 var import_zod3 = require("zod");
-var import_fs25 = __toESM(require("fs"), 1);
-var import_path23 = __toESM(require("path"), 1);
+var import_fs26 = __toESM(require("fs"), 1);
+var import_path24 = __toESM(require("path"), 1);
 var import_sharp5 = __toESM(require("sharp"), 1);
 var router16 = (0, import_express16.Router)();
 var storage = GcsAssetStorage.getInstance();
@@ -21452,8 +21680,8 @@ router16.get(["/local-file", "/download"], async (req, res) => {
       return res.end(data);
     };
     const filePath = storage.getLocalFilePath(key);
-    if (filePath && import_fs25.default.existsSync(filePath)) {
-      const data = import_fs25.default.readFileSync(filePath);
+    if (filePath && import_fs26.default.existsSync(filePath)) {
+      const data = import_fs26.default.readFileSync(filePath);
       return await resolveAndSendBuffer(data, key);
     }
     try {
@@ -21512,8 +21740,8 @@ router16.get("/export-image", async (req, res) => {
     }
     let sourceBuf = null;
     const filePath = storage.getLocalFilePath(key);
-    if (filePath && import_fs25.default.existsSync(filePath)) {
-      sourceBuf = import_fs25.default.readFileSync(filePath);
+    if (filePath && import_fs26.default.existsSync(filePath)) {
+      sourceBuf = import_fs26.default.readFileSync(filePath);
     } else {
       sourceBuf = await storage.getBuffer(key);
     }
@@ -21619,19 +21847,19 @@ router16.put("/local-upload", (req, res) => {
     res.status(500).send(error.message);
   }
 });
-var DATA_DIR5 = import_path23.default.join(process.cwd(), ".data");
-var MODELS_FILE = import_path23.default.join(DATA_DIR5, "space_model_assets.json");
-var MODELS_BACKUP_FILE = import_path23.default.join(DATA_DIR5, "space_model_assets.backup.json");
-var STYLES_FILE = import_path23.default.join(DATA_DIR5, "space_scene_styles.json");
-var STYLES_BACKUP_FILE = import_path23.default.join(DATA_DIR5, "space_scene_styles.backup.json");
-var SEEDS_DIR = import_path23.default.join(process.cwd(), "server", "data", "seeds");
-var SEED_MODELS_FILE = import_path23.default.join(SEEDS_DIR, "space_model_assets.json");
-var SEED_STYLES_FILE = import_path23.default.join(SEEDS_DIR, "space_scene_styles.json");
+var DATA_DIR5 = import_path24.default.join(process.cwd(), ".data");
+var MODELS_FILE = import_path24.default.join(DATA_DIR5, "space_model_assets.json");
+var MODELS_BACKUP_FILE = import_path24.default.join(DATA_DIR5, "space_model_assets.backup.json");
+var STYLES_FILE = import_path24.default.join(DATA_DIR5, "space_scene_styles.json");
+var STYLES_BACKUP_FILE = import_path24.default.join(DATA_DIR5, "space_scene_styles.backup.json");
+var SEEDS_DIR = import_path24.default.join(process.cwd(), "server", "data", "seeds");
+var SEED_MODELS_FILE = import_path24.default.join(SEEDS_DIR, "space_model_assets.json");
+var SEED_STYLES_FILE = import_path24.default.join(SEEDS_DIR, "space_scene_styles.json");
 var GCS_MODELS_KEY = "assets/space_model_assets.json";
 var GCS_STYLES_KEY = "assets/space_scene_styles.json";
 function ensureDataDir2() {
-  if (!import_fs25.default.existsSync(DATA_DIR5)) {
-    import_fs25.default.mkdirSync(DATA_DIR5, { recursive: true });
+  if (!import_fs26.default.existsSync(DATA_DIR5)) {
+    import_fs26.default.mkdirSync(DATA_DIR5, { recursive: true });
   }
 }
 function extractObjectKeysFromData(obj, keys = /* @__PURE__ */ new Set()) {
@@ -21682,16 +21910,16 @@ router16.get("/models", async (_req, res) => {
       if (gcsBuf && gcsBuf.length > 2) {
         const parsed = JSON.parse(gcsBuf.toString("utf-8"));
         if (Array.isArray(parsed) && parsed.length > 0) {
-          import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(parsed, null, 2), "utf-8");
           return res.json({ success: true, data: parsed, source: "gcs" });
         }
       }
     } catch (gcsErr) {
       console.warn("[spaceStorageRoutes] GCS read models notice:", gcsErr.message);
     }
-    if (import_fs25.default.existsSync(MODELS_FILE)) {
+    if (import_fs26.default.existsSync(MODELS_FILE)) {
       try {
-        const content = import_fs25.default.readFileSync(MODELS_FILE, "utf-8");
+        const content = import_fs26.default.readFileSync(MODELS_FILE, "utf-8");
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return res.json({ success: true, data: parsed, source: "local_disk" });
@@ -21699,13 +21927,13 @@ router16.get("/models", async (_req, res) => {
       } catch (e) {
       }
     }
-    if (import_fs25.default.existsSync(SEED_MODELS_FILE)) {
+    if (import_fs26.default.existsSync(SEED_MODELS_FILE)) {
       try {
-        const seedContent = import_fs25.default.readFileSync(SEED_MODELS_FILE, "utf-8");
+        const seedContent = import_fs26.default.readFileSync(SEED_MODELS_FILE, "utf-8");
         const seedModels = JSON.parse(seedContent);
         if (Array.isArray(seedModels) && seedModels.length > 0) {
           console.log(`[spaceStorageRoutes] Loaded ${seedModels.length} seed model assets (built-in fallback)`);
-          import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), "utf-8");
+          import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(seedModels, null, 2), "utf-8");
           (async () => {
             try {
               await storage.put({
@@ -21740,14 +21968,14 @@ router16.post("/models/sync", async (req, res) => {
     if (!Array.isArray(models)) {
       return res.status(400).json({ success: false, error: "Models payload must be an array" });
     }
-    if (import_fs25.default.existsSync(MODELS_FILE)) {
+    if (import_fs26.default.existsSync(MODELS_FILE)) {
       try {
-        import_fs25.default.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
+        import_fs26.default.copyFileSync(MODELS_FILE, MODELS_BACKUP_FILE);
       } catch (backupErr) {
         console.warn("[spaceStorageRoutes] backup error:", backupErr);
       }
     }
-    import_fs25.default.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), "utf-8");
+    import_fs26.default.writeFileSync(MODELS_FILE, JSON.stringify(models, null, 2), "utf-8");
     console.log(`[spaceStorageRoutes] Successfully persisted ${models.length} model assets to disk at ${MODELS_FILE}`);
     let gcsSynced = false;
     try {
@@ -21789,16 +22017,16 @@ router16.get("/styles", async (_req, res) => {
       if (gcsBuf && gcsBuf.length > 2) {
         const parsed = JSON.parse(gcsBuf.toString("utf-8"));
         if (Array.isArray(parsed) && parsed.length > 0) {
-          import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(parsed, null, 2), "utf-8");
           return res.json({ success: true, data: parsed, source: "gcs" });
         }
       }
     } catch (gcsErr) {
       console.warn("[spaceStorageRoutes] GCS read styles notice:", gcsErr.message);
     }
-    if (import_fs25.default.existsSync(STYLES_FILE)) {
+    if (import_fs26.default.existsSync(STYLES_FILE)) {
       try {
-        const content = import_fs25.default.readFileSync(STYLES_FILE, "utf-8");
+        const content = import_fs26.default.readFileSync(STYLES_FILE, "utf-8");
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return res.json({ success: true, data: parsed, source: "local_disk" });
@@ -21806,13 +22034,13 @@ router16.get("/styles", async (_req, res) => {
       } catch (e) {
       }
     }
-    if (import_fs25.default.existsSync(SEED_STYLES_FILE)) {
+    if (import_fs26.default.existsSync(SEED_STYLES_FILE)) {
       try {
-        const seedContent = import_fs25.default.readFileSync(SEED_STYLES_FILE, "utf-8");
+        const seedContent = import_fs26.default.readFileSync(SEED_STYLES_FILE, "utf-8");
         const seedStyles = JSON.parse(seedContent);
         if (Array.isArray(seedStyles) && seedStyles.length > 0) {
           console.log(`[spaceStorageRoutes] Loaded ${seedStyles.length} seed scene styles (built-in fallback)`);
-          import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), "utf-8");
+          import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(seedStyles, null, 2), "utf-8");
           (async () => {
             try {
               await storage.put({
@@ -21844,13 +22072,13 @@ router16.post("/styles/sync", async (req, res) => {
     if (!Array.isArray(styles)) {
       return res.status(400).json({ success: false, error: "Styles payload must be an array" });
     }
-    if (import_fs25.default.existsSync(STYLES_FILE)) {
+    if (import_fs26.default.existsSync(STYLES_FILE)) {
       try {
-        import_fs25.default.copyFileSync(STYLES_FILE, STYLES_BACKUP_FILE);
+        import_fs26.default.copyFileSync(STYLES_FILE, STYLES_BACKUP_FILE);
       } catch {
       }
     }
-    import_fs25.default.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), "utf-8");
+    import_fs26.default.writeFileSync(STYLES_FILE, JSON.stringify(styles, null, 2), "utf-8");
     console.log(`[spaceStorageRoutes] \u2713 \u6210\u529F\u5C06 ${styles.length} \u4E2A\u573A\u666F\u98CE\u683C\u8D44\u4EA7\u6301\u4E45\u5316\u4FDD\u5B58\u81F3\u670D\u52A1\u7AEF\u78C1\u76D8`);
     let gcsSynced = false;
     try {
@@ -21888,12 +22116,12 @@ router16.post("/projects/snapshot", (req, res) => {
     if (!payload || !payload.projectId) {
       return res.status(400).json({ success: false, error: "Missing projectId in snapshot" });
     }
-    const projectsDir = import_path23.default.join(process.cwd(), ".data", "space-projects");
-    if (!import_fs25.default.existsSync(projectsDir)) {
-      import_fs25.default.mkdirSync(projectsDir, { recursive: true });
+    const projectsDir = import_path24.default.join(process.cwd(), ".data", "space-projects");
+    if (!import_fs26.default.existsSync(projectsDir)) {
+      import_fs26.default.mkdirSync(projectsDir, { recursive: true });
     }
-    const filePath = import_path23.default.join(projectsDir, `${payload.projectId}.json`);
-    import_fs25.default.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    const filePath = import_path24.default.join(projectsDir, `${payload.projectId}.json`);
+    import_fs26.default.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
     return res.json({ success: true, projectId: payload.projectId, path: filePath });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -21902,11 +22130,11 @@ router16.post("/projects/snapshot", (req, res) => {
 router16.get("/projects/snapshot/:projectId", (req, res) => {
   try {
     const { projectId } = req.params;
-    const filePath = import_path23.default.join(process.cwd(), ".data", "space-projects", `${projectId}.json`);
-    if (!import_fs25.default.existsSync(filePath)) {
+    const filePath = import_path24.default.join(process.cwd(), ".data", "space-projects", `${projectId}.json`);
+    if (!import_fs26.default.existsSync(filePath)) {
       return res.status(404).json({ success: false, error: "Project snapshot not found" });
     }
-    const raw = import_fs25.default.readFileSync(filePath, "utf-8");
+    const raw = import_fs26.default.readFileSync(filePath, "utf-8");
     return res.json({ success: true, data: JSON.parse(raw) });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -21918,117 +22146,8 @@ var spaceStorageRoutes_default = router16;
 var import_express17 = require("express");
 var import_zod5 = require("zod");
 
-// src/shared/storage/spaceObjectKeys.ts
-var SpaceObjectKeyBuilder = class {
-  /**
-   * 基础项目根路径
-   */
-  static projectRoot(projectId) {
-    if (!projectId || projectId.trim() === "") {
-      throw new Error("[SpaceObjectKeyBuilder] projectId is required");
-    }
-    return `projects/${projectId.trim()}`;
-  }
-  /**
-   * 产品参考图路径
-   * projects/{projectId}/products/{assetId}/refs/{referenceId}/{filename}
-   */
-  static productReference(params) {
-    const { projectId, assetId, referenceId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/products/${assetId}/refs/${referenceId}/original.${extension}`;
-  }
-  /**
-   * 空间户型参考图路径
-   * projects/{projectId}/spaces/{spacePresetId}/refs/{referenceId}/{filename}
-   */
-  static spaceReference(params) {
-    const { projectId, spacePresetId, referenceId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/spaces/${spacePresetId}/refs/${referenceId}/original.${extension}`;
-  }
-  /**
-   * 风格系统参考图路径
-   * projects/{projectId}/styles/{stylePresetId}/refs/{referenceId}/{filename}
-   */
-  static styleReference(params) {
-    const { projectId, stylePresetId, referenceId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/styles/${stylePresetId}/refs/${referenceId}/original.${extension}`;
-  }
-  /**
-   * A00 空间母版标准统一路径
-   * projects/{id}/scene-masters/master-{rev}.webp
-   */
-  static sceneMasterCanonical(params) {
-    const { projectId, revisionId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/scene-masters/master-${revisionId}.${extension}`;
-  }
-  /**
-   * 镜头评审结果存储路径
-   * projects/{id}/shots/{shotCode}/revisions/{rev}/validation.json
-   */
-  static shotRevisionValidation(params) {
-    const { projectId, shotId, revisionId } = params;
-    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/validation.json`;
-  }
-  /**
-   * 镜头提示词快照存储路径
-   * projects/{id}/shots/{shotCode}/revisions/{rev}/prompt.json
-   */
-  static shotRevisionPrompt(params) {
-    const { projectId, shotId, revisionId } = params;
-    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/prompt.json`;
-  }
-  /**
-   * A00 空间母版 (Scene Master) 路径
-   * projects/{projectId}/scene-masters/{sceneMasterId}/{revisionId}/master.{extension}
-   */
-  static sceneMaster(params) {
-    const { projectId, sceneMasterId, revisionId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/scene-masters/${sceneMasterId}/${revisionId}/master.${extension}`;
-  }
-  /**
-   * 镜头修订版本原图路径
-   * projects/{projectId}/shots/{shotId}/revisions/{revisionId}/original.{extension}
-   */
-  static shotRevisionOriginal(params) {
-    const { projectId, shotId, revisionId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/original.${extension}`;
-  }
-  /**
-   * 镜头修订版本缩略图路径
-   * projects/{projectId}/shots/{shotId}/revisions/{revisionId}/thumb.{extension}
-   */
-  static shotRevisionThumbnail(params) {
-    const { projectId, shotId, revisionId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/shots/${shotId}/revisions/${revisionId}/thumb.${extension}`;
-  }
-  /**
-   * 模特资产参考图路径
-   * projects/{projectId}/humans/{humanAssetId}/refs/{referenceId}/original.{extension}
-   */
-  static humanReference(params) {
-    const { projectId, humanAssetId, referenceId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/humans/${humanAssetId}/refs/${referenceId}/original.${extension}`;
-  }
-  /**
-   * 模特植入合成版本路径 (Human Pass)
-   * projects/{projectId}/human-composites/{compositeId}/{revisionId}/original.{extension}
-   */
-  static humanComposite(params) {
-    const { projectId, compositeId, revisionId, extension = "webp" } = params;
-    return `${this.projectRoot(projectId)}/human-composites/${compositeId}/${revisionId}/original.${extension}`;
-  }
-  /**
-   * 最终全案导出包路径
-   * projects/{projectId}/exports/{exportId}/{filename}
-   */
-  static exportPackage(params) {
-    const { projectId, exportId, fileName } = params;
-    return `${this.projectRoot(projectId)}/exports/${exportId}/${fileName}`;
-  }
-};
-
 // server/services/spaceProductAnalysisService.ts
-var import_fs26 = __toESM(require("fs"), 1);
+var import_fs27 = __toESM(require("fs"), 1);
 var import_crypto23 = __toESM(require("crypto"), 1);
 var import_sharp6 = __toESM(require("sharp"), 1);
 var import_zod4 = require("zod");
@@ -22245,9 +22364,9 @@ var SpaceProductAnalysisService = class {
         }
       }
       if (!imageBuffer || imageBuffer.length < 50) {
-        if (typeof cleanBase64 === "string" && import_fs26.default.existsSync(cleanBase64)) {
+        if (typeof cleanBase64 === "string" && import_fs27.default.existsSync(cleanBase64)) {
           try {
-            imageBuffer = import_fs26.default.readFileSync(cleanBase64);
+            imageBuffer = import_fs27.default.readFileSync(cleanBase64);
           } catch {
           }
         }
@@ -22453,7 +22572,7 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
     "height": 950
   },
   "materials": ["\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)", "\u5FB7\u56FD\u8D85\u9759\u97F3\u4F4E\u538B\u53CC\u7535\u673A", "\u9AD8\u78B3\u94A2\u4E94\u91D1\u4F38\u7F29\u67B6"],
-  "colors": ["\u4E91\u96FE\u6696\u7070 (Warm Greige)", "\u62C9\u4E1D\u9ED1\u949B\u91D1\u5C5E"],
+  "colors": ["<\u6309\u56FE\u4E2D\u8BE5\u5BB6\u5177\u771F\u5B9E\u53EF\u89C1\u7684\u76AE\u9769/\u9762\u6599\u989C\u8272\u586B\u5199\uFF0C\u5982 \u978D\u8910\u7126\u7CD6 (Saddle Caramel)\uFF0C\u4E0D\u5F97\u7167\u6284\u793A\u4F8B>", "<\u4E94\u91D1\u6216\u6B21\u8981\u914D\u8272>"],
   "adaptiveStyles": ["\u610F\u5F0F\u8F7B\u5962", "\u73B0\u4EE3\u6781\u7B80", "\u5976\u6CB9\u539F\u6728"],
   "surfaceTexture": "\u7EC6\u817B\u5E73\u7EB9\u534A\u82EF\u80FA\u725B\u76AE\uFF0C\u5929\u7136\u5FAE\u900F\u6C14\u6BDB\u5B54\uFF0C\u624B\u5DE5\u6CD5\u5F0F\u7ACB\u4F53\u53CC\u7F1D\u7EBF\u5305\u8FB9",
   "functionCapable": true,
@@ -22839,9 +22958,9 @@ ${userNotes ? `\u3010\u7528\u6237\u7279\u522B\u8865\u5145\u8BF4\u660E\u3011: ${u
         }
       }
       if (!imageBuffer || imageBuffer.length < 50) {
-        if (typeof cleanBase64 === "string" && import_fs26.default.existsSync(cleanBase64)) {
+        if (typeof cleanBase64 === "string" && import_fs27.default.existsSync(cleanBase64)) {
           try {
-            imageBuffer = import_fs26.default.readFileSync(cleanBase64);
+            imageBuffer = import_fs27.default.readFileSync(cleanBase64);
           } catch {
           }
         }
@@ -23267,30 +23386,6 @@ router17.post("/extract-product-dna", async (req, res) => {
     });
   }
 });
-router17.post("/analyze-product", async (req, res) => {
-  try {
-    const parsed = AnalyzeProductRequestSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid product analysis payload",
-        details: parsed.error.issues
-      });
-    }
-    const userId = req.user?.id || "system";
-    const result = await SpaceProductAnalysisService.analyzeAndExtract(parsed.data, userId);
-    return res.json({
-      success: true,
-      data: result
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to analyze product DNA";
-    return res.status(500).json({
-      success: false,
-      error: message
-    });
-  }
-});
 router17.post("/analyze-scene-ensemble", async (req, res) => {
   try {
     const parsed = AnalyzeProductRequestSchema.safeParse(req.body);
@@ -23341,129 +23436,6 @@ var LockSceneMasterSchema = import_zod5.z.object({
     camera: import_zod5.z.boolean().default(true),
     human: import_zod5.z.boolean().default(false)
   })
-});
-router17.post("/lock-master", async (req, res) => {
-  try {
-    const parsed = LockSceneMasterSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid scene master payload",
-        details: parsed.error.issues
-      });
-    }
-    const { projectId, sceneMasterId, revisionId, promptSnapshot, primaryProduct, locks, generationSettings } = parsed.data;
-    const objectKey = SpaceObjectKeyBuilder.sceneMaster({
-      projectId,
-      sceneMasterId,
-      revisionId,
-      extension: "webp"
-    });
-    const metaObjectKey = SpaceObjectKeyBuilder.sceneMaster({
-      projectId,
-      sceneMasterId,
-      revisionId,
-      extension: "json"
-    });
-    const effectiveProductName = primaryProduct?.name || promptSnapshot?.productName || "\u654F\u534E\u829D\u534E\u4ED5\u5934\u7B49\u8231\u529F\u80FD\u771F\u76AE\u6C99\u53D1";
-    const effectiveProductColor = primaryProduct?.colors?.[0] || "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
-    const effectiveProductMaterial = primaryProduct?.materials?.[0] || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
-    const effectiveRefImage = primaryProduct?.referenceImage || primaryProduct?.referenceImageUrl || primaryProduct?.referenceImages?.[0]?.publicUrl || primaryProduct?.referenceImages?.[0]?.objectKey;
-    const positivePrompt = promptSnapshot?.positivePrompt || `MANWAH luxury ${effectiveProductName} in ${effectiveProductColor} in metropolitan collector penthouse`;
-    const negativePrompt = promptSnapshot?.negativePrompt || "";
-    const cameraSettings = promptSnapshot?.cameraSettings || {
-      lensMm: 35,
-      heightCm: 130,
-      yawDeg: 0,
-      pitchDeg: -2
-    };
-    const effectiveAspectRatio = parsed.data.aspectRatio || promptSnapshot?.aspectRatio || "4:3";
-    const imageResult = await SpaceImageGenerationService.generateAndStore({
-      projectId,
-      shotCode: "A00",
-      positivePrompt,
-      negativePrompt,
-      aspectRatio: effectiveAspectRatio,
-      productName: effectiveProductName,
-      productColor: effectiveProductColor,
-      productMaterial: effectiveProductMaterial,
-      primaryProduct: {
-        id: primaryProduct?.id,
-        sku: primaryProduct?.sku,
-        name: effectiveProductName,
-        colors: primaryProduct?.colors,
-        materials: primaryProduct?.materials,
-        surfaceTexture: primaryProduct?.surfaceTexture,
-        referenceImage: effectiveRefImage
-      },
-      productReferenceImage: effectiveRefImage,
-      roomName: promptSnapshot?.roomName || "\u90FD\u4F1A\u5927\u5E73\u5C42\u5BA2\u5385",
-      styleName: promptSnapshot?.styleName || "\u90FD\u4F1A\u6536\u85CF\u5BB6 (ST-01)",
-      cameraSettings,
-      objectKey,
-      preferredModel: generationSettings?.model,
-      resolution: generationSettings?.resolution,
-      seed: generationSettings?.seed,
-      autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback
-    });
-    const metaBuffer = Buffer.from(
-      JSON.stringify(
-        {
-          sceneMasterId,
-          revisionId,
-          lockedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          locks,
-          promptSnapshot,
-          imageAsset: {
-            objectKey: imageResult.objectKey,
-            provider: imageResult.provider,
-            model: imageResult.model,
-            bytes: imageResult.bytes,
-            sha256: imageResult.sha256,
-            contentType: imageResult.contentType,
-            provenance: imageResult.provenance,
-            productionTruth: imageResult.productionTruth
-          }
-        },
-        null,
-        2
-      ),
-      "utf-8"
-    );
-    await storage2.put({
-      bucketType: "generated",
-      objectKey: metaObjectKey,
-      buffer: metaBuffer,
-      contentType: "application/json"
-    });
-    res.json({
-      success: true,
-      data: {
-        sceneMasterId,
-        revisionId,
-        aspectRatio: effectiveAspectRatio,
-        objectKey: imageResult.objectKey,
-        imageUrl: imageResult.imageUrl,
-        metaObjectKey,
-        isLocked: true,
-        lockedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        locks,
-        imageAsset: {
-          bytes: imageResult.bytes,
-          sha256: imageResult.sha256,
-          provider: imageResult.provider,
-          model: imageResult.model,
-          provenance: imageResult.provenance,
-          productionTruth: imageResult.productionTruth
-        }
-      }
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message || "Failed to lock scene master"
-    });
-  }
 });
 var AnalyzeStyleImageSchema = import_zod5.z.object({
   image: import_zod5.z.string().min(1, "Image data or URL is required"),
@@ -23592,194 +23564,11 @@ ${userNotes ? `
     });
   }
 });
-router17.get("/pipeline-health", async (req, res) => {
-  try {
-    const config = await resolveApiConfig("system");
-    const isKeyConfigured = isProviderKeyValid(config.apiKey);
-    const storageInstance = GcsAssetStorage.getInstance();
-    const storageMeta = storageInstance.getStatus();
-    res.json({
-      success: true,
-      data: {
-        status: isKeyConfigured ? "connected" : "key_missing",
-        provider: config.provider || "gemini",
-        gateway: config.baseUrl || "direct",
-        storage: storageMeta.isGcsAvailable ? "gcs_connected" : "local_fallback",
-        storageProvider: storageMeta.effectiveProvider,
-        models: [
-          "gemini-3.1-flash-image",
-          "gemini-2.5-flash-image",
-          "gemini-3-pro-image-preview"
-        ],
-        timestamp: (/* @__PURE__ */ new Date()).toISOString()
-      }
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message || "Pipeline health check failed"
-    });
-  }
-});
 var spaceBuildRoutes_default = router17;
 
 // server/routes/spaceShootRoutes.ts
 var import_express18 = require("express");
 var import_zod6 = require("zod");
-
-// server/services/spaceMultimodalRefereeService.ts
-var SpaceMultimodalRefereeService = class {
-  /**
-   * 执行多模态解耦仲裁
-   */
-  static async evaluateShot(params) {
-    const reportId = `eval-${params.shotCode.toLowerCase()}-${Date.now().toString(36)}`;
-    const evaluatedAt = (/* @__PURE__ */ new Date()).toISOString();
-    try {
-      const { ai, config, isValidKey } = await createServerGenAI("system");
-      if (isValidKey && ai) {
-        const prompt = `
-You are MANWAH Space Studio's Chief Engineering Referee for high-end luxury furniture digital assets.
-Strict Principle: GENERATION \u2260 VALIDATION. Evaluate the candidate shot against design invariants.
-
-Target Shot Code: ${params.shotCode}
-Virtual Camera Spec: Lens=${params.camera.lensMm}mm, Height=${params.camera.heightCm}cm, Yaw=${params.camera.yawDeg}\xB0, Pitch=${params.camera.pitchDeg}\xB0
-Shot Intent: ${params.intent.name} (Target Product Dominance=${params.intent.productDominancePct}%, Max Occlusion=${params.intent.maxOcclusionPct}%)
-Product DNA: Model=${params.productDNA.modelNumber} (${params.productDNA.name}), Material=${params.productDNA.leatherType || "Nappa"}, Color=${params.productDNA.colorCode || "Warm Neutral"}
-Candidate Asset Key: ${params.candidateImageKey}
-Baseline Master Key: ${params.baselineMasterKey || "A00 Master Baseline"}
-
-Evaluate the following 4 engineering dimensions (scores 0-100):
-1. productIdentity: Leather grain texture, sewing seam stitches, armrest curvature, metal legs. Must match Product DNA exactly.
-2. placement: Furniture coordinate invariance. Absolute zero spatial translation drift from A00 master.
-3. sceneContinuity: Floor texture, architectural walls, daylight temperature, ambient shadows.
-4. shotIntent: Framing matching ${params.camera.lensMm}mm perspective and ${params.intent.productDominancePct}% visual dominance.
-
-Return ONLY a valid JSON object in this format:
-{
-  "productIdentity": number,
-  "placement": number,
-  "sceneContinuity": number,
-  "shotIntent": number,
-  "productIdentityDetail": string,
-  "placementDetail": string,
-  "sceneContinuityDetail": string,
-  "shotIntentDetail": string,
-  "reasons": string[]
-}
-`;
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: {
-            responseMimeType: "application/json"
-          }
-        });
-        const rawText = response.text || "{}";
-        const cleanText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-        const parsed = JSON.parse(cleanText);
-        const score = {
-          productIdentity: typeof parsed.productIdentity === "number" ? parsed.productIdentity : 95,
-          placement: typeof parsed.placement === "number" ? parsed.placement : 97,
-          sceneContinuity: typeof parsed.sceneContinuity === "number" ? parsed.sceneContinuity : 94,
-          shotIntent: typeof parsed.shotIntent === "number" ? parsed.shotIntent : 96,
-          overall: 0
-        };
-        score.overall = Math.round(
-          score.productIdentity * 0.35 + score.placement * 0.3 + score.sceneContinuity * 0.2 + score.shotIntent * 0.15
-        );
-        const pass = score.overall >= 85 && score.productIdentity >= 85 && score.placement >= 90;
-        return {
-          reportId,
-          shotCode: params.shotCode,
-          revisionId: params.revisionId,
-          pass,
-          gateLevel: "L2",
-          evaluatorModel: "gemini-2.5-flash (Decoupled Referee)",
-          isDecoupledReferee: true,
-          provenance: "DERIVED",
-          productionTruth: false,
-          // AI 审核通过后仍为 false，待人工确权签发
-          score,
-          dimensionDetails: {
-            productIdentityDetail: parsed.productIdentityDetail || "\u4EA7\u54C1\u771F\u76AE\u5FAE\u89C2\u7EB9\u7406\u4E0E\u4E94\u91D1\u7ED3\u6784\u7CBE\u51C6\u543B\u5408\u654F\u534E\u51FA\u5382\u57FA\u51C6",
-            placementDetail: parsed.placementDetail || "\u5BB6\u5177\u7269\u7406\u7F51\u683C\u4E0EA00\u6BCD\u7248\u7EDD\u5BF9\u5BF9\u9F50\uFF0C\u96F6\u5E73\u79FB\u6F02\u79FB",
-            sceneContinuityDetail: parsed.sceneContinuityDetail || "\u81EA\u7136\u91C7\u5149\u51B7\u6696\u8272\u6E29\u4E0E\u5730\u677F\u53CD\u5C04\u4F53\u7CFB\u9AD8\u5EA6\u8FDE\u7EED",
-            shotIntentDetail: parsed.shotIntentDetail || `\u673A\u4F4D\u89C6\u573A\u89D2\u5B8C\u7F8E\u8868\u8FBE ${params.camera.lensMm}mm \u666F\u522B\u9884\u671F`
-          },
-          reasons: parsed.reasons || [
-            "\u591A\u6A21\u6001\u88C1\u5224\u5206\u6790\uFF1A\u4EA7\u54C1DNA\u5B8C\u6574\u5EA6\u6781\u9AD8",
-            "\u591A\u6A21\u6001\u88C1\u5224\u5206\u6790\uFF1A\u5BB6\u5177\u56FA\u5B9A\u4F4D\u96F6\u504F\u79FB",
-            "\u591A\u6A21\u6001\u88C1\u5224\u5206\u6790\uFF1A\u7B26\u5408L2\u751F\u4EA7\u7EA7\u53D1\u5E03\u95E8\u7981"
-          ],
-          evaluatedAt
-        };
-      }
-    } catch (err) {
-      console.warn("[SpaceMultimodalRefereeService] VLM referee execution failed:", err);
-      return {
-        reportId,
-        shotCode: params.shotCode,
-        revisionId: params.revisionId,
-        pass: false,
-        gateLevel: "L0",
-        evaluatorModel: "gemini-multimodal-referee",
-        isDecoupledReferee: true,
-        provenance: "DERIVED",
-        productionTruth: false,
-        score: {
-          productIdentity: 0,
-          placement: 0,
-          sceneContinuity: 0,
-          shotIntent: 0,
-          overall: 0
-        },
-        dimensionDetails: {
-          productIdentityDetail: "\u591A\u6A21\u6001\u89C6\u89C9\u88C1\u5224\u8C03\u7528\u5931\u8D25",
-          placementDetail: "\u5BB6\u5177\u7269\u7406\u5750\u6807\u672A\u5B8C\u6210\u6A21\u578B\u7EA7\u591A\u6A21\u6001\u590D\u9A8C",
-          sceneContinuityDetail: "\u573A\u666F\u51B7\u6696\u8272\u6E29\u4E0E\u91C7\u5149\u8FDE\u7EED\u6027\u672A\u5B8C\u6210\u6838\u67E5",
-          shotIntentDetail: "\u666F\u522B\u4E0E\u7126\u8DDD\u89C6\u573A\u672A\u901A\u8FC7\u673A\u5668\u9A8C\u8BC1"
-        },
-        reasons: [
-          `PROVIDER UNAVAILABLE: \u88C1\u5224\u6A21\u578B\u6267\u884C\u5F02\u5E38 (${err?.message || "Network or Service error"})`,
-          "\u95E8\u7981\u672A\u901A\u8FC7\uFF1A\u7981\u6B62\u5728\u672A\u5B8C\u6210\u72EC\u7ACB\u5BA1\u6838\u524D\u7B7E\u53D1\u901A\u8FC7\u72B6\u6001"
-        ],
-        evaluatedAt
-      };
-    }
-    return {
-      reportId,
-      shotCode: params.shotCode,
-      revisionId: params.revisionId,
-      pass: false,
-      gateLevel: "L0",
-      evaluatorModel: "unconfigured-referee",
-      isDecoupledReferee: true,
-      provenance: "DERIVED",
-      productionTruth: false,
-      score: {
-        productIdentity: 0,
-        placement: 0,
-        sceneContinuity: 0,
-        shotIntent: 0,
-        overall: 0
-      },
-      dimensionDetails: {
-        productIdentityDetail: "\u672A\u63A5\u5165\u72EC\u7ACB\u89C6\u89C9\u88C1\u5224\u670D\u52A1",
-        placementDetail: "\u672A\u68C0\u6D4B\u5230\u5BB6\u5177\u4F4D\u79FB\u4E0D\u53D8\u6027\u9A8C\u8BC1\u6570\u636E",
-        sceneContinuityDetail: "\u672A\u68C0\u6D4B\u5230\u6BCD\u7248\u8FDE\u7EED\u6027\u5BA1\u6838\u6570\u636E",
-        shotIntentDetail: "\u672A\u68C0\u6D4B\u5230\u666F\u522B\u610F\u56FE\u9A8C\u8BC1\u6570\u636E"
-      },
-      reasons: [
-        "PROVIDER UNAVAILABLE: \u670D\u52A1\u7AEF\u89C6\u89C9\u591A\u6A21\u6001\u88C1\u5224\u672A\u5C31\u7EEA",
-        "\u771F\u5B9E\u95E8\u7981\uFF1A\u6CA1\u6709\u771F\u5B9E\u6A21\u578B\u5224\u5B9A\u524D\uFF0C\u4E25\u7981\u4F2A\u9020 L2 PASS"
-      ],
-      evaluatedAt
-    };
-  }
-};
-
-// server/routes/spaceShootRoutes.ts
 var import_sharp8 = __toESM(require("sharp"), 1);
 var router18 = (0, import_express18.Router)();
 var storage3 = GcsAssetStorage.getInstance();
@@ -23855,173 +23644,6 @@ var RenderShotSchema = import_zod6.z.object({
     useRandomSeed: import_zod6.z.boolean().optional()
   }).passthrough().optional()
 });
-router18.post("/render-shot", async (req, res) => {
-  try {
-    const parsed = RenderShotSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid render-shot payload",
-        details: parsed.error.issues
-      });
-    }
-    const {
-      projectId,
-      shotCode,
-      revisionNumber,
-      camera,
-      intent,
-      productDNA,
-      sceneMasterReference,
-      productReferenceImage,
-      ensembleProducts,
-      promptSnapshot,
-      generationSettings
-    } = parsed.data;
-    const revisionId = `rev-${revisionNumber}`;
-    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
-      projectId,
-      shotId: shotCode,
-      revisionId,
-      extension: "webp"
-    });
-    const validationKey = SpaceObjectKeyBuilder.shotRevisionValidation({
-      projectId,
-      shotId: shotCode,
-      revisionId
-    });
-    const promptKey = SpaceObjectKeyBuilder.shotRevisionPrompt({
-      projectId,
-      shotId: shotCode,
-      revisionId
-    });
-    const effectiveProductName = productDNA?.name || "\u654F\u534E\u829D\u534E\u4ED5\u5934\u7B49\u8231\u529F\u80FD\u771F\u76AE\u6C99\u53D1";
-    const effectiveProductColor = productDNA?.colorCode || "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
-    const effectiveProductMaterial = productDNA?.leatherType || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
-    const effectiveProductRef = productReferenceImage || productDNA?.referenceImage;
-    const effectiveSceneMasterRef = shotCode === "A00" ? void 0 : sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
-    const referenceShotCode = req.body?.referenceShotCode || sceneMasterReference?.referenceShotCode;
-    const positivePrompt = promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode} luxury ${effectiveProductName} in ${effectiveProductColor}`;
-    const negativePrompt = promptSnapshot?.negativePrompt || "";
-    const imageResult = await SpaceImageGenerationService.generateAndStore({
-      projectId,
-      shotCode,
-      referenceShotCode,
-      positivePrompt,
-      negativePrompt,
-      aspectRatio: generationSettings?.aspectRatio || "4:3",
-      preferredModel: generationSettings?.model,
-      resolution: generationSettings?.resolution,
-      seed: generationSettings?.seed,
-      autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
-      renderMode: generationSettings?.renderMode || req.body?.renderMode,
-      studioSwapContext: promptSnapshot?.studioSwapContext,
-      productName: effectiveProductName,
-      productColor: effectiveProductColor,
-      productMaterial: effectiveProductMaterial,
-      primaryProduct: {
-        name: effectiveProductName,
-        colors: [effectiveProductColor],
-        materials: [effectiveProductMaterial],
-        referenceImage: effectiveProductRef,
-        isSceneEnsembleSuite: productDNA?.isSceneEnsembleSuite ?? req.body?.isSceneEnsembleSuite,
-        sceneEnsembleDossier: productDNA?.sceneEnsembleDossier ?? req.body?.sceneEnsembleDossier
-      },
-      ensembleProducts: ensembleProducts || req.body?.ensembleProducts,
-      productReferenceImage: effectiveProductRef,
-      sceneMasterReferenceImage: effectiveSceneMasterRef,
-      roomName: "\u90FD\u4F1A\u6536\u85CF\u5BB6\u5927\u5E73\u5C42\u5BA2\u5385",
-      styleName: "\u90FD\u4F1A\u6536\u85CF\u5BB6",
-      cameraSettings: {
-        lensMm: camera.lensMm,
-        heightCm: camera.heightCm,
-        yawDeg: camera.yawDeg,
-        pitchDeg: camera.pitchDeg
-      },
-      objectKey
-    });
-    const validationReport = await SpaceMultimodalRefereeService.evaluateShot({
-      projectId,
-      shotCode,
-      revisionId,
-      camera,
-      intent: {
-        name: intent?.name || "\u6807\u51C6\u89C6\u89D2",
-        productDominancePct: intent?.productDominancePct ?? 65,
-        maxOcclusionPct: intent?.maxOcclusionPct ?? 20
-      },
-      productDNA: {
-        modelNumber: productDNA?.modelNumber || "MW-CHEERS-S01",
-        name: effectiveProductName,
-        leatherType: effectiveProductMaterial,
-        colorCode: effectiveProductColor
-      },
-      candidateImageKey: objectKey,
-      baselineMasterKey: sceneMasterReference?.objectKey || `projects/${projectId}/scene-masters/master-v01`
-    });
-    const promptBuffer = Buffer.from(
-      JSON.stringify(
-        {
-          projectId,
-          shotCode,
-          revisionNumber,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          camera,
-          intent,
-          generationSettings,
-          promptSnapshot
-        },
-        null,
-        2
-      ),
-      "utf-8"
-    );
-    await storage3.put({
-      bucketType: "generated",
-      objectKey: promptKey,
-      buffer: promptBuffer,
-      contentType: "application/json"
-    });
-    const validationBuffer = Buffer.from(
-      JSON.stringify(validationReport, null, 2),
-      "utf-8"
-    );
-    await storage3.put({
-      bucketType: "generated",
-      objectKey: validationKey,
-      buffer: validationBuffer,
-      contentType: "application/json"
-    });
-    res.json({
-      success: true,
-      data: {
-        shotCode,
-        revisionNumber,
-        revisionId,
-        objectKey: imageResult.objectKey,
-        imageUrl: imageResult.imageUrl,
-        promptKey,
-        validationKey,
-        status: validationReport.pass ? "approved" : "rejected",
-        score: validationReport.score,
-        validationReport,
-        provenance: validationReport.provenance,
-        productionTruth: validationReport.productionTruth,
-        imageAsset: {
-          bytes: imageResult.bytes,
-          sha256: imageResult.sha256,
-          provider: imageResult.provider,
-          model: imageResult.model
-        }
-      }
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message || "Failed to render shot"
-    });
-  }
-});
 router18.post("/confirm-production-truth", async (req, res) => {
   try {
     const { projectId, shotCode, revisionId } = req.body;
@@ -24073,6 +23695,8 @@ router18.post("/render-candidates", async (req, res) => {
     } = parsed.data;
     const shotId = req.body.shotId || `shot-${shotCode.toLowerCase()}`;
     const isHumanPass = Boolean(req.body.isHumanPass);
+    const effectiveUserId = req.user?.id || req.headers?.["x-user-uuid"] || req.headers?.["x-user-id"] || req.body?.userId || req.body?.userUuid;
+    const effectiveDeptId = req.user?.departmentId || req.headers?.["x-dept-id"] || req.body?.deptId;
     lockKey = `${projectId}:${shotCode}:${isHumanPass ? "human" : "base"}`;
     const now = Date.now();
     const existingLockTime = activeRenderingLocks.get(lockKey);
@@ -24099,6 +23723,7 @@ router18.post("/render-candidates", async (req, res) => {
     const effectiveProductRef = productReferenceImage || productDNA?.referenceImage;
     const effectiveSceneMasterRef = shotCode === "A00" ? void 0 : sceneMasterReference?.imageUrl || sceneMasterReference?.objectKey;
     const referenceShotCode = req.body?.referenceShotCode || sceneMasterReference?.referenceShotCode;
+    const sceneMasterIsEmptyPlate = shotCode !== "A00" && Boolean(sceneMasterReference?.isEmptyPlate);
     const effectiveStyleName = req.body.styleName || promptSnapshot?.styleName || req.body.stylePreset?.name?.split(" (")[0] || "\u90FD\u4F1A\u6536\u85CF\u5BB6";
     const effectiveRoomName = req.body.roomName || promptSnapshot?.roomName || req.body.spacePreset?.name?.split(" (")[0] || "\u9876\u5C42\u5929\u9645\u4F1A\u6240\u5927\u5B85";
     const effectiveAspect = generationSettings?.aspectRatio || promptSnapshot?.aspectRatio || "4:3";
@@ -24109,25 +23734,25 @@ router18.post("/render-candidates", async (req, res) => {
     const studioSwapVariantSpecs = [
       {
         idx: 1,
-        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u5929\u7136\u901A\u900F\u6F2B\u5C04\u5149`,
+        tag: `\u5F71\u68DA\u80CC\u666F\u7F6E\u6362 \xB7 \u5929\u7136\u901A\u900F\u6F2B\u5C04\u5149`,
         promptAddon: "soft natural diffuse daylight, clean neutral color temperature",
         cameraDelta: {}
       },
       {
         idx: 2,
-        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u5348\u540E\u4F59\u6656\u6696\u5149`,
+        tag: `\u5F71\u68DA\u80CC\u666F\u7F6E\u6362 \xB7 \u5348\u540E\u4F59\u6656\u6696\u5149`,
         promptAddon: "warm golden hour afternoon sunlight entering through the windows, gentle amber glow",
         cameraDelta: {}
       },
       {
         idx: 3,
-        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u67D4\u548C\u6C1B\u56F4\u706F\u5149`,
+        tag: `\u5F71\u68DA\u80CC\u666F\u7F6E\u6362 \xB7 \u67D4\u548C\u6C1B\u56F4\u706F\u5149`,
         promptAddon: "balanced interior ambient cove lighting with soft wall sconce glow, calm evening-ready atmosphere",
         cameraDelta: {}
       },
       {
         idx: 4,
-        tag: `${effectiveStyleName} \xB7 ${effectiveRoomName} \xB7 \u5F71\u68DA\u6362\u666F \xB7 \u660E\u4EAE\u753B\u518C\u5149`,
+        tag: `\u5F71\u68DA\u80CC\u666F\u7F6E\u6362 \xB7 \u660E\u4EAE\u753B\u518C\u5149`,
         promptAddon: "bright high-key catalog lighting, crisp airy daylight with soft shadows",
         cameraDelta: {}
       }
@@ -24194,18 +23819,20 @@ router18.post("/render-candidates", async (req, res) => {
           revisionId: `cand-v${v.idx}-${batchTimestamp}`,
           extension: "webp"
         });
-        const effectiveCamera = {
+        const effectiveCamera = isStudioSwapBase ? void 0 : {
           lensMm: v.cameraDelta.lensMm ?? camera.lensMm,
           heightCm: camera.heightCm,
           yawDeg: camera.yawDeg,
           pitchDeg: v.cameraDelta.pitchDeg ?? camera.pitchDeg
         };
-        const positivePrompt = `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
+        const positivePrompt = isStudioSwapBase ? promptSnapshot?.positivePrompt || `STUDIO BACKGROUND SWAP SHOT ${shotCode}` : `${promptSnapshot?.positivePrompt || `MANWAH shot ${shotCode}`}, ${v.promptAddon}`;
         const preserveBasePhotoOnly = Boolean(req.body.preserveBasePhotoOnly);
         try {
           const imageResult = await SpaceImageGenerationService.generateAndStore({
             projectId,
             shotCode,
+            userId: effectiveUserId,
+            deptId: effectiveDeptId,
             isHumanPass,
             preserveBasePhotoOnly,
             humanLayout,
@@ -24219,6 +23846,7 @@ router18.post("/render-candidates", async (req, res) => {
             functionalPositionState: generationSettings?.functionalPositionState || req.body.functionalPositionState || "closed",
             seed: typeof generationSettings?.seed === "number" ? generationSettings.seed + v.idx * 137 : void 0,
             autoModelFallback: generationSettings?.autoModelFallback ?? req.body?.autoModelFallback,
+            studioSwapRefinePass: isStudioSwapBase && shotCode !== "A00" && Boolean(generationSettings?.studioSwapRefinePass),
             productName: effectiveProductName,
             productColor: effectiveProductColor,
             productMaterial: effectiveProductMaterial,
@@ -24233,18 +23861,20 @@ router18.post("/render-candidates", async (req, res) => {
             ensembleProducts: ensembleProducts || req.body?.ensembleProducts,
             productReferenceImage: effectiveProductRef,
             referenceShotCode,
+            sceneMasterIsEmptyPlate,
             sceneMasterReferenceImage: effectiveSceneMasterRef,
             currentShotReferenceImage: baseShotRef,
-            roomName: effectiveRoomName,
-            styleName: effectiveStyleName,
-            spacePreset: req.body.spacePreset,
-            stylePreset: req.body.stylePreset,
+            roomName: isStudioSwapBase && shotCode !== "A00" && Boolean(effectiveSceneMasterRef) ? void 0 : effectiveRoomName,
+            styleName: isStudioSwapBase && shotCode !== "A00" && Boolean(effectiveSceneMasterRef) ? void 0 : effectiveStyleName,
+            spacePreset: isStudioSwapBase && shotCode !== "A00" && Boolean(effectiveSceneMasterRef) ? void 0 : req.body.spacePreset,
+            stylePreset: isStudioSwapBase && shotCode !== "A00" && Boolean(effectiveSceneMasterRef) ? void 0 : req.body.stylePreset,
             cameraSettings: effectiveCamera,
             variantIndex: v.idx,
             variantTag: v.tag,
             renderMode,
             studioSwapContext,
-            studioSwapLightingHint: isStudioSwapBase ? v.promptAddon : void 0,
+            // 衍生镜头的首个候选与工作流页面指令逐字一致，不附加光线氛围；仅额外候选 (#2~#4) 用光线变体区分
+            studioSwapLightingHint: isStudioSwapBase && (shotCode === "A00" || v.idx > 1) ? v.promptAddon : void 0,
             objectKey
           });
           return {
@@ -24435,12 +24065,15 @@ ${promptSupplement}` : ""}`;
     if (!modelToUse || modelToUse === "gemini-2.5-flash-image") {
       modelToUse = "gemini-3.1-flash-image-preview";
     }
+    const effectiveUserId = req.user?.id || req.headers?.["x-user-uuid"] || req.headers?.["x-user-id"] || req.body?.userId || req.body?.userUuid || "system";
+    const effectiveDeptId = req.user?.departmentId || req.headers?.["x-dept-id"] || req.body?.deptId;
     const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
     const gatewayRes = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-uuid": "system"
+        "x-user-uuid": effectiveUserId,
+        ...effectiveDeptId ? { "x-dept-id": effectiveDeptId } : {}
       },
       body: JSON.stringify({
         prompt: directivePrompt,
@@ -24449,7 +24082,10 @@ ${promptSupplement}` : ""}`;
         resolution,
         images: [{ data: paddedImage, role: "composition_reference" }],
         mask: maskImage,
-        generationIntent: "image_edit"
+        generationIntent: "image_edit",
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
       }),
       signal: AbortSignal.timeout(18e4)
     });
@@ -24522,7 +24158,7 @@ router18.post("/inpaint-edit", async (req, res) => {
       // 'modify' (指令/局部修改) | 'erase' (局部消除) | 'replace_with_ref' (参考图置入替换)
       roomName = "\u90FD\u4F1A\u5927\u5E73\u5C42",
       styleName = "\u610F\u5F0F\u7ECF\u5178",
-      preferredModel = "gemini-nano-banana-2.1-preview",
+      preferredModel = "gemini-3-pro-image-preview",
       aspectRatio = "4:3",
       resolution = "2K",
       productName
@@ -24620,14 +24256,17 @@ MANDATORY QUALITY RULES:
     }
     let modelToUse = preferredModel;
     if (!modelToUse || modelToUse === "gemini-2.5-flash-image") {
-      modelToUse = "gemini-nano-banana-2.1-preview";
+      modelToUse = "gemini-3-pro-image-preview";
     }
+    const effectiveUserId = req.user?.id || req.headers?.["x-user-uuid"] || req.headers?.["x-user-id"] || req.body?.userId || req.body?.userUuid || "system";
+    const effectiveDeptId = req.user?.departmentId || req.headers?.["x-dept-id"] || req.body?.deptId;
     const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
     const gatewayRes = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-uuid": "system"
+        "x-user-uuid": effectiveUserId,
+        ...effectiveDeptId ? { "x-dept-id": effectiveDeptId } : {}
       },
       body: JSON.stringify({
         prompt: directivePrompt,
@@ -24636,7 +24275,10 @@ MANDATORY QUALITY RULES:
         resolution,
         images: imagesPayload,
         ...hasMask ? { mask: maskImage } : {},
-        generationIntent: "image_edit"
+        generationIntent: "image_edit",
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
       }),
       signal: AbortSignal.timeout(18e4)
     });
@@ -24733,6 +24375,95 @@ MANDATORY QUALITY RULES:
       success: false,
       error: err.message || "Failed to execute inpaint-edit"
     });
+  }
+});
+var EMPTY_PLATE_PROMPT = `\u5546\u4F01-\u6E05\u9664\u5BB6\u5177\uFF1A\u4EE5\u7A97\u53E31\uFF08\u7A7A\u95F4\u6BCD\u7248\u56FE\uFF09\u4E3A\u5E95\u56FE\uFF0C\u79FB\u9664\u753B\u9762\u4E2D\u6240\u6709\u53EF\u79FB\u52A8\u5BB6\u5177\u4E0E\u8F6F\u88C5\u9648\u8BBE\u2014\u2014\u6C99\u53D1\u3001\u5355\u6905\u3001\u8EBA\u6905\u3001\u8336\u51E0\u3001\u8FB9\u51E0\u3001\u9910\u684C\u6905\u3001\u5730\u6BEF\u3001\u843D\u5730\u706F\u3001\u7EFF\u690D\u3001\u6446\u4EF6\u4E0E\u684C\u9762\u9970\u54C1\u5168\u90E8\u6E05\u9664\u3002
+
+[\u7A7A\u95F4\u7B2C\u4E00\u6027\u9501\u5B9A]: \u76F8\u673A\u673A\u4F4D\u3001\u89C6\u89D2\u3001\u900F\u89C6\u3001\u5730\u5E73\u7EBF\u3001\u753B\u5E45\u6BD4\u4F8B\u4E0E\u7A97\u53E31\u5B8C\u5168\u4E00\u81F4\uFF1B\u5899\u9762\u3001\u540A\u9876\u4E0E\u706F\u5E26\u3001\u5730\u9762\u6750\u8D28\u4E0E\u53CD\u5149\u3001\u95E8\u7A97\u3001\u7A97\u5E18\u3001\u7A97\u666F\u3001\u58C1\u706F\u4E0E\u56FA\u5B9A\u786C\u88C5\u9020\u578B100%\u4FDD\u6301\u4E0D\u53D8\uFF0C\u53EA\u628A\u539F\u6765\u88AB\u5BB6\u5177\u906E\u6321\u7684\u5899\u9762\u4E0E\u5730\u9762\u6309\u5468\u56F4\u6750\u8D28\u81EA\u7136\u8865\u5168\uFF0C\u63A5\u7F1D\u4E0E\u5149\u5F71\u8FDE\u7EED\u3002
+
+\u8F93\u51FA\u4E00\u4E2A\u7A7A\u7F6E\u7684\u771F\u5B9E\u5BA4\u5185\u7A7A\u95F4\uFF0C\u6574\u4F53\u4E3A\u5BA4\u5185\u5EFA\u7B51\u6444\u5F71\u98CE\u683C\u3002
+
+[CRITICAL NEGATIVE INSTRUCTION]: no sofa, no chair, no armchair, no coffee table, no side table, no rug, no carpet, no floor lamp, no plants, no people, no text, no watermark, no labels, no changes to walls, ceiling, floor, windows or camera angle.`;
+router18.post("/empty-plate", async (req, res) => {
+  try {
+    const {
+      projectId = "manwah-noble-space-01",
+      shotCode = "A00",
+      sourceRevisionId,
+      sourceImage,
+      preferredModel = "gemini-nano-banana-2.1-preview",
+      aspectRatio = "4:3",
+      resolution = "2K"
+    } = req.body || {};
+    if (!sourceImage || typeof sourceImage !== "string") {
+      return res.status(400).json({ success: false, error: "\u7F3A\u5C11\u7A7A\u95F4\u6BCD\u7248\u56FE (sourceImage)" });
+    }
+    const inline = sourceImage.startsWith("data:") ? null : await SpaceImageGenerationService.resolveImageInline(sourceImage);
+    const sourceDataUrl = inline ? `data:${inline.mimeType};base64,${inline.data}` : sourceImage;
+    const effectiveUserId = req.user?.id || req.headers?.["x-user-uuid"] || req.headers?.["x-user-id"] || req.body?.userId || "system";
+    const effectiveDeptId = req.user?.departmentId || req.headers?.["x-dept-id"] || req.body?.deptId;
+    const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3e3}/api/gateway/generate-image`;
+    const gatewayRes = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-uuid": effectiveUserId,
+        ...effectiveDeptId ? { "x-dept-id": effectiveDeptId } : {}
+      },
+      body: JSON.stringify({
+        prompt: EMPTY_PLATE_PROMPT,
+        model: preferredModel,
+        aspectRatio,
+        resolution,
+        images: [{ data: sourceDataUrl, role: "composition_reference" }],
+        generationIntent: "image_edit",
+        userUuid: effectiveUserId,
+        userId: effectiveUserId,
+        deptId: effectiveDeptId
+      }),
+      signal: AbortSignal.timeout(18e4)
+    });
+    const gatewayData = await gatewayRes.json();
+    if (!gatewayRes.ok || gatewayData.error || gatewayData.success === false) {
+      const errorMsg = gatewayData.error?.message || (typeof gatewayData.error === "string" ? gatewayData.error : "") || gatewayData.message || "\u7A7A\u573A\u666F\u751F\u6210\u5931\u8D25";
+      throw new Error(errorMsg);
+    }
+    const candidatePart = gatewayData.candidates?.[0]?.content?.parts?.find(
+      (p) => p?.inlineData?.data || p?.inline_data?.data
+    );
+    const imgUrlOrBase64 = gatewayData.imageUrl || gatewayData.data?.[0]?.url || gatewayData.data?.[0]?.b64_json || gatewayData.images?.[0]?.data || candidatePart?.inlineData?.data || candidatePart?.inline_data?.data;
+    let imgBuffer = null;
+    if (typeof imgUrlOrBase64 === "string") {
+      if (imgUrlOrBase64.startsWith("http")) {
+        const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(6e4) });
+        if (fetched.ok) imgBuffer = Buffer.from(await fetched.arrayBuffer());
+      } else if (imgUrlOrBase64.length > 100) {
+        imgBuffer = Buffer.from(imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ""), "base64");
+      }
+    }
+    if (!imgBuffer || imgBuffer.length === 0) {
+      throw new Error("\u7A7A\u573A\u666F\u751F\u6210\u7F51\u5173\u672A\u8FD4\u56DE\u6709\u6548\u56FE\u50CF\u6570\u636E");
+    }
+    imgBuffer = await (0, import_sharp8.default)(imgBuffer).webp({ quality: 92 }).toBuffer();
+    const revisionId = `empty-plate-${String(sourceRevisionId || shotCode).toLowerCase()}-${Date.now().toString(36)}`;
+    const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({
+      projectId,
+      shotId: shotCode,
+      revisionId,
+      extension: "webp"
+    });
+    await storage3.put({ objectKey, buffer: imgBuffer, contentType: "image/webp" });
+    res.json({
+      success: true,
+      data: {
+        objectKey,
+        imageUrl: `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
+        sourceRevisionId
+      }
+    });
+  } catch (err) {
+    console.error("[spaceShootRoutes] Empty-plate error:", err);
+    res.status(500).json({ success: false, error: err.message || "\u7A7A\u573A\u666F\u751F\u6210\u5931\u8D25" });
   }
 });
 var spaceShootRoutes_default = router18;
@@ -25676,7 +25407,7 @@ router19.post("/generate-human-revision", async (req, res) => {
       contentType: "application/json"
     });
     const effectiveProductName = primaryProduct?.name || "\u654F\u534E\u829D\u534E\u4ED5\u5934\u7B49\u8231\u529F\u80FD\u771F\u76AE\u6C99\u53D1";
-    const effectiveProductColor = primaryProduct?.colors?.[0] || "\u5E72\u9091\u6696\u6A59 (Cognac Amber)";
+    const effectiveProductColor = primaryProduct?.colors?.[0] || "\u4E0E\u4EA7\u54C1\u53C2\u8003\u56FE\u4E00\u81F4\u7684\u5B9E\u62CD\u539F\u8272";
     const effectiveProductMaterial = primaryProduct?.materials?.[0] || "\u5357\u7F8E\u8FDB\u53E3\u5934\u5C42\u725B\u76AE (\u534A\u82EF\u80FA)";
     const effectiveCurrentShotRef = baseShotReference?.imageUrl || baseShotReference?.objectKey;
     const narrativeDirective = sceneDirectives?.trim() ? `EXPLICIT HUMAN NARRATIVE & LIFESTYLE ACTION: "${sceneDirectives.trim()}". ` : "";
@@ -25964,6 +25695,17 @@ function normalizeProviderError(error, context = {}) {
       candidate?.message || "\u4E0A\u6E38\u8BF7\u6C42\u8D85\u65F6\u3002",
       "timeout",
       504,
+      true,
+      context.provider,
+      context.model
+    );
+  }
+  const causeCode = String(candidate?.cause?.code || candidate?.code || "");
+  if (candidate instanceof TypeError && /fetch failed/i.test(String(candidate.message)) || /^(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|UND_ERR_)/.test(causeCode)) {
+    return new ProviderError(
+      `${candidate?.message || "fetch failed"}${causeCode ? ` (${causeCode})` : ""}`,
+      "upstream_unavailable",
+      502,
       true,
       context.provider,
       context.model
@@ -26265,15 +26007,15 @@ async function assertSafeRemoteUrl(value) {
   }
   return url;
 }
-async function fetchRemoteImage(value, redirectCount = 0) {
+async function fetchRemoteImage(value, redirectCount = 0, timeoutMs = 15e3) {
   const url = await assertSafeRemoteUrl(value);
-  const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(15e3) });
+  const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
     if (!location || redirectCount >= MAX_REDIRECTS) {
       throw new ProviderError("\u8FDC\u7A0B\u56FE\u7247\u91CD\u5B9A\u5411\u65E0\u6548\u6216\u6B21\u6570\u8FC7\u591A\u3002", "invalid_image_input", 400, false);
     }
-    return fetchRemoteImage(new URL(location, url).toString(), redirectCount + 1);
+    return fetchRemoteImage(new URL(location, url).toString(), redirectCount + 1, timeoutMs);
   }
   if (!response.ok) {
     throw new ProviderError(`\u8FDC\u7A0B\u56FE\u7247\u4E0B\u8F7D\u5931\u8D25\uFF08HTTP ${response.status}\uFF09\u3002`, "invalid_image_input", 400, false);
@@ -26325,9 +26067,9 @@ function detectImageMimeType(buffer) {
   if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "image/webp";
   return null;
 }
-async function resolveAndValidateImage(reference) {
+async function resolveAndValidateImage(reference, options = {}) {
   const isRemote = /^https?:\/\//i.test(reference.source);
-  const fetched = isRemote ? await fetchRemoteImage(reference.source) : null;
+  const fetched = isRemote ? await fetchRemoteImage(reference.source, 0, options.timeoutMs) : null;
   const decoded = fetched ? null : decodeBase64(reference.source);
   const buffer = fetched?.buffer || decoded.buffer;
   if (buffer.length > MAX_SINGLE_IMAGE_BYTES) {
@@ -26427,7 +26169,7 @@ async function validateMask(maskValue, firstImage) {
 // server.ts
 function fileLog(msg) {
   try {
-    import_fs27.default.appendFileSync("debug.log", msg + "\n");
+    import_fs28.default.appendFileSync("debug.log", msg + "\n");
   } catch (e) {
   }
   console.log(msg);
@@ -26679,9 +26421,9 @@ async function startServer() {
   app.use("/api/poster", posterRoutes_default);
   app.use("/api/storage-management", storageManagementRoutes_default);
   app.use("/api/space/storage", spaceStorageRoutes_default);
-  app.use("/api/space/build", spaceBuildRoutes_default);
-  app.use("/api/space/shoot", spaceShootRoutes_default);
-  app.use("/api/space/human", spaceHumanRoutes_default);
+  app.use("/api/space/build", optionalAuthenticateToken, spaceBuildRoutes_default);
+  app.use("/api/space/shoot", optionalAuthenticateToken, spaceShootRoutes_default);
+  app.use("/api/space/human", optionalAuthenticateToken, spaceHumanRoutes_default);
   app.use("/api/bridge", bridgeRoutes_default);
   app.post("/api/pre_process/mask", optionalAuthenticateToken, upload3.fields([{ name: "clean_image", maxCount: 1 }, { name: "mask_image", maxCount: 1 }]), async (req, res) => {
     try {
@@ -27413,15 +27155,23 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
               let imageData = item?.b64_json || item?.b64 || item?.base64 || item?.image || (typeof item === "string" ? item : void 0);
               let mimeType = item?.mime_type || item?.mimeType || "image/png";
               if (!imageData && item?.url) {
-                try {
-                  const downloaded = await resolveAndValidateImage({
-                    source: item.url,
-                    role: "style_reference",
-                    order: 0
-                  });
-                  mimeType = downloaded.mimeType;
-                  imageData = downloaded.cleanB64;
-                } catch (downloadError) {
+                let lastDownloadError = null;
+                for (let attempt = 0; attempt < 3 && !imageData; attempt++) {
+                  try {
+                    const downloaded = await resolveAndValidateImage(
+                      { source: item.url, role: "style_reference", order: 0 },
+                      { timeoutMs: 6e4 }
+                    );
+                    mimeType = downloaded.mimeType;
+                    imageData = downloaded.cleanB64;
+                  } catch (downloadError) {
+                    lastDownloadError = downloadError;
+                    console.warn(`[Gateway] \u4E0A\u6E38\u56FE\u50CF\u4E0B\u8F7D\u5931\u8D25 (\u7B2C ${attempt + 1}/3 \u6B21): ${downloadError?.message}`);
+                    if (attempt < 2) await new Promise((r) => setTimeout(r, 2e3));
+                  }
+                }
+                if (!imageData) {
+                  const downloadError = lastDownloadError || new Error("unknown");
                   throw new ProviderError(
                     `\u65E0\u6CD5\u4E0B\u8F7D\u4E0A\u6E38\u8FD4\u56DE\u7684\u56FE\u50CF\uFF1A${downloadError.message}`,
                     "invalid_upstream_response",
@@ -27498,10 +27248,28 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         try {
           result = await executeRequestForModel();
         } catch (firstAttemptErr) {
-          if (firstAttemptErr instanceof ProviderError && firstAttemptErr.category === "invalid_upstream_response" && firstAttemptErr.retryable) {
+          const normalizedFirst = normalizeProviderError(firstAttemptErr, { provider: currentProvider, model: registeredModel.id });
+          if (normalizedFirst.category === "invalid_upstream_response" && normalizedFirst.retryable) {
             fileLog(`[OpenAI Proxy Debug] Retrying ${registeredModel.id} once after empty upstream image response...`);
             await new Promise((r) => setTimeout(r, 800));
             result = await executeRequestForModel();
+          } else if (normalizedFirst.category === "upstream_unavailable" && normalizedFirst.upstreamStatus === void 0) {
+            let lastErr = firstAttemptErr;
+            result = void 0;
+            for (const delayMs of [1500, 4e3]) {
+              console.warn(`[Gateway] ${registeredModel.id} network error (${normalizedFirst.message}), retrying in ${delayMs}ms...`);
+              await new Promise((r) => setTimeout(r, delayMs));
+              try {
+                result = await executeRequestForModel();
+                lastErr = void 0;
+                break;
+              } catch (retryErr) {
+                lastErr = retryErr;
+                const n = normalizeProviderError(retryErr, { provider: currentProvider, model: registeredModel.id });
+                if (!(n.category === "upstream_unavailable" && n.upstreamStatus === void 0)) break;
+              }
+            }
+            if (lastErr) throw lastErr;
           } else {
             throw firstAttemptErr;
           }
@@ -27729,9 +27497,9 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   app.use("/api/product-dna-versions", productDnaRoutes_default);
   app.use("/api", copyRoutes_default);
   app.use("/api/space/storage", spaceStorageRoutes_default);
-  app.use("/api/space/build", spaceBuildRoutes_default);
-  app.use("/api/space/shoot", spaceShootRoutes_default);
-  app.use("/api/space/human", spaceHumanRoutes_default);
+  app.use("/api/space/build", optionalAuthenticateToken, spaceBuildRoutes_default);
+  app.use("/api/space/shoot", optionalAuthenticateToken, spaceShootRoutes_default);
+  app.use("/api/space/human", optionalAuthenticateToken, spaceHumanRoutes_default);
   app.get("/api/ai/test-connection", async (req, res) => {
     const userUuid = req.headers["x-user-uuid"];
     if (!userUuid) {
@@ -28032,7 +27800,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
       }
     });
   });
-  const hasDist = import_fs27.default.existsSync(import_path24.default.join(process.cwd(), "dist", "index.html"));
+  const hasDist = import_fs28.default.existsSync(import_path25.default.join(process.cwd(), "dist", "index.html"));
   const isProduction = process.env.NODE_ENV === "production" && hasDist;
   if (!isProduction && process.env.DISABLE_VITE !== "true") {
     const { createServer: createViteServer } = await import("vite");
@@ -28048,7 +27816,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = import_path24.default.join(process.cwd(), "dist");
+    const distPath = import_path25.default.join(process.cwd(), "dist");
     app.use(import_express22.default.static(distPath, {
       maxAge: "1y",
       immutable: true,
@@ -28071,7 +27839,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");
-      res.sendFile(import_path24.default.join(distPath, "index.html"));
+      res.sendFile(import_path25.default.join(distPath, "index.html"));
     });
   }
   const HOST = "0.0.0.0";
@@ -28094,7 +27862,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
     console.log("");
   });
   bridgeRelayHub.attachServer(server);
-  server.timeout = 36e4;
+  server.timeout = 6e5;
   server.headersTimeout = 365e3;
   server.keepAliveTimeout = 36e4;
 }

@@ -85,6 +85,21 @@ export function normalizeProviderError(
       context.model
     );
   }
+  // undici 网络层断连（fetch failed / ECONNRESET / socket closed 等）属于瞬时故障，可安全重试
+  const causeCode = String(candidate?.cause?.code || candidate?.code || '');
+  if (
+    (candidate instanceof TypeError && /fetch failed/i.test(String(candidate.message))) ||
+    /^(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|UND_ERR_)/.test(causeCode)
+  ) {
+    return new ProviderError(
+      `${candidate?.message || 'fetch failed'}${causeCode ? ` (${causeCode})` : ''}`,
+      'upstream_unavailable',
+      502,
+      true,
+      context.provider,
+      context.model
+    );
+  }
   return new ProviderError(
     candidate?.message || 'AI Provider 请求失败。',
     'internal_error',

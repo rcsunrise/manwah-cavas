@@ -392,9 +392,9 @@ async function startServer() {
   app.use('/api/poster', posterRoutes);
   app.use('/api/storage-management', storageManagementRoutes);
   app.use('/api/space/storage', spaceStorageRoutes);
-  app.use('/api/space/build', spaceBuildRoutes);
-  app.use('/api/space/shoot', spaceShootRoutes);
-  app.use('/api/space/human', spaceHumanRoutes);
+  app.use('/api/space/build', optionalAuthenticateToken as any, spaceBuildRoutes);
+  app.use('/api/space/shoot', optionalAuthenticateToken as any, spaceShootRoutes);
+  app.use('/api/space/human', optionalAuthenticateToken as any, spaceHumanRoutes);
   app.use('/api/bridge', bridgeRoutes);
 
   // API Route for uploading mask and clean image
@@ -1282,15 +1282,24 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                let imageData = item?.b64_json || item?.b64 || item?.base64 || item?.image || (typeof item === 'string' ? item : undefined);
                let mimeType = item?.mime_type || item?.mimeType || 'image/png';
                if (!imageData && item?.url) {
-                 try {
-                   const downloaded = await resolveAndValidateImage({
-                     source: item.url,
-                     role: 'style_reference',
-                     order: 0
-                   });
-                   mimeType = downloaded.mimeType;
-                   imageData = downloaded.cleanB64;
-                 } catch (downloadError: any) {
+                 // 上游已出图并计费，下载失败不能直接丢弃：放宽超时并重试，避免 2K 大图在慢网络下 15 秒超时后被判失败
+                 let lastDownloadError: any = null;
+                 for (let attempt = 0; attempt < 3 && !imageData; attempt++) {
+                   try {
+                     const downloaded = await resolveAndValidateImage(
+                       { source: item.url, role: 'style_reference', order: 0 },
+                       { timeoutMs: 60_000 }
+                     );
+                     mimeType = downloaded.mimeType;
+                     imageData = downloaded.cleanB64;
+                   } catch (downloadError: any) {
+                     lastDownloadError = downloadError;
+                     console.warn(`[Gateway] 上游图像下载失败 (第 ${attempt + 1}/3 次): ${downloadError?.message}`);
+                     if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+                   }
+                 }
+                 if (!imageData) {
+                   const downloadError = lastDownloadError || new Error('unknown');
                    throw new ProviderError(
                      `无法下载上游返回的图像：${downloadError.message}`,
                      'invalid_upstream_response',
@@ -1372,10 +1381,29 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         try {
           result = await executeRequestForModel();
         } catch (firstAttemptErr: any) {
-          if (firstAttemptErr instanceof ProviderError && firstAttemptErr.category === 'invalid_upstream_response' && firstAttemptErr.retryable) {
+          const normalizedFirst = normalizeProviderError(firstAttemptErr, { provider: currentProvider, model: registeredModel.id });
+          if (normalizedFirst.category === 'invalid_upstream_response' && normalizedFirst.retryable) {
             fileLog(`[OpenAI Proxy Debug] Retrying ${registeredModel.id} once after empty upstream image response...`);
             await new Promise((r) => setTimeout(r, 800));
             result = await executeRequestForModel();
+          } else if (normalizedFirst.category === 'upstream_unavailable' && normalizedFirst.upstreamStatus === undefined) {
+            // 网络层瞬时断连：同模型退避重试，避免偶发 fetch failed 直接报错或降级到其他模型
+            let lastErr: unknown = firstAttemptErr;
+            result = undefined;
+            for (const delayMs of [1500, 4000]) {
+              console.warn(`[Gateway] ${registeredModel.id} network error (${normalizedFirst.message}), retrying in ${delayMs}ms...`);
+              await new Promise((r) => setTimeout(r, delayMs));
+              try {
+                result = await executeRequestForModel();
+                lastErr = undefined;
+                break;
+              } catch (retryErr) {
+                lastErr = retryErr;
+                const n = normalizeProviderError(retryErr, { provider: currentProvider, model: registeredModel.id });
+                if (!(n.category === 'upstream_unavailable' && n.upstreamStatus === undefined)) break;
+              }
+            }
+            if (lastErr) throw lastErr;
           } else {
             throw firstAttemptErr;
           }
@@ -1648,9 +1676,9 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   app.use('/api/product-dna-versions', productDnaRoutes);
   app.use('/api', copyRoutes);
   app.use('/api/space/storage', spaceStorageRoutes);
-  app.use('/api/space/build', spaceBuildRoutes);
-  app.use('/api/space/shoot', spaceShootRoutes);
-  app.use('/api/space/human', spaceHumanRoutes);
+  app.use('/api/space/build', optionalAuthenticateToken as any, spaceBuildRoutes);
+  app.use('/api/space/shoot', optionalAuthenticateToken as any, spaceShootRoutes);
+  app.use('/api/space/human', optionalAuthenticateToken as any, spaceHumanRoutes);
 
   app.get('/api/ai/test-connection', async (req, res) => {
     const userUuid = req.headers['x-user-uuid'] as string;
@@ -2120,7 +2148,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
   bridgeRelayHub.attachServer(server);
   
   // Set long timeout for VectorEngine/Proxy requests
-  server.timeout = 360000;
+  server.timeout = 600000; // 两步出图（GPT 换景 + Banana 精修）最长约 7 分钟
   server.headersTimeout = 365000;
   server.keepAliveTimeout = 360000;
 }

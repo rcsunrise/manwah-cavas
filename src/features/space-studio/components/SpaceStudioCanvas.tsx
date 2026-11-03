@@ -1,5 +1,6 @@
 // src/features/space-studio/components/SpaceStudioCanvas.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { SPACE_AUTO_FALLBACK_MODELS } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
@@ -143,6 +144,12 @@ interface SpaceStudioCanvasProps {
   autoModelFallback?: boolean;
   onEnableAutoFallback?: () => void;
   renderMode?: 'orchestration' | 'studio_swap';
+  // A00 母版清除家具后的空场景（仅极简换景模式的 A00 传入）
+  emptyPlate?: { status: 'idle' | 'generating' | 'ready' | 'failed'; error?: string };
+  onGenerateEmptyPlate?: () => void;
+  // 仅 A00：作为后续镜头空间参考的版本
+  sceneReferenceRevisionId?: string;
+  onSetSceneReference?: (revisionId: string | null) => void;
 }
 
 export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
@@ -197,7 +204,11 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   hasGenerations,
   autoModelFallback,
   onEnableAutoFallback,
-  renderMode = 'orchestration'
+  renderMode = 'orchestration',
+  emptyPlate,
+  onGenerateEmptyPlate,
+  sceneReferenceRevisionId,
+  onSetSceneReference
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
@@ -209,6 +220,27 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   const [isOutpaintingMode, setIsOutpaintingMode] = useState(false);
   const [isInpaintMode, setIsInpaintMode] = useState(false);
   const [imageAspect, setImageAspect] = useState<number | null>(null);
+
+  const revisionsScrollRef = useRef<HTMLDivElement | null>(null);
+  const activeRevisionRef = useRef<HTMLDivElement | null>(null);
+
+  // 选中的版本变更时，平滑滚动至视野内，确保当前激活版本始终清晰可见
+  useEffect(() => {
+    if (activeRevisionRef.current && revisionsScrollRef.current) {
+      const container = revisionsScrollRef.current;
+      const el = activeRevisionRef.current;
+      const elLeft = el.offsetLeft;
+      const elRight = elLeft + el.offsetWidth;
+      const viewLeft = container.scrollLeft;
+      const viewRight = viewLeft + container.clientWidth;
+
+      if (elLeft < viewLeft) {
+        container.scrollTo({ left: elLeft - 8, behavior: 'smooth' });
+      } else if (elRight > viewRight) {
+        container.scrollTo({ left: elRight - container.clientWidth + 8, behavior: 'smooth' });
+      }
+    }
+  }, [activeShot.currentRevisionId, activeShot.revisions.length]);
 
   // 点击外部自动收起所有顶部下拉面板
   useEffect(() => {
@@ -233,6 +265,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain');
   const [imageError, setImageError] = useState<boolean>(false);
   const [imageLoaded, setImageLoaded] = useState<boolean>(false);
+  const mainImageRef = useRef<HTMLImageElement | null>(null);
   const [triedFallback, setTriedFallback] = useState<boolean>(false);
 
   // 底部精修方案候选区：可折叠与自由拖拽调节高度
@@ -351,7 +384,19 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     ? (candidateBatch?.candidates.find((c) => c.id === selectedCandidateId) || candidateBatch?.candidates[0])
     : undefined;
 
-  // 4. 提取当前图片代理 Key（此时 activeCandidate 已安全完成初始化，彻底根治 TDZ ReferenceError）
+  // 4. 提取当前版本简明标题
+  const currentRevisionTitle = useMemo(() => {
+    if (!currentRevision) return '未生成';
+    const isUp = currentRevision.provenance === 'PROVIDED' || currentRevision.label?.includes('实拍');
+    const isEd = currentRevision.id.includes('rev-edit-') || currentRevision.label?.includes('精修') || currentRevision.label?.includes('重绘');
+    const isOut = currentRevision.id.includes('outpaint') || currentRevision.label?.includes('扩图');
+    const isHum = currentRevision.revisionType === 'human' || currentRevision.id.includes('human');
+    const typeLabel = isUp ? '实拍原图' : isEd ? '局部精修' : isOut ? '智能扩图' : isHum ? '人物入座' : '空间换景';
+    const num = currentRevision.revisionNumber || (activeShot.revisions.length || 1);
+    return currentRevision.label || `${typeLabel} v${num}`;
+  }, [currentRevision, activeShot.revisions.length]);
+
+  // 5. 提取当前图片代理 Key（此时 activeCandidate 已安全完成初始化，彻底根治 TDZ ReferenceError）
   const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
   const extractedKey = primaryKey || (() => {
     const url = currentRevision?.imageUrl || activeCandidate?.imageUrl || sceneMaster?.imageUrl;
@@ -417,6 +462,95 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     (currentJob?.status === 'failed' && currentJob?.targetCode === activeShot.templateCode)
   );
 
+  // 统一镜头方案与历史版本胶卷模型 (Unified Shot Reel)
+  const unifiedCards = useMemo(() => {
+    const cards: Array<{
+      key: string;
+      id: string;
+      itemType: 'revision' | 'candidate';
+      revisionId?: string;
+      candidate?: CandidateItem;
+      imageUrl: string;
+      badgeText: string;
+      badgeColorClass: string;
+      summaryTag?: string;
+      isSelected: boolean;
+      isFavorite?: boolean;
+      createdAt?: string;
+      canDelete?: boolean;
+    }> = [];
+
+    // 1. 优先平铺全部历史生成定稿版本 (activeShot.revisions)，保持倒序（最新版本在前）
+    const sortedRevisions = [...activeShot.revisions].sort((a, b) => {
+      const numA = a.revisionNumber || 0;
+      const numB = b.revisionNumber || 0;
+      return numB - numA;
+    });
+
+    for (const rev of sortedRevisions) {
+      const isSelected = rev.id === (currentRevision?.id || activeShot.currentRevisionId);
+      const isUp = rev.provenance === 'PROVIDED' || rev.label?.includes('实拍');
+      const isEd = rev.id.includes('rev-edit-') || rev.label?.includes('精修') || rev.label?.includes('重绘');
+      const isOut = rev.id.includes('outpaint') || rev.label?.includes('扩图');
+      const isHum = rev.revisionType === 'human' || rev.id.includes('human');
+      const typeLabel = isUp ? '实拍原图' : isEd ? '局部精修' : isOut ? '智能扩图' : isHum ? '人物入座' : '空间换景';
+      const num = rev.revisionNumber || 1;
+      const badgeText = rev.label || `${typeLabel} v${num}`;
+
+      const badgeColor = isHum
+        ? 'bg-purple-900/80 text-purple-300 border-purple-500/30'
+        : isEd
+        ? 'bg-emerald-900/80 text-emerald-300 border-emerald-500/30'
+        : isOut
+        ? 'bg-cyan-900/80 text-cyan-300 border-cyan-500/30'
+        : isUp
+        ? 'bg-sky-900/80 text-sky-300 border-sky-500/30'
+        : 'bg-amber-900/80 text-amber-300 border-amber-500/30';
+
+      const imgUrl = rev.imageUrl || (rev.id === currentRevision?.id ? (localFileUrl || '') : '') || '';
+
+      cards.push({
+        key: `rev-${rev.id}`,
+        id: rev.id,
+        itemType: 'revision',
+        revisionId: rev.id,
+        imageUrl: imgUrl,
+        badgeText,
+        badgeColorClass: badgeColor,
+        summaryTag: rev.metaSummary || rev.label || `版本 v${num}`,
+        isSelected,
+        createdAt: rev.createdAt,
+        canDelete: activeShot.revisions.length > 1 && Boolean(onDeleteRevision)
+      });
+    }
+
+    // 2. 追加当前批次中尚未设为定稿的候选变体 (若有候选变体方案 #2, #3, #4)
+    if (candidateBatch && candidateBatch.candidates) {
+      const existingImages = new Set(cards.map((c) => c.imageUrl).filter(Boolean));
+      for (const cand of candidateBatch.candidates) {
+        if (!existingImages.has(cand.imageUrl)) {
+          const isSelected = selectedCandidateId === cand.id;
+          cards.push({
+            key: `cand-${cand.id}`,
+            id: cand.id,
+            itemType: 'candidate',
+            candidate: cand,
+            imageUrl: cand.imageUrl,
+            badgeText: `方案 #${cand.variantIndex || 1}`,
+            badgeColorClass: 'bg-blue-900/80 text-blue-300 border-blue-500/30',
+            summaryTag: cand.summaryTag || `候选变体 ${cand.variantIndex || 1}`,
+            isSelected,
+            isFavorite: cand.isFavorite,
+            createdAt: cand.createdAt,
+            canDelete: false
+          });
+        }
+      }
+    }
+
+    return cards;
+  }, [activeShot.revisions, activeShot.currentRevisionId, currentRevision?.id, localFileUrl, candidateBatch, selectedCandidateId, onDeleteRevision]);
+
   const failureError =
     activeShot.error ||
     (currentJob?.status === 'failed' && currentJob?.targetCode === activeShot.templateCode ? currentJob.error : '') ||
@@ -430,6 +564,14 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     setImageLoaded(false);
     setImageAspect(null);
     setTriedFallback(false);
+
+    // 缓存命中时图片可能在本 effect 执行前就已触发 onLoad，随后被上面的重置覆盖且不会再次触发，
+    // 导致画布永久停留在加载转圈。这里补检已完成解码的图片，直接恢复为已加载状态。
+    const img = mainImageRef.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setImageLoaded(true);
+      setImageAspect(img.naturalWidth / img.naturalHeight);
+    }
   }, [activeShot.id, activeShot.currentRevisionId, currentImageUrl]);
 
   // 复位变换
@@ -729,100 +871,46 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
           ) : null}
         </div>
 
-        {/* 中间：多版本快速切换分段胶囊（紧凑平铺，告别横向拖动，版本悬停即带叉号） */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* 中间：去杂化紧凑版本指示器 + 对比按钮（彻底释放顶部视界空间，杜绝挤压与误触） */}
+        <div className="flex-1 min-w-0 flex items-center justify-center gap-2 px-2 overflow-hidden">
+          {activeShot.revisions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsBatchDrawerCollapsed(false)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-mono shrink-0 transition cursor-pointer hover:border-amber-500/50 ${
+                isLight ? 'bg-stone-100 border-stone-200 text-stone-700 hover:bg-stone-200 shadow-2xs' : 'bg-black/40 border-white/10 text-neutral-200 hover:bg-white/10'
+              }`}
+              title={`当前展示：${currentRevisionTitle} (共 ${activeShot.revisions.length} 个版本，点击展开下方方案胶卷)`}
+            >
+              <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="font-bold text-amber-500">{currentRevisionTitle}</span>
+              {activeShot.revisions.length > 1 && (
+                <span className="text-[10px] text-neutral-400 font-normal">
+                  ({activeShot.revisions.length} 个版本)
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* 前后对比按钮：当有至少 2 个版本时呈现 */}
           {activeShot.revisions.length > 1 && (
-            <div className={`flex items-center gap-1 p-0.5 rounded-xl border text-xs whitespace-nowrap shrink-0 ${
-              isLight ? 'bg-stone-100/90 border-stone-200 shadow-2xs' : 'bg-black/40 border-white/10'
-            }`}>
-              <div className="flex items-center gap-0.5">
-                {activeShot.revisions.map((rev, revIdx) => {
-                  const isSelected = rev.id === activeShot.currentRevisionId || (!activeShot.currentRevisionId && revIdx === 0);
-                  const isHuman = rev.revisionType === 'human' || rev.id.includes('human');
-                  const isOutpaint = rev.id.includes('outpaint') || rev.label?.includes('扩图');
-                  const isEdit = rev.id.includes('rev-edit-') || rev.label?.includes('精修') || rev.label?.includes('重绘');
-                  const isUpload = rev.provenance === 'PROVIDED' || rev.label?.includes('实拍');
-                  const revName = isUpload ? '实拍' : isEdit ? '精修' : isOutpaint ? '扩图' : isHuman ? '人物' : '空间';
-                  const revNum = rev.revisionNumber || (activeShot.revisions.length - revIdx);
-                  const isMasterBenchmark = activeShot.templateCode === 'A00' && isSelected;
-
-                  return (
-                    <div
-                      key={rev.id}
-                      className={`group relative flex items-center rounded-lg text-[10px] font-bold transition whitespace-nowrap shrink-0 ${
-                        isSelected
-                          ? isHuman
-                            ? 'bg-purple-600 text-white shadow-xs'
-                            : isEdit
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : isOutpaint
-                            ? 'bg-cyan-600 text-white shadow-xs'
-                            : 'bg-amber-500 text-stone-950 shadow-xs ring-1 ring-amber-400'
-                          : isLight
-                          ? 'bg-white hover:bg-stone-200 text-stone-700 border border-stone-200/80'
-                          : 'bg-white/5 hover:bg-white/15 text-neutral-300 border border-white/5'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => onSelectRevision?.(activeShot.id, rev.id)}
-                        className="pl-2 pr-1.5 py-1 flex items-center gap-1 cursor-pointer"
-                        title={`${rev.label || `版本 v${revNum}`} (点击切换)`}
-                      >
-                        {isMasterBenchmark ? (
-                          <Star className="w-2.5 h-2.5 text-stone-950 fill-stone-950 shrink-0" />
-                        ) : isHuman ? (
-                          <Users className="w-2.5 h-2.5" />
-                        ) : isEdit ? (
-                          <Wand2 className="w-2.5 h-2.5" />
-                        ) : (
-                          <Layers className="w-2.5 h-2.5" />
-                        )}
-                        <span>{revName} v{revNum}</span>
-                      </button>
-
-                      {/* 悬停快捷删除单个版本 */}
-                      {activeShot.revisions.length > 1 && onDeleteRevision && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`确定删除版本【${rev.label || `${revName} v${revNum}`}】吗？`)) {
-                              onDeleteRevision(activeShot.id, rev.id);
-                            }
-                          }}
-                          className={`pr-1.5 pl-0.5 py-1 opacity-60 hover:opacity-100 transition cursor-pointer ${
-                            isSelected ? 'text-stone-950 hover:text-red-700' : 'text-stone-400 hover:text-red-500'
-                          }`}
-                          title="删除此版本"
-                        >
-                          <X className="w-2.5 h-2.5 hover:scale-125 transition-transform" />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* 前后对比按钮 */}
-              <button
-                onClick={() => setIsCompareMode(!isCompareMode)}
-                className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
-                  isCompareMode
-                    ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
-                    : isLight ? 'border-stone-300 bg-white text-stone-700 hover:bg-stone-200' : 'border-white/10 text-neutral-300 hover:bg-white/10'
-                }`}
-                title="同镜头前后版本对比模式"
-              >
-                <Columns className="w-2.5 h-2.5 shrink-0" />
-                <span className="whitespace-nowrap">{isCompareMode ? '退出对比' : '对比'}</span>
-              </button>
-            </div>
+            <button
+              onClick={() => setIsCompareMode(!isCompareMode)}
+              className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+                isCompareMode
+                  ? 'bg-amber-500 text-black border-amber-400 shadow-xs'
+                  : isLight ? 'border-stone-300 bg-white text-stone-700 hover:bg-stone-200' : 'border-white/10 text-neutral-300 hover:bg-white/10'
+              }`}
+              title="同镜头前后版本对比模式"
+            >
+              <Columns className="w-3 h-3 shrink-0" />
+              <span className="whitespace-nowrap">{isCompareMode ? '退出对比' : '对比'}</span>
+            </button>
           )}
         </div>
 
-        {/* 右侧：规格切换、核心导出与工具菜单 */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* 右侧：规格切换、核心导出与工具菜单（强制 shrink-0 且 ml-auto，绝不被挤出视窗或被遮挡） */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto z-10">
           {/* 出图精度 (Resolution) 下拉胶囊 */}
           <div className="relative shrink-0">
             <button
@@ -934,8 +1022,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             )}
           </div>
 
-          {/* 核心操作：导出原图（高对比度设计，点击箭头展开规格面板，绝不被遮挡） */}
-          {currentImageUrl && !imageError && (
+          {/* 核心操作：导出原图（常驻显示：画面就绪时为高亮操作钮，计算生成中显示状态提示，绝不跳变或消失） */}
+          {currentImageUrl && !imageError ? (
             <div className="relative shrink-0">
               <div className="flex items-center shadow-xs rounded-lg overflow-hidden border border-amber-500/40">
                 <button
@@ -1020,6 +1108,27 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          ) : (
+            <div className="relative shrink-0">
+              <button
+                disabled
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-mono transition whitespace-nowrap shrink-0 opacity-45 cursor-not-allowed ${
+                  isLight
+                    ? 'border-stone-300 bg-stone-100 text-stone-400'
+                    : 'border-white/10 bg-white/5 text-neutral-500'
+                }`}
+                title={isGenerating ? "AI 摄影大模型正在计算渲染中，渲染完成后即可点击下载" : "当前镜头尚未生成图片，生成后即可下载"}
+              >
+                {isGenerating ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0 text-amber-500" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 shrink-0" />
+                )}
+                <span className="font-mono text-xs whitespace-nowrap">
+                  {isGenerating ? "生成后可导出" : "导出原图"}
+                </span>
+              </button>
             </div>
           )}
 
@@ -1220,6 +1329,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       }}
                     >
                       <img
+                        ref={mainImageRef}
                         src={currentImageUrl}
                         alt={activeShot.name}
                         onLoad={(e) => {
@@ -1306,6 +1416,55 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       }}
                       theme={theme}
                     />
+                  )}
+
+                  {/* A00 空场景参考：母版清除家具后的空房间，作为后续镜头的空间参考 */}
+                  {emptyPlate && imageLoaded && (
+                    <div
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className={`absolute top-3 left-3 z-30 flex items-center gap-2 p-1.5 pr-2.5 rounded-xl backdrop-blur-md border text-[11px] max-w-[calc(100%-24px)] ${
+                        isLight ? 'bg-white/90 border-stone-200 text-stone-700 shadow-sm' : 'bg-black/70 border-white/10 text-neutral-200'
+                      }`}
+                    >
+                      <div className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center ${isLight ? 'bg-stone-100' : 'bg-white/10'}`}>
+                        {emptyPlate.status === 'generating' ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin opacity-70" />
+                        ) : (
+                          <FileImage className="w-3.5 h-3.5 opacity-60" />
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold whitespace-nowrap">清除家具 · 空场景</span>
+                        <span
+                          className={`whitespace-nowrap truncate ${
+                            emptyPlate.status === 'failed' ? 'text-rose-500' : emptyPlate.status === 'ready' ? 'text-emerald-600' : 'opacity-70'
+                          }`}
+                          title={emptyPlate.error}
+                        >
+                          {emptyPlate.status === 'generating'
+                            ? '正在清除家具…'
+                            : emptyPlate.status === 'ready'
+                            ? '已加入下方生成记录'
+                            : emptyPlate.status === 'failed'
+                            ? '生成失败'
+                            : '未生成'}
+                        </span>
+                      </div>
+                      {onGenerateEmptyPlate && emptyPlate.status !== 'generating' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onGenerateEmptyPlate();
+                          }}
+                          className={`ml-1 px-2 py-1 rounded-md whitespace-nowrap shrink-0 cursor-pointer transition ${
+                            isLight ? 'bg-stone-100 hover:bg-stone-200 text-stone-700' : 'bg-white/10 hover:bg-white/20 text-white'
+                          }`}
+                        >
+                          {emptyPlate.status === 'ready' ? '重新生成' : emptyPlate.status === 'failed' ? '重试' : '生成'}
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {/* Watermark in bottom right */}
@@ -1443,7 +1602,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     </div>
                   </div>
                   <p className={`text-[11px] leading-relaxed text-left ${isLight ? 'text-stone-600' : 'text-neutral-400'}`}>
-                    💡 <strong>故障容灾提示：</strong>若当前选定模型网络超时或上游接口不可用，可在右侧控制面板开启<strong className="text-amber-500 font-bold">【多模型故障自动轮换 (Auto-Fallback)】</strong>，系统将在主模型失败时自动顺延轮换（Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2 系列）。
+                    💡 <strong>故障容灾提示：</strong>若当前选定模型网络超时或上游接口不可用，可在右侧控制面板开启<strong className="text-amber-500 font-bold">【多模型故障自动轮换 (Auto-Fallback)】</strong>，系统将在主模型失败时自动顺延轮换（{SPACE_AUTO_FALLBACK_MODELS.map((m) => m.label).join(' ➔ ')}）。
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
                     <button
@@ -1615,8 +1774,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
         </div>
         </div>
 
-        {/* 3. BOTTOM CANDIDATE GALLERY & DIRECTOR VARIATIONS BAR (Resizable & Collapsible) */}
-        {isCandidateBatchMatchingCurrentRevision && candidateBatch && candidateBatch.candidates.length > 0 && (
+        {/* 3. BOTTOM CANDIDATE & REVISION UNIFIED FILMSTRIP (镜头生成记录与方案一体化大图胶卷) */}
+        {unifiedCards.length > 0 && (
           isBatchDrawerCollapsed ? (
             /* COLLAPSED FLOATING PILL (极简胶囊态: 仅 38px 高度，释放 95% 主视窗呈现面积) */
             <div className="w-full max-w-3xl shrink-0 px-2 pt-1 pb-1 z-20 animate-in fade-in slide-in-from-bottom-2 duration-150">
@@ -1627,16 +1786,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
                   <span className="text-xs font-bold flex items-center gap-1.5 text-amber-500 whitespace-nowrap shrink-0">
                     <Sparkle className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                      {candidateBatch.candidates.length > 1
-                        ? `精修方案 (共 ${candidateBatch.candidates.length} 款)`
-                        : '精修母版方案'}
-                    </span>
+                    <span>镜头方案胶卷 ({unifiedCards.length} 版)</span>
                   </span>
-                  <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border whitespace-nowrap shrink-0 ${
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap shrink-0 ${
                     isLight ? 'bg-stone-100 border-stone-200 text-stone-700' : 'bg-black/40 border-white/10 text-neutral-300'
                   }`}>
-                    已选 #{activeCandidate?.variantIndex || 1}
+                    当前: {currentRevisionTitle}
                   </span>
                 </div>
 
@@ -1675,15 +1830,15 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 <button
                   onClick={toggleCollapseBatchDrawer}
                   className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
-                  title="展开精修方案抽屉与缩略图"
+                  title="展开镜头历史版本与候选方案胶卷"
                 >
                   <ChevronUp className="w-3.5 h-3.5 shrink-0" />
-                  <span>展开候选方案</span>
+                  <span>展开方案胶卷</span>
                 </button>
               </div>
             </div>
           ) : (
-            /* EXPANDED RESIZABLE DRAWER (自由拉伸调节高度与紧凑胶卷式缩略图) */
+            /* EXPANDED RESIZABLE DRAWER (自由拉伸调节高度与全景胶卷式大图缩略图) */
             <div
               style={{ height: `${batchDrawerHeight}px` }}
               className="w-full max-w-4xl shrink-0 px-2 pb-1 z-20 flex flex-col relative transition-[height] duration-75 select-none"
@@ -1705,18 +1860,10 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5 whitespace-nowrap shrink-0">
                       <Sparkle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>
-                        {candidateBatch.candidates.length > 1
-                          ? `${candidateBatch.candidates.length} 张候选方案`
-                          : activeShot.hasHumanPass
-                          ? '精修人物方案'
-                          : activeShot.templateCode === 'A00'
-                          ? '精修母版方案'
-                          : '精修镜头方案'}
-                      </span>
+                      <span>镜头生成记录与方案 (共 {unifiedCards.length} 版)</span>
                     </span>
                     <span className="text-[10px] text-neutral-400 font-mono whitespace-nowrap shrink-0">
-                      (已选 #{activeCandidate?.variantIndex || 1})
+                      (当前展示: {currentRevisionTitle})
                     </span>
 
                     {/* 预设尺寸快速切换 */}
@@ -1786,6 +1933,29 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       </button>
                     )}
 
+                    {/* A00：把当前选中的版本（如清除家具后的空场景）设为后续镜头的场景参考 */}
+                    {onSetSceneReference && !activeCandidate && currentRevision && (
+                      sceneReferenceRevisionId === currentRevision.id ? (
+                        <button
+                          onClick={() => onSetSceneReference(null)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-[10px] flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
+                          title="取消后，后续镜头改用 A00 当前展示的版本作为场景参考"
+                        >
+                          <Check className="w-3 h-3 stroke-[3] shrink-0" />
+                          <span>已设为场景参考 · 取消</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onSetSceneReference(currentRevision.id)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-[10px] flex items-center gap-1 shadow-md transition cursor-pointer whitespace-nowrap shrink-0"
+                          title="后续镜头将以此版本作为窗口2的空间参考"
+                        >
+                          <Layers className="w-3 h-3 shrink-0" />
+                          <span>设为场景参考</span>
+                        </button>
+                      )
+                    )}
+
                     {/* 收起抽屉按钮 */}
                     <button
                       onClick={toggleCollapseBatchDrawer}
@@ -1798,53 +1968,101 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                 </div>
 
                 {/* 缩略图横排自适应胶卷列表 */}
-                <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden flex items-center justify-start gap-2.5 py-0.5">
-                  {candidateBatch.candidates.map((cand) => {
-                    const isSelected = (activeCandidate?.id === cand.id);
+                <div
+                  ref={revisionsScrollRef}
+                  className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden flex items-center justify-start gap-2.5 py-0.5"
+                >
+                  {unifiedCards.map((card) => {
+                    const isSelected = card.isSelected;
                     return (
                       <div
-                        key={cand.id}
-                        onClick={() => onSelectCandidate?.(cand)}
+                        key={card.key}
+                        onClick={() => {
+                          if (card.itemType === 'revision') {
+                            onSelectRevision?.(activeShot.id, card.id);
+                          } else if (card.candidate) {
+                            onSelectCandidate?.(card.candidate);
+                          }
+                        }}
                         className={`group relative h-full aspect-[16/10] max-h-full rounded-xl overflow-hidden border cursor-pointer transition-all duration-150 flex flex-col bg-black/40 shrink-0 ${
                           isSelected
-                            ? 'border-amber-500 ring-2 ring-amber-500/40 shadow-lg'
+                            ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
                             : 'border-white/10 hover:border-white/30'
                         }`}
                       >
-                        <img
-                          src={cand.imageUrl}
-                          alt={`Candidate ${cand.variantIndex}`}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                        />
-
-                        {/* Candidate Badge */}
-                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 backdrop-blur text-[9px] font-mono text-amber-300 border border-white/10">
-                          方案 #{cand.variantIndex}
-                        </span>
-
-                        {/* Favorite Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleFavoriteCandidate?.(cand.id);
-                          }}
-                          className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center transition ${
-                            cand.isFavorite
-                              ? 'bg-amber-500 text-black'
-                              : 'bg-black/50 hover:bg-black/80 text-white/60 hover:text-amber-400'
-                          }`}
-                        >
-                          <Star className="w-2.5 h-2.5 fill-current" />
-                        </button>
-
-                        {isSelected && (
-                          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 bg-amber-500 text-black rounded whitespace-nowrap">
-                            <Check className="w-2 h-2 stroke-[3]" /> 正在品鉴
+                        {card.imageUrl ? (
+                          <img
+                            src={card.imageUrl}
+                            alt={card.badgeText}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900/80 text-neutral-400 p-2 text-center text-xs">
+                            <Layers className="w-6 h-6 mb-1 opacity-40 text-amber-400" />
+                            <span>{card.badgeText}</span>
                           </div>
                         )}
 
+                        {/* Top Left Badge */}
+                        <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded backdrop-blur text-[9px] font-mono border ${card.badgeColorClass}`}>
+                          {card.badgeText}
+                        </span>
+
+                        {/* Top Right Actions */}
+                        <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                          {card.itemType === 'revision' && card.canDelete && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`确定删除历史版本【${card.badgeText}】吗？`)) {
+                                  onDeleteRevision?.(activeShot.id, card.id);
+                                }
+                              }}
+                              className="w-5 h-5 rounded-full bg-black/60 hover:bg-red-600/90 text-white/70 hover:text-white flex items-center justify-center transition cursor-pointer"
+                              title="删除此版本"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {card.itemType === 'candidate' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (card.candidate) {
+                                  onToggleFavoriteCandidate?.(card.candidate.id);
+                                }
+                              }}
+                              className={`w-5 h-5 rounded-full flex items-center justify-center transition ${
+                                card.isFavorite
+                                  ? 'bg-amber-500 text-black'
+                                  : 'bg-black/50 hover:bg-black/80 text-white/60 hover:text-amber-400'
+                              }`}
+                            >
+                              <Star className="w-2.5 h-2.5 fill-current" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Scene Reference Indicator (A00) */}
+                        {card.itemType === 'revision' && sceneReferenceRevisionId === card.id && (
+                          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 bg-emerald-500 text-black rounded whitespace-nowrap shadow-xs z-10">
+                            <Layers className="w-2 h-2" /> 场景参考
+                          </div>
+                        )}
+
+                        {/* Selected Indicator */}
+                        {isSelected && (
+                          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[8px] font-bold px-1.5 py-0.5 bg-amber-500 text-black rounded whitespace-nowrap shadow-xs">
+                            <Check className="w-2 h-2 stroke-[3]" /> 当前展示
+                          </div>
+                        )}
+
+                        {/* Summary Footer */}
                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1.5 pt-4 text-[9px] text-neutral-300 font-medium truncate pointer-events-none">
-                          {cand.summaryTag || `候选方案 ${cand.variantIndex}`}
+                          {card.summaryTag}
                         </div>
                       </div>
                     );

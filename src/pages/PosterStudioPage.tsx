@@ -32,7 +32,7 @@ import {
   Settings,
   Camera,
   Database,
-  LayoutGrid,
+  MonitorPlay,
   RotateCcw
 } from 'lucide-react';
 import { StorageManagerModal } from '../components/creative-canvas/StorageManagerModal';
@@ -431,6 +431,10 @@ export const PosterStudioPage: React.FC = () => {
     navigate(`/creative-canvas/${cleanProjectId}`);
   };
 
+  const handleBackToWorkflow = () => {
+    navigate('/manwah');
+  };
+
   const handleSplitLayers = async () => {
     try {
       setIsSplittingLayers(true);
@@ -538,23 +542,23 @@ export const PosterStudioPage: React.FC = () => {
             : 'bg-stone-900 border-stone-800 text-stone-100'
         }`}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <button
-            onClick={handleBackToCanvas}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+            onClick={handleBackToWorkflow}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap shrink-0 ${
               isLight
                 ? 'bg-stone-100 hover:bg-stone-200 text-stone-800 border-stone-200 shadow-2xs'
                 : 'bg-stone-800 hover:bg-stone-700 text-amber-300 border-stone-700'
             }`}
-            title="返回视觉企划画布（无限画板工作区）"
+            title="返回工作流"
           >
-            <LayoutGrid className="w-3.5 h-3.5 text-amber-600" />
-            <span>返回企划画布</span>
+            <MonitorPlay className="w-3.5 h-3.5 text-amber-600" />
+            <span>返回工作流</span>
           </button>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div
-              className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
+              className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors shrink-0 ${
                 isLight ? 'bg-stone-100 border-stone-200' : 'bg-stone-900/90 border-stone-800'
               }`}
             >
@@ -596,7 +600,7 @@ export const PosterStudioPage: React.FC = () => {
             </div>
 
             <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+              className={`hidden xl:inline-block px-2 py-0.5 rounded-full text-[10px] font-mono border whitespace-nowrap truncate min-w-0 ${
                 isLight ? 'bg-stone-100 text-stone-600 border-stone-200' : 'bg-stone-800 text-stone-300 border-stone-700'
               }`}
             >
@@ -654,7 +658,7 @@ export const PosterStudioPage: React.FC = () => {
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <span className={`text-xs ${isLight ? 'text-stone-500 font-medium' : 'text-stone-400'}`}>摄影画册模式 · A00~A08 连续视角</span>
+              <span className={`hidden 2xl:inline text-xs whitespace-nowrap ${isLight ? 'text-stone-500 font-medium' : 'text-stone-400'}`}>摄影画册模式 · A00~A09 连续视角</span>
             </div>
           )}
 

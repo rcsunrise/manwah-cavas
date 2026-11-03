@@ -22,9 +22,41 @@ export interface ClientImageModelItem {
 
 export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
   {
+    id: 'gemini-3-pro-image-preview',
+    name: '旗舰商业超清 (Gemini 3 Pro)',
+    badge: '官方推荐 · 旗舰',
+    provider: 'gemini',
+    tier: 'flagship',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '商业旗舰级 3D 几何与空间透视融合，精准掌控大平层斜向进深、奢石反光与金属脚五金'
+  },
+  {
+    id: 'gemini-3.1-flash-image-preview',
+    name: '标准空间生图 (Gemini 3.1 Flash)',
+    badge: '高精主力',
+    provider: 'gemini',
+    tier: 'standard',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '平衡速度与光影质感，极速出图，忠实还原敏华半苯胺头层牛皮纹理'
+  },
+  {
     id: 'gemini-nano-banana-2.1-preview',
     name: 'Nano Banana 2.1 (极速响应 · 轻量多图融合)',
-    badge: '系统默认',
+    badge: '极速草图',
     provider: 'gemini',
     tier: 'speed',
     capabilities: {
@@ -35,7 +67,7 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
       supports4K: true,
       maxReferences: 16
     },
-    description: '系统默认推荐模型，极速响应、轻量计算与多图融合，支持 1K/2K/4K 快速渲染'
+    description: '极速响应、轻量计算与多图融合，适合大平层空间机位初稿快速探索'
   },
   {
     id: 'gpt-image-2',
@@ -118,22 +150,6 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
     description: '旗舰级高光细节与皮革质感，全幅光影深度与精工缝线呈现'
   },
   {
-    id: 'gemini-3.1-flash-image-preview',
-    name: '标准空间生图 (Gemini 3.1 Flash)',
-    badge: '标准精度',
-    provider: 'gemini',
-    tier: 'standard',
-    capabilities: {
-      supportsImage: true,
-      supportsEdit: true,
-      supportsMultiReference: true,
-      supportsSeed: true,
-      supports4K: true,
-      maxReferences: 16
-    },
-    description: '平衡速度与光影质感，忠实还原敏华半苯胺头层牛皮纹理'
-  },
-  {
     id: 'gemini-2.5-flash-image',
     name: '极速闪电 (Gemini 2.5 Flash)',
     badge: '超低延迟',
@@ -148,22 +164,6 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
       maxReferences: 8
     },
     description: '毫秒级响应，适合机位快速探索与大平层初稿预览'
-  },
-  {
-    id: 'gemini-3-pro-image-preview',
-    name: '旗舰商业超清 (Gemini 3 Pro)',
-    badge: '商业超清',
-    provider: 'gemini',
-    tier: 'flagship',
-    capabilities: {
-      supportsImage: true,
-      supportsEdit: true,
-      supportsMultiReference: true,
-      supportsSeed: true,
-      supports4K: true,
-      maxReferences: 16
-    },
-    description: '300DPI 极高质量印刷级输出，精准把控奢石反光与金属脚五金'
   }
 ];
 
@@ -172,4 +172,21 @@ export function getModelById(modelId: string): ClientImageModelItem {
     SPACE_IMAGE_MODELS.find((m) => m.id === modelId) ||
     SPACE_IMAGE_MODELS[0]
   );
+}
+
+/**
+ * 多模型故障自动轮换顺序（前后端共用的唯一真值）：
+ * 主模型失败后按此顺序顺延重试，已作为主模型的条目自动跳过。
+ */
+export const SPACE_AUTO_FALLBACK_MODELS: readonly { id: string; label: string }[] = [
+  { id: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1' },
+  { id: 'openai/gpt-image-2.5-flare-c', label: 'GPT 2.5 Flare' },
+  { id: 'gpt-image-2-c', label: 'GPT 2-c' }
+];
+
+export function describeFallbackChain(primaryModel: string): string {
+  return SPACE_AUTO_FALLBACK_MODELS
+    .filter((m) => m.id !== primaryModel)
+    .map((m) => m.label)
+    .join(' ➔ ');
 }

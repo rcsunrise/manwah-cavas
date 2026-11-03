@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import sharp from 'sharp';
 import * as providerConfigModule from '../../../../server/ai/providerConfig';
-import { SpaceImageGenerationService } from '../../../../server/services/spaceImageGenerationService';
+import { SpaceImageGenerationService, extractPureHardFinishSwatch } from '../../../../server/services/spaceImageGenerationService';
 import { GcsAssetStorage } from '../../../../server/services/storage/gcsAssetStorage';
 import spaceShootRoutes from '../../../../server/routes/spaceShootRoutes';
 import { ShootCompiler } from '../engine/shootCompiler';
@@ -82,10 +83,10 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 1. Prompt should contain the dedicated Studio Swap Mandate
-    expect(capturedBody.prompt).toContain('STUDIO PRODUCT BACKGROUND SWAP - ZERO FURNITURE DRIFT');
-    expect(capturedBody.prompt).toContain('ALL furniture pieces, seating units, main sofas, accent single chairs, coffee tables');
-    expect(capturedBody.prompt).toContain('MUST REMAIN 100% IMMOVABLE, IDENTICAL, AND ZERO-DRIFT');
+    // 1. Prompt should contain the dedicated Studio Swap Direct Asymmetric Mandate and read A00 space/style inputs
+    expect(capturedBody.prompt).toContain('STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING');
+    expect(capturedBody.prompt).toContain('Every single furniture entity');
+    expect(capturedBody.prompt).toContain('IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1');
     expect(capturedBody.prompt).toContain('都会大平层端厅');
     expect(capturedBody.prompt).toContain('意式轻奢');
 
@@ -153,7 +154,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).not.toContain('STUDIO PRODUCT BACKGROUND SWAP');
   });
 
-  it('injects pure floor-plan & style DNA without orchestration camera/prop pollution and merges style negatives', async () => {
+  it('fuses and strips space/style preset descriptive text and camera coordinates in studio_swap mode', async () => {
     let capturedBody: any = null;
 
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
@@ -211,10 +212,11 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 1. Contains pure space & style DNA
-    expect(capturedBody.prompt).toContain('sunken conversation salon with perimeter travertine steps');
-    expect(capturedBody.prompt).toContain('classic American picture-frame wall panel moldings and dark walnut wainscoting');
-    expect(capturedBody.prompt).toContain('TOPOLOGY ADAPTATION');
+    // 1. Purified prompt: strictly does NOT contain preset descriptions or ceiling height
+    expect(capturedBody.prompt).not.toContain('3.8m soaring architectural ceiling headroom');
+    expect(capturedBody.prompt).not.toContain('sunken conversation salon with perimeter travertine steps');
+    expect(capturedBody.prompt).not.toContain('下沉式围合私享厅');
+    expect(capturedBody.prompt).not.toContain('现代美式都会宅');
     expect(capturedBody.prompt).toContain('warm golden hour afternoon sunlight entering through the windows');
 
     // 2. Does NOT leak orchestration camera / prop / zone placement instructions
@@ -223,9 +225,9 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).not.toContain('sofa securely anchored at zone center');
     expect(capturedBody.prompt).not.toContain('polished floor tiles');
 
-    // 3. Merges space & style negative rules
-    expect(capturedBody.prompt).toContain('flat single-level floor without steps');
-    expect(capturedBody.prompt).toContain('flat bare drywall without panel frames');
+    // 3. 与工作流页面一致的机位锁：家具与拍摄角度保持不变，严禁复制窗口2的正面平视角度
+    expect(capturedBody.prompt).toContain('其中家具、所有的地毯、挂画、餐桌配套保持不变');
+    expect(capturedBody.prompt).toContain('要求生成的产品组合与空间透视是融合的');
   });
 
   it('prioritizes Human Pass over studio_swap when isHumanPass=true so people are not blocked by negative constraints', async () => {
@@ -409,10 +411,14 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     for (const call of capturedInputs) {
       expect(call.renderMode).toBe('studio_swap');
       expect(call.studioSwapContext).toEqual(compiled.studioSwapContext);
-      expect(call.studioSwapLightingHint).toBeTruthy();
-      // Camera lensMm and pitchDeg must NOT be mutated by candidate variants in studio_swap mode
-      expect(call.cameraSettings.lensMm).toBe(compiled.cameraSpec.lensMm);
-      expect(call.cameraSettings.pitchDeg).toBe(compiled.cameraSpec.pitchDeg);
+      // 衍生镜头首个候选与工作流页面指令一致，不附加光线氛围；额外候选才用光线变体区分
+      if (call.variantIndex === 1 && call.shotCode !== 'A00') {
+        expect(call.studioSwapLightingHint).toBeUndefined();
+      } else {
+        expect(call.studioSwapLightingHint).toBeTruthy();
+      }
+      // Camera settings must be abolished in studio_swap mode so FOV and pitch strictly follow Reference Image 1
+      expect(call.cameraSettings).toBeUndefined();
     }
   });
 
@@ -436,7 +442,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
 
     await SpaceImageGenerationService.generateAndStore({
       projectId: 'test-studio-swap-master-lock',
-      shotCode: 'A02',
+      shotCode: 'A01',
       referenceShotCode: 'A00',
       positivePrompt: '45 degree ensemble view',
       negativePrompt: '',
@@ -462,24 +468,16 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 1. Both Reference Image 1 (composition_reference) and Reference Image 2 (style_reference = empty-room A00 master) must be passed!
+    // 1. 与工作流页面一致：窗口1 = 产品场景实拍图 (primary_product)，窗口2 = 完整 A00 母版 (style_reference)
     expect(capturedBody.images).toHaveLength(2);
-    expect(capturedBody.images[0].role).toBe('composition_reference');
+    expect(capturedBody.images[0].role).toBe('primary_product');
     expect(capturedBody.images[1].role).toBe('style_reference');
 
     // 2. Prompt must lock background continuity to Reference Image 2 while locking furniture & camera to Reference Image 1
-    expect(capturedBody.prompt).toContain('SCENE MASTER BACKGROUND LOCK - 100% CAMERA & FURNITURE FROM IMAGE 1 + ROOM TOPOLOGY & MATERIALS FROM IMAGE 2');
-    expect(capturedBody.prompt).toContain('REFERENCE IMAGE 2 ([参考图2｜风格参考] - Panoramic Room Layout & Material Swatch Board from A00)');
-    expect(capturedBody.prompt).toContain('COMPLETE OLD BACKGROUND ERASURE');
-    expect(capturedBody.prompt).toContain('different room from Reference Image 2');
-    expect(capturedBody.prompt).toContain('newly invented staircase');
-
-    // 3. For A02 45° angled shot, must inject 45° 2-point perspective anchors and forbid flat frontal locks
-    expect(capturedBody.prompt).toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
-    expect(capturedBody.prompt).toContain('45-DEGREE CAMERA PERSPECTIVE & 2-POINT DEPTH LOCK');
-    expect(capturedBody.prompt).not.toContain('STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK');
-    expect(capturedBody.prompt).toContain('flat frontal mugshot');
-    expect(capturedBody.prompt).toContain('copying 0-degree frontal camera angle from Reference Image 2');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).not.toContain('45mm lens at 115cm height');
+    expect(capturedBody.prompt).toContain('要求生成的产品组合与空间透视是融合的');
   });
 
   it('A05 2/3主沙发休闲景：锁定天花板 100% 出画，严禁在画框顶部压缩塞入天花板', async () => {
@@ -527,12 +525,11 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 必须包含天花板完全出画与防压缩锁
-    expect(capturedBody.prompt).toContain('OUT-OF-FRAME CEILING');
-    expect(capturedBody.prompt).toContain('ZERO CEILING COMPRESSION LOCK');
-    expect(capturedBody.prompt).toContain('visible ceiling');
-    expect(capturedBody.prompt).toContain('low ceiling compression');
-    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+    // 极简换景模式下：统一遵循直接非对称映射契约，镜头严格跟随参考图 1，无固定相机参数污染
+    expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).not.toContain('50mm lens at 95cm height');
   });
 
   it('A05 2/3主沙发私享景（全案编排 Mode B）：强力锁定天花板出画，阻断吊顶灯带', async () => {
@@ -586,7 +583,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.prompt).toContain('squeezed ceiling');
   });
 
-  it('A06 零靠墙侧景：锁定沙发背部贴靠 A00 客厅主立面贯通大墙，严禁发明任何隔断假墙', async () => {
+  it('A06 零靠墙侧景：在 studio_swap 下确立纯视觉直接映射，彻底废除固定相机参数', async () => {
     let capturedBody: any = null;
 
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
@@ -631,15 +628,13 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 必须包含连续客厅大墙锁定与严禁隔断假墙
-    expect(capturedBody.prompt).toContain('PURE LATERAL PROFILE & CONTINUOUS LIVING ROOM MAIN WALL LOCK');
-    expect(capturedBody.prompt).toContain('ZERO-WALL CLEARANCE LOCK');
-    expect(capturedBody.prompt).toContain('partition wall');
-    expect(capturedBody.prompt).toContain('freestanding wall');
-    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
+    expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).not.toContain('60mm lens at 90cm height');
   });
 
-  it('A07 沙发茶几组群中景：自适应继承正面素材视角，严禁强制注入对角透视与反正面负向词', async () => {
+  it('A07 沙发茶几组群中景：在 studio_swap 下确立纯视觉直接映射，严禁固定相机参数污染', async () => {
     let capturedBody: any = null;
 
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
@@ -684,9 +679,297 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     });
 
     expect(capturedBody).toBeDefined();
-    // 保持正面平视秩序，绝不能被强行扭转为 45 度对角透视
-    expect(capturedBody.prompt).toContain('STRICT LEFT-TO-RIGHT SPATIAL ORDER LOCK');
-    expect(capturedBody.prompt).not.toContain('45-DEGREE CORNER PERSPECTIVE ANCHOR');
-    expect(capturedBody.prompt).not.toContain('flat frontal mugshot');
+    expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).not.toContain('55mm lens at 95cm height');
+  });
+
+  it('extractPureHardFinishSwatch extracts zero-sofa architectural swatch board and falls back gracefully', async () => {
+    // 1. Fallback for tiny image
+    const tinyResult = await extractPureHardFinishSwatch({
+      mimeType: 'image/png',
+      data: dummyBase64
+    });
+    expect(tinyResult.data).toBe(dummyBase64);
+
+    // 2. Synthesizes 1024x768 swatch board for valid room image
+    const validImg = await sharp({
+      create: { width: 300, height: 200, channels: 3, background: { r: 50, g: 50, b: 50 } }
+    })
+      .png()
+      .toBuffer();
+
+    const swatchResult = await extractPureHardFinishSwatch({
+      mimeType: 'image/png',
+      data: validImg.toString('base64')
+    });
+
+    expect(swatchResult.mimeType).toBe('image/webp');
+    expect(swatchResult.data).toBeDefined();
+
+    const swatchMeta = await sharp(Buffer.from(swatchResult.data, 'base64')).metadata();
+    expect(swatchMeta.width).toBe(1024);
+    expect(swatchMeta.height).toBe(768);
+  });
+
+  it('passes the full scene master as Reference Image 2 for derived shot A03 in studio_swap mode, matching the workflow page', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    const validMaster = await sharp({
+      create: { width: 400, height: 300, channels: 3, background: { r: 60, g: 60, b: 60 } }
+    })
+      .png()
+      .toBuffer();
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-swatch-injection',
+      shotCode: 'A03',
+      referenceShotCode: 'A00',
+      positivePrompt: '',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕沙发',
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${validMaster.toString('base64')}`,
+      objectKey: 'test/studio_swap_swatch_test.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.images).toHaveLength(2);
+    // 窗口1：产品场景实拍图 (primary_product)，与工作流页面一致
+    expect(capturedBody.images[0].role).toBe('primary_product');
+    // 窗口2：完整空间母版原图，不切片、不遮挡
+    expect(capturedBody.images[1].role).toBe('style_reference');
+    const masterMeta = await sharp(Buffer.from(capturedBody.images[1].data.split(',')[1], 'base64')).metadata();
+    expect(masterMeta.width).toBe(400);
+    expect(masterMeta.height).toBe(300);
+    // 简短换景指令：不写死背景材质，不堆砌负面词，非 A02 镜头不出现 45° 字样
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).not.toContain('dark marble');
+    expect(capturedBody.prompt).not.toContain('Negative constraints:');
+    expect(capturedBody.prompt).not.toContain('45度斜侧视角');
+  });
+
+  const runRefineScenario = async (refineFails: boolean) => {
+    const gatewayBodies: any[] = [];
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      if (String(url).includes('/api/gateway/generate-image')) {
+        const body = JSON.parse(init.body);
+        gatewayBodies.push(body);
+        if (refineFails && gatewayBodies.length === 2) {
+          return { ok: false, json: async () => ({ error: { message: 'fetch failed' } }) } as any;
+        }
+        return { ok: true, json: async () => ({ success: true, imageUrl: 'data:image/webp;base64,' + dummyBase64 }) } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+    const master = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 60, g: 60, b: 60 } } }).png().toBuffer();
+    const result = await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-refine-pass',
+      shotCode: 'A03',
+      referenceShotCode: 'A00',
+      positivePrompt: '',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      studioSwapRefinePass: true,
+      productName: '芝华仕沙发',
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${master.toString('base64')}`,
+      objectKey: 'test/refine_pass.webp'
+    });
+    return { gatewayBodies, result };
+  };
+
+  it('two-step pass: GPT 2.5 Flare composes, then Nano Banana 2.1 refines on top of the composed image', async () => {
+    const { gatewayBodies, result } = await runRefineScenario(false);
+    expect(gatewayBodies).toHaveLength(2);
+    // 第一步：无论右侧选了哪个模型，衍生镜头都用 GPT 2.5 Flare 换景
+    expect(gatewayBodies[0].model).toBe('openai/gpt-image-2.5-flare-c');
+    expect(gatewayBodies[0].prompt).toContain('保持窗口1的产品角度不变');
+    // 第二步：Nano Banana 2.1 以第一步结果为底图（窗口1）、实拍图为材质参考（窗口2）精修
+    expect(gatewayBodies[1].model).toBe('gemini-nano-banana-2.1-preview');
+    expect(gatewayBodies[1].prompt).toContain('画面精修重绘：以窗口1为底图');
+    expect(gatewayBodies[1].images).toHaveLength(2);
+    expect(gatewayBodies[1].images[0].role).toBe('composition_reference');
+    expect(gatewayBodies[1].images[1].role).toBe('primary_product');
+    expect(gatewayBodies[1].images[1].data).toBe(gatewayBodies[0].images[0].data);
+    expect(result.model).toContain('精修');
+    expect(result.warningNotice).toBeUndefined();
+  });
+
+  it('two-step pass keeps the GPT result with a notice when the refine step fails', async () => {
+    const { gatewayBodies, result } = await runRefineScenario(true);
+    expect(gatewayBodies).toHaveLength(2);
+    expect(result.model).not.toContain('精修');
+    expect(result.warningNotice).toContain('已保留 GPT 2.5 Flare 换景结果');
+  });
+
+  it('aligns derived shot A02 in studio_swap mode directly with ManwahStudio full scene master reference and clean prompt', async () => {
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    const validMaster = await sharp({
+      create: { width: 400, height: 300, channels: 3, background: { r: 60, g: 60, b: 60 } }
+    })
+      .png()
+      .toBuffer();
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-studio-swap-a02-aligned',
+      shotCode: 'A02',
+      referenceShotCode: 'A00',
+      positivePrompt: '',
+      negativePrompt: '',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕沙发',
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      sceneMasterReferenceImage: `data:image/png;base64,${validMaster.toString('base64')}`,
+      objectKey: 'test/studio_swap_a02_aligned.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.images).toHaveLength(2);
+    expect(capturedBody.images[0].role).toBe('primary_product');
+    // A02 preserves full scene master directly without swatch slicing
+    expect(capturedBody.images[1].role).toBe('style_reference');
+    // Prompt follows streamlined ManwahStudio commercial replacement directive
+    expect(capturedBody.prompt).toContain('画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('保证原图的尺寸比例不变。');
+    expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
+    expect(capturedBody.prompt).toContain('要求生成的产品组合与空间透视是融合的');
+  });
+
+  it('forwards userId and deptId to unified gateway for user billing and audit log recording', async () => {
+    let capturedHeaders: any = null;
+    let capturedBody: any = null;
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedHeaders = init.headers;
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-billing-trace',
+      shotCode: 'A00',
+      userId: 'user-emp-12345',
+      deptId: 'dept-design-01',
+      positivePrompt: 'luxury living room',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-nano-banana-2.1-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕沙发',
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      objectKey: 'test/studio_swap_billing.webp'
+    });
+
+    expect(capturedHeaders).toBeDefined();
+    expect(capturedHeaders['x-user-uuid']).toBe('user-emp-12345');
+    expect(capturedHeaders['x-dept-id']).toBe('dept-design-01');
+    expect(capturedBody.userUuid).toBe('user-emp-12345');
+    expect(capturedBody.deptId).toBe('dept-design-01');
+  });
+
+  it('promotes Gemini 3 Pro as the top flagship model in registry and generates via gateway', async () => {
+    const { SPACE_IMAGE_MODELS, getModelById } = await import('../../../config/imageModelRegistry');
+    
+    // 验证首选模型为商业旗舰 Gemini 3 Pro
+    expect(SPACE_IMAGE_MODELS[0].id).toBe('gemini-3-pro-image-preview');
+    expect(SPACE_IMAGE_MODELS[0].tier).toBe('flagship');
+    expect(SPACE_IMAGE_MODELS[0].badge).toContain('旗舰');
+    
+    // 验证未识别模型安全兜底至 Gemini 3 Pro
+    expect(getModelById('unknown-model-xyz').id).toBe('gemini-3-pro-image-preview');
+
+    let capturedBody: any = null;
+    vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/api/gateway/generate-image')) {
+        capturedBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => ({
+            success: true,
+            imageUrl: 'data:image/webp;base64,' + dummyBase64
+          })
+        } as any;
+      }
+      return { ok: true, arrayBuffer: async () => Buffer.from(dummyBase64, 'base64') } as any;
+    });
+
+    await SpaceImageGenerationService.generateAndStore({
+      projectId: 'test-gemini-3-pro-pipeline',
+      shotCode: 'A02',
+      userId: 'user-flagship-pro',
+      deptId: 'dept-flagship-pro',
+      positivePrompt: 'luxury corner perspective living room',
+      aspectRatio: '4:3',
+      preferredModel: 'gemini-3-pro-image-preview',
+      resolution: '2K',
+      autoModelFallback: false,
+      renderMode: 'studio_swap',
+      productName: '芝华仕功能沙发',
+      productReferenceImage: `data:image/png;base64,${dummyBase64}`,
+      objectKey: 'test/gemini_3_pro_studio_swap.webp'
+    });
+
+    expect(capturedBody).toBeDefined();
+    expect(capturedBody.model).toBe('gemini-3-pro-image');
+    expect(capturedBody.userUuid).toBe('user-flagship-pro');
   });
 });

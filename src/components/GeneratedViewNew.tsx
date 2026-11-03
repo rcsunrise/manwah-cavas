@@ -391,6 +391,11 @@ const SingleImageView: React.FC<{
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [imgError, setImgError] = useState(false);
+
+    useEffect(() => {
+        setImgError(false);
+    }, [task.id]);
 
     const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.5, 5));
     const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.5, 0.5));
@@ -485,12 +490,25 @@ const SingleImageView: React.FC<{
                         >
                             <div className="premium-shadow rounded-[2rem] overflow-hidden bg-white p-3 border-8 border-white/50 relative">
                                 <div className="relative inline-block">
-                                    <img
-                                        src={task.result.imageUrl}
-                                        alt="Generated"
-                                        className="max-w-full max-h-[65vh] object-contain block pointer-events-none select-none"
-                                        draggable={false}
-                                    />
+                                    {imgError || !task.result.imageUrl || task.result.imageUrl === '[StoredInIndexedDB]' ? (
+                                        <div className="w-[480px] h-[320px] max-w-full flex flex-col items-center justify-center p-8 text-center bg-stone-50 rounded-2xl border-2 border-dashed border-stone-200">
+                                            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2 shadow-xs">
+                                                <ImageIcon className="w-5 h-5 opacity-70" />
+                                            </div>
+                                            <p className="text-xs font-bold text-stone-700">图片数据未就绪或源文件不存在</p>
+                                            <p className="text-[10px] text-stone-400 mt-1 max-w-xs leading-relaxed">
+                                                当前通道未上传产品图，或选中的历史记录源文件已清理。请在左侧产品通道上传实拍素材后重新生成。
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <img
+                                            src={task.result.imageUrl}
+                                            alt="Generated"
+                                            onError={() => setImgError(true)}
+                                            className="max-w-full max-h-[65vh] object-contain block pointer-events-none select-none"
+                                            draggable={false}
+                                        />
+                                    )}
                                     {task.dimensions && <DimensionOverlay dimensions={task.dimensions} />}
                                 </div>
                                 {/* 图像下方的信息记录 */}
