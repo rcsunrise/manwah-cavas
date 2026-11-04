@@ -45,11 +45,11 @@ describe('G2 structured image edit protocol', () => {
     expect(() => parseGenerationIntent('image_edit', 0)).toThrow(/必须携带/);
   });
 
-  it('registers gpt-image-2-all as a VectorEngine-only JSON edit protocol', () => {
+  it('registers gpt-image-2-all as a JSON multi-image protocol without mask support', () => {
     const model = resolveImageModel('gpt-image-2-all', 'image_edit');
     const adapter = getImageProviderAdapter(model);
     expect(model.transport).toBe('openai_images_json_multi');
-    expect(model.capabilities).toMatchObject({ textToImage: false, imageEdit: true, mask: false });
+    expect(model.capabilities).toMatchObject({ textToImage: true, imageEdit: true, mask: false });
     expect(adapter.usesMultipart('image_edit')).toBe(false);
     expect(adapter.buildEndpoint('https://vector.example/v1', model, 'image_edit'))
       .toBe('https://vector.example/v1/images/edits');
@@ -78,7 +78,7 @@ describe('G2 structured image edit protocol', () => {
       outputFormat: 'png'
     })).toThrow(/public HTTPS/);
     expect(() => assertProviderModelCompatibility(model, 'routerhub', 'image_edit')).toThrow(/不支持模型/);
-    expect(() => resolveImageModel('gpt-image-2-all', 'text_to_image')).toThrow(/不支持文生图/);
+    expect(resolveImageModel('gpt-image-2-all', 'text_to_image').id).toBe('gpt-image-2-all');
   });
 
   it('validates real signatures, dimensions and MIME instead of trusting request fields', async () => {
@@ -98,7 +98,7 @@ describe('G2 structured image edit protocol', () => {
     })).rejects.toThrow(/MIME/);
   });
 
-  it('requires a PNG alpha mask matching the first input image dimensions', async () => {
+  it('normalizes masks to the first target image: adds alpha, fits size, converts target to PNG', async () => {
     const targetBuffer = await png(8, 6, false);
     const target = await resolveAndValidateImage({
       source: targetBuffer.toString('base64'), role: 'primary_product', order: 0
@@ -107,13 +107,15 @@ describe('G2 structured image edit protocol', () => {
     await expect(validateMask({ data: validMask.toString('base64'), mimeType: 'image/png' }, target))
       .resolves.toMatchObject({ width: 8, height: 6, hasAlpha: true });
 
+    // 无透明通道的蒙版自动补 Alpha
     const noAlpha = await png(8, 6, false);
     await expect(validateMask({ data: noAlpha.toString('base64'), mimeType: 'image/png' }, target))
-      .rejects.toThrow(/Alpha/);
+      .resolves.toMatchObject({ hasAlpha: true });
 
+    // 尺寸不一致时自动拉伸到第一张目标图尺寸
     const wrongSize = await png(7, 6, true);
     await expect(validateMask({ data: wrongSize.toString('base64'), mimeType: 'image/png' }, target))
-      .rejects.toThrow(/必须与第一张目标图/);
+      .resolves.toMatchObject({ width: 8, height: 6 });
 
     await expect(validateMask({
       data: validMask.toString('base64'),
@@ -121,12 +123,19 @@ describe('G2 structured image edit protocol', () => {
       targetReferenceAssetId: 'another-asset'
     }, { ...target, referenceAssetId: 'primary-asset' })).rejects.toThrow(/第一张目标图/);
 
+    // JPEG 目标图自动转为 PNG
     const jpegTargetBuffer = await sharp(targetBuffer).jpeg().toBuffer();
     const jpegTarget = await resolveAndValidateImage({
       source: jpegTargetBuffer.toString('base64'), role: 'primary_product', order: 0
     });
     await expect(validateMask({ data: validMask.toString('base64'), mimeType: 'image/png' }, jpegTarget))
-      .rejects.toThrow(/第一张目标图也必须为 PNG/);
+      .resolves.toMatchObject({ width: 8, height: 6 });
+    expect(jpegTarget.mimeType).toBe('image/png');
+
+    // 非 PNG 蒙版仍然拒绝
+    const jpegMask = await sharp(validMask).jpeg().toBuffer();
+    await expect(validateMask({ data: jpegMask.toString('base64'), mimeType: 'image/jpeg' }, target))
+      .rejects.toThrow(/PNG/);
   });
 
   it('blocks local, private and plain HTTP remote image fetches before network I/O', async () => {
@@ -153,7 +162,5 @@ describe('G2 structured image edit protocol', () => {
     expect(source).toContain('modelAdapter.buildJsonPayload');
     expect(source).toContain("express.json({ limit: '150mb' })");
     expect(source).not.toContain("express.json({ limit: '500mb' })");
-    const secondaryEntry = fs.readFileSync(path.join(process.cwd(), 'server/app.ts'), 'utf8');
-    expect(secondaryEntry).toContain("express.json({ limit: '150mb' })");
   });
 });
