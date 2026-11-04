@@ -14,6 +14,7 @@ import {
   ModelAsset
 } from '../../../types/spaceAssetLibrary';
 import { ShootCompiler } from './shootCompiler';
+import { nextRevisionNumber } from './revisionGraphEngine';
 
 export interface BuildRenderCandidatesPayloadParams {
   projectId?: string;
@@ -33,7 +34,7 @@ export interface BuildRenderCandidatesPayloadParams {
   isBaseUploaded?: boolean;
   activeTargetHumanLayout?: HumanLayoutConfig;
   allModels?: ModelAsset[];
-  compiledHuman?: { positivePrompt: string; negativePrompt: string };
+  compiledHuman?: { positivePrompt: string; negativePrompt: string; slotBriefs?: string };
 }
 
 export const STUDIO_SWAP_ANGLE_GUARD_PREFIX = '[A02 角度源缺失]';
@@ -349,7 +350,8 @@ export function buildRenderCandidatesPayload(params: BuildRenderCandidatesPayloa
         ? `${compiledHuman?.negativePrompt || ''}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions, altering background, modifying walls, changing wall color, changing floor, modifying furniture, shifting camera, perspective drift, re-framing, foreign style, zooming in, zoom in, cropped sofa, cropping furniture, displaced sofa, extra furniture, missing furniture`
         : `${compiledHuman?.negativePrompt || ''}, text, watermark, logo, font, writing, letters, chinese characters, labels, annotations, captions`,
       isHumanPass: true,
-      preserveBasePhotoOnly: hasBaseBaseline
+      preserveBasePhotoOnly: hasBaseBaseline,
+      ...(hasBaseBaseline && compiledHuman?.slotBriefs ? { humanSlotBriefs: compiledHuman.slotBriefs } : {})
     };
   }
 
@@ -362,7 +364,7 @@ export function buildRenderCandidatesPayload(params: BuildRenderCandidatesPayloa
     projectId,
     shotId: targetShot.id,
     shotCode: targetShot.templateCode,
-    revisionNumber: (targetShot.revisions.length || 0) + 1,
+    revisionNumber: nextRevisionNumber(targetShot.revisions),
     candidateCount,
     resolution: activeSettings.resolution,
     autoModelFallback: activeSettings.autoModelFallback,

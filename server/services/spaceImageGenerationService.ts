@@ -24,6 +24,7 @@ import {
 import { deduplicateNegativeConstraints } from '../../src/features/space-studio/engine/promptDeduplication';
 import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys';
 import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
+import { cropCharacterIdentity } from './characterIdentityCropService';
 
 export interface SpaceProductIdentityInput {
   id?: string;
@@ -94,6 +95,8 @@ export interface SpaceGenerateImageInput {
   /** 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
   studioSwapRefinePass?: boolean;
   preserveBasePhotoOnly?: boolean;
+  /** 人物入座：各角色位的入座简报（来自 compileHumanLayoutPrompt.slotBriefs），存在时使用精简编辑指令 */
+  humanSlotBriefs?: string;
   renderMode?: 'orchestration' | 'studio_swap';
   /**
    * 极简影棚换景专用：户型/硬装美学纯背景 DNA（由 ShootCompiler 输出，不含机位/摆位指令）
@@ -464,6 +467,47 @@ async function normalizeInlineBuffer(rawBuf: Buffer, maxEdge = 1024): Promise<{ 
 /**
  * 辅助方法：将各种格式的图片引用统一解析为模型支持的 inlineData 格式并自动规整长边在 1024px 内
  */
+// 角色资产图是多宫格角色卡（头像组、细节图、文字标注），模型容易照搬其排版输出拼图，必须明确只取身份特征
+const SINGLE_FRAME_NEGATIVES =
+  'collage, photo grid, multiple panels, split screen, diptych, triptych, contact sheet, character sheet layout, repeated same person, duplicated person';
+
+function buildCharacterReferenceClause(charCount: number): string {
+  if (charCount <= 0) return '';
+  const refLabel = charCount > 1 ? 'REFERENCE IMAGES 2 & 3' : 'REFERENCE IMAGE 2';
+  return `${refLabel}: Character identity reference(s) (headshots, possibly cut from multi-panel design boards). Use them ONLY to replicate each person's facial structure, ethnicity, age, hair, expression and outfit. NEVER copy their layout, panels, grid, plain backdrop or text.
+[SINGLE-FRAME OUTPUT MANDATE]: The output MUST be ONE single continuous photograph with exactly the same frame, room and furniture as Reference Image 1. NEVER produce a collage, grid, split screen, multi-panel layout or contact sheet, and never show the same person more than once.`;
+}
+
+/**
+ * 人物入座的精简编辑指令。实测长篇"主沙发入座"指令与单椅等底图矛盾时，模型会放弃底图整张重绘；
+ * 简短的"编辑参考图1、只加人"指令可稳定保住房间、家具与机位。
+ */
+export function buildHumanPassEditPrompt(params: {
+  slotBriefs: string;
+  personCount: number;
+  charRefCount: number;
+  disallowExtraPeople?: boolean;
+}): string {
+  const { slotBriefs, personCount, charRefCount, disallowExtraPeople = true } = params;
+  const people = personCount === 1 ? 'ONE person' : `${personCount} people`;
+  const identityLines = Array.from({ length: charRefCount }, (_, i) =>
+    `Reference Image ${i + 2} shows the person of Character Slot #${i + 1}.`
+  ).join(' ');
+  const identityClause = charRefCount > 0
+    ? `${identityLines} Use these references ONLY for identity: copy face, age, ethnicity and hairstyle; ignore their plain backdrop and any panels or text.`
+    : '';
+
+  return `Edit Reference Image 1. Keep Reference Image 1 exactly as it is: same camera angle, framing, room, walls, window view, lighting, and every furniture piece with its shape, color, leather, position and current footrest state. Do not redraw, restyle, move, crop or replace anything.
+
+Only add ${people} as described below, each on the furniture designated for them in Reference Image 1. A footrest may only change when a character brief explicitly asks for it.
+${identityClause}
+Realistic body weight, leather compression and contact shadows.
+
+${slotBriefs.trim()}
+
+Output one single photograph with the same composition as Reference Image 1. No collage, no panels, no text, no watermark${disallowExtraPeople ? (personCount === 1 ? ', no other people' : `, no extra people beyond these ${personCount}`) : ''}.`;
+}
+
 async function resolveImageInlineData(imageRef?: string, maxEdge = 1024): Promise<{ mimeType: string; data: string } | null> {
   if (!imageRef || typeof imageRef !== 'string') return null;
   const trimmed = imageRef.trim();
@@ -808,9 +852,14 @@ export class SpaceImageGenerationService {
       }
     }
 
-    const charInlines = (
-      await Promise.all(rawCharImages.slice(0, 2).map(imgUrl => resolveImageInlineData(imgUrl)))
-    ).filter((item): item is { mimeType: string; data: string } => item !== null);
+    // 角色资产图是多宫格角色卡，先裁成单人头像再发送，避免模型照搬排版输出拼图
+    const charInlines = await Promise.all(
+      (
+        await Promise.all(rawCharImages.slice(0, 2).map(imgUrl => resolveImageInlineData(imgUrl)))
+      )
+        .filter((item): item is { mimeType: string; data: string } => item !== null)
+        .map(item => cropCharacterIdentity(item, input.userId || 'system'))
+    );
 
     // 确定有效色彩与材质描述 (采用中英文权威词典与 Hex 工业色卡精准绑定)
     const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0]);
@@ -1124,7 +1173,15 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           .replace(/,\s*,+/g, ',')
           .trim();
 
-        if (input.preserveBasePhotoOnly || isHumanPass) {
+        if (isHumanPass && input.humanSlotBriefs && input.humanSlotBriefs.trim()) {
+          // 模式 A0: 模特入座精简编辑指令（以底图为编辑对象，只加人）
+          directivePrompt = buildHumanPassEditPrompt({
+            slotBriefs: input.humanSlotBriefs,
+            personCount: humanLayout?.characterCount || humanLayout?.slots?.length || charInlines.length || 1,
+            charRefCount: charInlines.length,
+            disallowExtraPeople: humanLayout?.disallowExtraCharacters !== false
+          });
+        } else if (input.preserveBasePhotoOnly || isHumanPass) {
           // 模式 A: 模特入座 (Human Pass / Photo Ground Truth Inpainting)：绝对锁定景别、视场角与原有全部家具
           // 彻底杜绝任何镜头拉近（Zoom In）、重绘裁切或单椅被裁
           directivePrompt = `[CRITICAL MANDATE: INPAINT REAL PEOPLE INTO REFERENCE IMAGE 1 - ABSOLUTE FIELD OF VIEW & FRAMING LOCK]
@@ -1137,7 +1194,7 @@ Your task is EXCLUSIVELY to photorealistically insert the designated real human 
 2. ABSOLUTE PROHIBITION ON ZOOMING OR CROPPING: ABSOLUTELY DO NOT ZOOM IN! DO NOT ZOOM OUT! DO NOT crop out the left side chair, coffee table, or any surrounding elements! DO NOT re-frame or shift the sofa! The sofa and surrounding furniture must retain their exact scale, pixel position, and coordinates as in Reference Image 1!
 3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with realistic body weight, fabric folds, and authentic contact ambient occlusion shadows on the seating cushions. All surrounding architecture, windows, walls, and flooring remain completely untouched!
 
-${charInlines.length > 0 ? `REFERENCE IMAGE 2${charInlines.length > 1 ? ' & 3' : ''}: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ''}
+${buildCharacterReferenceClause(charInlines.length)}
 
 STRICT OCCUPANCY & COMPOSITION RULES:
 1. The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with relaxed posture and realistic body contact.
@@ -1148,7 +1205,7 @@ ${positivePrompt}
 
 Negative constraints: ${deduplicateNegativeConstraints(
   sanitizedNegative,
-  'zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people'
+  'zoomed in, zooming in, cropped sofa, cropping furniture, cropping side chair, re-framing, camera drift, camera shift, perspective drift, altering background, modifying walls, changing wall color, changing floor, modifying furniture, foreign style, empty sofa, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people, ' + SINGLE_FRAME_NEGATIVES
 )}`;
         } else {
           // 模式 A-2: 模特植入 (通用)：强制原图机位零漂移，家具绝对不位移，仅将人物自然坐入
@@ -1163,7 +1220,7 @@ THE HERO SOFA MUST HAVE THE SPECIFIED PEOPLE SEATED AND RELAXING IN IT.
 2. ABSOLUTE PROHIBITION ON RE-FRAMING: DO NOT zoom in, DO NOT zoom out, DO NOT change the perspective angle, DO NOT shift furniture left or right. ZERO tolerance for camera drift!
 3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with genuine weight and contact shadows. All surrounding architecture, windows, walls, and flooring remain completely untouched!
 
-${charInlines.length > 0 ? `REFERENCE IMAGE 2 & 3: Target Character References (Model DNA). Photorealistically replicate these exact individuals' facial structure, ethnicity, age, hair, expression, and demeanor into the scene.` : ''}
+${buildCharacterReferenceClause(charInlines.length)}
 ${secondaryReferencesText ? `\n${secondaryReferencesText}\n` : ''}
 
 STRICT COMMERCIAL MANDATES:
@@ -1172,7 +1229,7 @@ ${shotCode === 'A03' ? `   - A03 HERO 3-SEATER FAMILY LEISURE: Depict a genuine 
 ${shotCode === 'A04' ? `   - A04 2/3 HERO SOFA MOTHER-DAUGHTER COMPANION: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly max 2 occupants, mother and daughter, zero extra crowd), captured from 140cm eye level with -15 degree downward pitch looking down onto the deep seating cushion and rug stage. Depict an affectionate mother and young daughter companion moment. The motorized footrests ${isFunctionalClosed ? 'strictly remain completely closed and tucked flush under the base in standard upright configuration' : 'outer motorized footrest is smoothly deployed, comfortably supporting the mother and daughter relaxing together'}. Highlight the wide outer armrest and supple leather folds within the authentic room environment. ZERO single chairs, ZERO coffee table obstruction!` : ''}
 ${shotCode === 'A05' ? `   - A05 2/3 HERO SOFA PRIVATE WINE LOUNGE: Frame 2/3 of the hero motion sofa in 3:4 vertical aspect ratio (CAPACITY LOCK: strictly 1 lady occupant). Depict an elegant lady in a light dress sitting relaxed with footrests ${isFunctionalClosed ? 'completely retracted under the base in standard upright closed posture' : 'smoothly deployed supporting private lounge relaxation'}, holding a glass of red wine in a private leisure lounge posture within the authentic room. ZERO single chairs, ZERO coffee table obstruction!` : ''}
 ${shotCode === 'A06' ? `   - A06 ZERO-WALL CLEARANCE PROFILE VIEW: Lateral side profile (75-90 degrees) in 16:9 widescreen (CAPACITY LOCK: strictly 1 occupant). Hero sofa is flush against the backdrop wall with virtually zero gap (<5cm flush alignment), with motorized footrests and backrest strictly remaining in standard pristine CLOSED upright configuration. A relaxed lady wearing white over-ear headphones listening to music.` : ''}
-${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair in 16:9 widescreen at 35-40 degree three-quarters perspective (CAPACITY LOCK: strictly 1 single occupant). Motorized footrest is ${isFunctionalClosed ? 'completely retracted and closed in standard upright reading posture' : 'deployed in ergonomic comfort contour'} supporting a relaxed individual comfortably browsing an iPad/tablet within the authentic living room.` : ''}
+${shotCode === 'A08' ? `   - A08 RECLINER CHAIR TABLET READING POSTURE: Dedicated single power recliner motion chair at 35-40 degree three-quarters perspective (CAPACITY LOCK: strictly 1 single occupant). Motorized footrest is ${isFunctionalClosed ? 'completely retracted and closed in standard upright reading posture' : 'deployed in ergonomic comfort contour'} supporting a relaxed individual comfortably browsing an iPad/tablet within the authentic living room.` : ''}
 2. ZERO-TEXT MANDATE: ABSOLUTELY NO TEXT, NO CHINESE CHARACTERS, NO WORDS, NO LABELS, NO ANNOTATIONS, NO WATERMARKS ANYWHERE ON THE IMAGE. Render a 100% clean pristine photograph.
 3. MOTION & ERGONOMIC FUNCTION:
    - Keep sofa color (${effectiveColor}), leather grain (${effectiveMaterial}), and armrest styling completely unchanged.
@@ -1186,7 +1243,7 @@ Negative constraints: ${deduplicateNegativeConstraints(
   negativePrompt,
   antiStickerNegatives,
   isFunctionalClosed ? 'deployed footrest, extended footrest, popped leg rest, open footrest mechanism, open recliner mechanism, unretracted leg rest, unfolded footrest, 展开的脚踏, 伸出的脚托, 功能位展开, 靠背倾斜后仰展开' : '',
-  'camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people'
+  'camera drift, camera shift, zoomed in, zoomed out, shifted furniture, tilted horizon, empty sofa, empty room, nobody in room, missing people, displaced furniture, text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, deformed limbs, floating human, extra people, ' + SINGLE_FRAME_NEGATIVES
 )}`;
         }
       } else if (productInline && masterInline) {

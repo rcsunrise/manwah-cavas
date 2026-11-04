@@ -794,6 +794,8 @@ ${linkageDirective}
         'moody night lighting'
       );
     } else if (shot.templateCode === 'A08') {
+      const a08Aspect = input.aspectRatio || shot.aspectRatio || '3:4';
+      const a08Orientation = /^(3:4|2:3|9:16|4:5)$/.test(a08Aspect) ? 'vertical' : 'horizontal';
       const postureMandate = isHumanPassActive
         ? 'with motorized footrest gently deployed supporting lady comfortably browsing a tablet/iPad in 110-120 degree ergonomic reading posture'
         : (isFunctionalClosed
@@ -811,11 +813,11 @@ ${linkageDirective}
       if (isCameraCustomized) {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Adjusted ${camera.lensMm}mm/${camera.heightCm}cm)]:
 ${linkageDirective}
-Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in 4:3 horizontal aspect ratio. Dedicated single power recliner motion showcase in the open living room of A00 on area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner.`;
+Camera: ${camera.lensMm}mm lens at ${camera.heightCm}cm height with fixed ${camera.yawDeg} degree three-quarters angle in ${a08Aspect} ${a08Orientation} aspect ratio. Dedicated single power recliner motion showcase in the open living room of A00 on area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner.`;
       } else {
         shotMandate = `[SHOT MANDATE - A08 RECLINER 5-MODE FUNCTION SHOWCASE (Studio Sample 50mm Golden Diagonal)]:
 ${linkageDirective}
-Camera: 50mm environmental portrait prime lens at 95cm eye-level seated height with fixed 35-to-40 degree golden diagonal perspective in 4:3 horizontal aspect ratio. Dedicated single power recliner motion showcase in the open spacious living room of A00 on the area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner against consistent window daylight and architectural finishes.`;
+Camera: 50mm environmental portrait prime lens at 95cm eye-level seated height with fixed 35-to-40 degree golden diagonal perspective in ${a08Aspect} ${a08Orientation} aspect ratio. Dedicated single power recliner motion showcase in the open spacious living room of A00 on the area rug, demonstrating MANWAH multi-mode ergonomics (${postureMandate}), window daylight shadow boundary, and deep contact AO shadows grounding the recliner against consistent window daylight and architectural finishes.`;
       }
       negativeFramingConstraints.push(
         'shifting camera angle',

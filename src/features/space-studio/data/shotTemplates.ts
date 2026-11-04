@@ -1,7 +1,7 @@
 // src/features/space-studio/data/shotTemplates.ts
 // MANWAH Space Studio｜影棚实拍商业对齐版 A01~A09 标准镜头模版库 V4.0
-// 严格对齐 18 张实拍真值素材：7 个横构图（4:3） + 2 个竖构图（3:4）
-import { ShotTemplate } from '../../../types/spaceStudio';
+// 严格对齐 18 张实拍真值素材：6 个横构图（4:3） + 3 个竖构图（3:4：A04/A05/A08）
+import { ImageAspectRatio, ShotTemplate } from '../../../types/spaceStudio';
 
 export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
   {
@@ -318,7 +318,7 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
     alignmentSample: 'Studio Sample Recliner 5 Postures / Multi-Mode Life',
     studioCategory: '单椅五档功能状态景',
     workflowRole: '50mm 黄金对角单椅私享景',
-    recommendedAspectRatio: '4:3',
+    recommendedAspectRatio: '3:4',
     intent: {
       intentCode: 'SI-06',
       name: '单椅五档功能状态景 (Recliner 5-Mode Showcase)',
@@ -350,7 +350,7 @@ export const STANDARD_SHOT_TEMPLATES: ShotTemplate[] = [
         'door_frame'
       ]
     },
-    description: '焦段 50mm 黄金对角镜头，机位高度 95cm，侧斜 38°，横向 4:3 画幅，单椅独立置于空旷开阔的客厅中央地毯区，展示单人位多功能舒适角度与私享角质感。'
+    description: '焦段 50mm 黄金对角镜头，机位高度 95cm，侧斜 38°，竖向 3:4 画幅，单椅独立置于空旷开阔的客厅中央地毯区，展示单人位多功能舒适角度与私享角质感。'
   },
   {
     id: 'tpl-a09',
@@ -447,4 +447,17 @@ export function getShotTemplateByCode(code: string): ShotTemplate | undefined {
     return SCENE_MASTER_TEMPLATE;
   }
   return STANDARD_SHOT_TEMPLATES.find((t) => t.code.toUpperCase() === code.toUpperCase());
+}
+
+/**
+ * 镜头应使用的画幅：用户手动选过的画幅优先，否则取模板推荐画幅（用于纠正旧快照中的画幅错位）
+ */
+export function resolveShotAspectRatio(shot: {
+  templateCode: string;
+  aspectRatio?: ImageAspectRatio;
+  aspectRatioUserSet?: boolean;
+}): ImageAspectRatio {
+  if (shot.aspectRatioUserSet && shot.aspectRatio) return shot.aspectRatio;
+  const tpl = getShotTemplateByCode(shot.templateCode);
+  return (tpl?.recommendedAspectRatio as ImageAspectRatio) || shot.aspectRatio || '4:3';
 }

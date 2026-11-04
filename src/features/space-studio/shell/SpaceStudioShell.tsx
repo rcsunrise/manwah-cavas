@@ -82,13 +82,14 @@ import { PlacementEngine } from '../engine/placementEngine';
 import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
-import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode } from '../data/shotTemplates';
+import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode, resolveShotAspectRatio } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
 import { buildRenderCandidatesPayload, STUDIO_SWAP_ANGLE_GUARD_PREFIX } from '../engine/renderPayloadBuilder';
+import { measureImageSize, resolveHumanPassAspectRatio, resolveHumanPassBaseRevision } from '../engine/humanPassBase';
 import { ValidationEngine } from '../engine/validationEngine';
 import { RevisionGraphModal } from '../components/RevisionGraphModal';
-import { RevisionGraphEngine } from '../engine/revisionGraphEngine';
+import { RevisionGraphEngine, findRevisionForCandidate, nextRevisionNumber } from '../engine/revisionGraphEngine';
 import { HumanPhasePanel } from '../components/HumanPhasePanel';
 import { InteractiveViewport } from '../components/InteractiveViewport';
 import { DesignPhasePanel } from '../components/DesignPhasePanel';
@@ -315,7 +316,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   // 自动将当前镜头列表对齐至最新的实拍标准校对名称与推荐画幅 (强制纠偏旧快照中的画幅错位)
-  // 标准画幅映射（以 shotTemplates.recommendedAspectRatio 为准）：A04/A05 为 3:4 竖构图，其余镜头为 4:3
+  // 标准画幅映射（以 shotTemplates.recommendedAspectRatio 为准）：A04/A05/A08 为 3:4 竖构图，其余镜头为 4:3；
+  // 用户手动选过画幅的镜头（aspectRatioUserSet）保持用户选择
   useEffect(() => {
     setShots((prevShots) => {
       let changed = false;
@@ -323,8 +325,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         const tpl = getShotTemplateByCode(s.templateCode);
         if (!tpl) return s;
         const needsNameUpdate = Boolean(tpl.name && s.name !== tpl.name);
-        const standardAspect = tpl.recommendedAspectRatio as ImageAspectRatio | undefined;
-        const needsAspectUpdate = Boolean(standardAspect && s.aspectRatio !== standardAspect);
+        const standardAspect = resolveShotAspectRatio(s);
+        const needsAspectUpdate = s.aspectRatio !== standardAspect;
         if (needsNameUpdate || needsAspectUpdate) {
           changed = true;
           return {
@@ -1063,9 +1065,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         if (typeof window !== 'undefined') {
           localStorage.setItem('space_studio_aspect_ratio', updater.aspectRatio);
         }
-        setShots((prevShots) =>
-          prevShots.map((s) => (s.id === activeShotId ? { ...s, aspectRatio: updater.aspectRatio } : s))
-        );
+        // 不在这里写镜头画幅：切换镜头时此处的 activeShotId 仍是上一个镜头，会把新镜头的画幅写到旧镜头上。
+        // 用户手动改画幅由 handleShotAspectRatioChange 写入当前镜头。
       }
       return next;
     });
@@ -1233,7 +1234,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setAspectRatio(newRatio);
     handleUpdateComputeConfig({ aspectRatio: newRatio });
     setShots((prevShots) =>
-      prevShots.map((s) => (s.id === activeShotId ? { ...s, aspectRatio: newRatio } : s))
+      prevShots.map((s) => (s.id === activeShotId ? { ...s, aspectRatio: newRatio, aspectRatioUserSet: true } : s))
     );
   };
 
@@ -1974,14 +1975,19 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
     // 绑定该定稿版本与当前候选批次
     const currentActiveBatch = candidateBatches[activeShot.id];
-    if (currentActiveBatch) {
+    if (currentActiveBatch && !findRevisionForCandidate(activeShot.revisions, candidate)) {
       setRevisionCandidateBatches(prev => ({ ...prev, [newRevId]: currentActiveBatch }));
     }
 
     setShots(prev =>
       prev.map(s => {
         if (s.id !== activeShot.id) return s;
-        const nextRevNum = (s.revisions.length || 0) + 1;
+        // 该图已在生成记录里（如从胶卷选回某一版再点「设为当前」），只切换当前版本，不重复新建一版
+        const existingRev = findRevisionForCandidate(s.revisions, candidate);
+        if (existingRev) {
+          return { ...s, status: 'passed', currentRevisionId: existingRev.id };
+        }
+        const nextRevNum = nextRevisionNumber(s.revisions);
         const newRev: ShotRevision = {
           id: newRevId,
           shotId: s.id,
@@ -2177,7 +2183,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
       // 以候选 1 建立首发 Revision，确保视口与导航缩略图即刻展示
       const parentRevId = targetShot.currentRevisionId || (targetShot.revisions.length > 0 ? targetShot.revisions[0].id : undefined);
-      const nextRevNum = (targetShot.revisions.length || 0) + 1;
+      const nextRevNum = nextRevisionNumber(targetShot.revisions);
       const newRevision: ShotRevision = {
         id: `rev-${targetShot.templateCode.toLowerCase()}-${Date.now().toString(36)}`,
         shotId: targetShot.id,
@@ -2558,7 +2564,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const newRevision: ShotRevision = {
         id: revId,
         shotId: targetShot.id,
-        revisionNumber: (targetShot.revisions?.length || 0) + 1,
+        revisionNumber: nextRevisionNumber(targetShot.revisions || []),
         objectKey,
         imageUrl: dataUrl,
         promptSnapshotId: `upload-${Date.now()}`,
@@ -2664,11 +2670,28 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     renderTimeoutsRef.current.set(targetShot.id, timeout);
     setRenderingShotIds((prev) => Array.from(new Set([...prev, targetShot.id])));
 
+    // 底图固定取无人的空间/实拍版本：当前展示的若是人物版，回溯到它所基于的那一版，
+    // 杜绝在已有人物的图上叠加生成导致整张重绘
+    const baseRev = resolveHumanPassBaseRevision(targetShot);
+    const baseShotImage = baseRev?.imageUrl ||
+      (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) ||
+      sceneMaster?.imageUrl ||
+      activeAssets.style?.thumbnail ||
+      activeAssets.style?.coverImage ||
+      'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
+
+    // 画幅以镜头自身为准（不读顶部全局画幅），并与底图实际比例对齐，避免模型被迫重构图
+    const humanPassAspectRatio =
+      resolveHumanPassAspectRatio(
+        (targetShot.aspectRatio as ImageAspectRatio) || aspectRatio,
+        await measureImageSize(baseShotImage)
+      ) || aspectRatio;
+
     const jobId = `job-human-${Date.now()}`;
     const activeSettings: GenerationSettings = {
       model: computeConfig.model,
       resolution: computeConfig.resolution,
-      aspectRatio: aspectRatio,
+      aspectRatio: humanPassAspectRatio,
       seed: computeConfig.seed,
       useRandomSeed: computeConfig.seed === undefined
     };
@@ -2699,18 +2722,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         allModels
       );
 
-      const currentRev = targetShot.revisions.find((r) => r.id === targetShot.currentRevisionId) || (targetShot.revisions && targetShot.revisions[0]);
-
-      const baseShotImage = currentRev?.imageUrl || 
-        (targetShot.templateCode === 'A00' ? sceneMaster?.imageUrl : undefined) || 
-        sceneMaster?.imageUrl ||
-        activeAssets.style?.thumbnail ||
-        activeAssets.style?.coverImage ||
-        'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1200&q=85';
-
       const isBaseUploaded = Boolean(
         (targetShot as any)?.isCustomUploadedShot ||
-        (currentRev as any)?.isUserUploaded ||
+        (baseRev as any)?.isUserUploaded ||
         (targetShot as any)?.isUserUploadedPhoto
       );
 
@@ -2793,8 +2807,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       }
 
       // 2. 以候选 1 建立新一代人物版 Revision (v2 或递增版本)
-      const nextRevNum = existingRevs.length + 1;
-      const parentRevId = targetShot.currentRevisionId || (existingRevs.length > 0 ? existingRevs[0].id : undefined);
+      const nextRevNum = nextRevisionNumber(existingRevs);
+      const parentRevId = baseRev?.id || targetShot.currentRevisionId || (existingRevs.length > 0 ? existingRevs[0].id : undefined);
       const newRevision: ShotRevision = {
         id: `rev-${targetShot.templateCode.toLowerCase()}-human-${Date.now().toString(36)}`,
         shotId: targetShot.id,
@@ -2954,7 +2968,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         throw new Error(errorMsg);
       }
 
-      const nextRevNum = (targetShot.revisions.length || 0) + 1;
+      const nextRevNum = nextRevisionNumber(targetShot.revisions);
       const newRevision: ShotRevision = {
         id: data.data.revisionId,
         shotId: targetShot.id,
@@ -3135,7 +3149,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         throw new Error(errorMsg);
       }
 
-      const nextRevNum = (targetShot.revisions.length || 0) + 1;
+      const nextRevNum = nextRevisionNumber(targetShot.revisions);
       const newRevision: ShotRevision = {
         id: data.data.revisionId,
         shotId: targetShot.id,
@@ -3549,7 +3563,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           const newRevision: ShotRevision = {
             id: revId,
             shotId: s.id,
-            revisionNumber: (s.revisions.length || 0) + 1,
+            revisionNumber: nextRevisionNumber(s.revisions),
             objectKey: newMaster.objectKey,
             imageUrl: masterImageUrl,
             thumbnailUrl: masterImageUrl,
@@ -4039,9 +4053,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           setActiveShotId(target.id);
 
           // 4. 影棚实拍商业对齐：全量镜头（A00~A09）按画面规划与商业构图意图自动自适应长宽比例
-          const tpl = getShotTemplateByCode(target.templateCode);
-          const plannedRatio: ImageAspectRatio =
-            (tpl?.recommendedAspectRatio as ImageAspectRatio) || target.aspectRatio || '4:3';
+          const plannedRatio: ImageAspectRatio = resolveShotAspectRatio(target);
 
           if (target.aspectRatio !== plannedRatio) {
             setShots((prev) => prev.map((s) => (s.id === target.id ? { ...s, aspectRatio: plannedRatio } : s)));

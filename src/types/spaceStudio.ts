@@ -651,6 +651,8 @@ export interface ShotInstance {
   aspectRatio?: ImageAspectRatio;
   error?: string; // 记录最近一次生成失败的显式异常原因（网络超时/上游接口异常等）
   boundProductId?: string; // 用户为当前镜头指定的专属主品资产ID (支持切换素材)
+  /** 用户在顶部手动选过画幅后为 true，此后不再被模板推荐画幅覆盖 */
+  aspectRatioUserSet?: boolean;
   customReferenceImage?: string; // 用户为当前镜头单独上传的专属参考底图 (如专属45度特写图)
   isUserUploadedPhoto?: boolean; // 标记当前镜头是否为用户自定义实拍上传图
   decoupleOldMaster?: boolean; // 是否解除旧A00/A01母版绑定，以全新素材为准重绘

@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { STANDARD_SHOT_TEMPLATES, getShotTemplateByCode } from '../data/shotTemplates';
+import { STANDARD_SHOT_TEMPLATES, getShotTemplateByCode, resolveShotAspectRatio } from '../data/shotTemplates';
 import { ShotInstance, ImageAspectRatio } from '../../../types/spaceStudio';
 
 describe('Shot Aspect Ratio Auto-Adaptation by Composition Planning', () => {
   it('correctly maps all standard templates to their commercial lookbook aspect ratios', () => {
     // 影棚实拍商业对齐画幅规划矩阵（最新真值标准）：
-    // 7个横构图（4:3） + 2个竖构图（3:4）
+    // 6个横构图（4:3） + 3个竖构图（3:4）
     // A01: 4:3 (空间主大场景)
     // A02: 4:3 (45° 3+1 组合大全景)
     // A03: 4:3 (三人位主沙发场景)
@@ -13,7 +13,7 @@ describe('Shot Aspect Ratio Auto-Adaptation by Composition Planning', () => {
     // A05: 3:4 (三分之二主沙私享休闲景)
     // A06: 4:3 (零靠墙功能闭合侧景)
     // A07: 4:3 (沙发茶几组群中景)
-    // A08: 4:3 (单椅五档功能状态景)
+    // A08: 3:4 (单椅五档功能状态景)
     // A09: 4:3 (餐厅配套展示组)
     const expectedMap: Record<string, ImageAspectRatio> = {
       A01: '4:3',
@@ -23,7 +23,7 @@ describe('Shot Aspect Ratio Auto-Adaptation by Composition Planning', () => {
       A05: '3:4',
       A06: '4:3',
       A07: '4:3',
-      A08: '4:3',
+      A08: '3:4',
       A09: '4:3'
     };
 
@@ -54,7 +54,7 @@ describe('Shot Aspect Ratio Auto-Adaptation by Composition Planning', () => {
     expect(resolvePlannedRatio(mockShots[1])).toBe('4:3');
     expect(resolvePlannedRatio(mockShots[2])).toBe('4:3');
     expect(resolvePlannedRatio(mockShots[3])).toBe('4:3');
-    expect(resolvePlannedRatio(mockShots[4])).toBe('4:3');
+    expect(resolvePlannedRatio(mockShots[4])).toBe('3:4');
     // Non-template shot falls back
     expect(resolvePlannedRatio({ templateCode: 'CUSTOM', aspectRatio: '1:1' })).toBe('1:1');
   });
@@ -91,7 +91,13 @@ describe('Shot Aspect Ratio Auto-Adaptation by Composition Planning', () => {
     expect(healedShots.find(s => s.templateCode === 'A05')?.aspectRatio).toBe('3:4');
     expect(healedShots.find(s => s.templateCode === 'A06')?.aspectRatio).toBe('4:3');
     expect(healedShots.find(s => s.templateCode === 'A07')?.aspectRatio).toBe('4:3');
-    expect(healedShots.find(s => s.templateCode === 'A08')?.aspectRatio).toBe('4:3');
+    expect(healedShots.find(s => s.templateCode === 'A08')?.aspectRatio).toBe('3:4');
     expect(healedShots.find(s => s.templateCode === 'A09')?.aspectRatio).toBe('4:3');
+  });
+
+  it('用户手动选过的画幅不被模板推荐画幅覆盖', () => {
+    expect(resolveShotAspectRatio({ templateCode: 'A08', aspectRatio: '4:3' })).toBe('3:4');
+    expect(resolveShotAspectRatio({ templateCode: 'A08', aspectRatio: '4:3', aspectRatioUserSet: true })).toBe('4:3');
+    expect(resolveShotAspectRatio({ templateCode: 'A01', aspectRatio: '1:1', aspectRatioUserSet: true })).toBe('1:1');
   });
 });

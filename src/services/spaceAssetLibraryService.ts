@@ -877,6 +877,8 @@ class SpaceAssetLibraryService {
     positivePrompt: string;
     negativePrompt: string;
     humanDirectives: string;
+    /** 仅各角色位的入座简报，不含通用"主沙发"指令，供人物入座精简编辑指令使用 */
+    slotBriefs: string;
   } {
     const slots = layout.slots || [];
     const count = layout.characterCount || slots.length;
@@ -1032,7 +1034,8 @@ ${humanDirectives}`;
     return {
       positivePrompt,
       negativePrompt,
-      humanDirectives
+      humanDirectives,
+      slotBriefs: slotDirectives
     };
   }
 

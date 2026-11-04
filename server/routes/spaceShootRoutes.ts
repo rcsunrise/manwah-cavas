@@ -335,6 +335,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             deptId: effectiveDeptId,
             isHumanPass,
             preserveBasePhotoOnly,
+            humanSlotBriefs: isHumanPass ? promptSnapshot?.humanSlotBriefs : undefined,
             humanLayout,
             selectedModels,
             characterReferenceImages,

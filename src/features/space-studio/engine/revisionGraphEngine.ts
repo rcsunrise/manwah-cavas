@@ -12,6 +12,24 @@ import {
   ProvenanceLevel
 } from '../../../types/spaceStudio';
 
+/** 下一个版本号取现有最大版本号 + 1（按数量计算在删除版本后会出现重复的 v7） */
+export function nextRevisionNumber(revisions: Array<{ revisionNumber: number }> = []): number {
+  return revisions.reduce((max, r) => Math.max(max, r.revisionNumber || 0), 0) + 1;
+}
+
+/** 候选图是否已存为某一版（按图片对象键、地址或候选 ID 匹配） */
+export function findRevisionForCandidate<R extends { objectKey?: string; imageUrl?: string; promptSnapshotId?: string }>(
+  revisions: R[] = [],
+  candidate: { id?: string; objectKey?: string; imageUrl?: string }
+): R | undefined {
+  return revisions.find(
+    (r) =>
+      (candidate.objectKey && r.objectKey === candidate.objectKey) ||
+      (candidate.imageUrl && r.imageUrl === candidate.imageUrl) ||
+      (candidate.id && r.promptSnapshotId === candidate.id)
+  );
+}
+
 export interface GraphNode {
   id: string;
   revisionNumber: number;
@@ -98,8 +116,8 @@ export class RevisionGraphEngine {
     manualConfirmed?: boolean;
   }): ShotRevision {
     const { shot, parentRevisionId, objectKey, promptSnapshotId, validationReport, manualConfirmed = false } = params;
-    const nextRevisionNumber = shot.revisions.length + 1;
-    const revId = `rev-${shot.templateCode.toLowerCase()}-${nextRevisionNumber}-${Date.now().toString(36)}`;
+    const revisionNumber = nextRevisionNumber(shot.revisions);
+    const revId = `rev-${shot.templateCode.toLowerCase()}-${revisionNumber}-${Date.now().toString(36)}`;
 
     const isApproved = validationReport ? validationReport.pass : false;
     const provenance: ProvenanceLevel = manualConfirmed
@@ -113,7 +131,7 @@ export class RevisionGraphEngine {
     const revision: ShotRevision = {
       id: revId,
       shotId: shot.id,
-      revisionNumber: nextRevisionNumber,
+      revisionNumber,
       parentRevisionId,
       objectKey,
       promptSnapshotId,
