@@ -12,6 +12,8 @@ interface WorkflowHeaderProps {
   productDnaVersionCode?: string;
   productDnaVersionId?: string;
   isVideoPanelOpen?: boolean;
+  /** 同一画布在其他标签页也打开着 */
+  isOpenInOtherTab?: boolean;
   onSaveDraftNow?: () => void;
   onOpenSaveModal?: () => void;
   onOpenHistoryModal?: () => void;
@@ -36,6 +38,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   productDnaVersionCode,
   productDnaVersionId,
   isVideoPanelOpen = false,
+  isOpenInOtherTab = false,
   onSaveDraftNow,
   onOpenSaveModal,
   onOpenHistoryModal,
@@ -81,7 +84,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
       case 'saving':
         return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <Loader2 className="w-3 h-3 animate-spin text-amber-600" />, label: '正在保存...', title: '正在保存草稿到服务器与本地' };
       case 'local_saved':
-        return { tone: 'text-sky-800 bg-sky-50 border-sky-200', icon: <Check className="w-3.5 h-3.5 text-sky-600" />, label: `已存本地 ${time}`, title: '已备用保存到本地存储，点击立即保存到服务器' };
+        return { tone: 'text-sky-800 bg-sky-50 border-sky-200', icon: <Check className="w-3.5 h-3.5 text-sky-600" />, label: `已存本地 ${time}`, title: '服务器暂未保存成功，已存到本地，点击立即重试' };
       case 'memory_only':
         return { tone: 'text-amber-800 bg-amber-50 border-amber-300', icon: <AlertCircle className="w-3.5 h-3.5 text-amber-600" />, label: '临时保存', title: '仅临时存放在内存中，服务重启后可能丢失；点击立即保存' };
       case 'save_failed':
@@ -89,9 +92,9 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
         return { tone: 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100', icon: <AlertCircle className="w-3.5 h-3.5 text-rose-600" />, label: '保存失败，点击重试', title: '点击立即重试保存当前工作流草稿' };
       case 'offline_pending':
       case 'unsynced':
-        return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <RefreshCw className="w-3 h-3 text-amber-500 animate-pulse" />, label: '有未保存改动', title: '将在 5 分钟内自动保存，点击立即保存' };
+        return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <RefreshCw className="w-3 h-3 text-amber-500 animate-pulse" />, label: '有未保存改动', title: '停止编辑约 10 秒后自动保存，点击立即保存' };
       default:
-        return { tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />, label: `已保存 ${time}`, title: '草稿已保存（每 5 分钟自动保存），点击立即保存' };
+        return { tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />, label: `已保存 ${time}`, title: '草稿已保存（停止编辑约 10 秒后自动保存），点击立即保存' };
     }
   };
   const save = renderSaveStatus();
@@ -150,6 +153,16 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           {save.icon}
           <span>{save.label}</span>
         </button>
+
+        {isOpenInOtherTab && (
+          <span
+            className="hidden md:flex shrink-0 items-center gap-1 px-2.5 py-1 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-[11px] font-medium whitespace-nowrap"
+            title="此画布在另一个浏览器标签页也打开着，两边的自动保存会互相覆盖，建议只保留一个窗口编辑"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+            另一窗口也在编辑
+          </span>
+        )}
       </div>
 
       {/* 中：创作工具，画布上最常用的两个产出入口 */}

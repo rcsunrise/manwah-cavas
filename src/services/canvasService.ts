@@ -75,6 +75,30 @@ export const canvasService = {
   },
 
   // Save current working draft with auto-save
+  /**
+   * 页面关闭时同步发起的草稿保存（keepalive，不等待结果）。
+   * keepalive 请求体上限约 64KB，超出时返回 false，由调用方依赖本地待同步草稿兜底。
+   */
+  sendCanvasDraftOnUnload(
+    canvasId: string,
+    payload: { nodesDraft: SerializableNode[]; edgesDraft: SerializableEdge[]; viewportDraft: ViewportState; hasExplicitUserClear?: boolean },
+    headers: Record<string, string>
+  ): boolean {
+    const body = JSON.stringify(payload);
+    if (body.length > 60_000) return false;
+    try {
+      void fetch(`/api/canvases/${canvasId}/draft`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body,
+        keepalive: true
+      }).catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   async saveCanvasDraft(
     canvasId: string,
     payload: {

@@ -133,6 +133,7 @@ export default function CreativeCanvasPage() {
     handleSendMessageStream,
     addAgentMessage,
     updateAgentMessage,
+    isOpenInOtherTab,
     handleStopGenerating,
     handleRetryMessage,
     handleCreateNewConversation,
@@ -742,6 +743,7 @@ export default function CreativeCanvasPage() {
         onOpenStorageManager={() => setShowStorageModal(true)}
         onOpenLayoutEditor={handleOpenPosterStudio}
         isVideoPanelOpen={isVideoPanelOpen}
+        isOpenInOtherTab={isOpenInOtherTab}
         onOpenVideoPanel={() => (isVideoPanelOpen ? setIsVideoPanelOpen(false) : handleOpenVideoPanel())}
         onNewCanvas={handleCreateNewCanvas}
         onExportJson={handleExportJson}

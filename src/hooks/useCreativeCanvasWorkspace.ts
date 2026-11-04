@@ -124,6 +124,55 @@ export function normalizeCanvasIds(idParam?: string): { projectId: string; canva
   return { projectId, canvasId };
 }
 
+// 自动保存：停止操作 10 秒后保存；持续操作时最多 60 秒也会保存一次
+const AUTOSAVE_IDLE_MS = 10_000;
+const AUTOSAVE_MAX_WAIT_MS = 60_000;
+
+/**
+ * 待同步草稿：页面隐藏 / 关闭 / 离开画布时写下的完整快照（含大图，不做裁剪）。
+ * 服务端保存成功后清除；下次打开画布若它比服务端版本新，则恢复并重新保存。
+ */
+interface PendingDraft {
+  canvasId: string;
+  projectId: string;
+  at: string;
+  nodes: any[];
+  edges: any[];
+  viewport: ViewportState;
+}
+
+const pendingDraftKey = (canvasId: string) => `creative-canvas:pending-draft:${canvasId}`;
+
+function writePendingDraft(draft: PendingDraft) {
+  // localStorage 同步写入，关闭页面时也能落盘；超出配额时仅依赖 IndexedDB
+  try {
+    localStorage.setItem(pendingDraftKey(draft.canvasId), JSON.stringify(draft));
+  } catch {}
+  void dbService.saveDraft(pendingDraftKey(draft.canvasId), draft).catch(() => {});
+}
+
+function clearPendingDraft(canvasId: string) {
+  try {
+    localStorage.removeItem(pendingDraftKey(canvasId));
+  } catch {}
+  void dbService.deleteDraft(pendingDraftKey(canvasId)).catch(() => {});
+}
+
+async function readPendingDraft(canvasId: string): Promise<PendingDraft | null> {
+  const candidates: PendingDraft[] = [];
+  try {
+    const fromDb = await dbService.getDraft<PendingDraft>(pendingDraftKey(canvasId));
+    if (fromDb) candidates.push(fromDb);
+  } catch {}
+  try {
+    const raw = localStorage.getItem(pendingDraftKey(canvasId));
+    if (raw) candidates.push(JSON.parse(raw));
+  } catch {}
+  return candidates
+    .filter(d => d && d.canvasId === canvasId && Array.isArray(d.nodes))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0] || null;
+}
+
 export function safeSaveToLocalStorage(key: string, data: any) {
   try {
     const serialized = JSON.stringify(data, (k, v) => {
@@ -270,6 +319,8 @@ export function useCreativeCanvasWorkspace(
   const [viewport, setViewport] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevSerializedRef = useRef<string>('');
+  // 本轮未保存改动开始的时间，用于“持续操作也至少每 60 秒保存一次”
+  const firstDirtyAtRef = useRef<number | null>(null);
 
   // Phase C2 states for 9-grid planning
   const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
@@ -2398,6 +2449,8 @@ export function useCreativeCanvasWorkspace(
   queueItemsRef.current = queueItems;
 
   const handleAutoLayoutNodes = useCallback(() => {
+    // 一键排版属于用户改动，需要触发自动保存
+    hasUserMutationRef.current = true;
     setNodes(prevNodes => {
       const { nodes: arranged } = arrangeCleanTreeLayout(prevNodes, edges);
       return arranged;
@@ -2406,6 +2459,8 @@ export function useCreativeCanvasWorkspace(
   }, [edges, setNodes, addAgentMessage]);
 
   const handleGrid3x3Layout = useCallback((selectedOnly: boolean = false) => {
+    // 一键排版属于用户改动，需要触发自动保存
+    hasUserMutationRef.current = true;
     setNodes(prevNodes => {
       const { nodes: arranged } = arrangeGrid3x3Layout(prevNodes, selectedOnly);
       return arranged;
@@ -2414,6 +2469,8 @@ export function useCreativeCanvasWorkspace(
   }, [setNodes, addAgentMessage]);
 
   const handleSeamlessLayout = useCallback((selectedOnly: boolean = false) => {
+    // 一键排版属于用户改动，需要触发自动保存
+    hasUserMutationRef.current = true;
     setNodes(prevNodes => {
       const { nodes: arranged } = arrangeSeamlessVerticalLayout(prevNodes, selectedOnly);
       return arranged;
@@ -3447,6 +3504,31 @@ export function useCreativeCanvasWorkspace(
           });
 
           hasUserMutationRef.current = false;
+
+          // 上次关闭页面前有改动没来得及同步：本地待同步草稿比服务端新，就用它并重新保存
+          const pendingDraft = await readPendingDraft(targetCanvasId);
+          // 服务端每次保存草稿都会刷新 updated_at；拿不到服务端时间时不冒险覆盖，以服务端为准
+          const sc = serverCanvas as any;
+          const serverSavedAtMs = Date.parse(sc.last_saved_at || sc.lastSavedAt || sc.updated_at || sc.updatedAt || '') || 0;
+          if (pendingDraft && serverSavedAtMs > 0 && Date.parse(pendingDraft.at) > serverSavedAtMs && pendingDraft.nodes.length > 0) {
+            const restored = enrichCanvasNodesAndEdges(pendingDraft.nodes as any, (pendingDraft.edges || []) as any);
+            setNodes(restored.nodes);
+            setEdges(restored.edges);
+            if (pendingDraft.viewport) setViewport(pendingDraft.viewport);
+            prevSerializedRef.current = '';
+            hasUserMutationRef.current = true;
+            setSaveStatus('unsynced');
+            addAgentMessage('已恢复上次关闭前未同步的画布改动，正在自动保存。');
+            logCanvasDiagnostic({
+              projectId: targetProjectId,
+              canvasId: targetCanvasId,
+              nodesCount: pendingDraft.nodes.length,
+              source: 'hydrate_restored_pending_draft'
+            });
+          } else if (pendingDraft && serverSavedAtMs > 0) {
+            clearPendingDraft(targetCanvasId);
+          }
+
           serverSuccess = true;
 
           logCanvasDiagnostic({
@@ -3623,7 +3705,133 @@ export function useCreativeCanvasWorkspace(
     }));
   }, []);
 
-  // 2. Debounced Auto-Save Draft Effect (5 minutes interval / 300,000ms debounce)
+  // ===== 未保存改动兜底：页面隐藏 / 关闭 / 离开画布时立即保存 =====
+  const latestCanvasRef = useRef({ nodes, edges, viewport, activeDna, hydrationState });
+  latestCanvasRef.current = { nodes, edges, viewport, activeDna, hydrationState };
+
+  // 页面关闭时来不及异步取登录态，提前缓存请求头
+  const unloadAuthHeadersRef = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    const refresh = () => {
+      getAuthHeaders()
+        .then(h => {
+          unloadAuthHeadersRef.current = h;
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const timer = setInterval(refresh, 5 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [workspaceIdParam]);
+
+  const flushUnsavedDraft = useCallback(
+    (mode: 'async' | 'unload') => {
+      const latest = latestCanvasRef.current;
+      if (latest.hydrationState !== 'ready' || isRestoringRef.current || !hasUserMutationRef.current) return;
+      const cleanNodes = getCleanSerializableNodes(latest.nodes);
+      const cleanEdges = getCleanSerializableEdges(latest.edges);
+      // 与自动保存的比对口径保持一致
+      const serialized = JSON.stringify({ nodes: cleanNodes, edges: cleanEdges, viewport: latest.viewport, activeDna: latest.activeDna });
+      if (serialized === prevSerializedRef.current) return;
+
+      const { projectId, canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      // 先落本地待同步草稿：即使请求没发出去，下次打开也能恢复
+      writePendingDraft({ canvasId, projectId, at: new Date().toISOString(), nodes: cleanNodes, edges: cleanEdges, viewport: latest.viewport });
+
+      const payload = {
+        nodesDraft: cleanNodes,
+        edgesDraft: cleanEdges,
+        viewportDraft: latest.viewport,
+        hasExplicitUserClear: hasExplicitUserClearRef.current
+      };
+      if (mode === 'unload') {
+        if (unloadAuthHeadersRef.current) canvasService.sendCanvasDraftOnUnload(canvasId, payload, unloadAuthHeadersRef.current);
+        return;
+      }
+
+      setSaveStatus('saving');
+      canvasService
+        .saveCanvasDraft(canvasId, payload)
+        .then(res => {
+          prevSerializedRef.current = serialized;
+          hasExplicitUserClearRef.current = false;
+          firstDirtyAtRef.current = null;
+          clearPendingDraft(canvasId);
+          setSaveStatus(res.storageMedium === 'cloud' ? 'cloud_saved' : 'local_saved');
+          setLastSavedAt(res.lastSavedAt || new Date().toISOString());
+        })
+        .catch(err => {
+          console.warn('Flush unsaved canvas draft failed, kept local pending draft:', err);
+          setSaveStatus('local_saved');
+        });
+    },
+    [getCleanSerializableNodes, getCleanSerializableEdges, workspaceIdParam]
+  );
+
+  // 同一画布在本浏览器的其他标签页也打开时提示：两边自动保存会互相覆盖
+  const [isOpenInOtherTab, setIsOpenInOtherTab] = useState(false);
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined' || !workspaceIdParam) return;
+    const { canvasId } = normalizeCanvasIds(workspaceIdParam);
+    const tabId = Math.random().toString(36).slice(2);
+    const channel = new BroadcastChannel('creative-canvas-presence');
+    const peers = new Map<string, number>();
+    const announce = (type: 'hello' | 'here' | 'leave') => channel.postMessage({ type, canvasId, tabId });
+    const syncFlag = () => setIsOpenInOtherTab(peers.size > 0);
+
+    channel.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (!msg || msg.canvasId !== canvasId || msg.tabId === tabId) return;
+      if (msg.type === 'leave') {
+        peers.delete(msg.tabId);
+      } else {
+        peers.set(msg.tabId, Date.now());
+        if (msg.type === 'hello') announce('here');
+      }
+      syncFlag();
+    };
+    announce('hello');
+    // 心跳：标签页被直接杀掉收不到 leave 时，15 秒后视为离开
+    const heartbeat = setInterval(() => {
+      announce('here');
+      const now = Date.now();
+      for (const [id, seenAt] of peers) if (now - seenAt > 15_000) peers.delete(id);
+      syncFlag();
+    }, 5_000);
+    const leave = () => announce('leave');
+    window.addEventListener('pagehide', leave);
+    return () => {
+      leave();
+      clearInterval(heartbeat);
+      window.removeEventListener('pagehide', leave);
+      channel.close();
+      setIsOpenInOtherTab(false);
+    };
+  }, [workspaceIdParam]);
+
+  const flushUnsavedDraftRef = useRef(flushUnsavedDraft);
+  flushUnsavedDraftRef.current = flushUnsavedDraft;
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') flushUnsavedDraftRef.current('async');
+    };
+    // 关闭 / 刷新标签页：异步请求可能被浏览器中断，用 keepalive 同步发出
+    const handlePageHide = () => flushUnsavedDraftRef.current('unload');
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide', handlePageHide);
+      // 应用内离开画布（如返回工作流）：组件卸载前把未保存改动发出去
+      flushUnsavedDraftRef.current('async');
+    };
+  }, []);
+
+  // 2. Debounced Auto-Save Draft Effect（停止操作 10 秒后保存，持续操作最多 60 秒保存一次）
   useEffect(() => {
     if (hydrationState !== 'ready' || isRestoringRef.current || !hasUserMutationRef.current) {
       return;
@@ -3646,12 +3854,14 @@ export function useCreativeCanvasWorkspace(
       }
 
       setSaveStatus('unsynced');
+      if (!firstDirtyAtRef.current) firstDirtyAtRef.current = Date.now();
 
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
 
-      // 5 minutes (300,000ms) interval
+      const waitedMs = Date.now() - firstDirtyAtRef.current;
+      const saveDelayMs = Math.max(0, Math.min(AUTOSAVE_IDLE_MS, AUTOSAVE_MAX_WAIT_MS - waitedMs));
       saveTimeoutRef.current = setTimeout(async () => {
         setSaveStatus('saving');
         try {
@@ -3661,7 +3871,7 @@ export function useCreativeCanvasWorkspace(
           logCanvasDiagnostic({
             projectId: targetProjectId,
             canvasId: targetCanvasId,
-            source: 'auto_save_5min_triggered',
+            source: 'auto_save_triggered',
             nodesCount: cleanNodes.length,
             edgesCount: cleanEdges.length
           });
@@ -3706,6 +3916,8 @@ export function useCreativeCanvasWorkspace(
 
           prevSerializedRef.current = serializedPayload;
           hasExplicitUserClearRef.current = false;
+          firstDirtyAtRef.current = null;
+          clearPendingDraft(targetCanvasId);
 
           try {
             const localSnapshot = {
@@ -3765,10 +3977,13 @@ export function useCreativeCanvasWorkspace(
             await dbService.saveDraft(localKey, localSnapshot);
           } catch (e) {}
 
+          // 服务端没存上：留下待同步草稿，下次打开画布时恢复并补存
+          writePendingDraft({ canvasId: targetCanvasId, projectId: targetProjectId, at: nowIso, nodes: cleanNodes, edges: cleanEdges, viewport });
+
           setSaveStatus('local_saved');
           setLastSavedAt(nowIso);
         }
-      }, 300000); // 5 minutes
+      }, saveDelayMs);
     }, 400);
 
     return () => {
@@ -3871,6 +4086,8 @@ export function useCreativeCanvasWorkspace(
     });
     hasUserMutationRef.current = false;
     hasExplicitUserClearRef.current = false;
+    firstDirtyAtRef.current = null;
+    if (isCloudSaved) clearPendingDraft(targetCanvasId);
 
     setSaveStatus(isCloudSaved ? 'cloud_saved' : 'local_saved');
     setLastSavedAt(nowIso);
@@ -4292,6 +4509,7 @@ export function useCreativeCanvasWorkspace(
     addUserMessage,
     addAgentMessage,
     updateAgentMessage,
+    isOpenInOtherTab,
     clearCanvasWorkspace,
 
     // G0-1 Exports
