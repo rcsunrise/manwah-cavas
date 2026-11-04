@@ -190,3 +190,48 @@ export function describeFallbackChain(primaryModel: string): string {
     .map((m) => m.label)
     .join(' ➔ ');
 }
+
+const GENERATION_MODEL_LABELS: Array<[RegExp, string]> = [
+  [/^fallback-original$/, '未出图·保留底图'],
+  [/^manwah-spatial-renderer/, '本地示意图'],
+  [/gemini-3-pro-image/, 'Gemini 3 Pro'],
+  [/gemini-3\.1-flash-image/, 'Gemini 3.1 Flash'],
+  [/nano-banana-2\.1/, 'Nano Banana 2.1'],
+  [/gemini-2\.5-flash-image/, 'Gemini 2.5 Flash'],
+  [/gpt-image-2\.5-flare/, 'GPT 2.5 Flare'],
+  [/gpt-image-2\.5-sunburst/, 'GPT 2.5 Sunburst'],
+  [/gpt-image-2-all/, 'GPT Image 2 All'],
+  [/gpt-image-2/, 'GPT Image 2']
+];
+
+/** 把网关返回的模型 ID 转为简短可读名称；两步出图（"A + B 精修"）两段分别转换 */
+export function formatGenerationModelLabel(modelId?: string): string {
+  if (!modelId) return '';
+  return modelId
+    .split(/\s*\+\s*/)
+    .map((part) => {
+      const refine = /精修$/.test(part);
+      const id = part.replace(/\s*精修$/, '').replace(/^(openai|google)\//, '').trim();
+      const hit = GENERATION_MODEL_LABELS.find(([re]) => re.test(id));
+      return `${hit ? hit[1] : id}${refine ? ' 精修' : ''}`;
+    })
+    .join(' + ');
+}
+
+/** 出图信息摘要，例如 "Gemini 3 Pro · 11-04 10:30 · 36秒" */
+export function formatGenerationMeta(params: { model?: string; createdAt?: string; durationMs?: number }): string {
+  const parts: string[] = [];
+  const label = formatGenerationModelLabel(params.model);
+  if (label) parts.push(label);
+  if (params.createdAt) {
+    const d = new Date(params.createdAt);
+    if (!isNaN(d.getTime())) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      parts.push(`${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    }
+  }
+  if (typeof params.durationMs === 'number' && params.durationMs > 0) {
+    parts.push(`${Math.round(params.durationMs / 1000)}秒`);
+  }
+  return parts.join(' · ');
+}

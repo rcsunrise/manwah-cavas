@@ -327,6 +327,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
 
         const preserveBasePhotoOnly = Boolean((req.body as any).preserveBasePhotoOnly);
 
+        const genStartedAt = Date.now();
         try {
           const imageResult = await SpaceImageGenerationService.generateAndStore({
             projectId,
@@ -391,6 +392,10 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             seed: typeof generationSettings?.seed === 'number' ? generationSettings.seed + v.idx : 1000 + v.idx,
             score: 92 + v.idx,
             isFavorite: false,
+            model: imageResult.model,
+            provider: imageResult.provider,
+            isFallback: imageResult.isFallback,
+            durationMs: Date.now() - genStartedAt,
             createdAt: new Date().toISOString()
           };
         } catch (candErr: any) {
@@ -469,6 +474,10 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
               seed: 1000 + v.idx,
               score: 91,
               isFavorite: false,
+              // 模型全部失败时的兜底图：有底图则原样返回底图，否则为本地示意图
+              model: baseShotRef ? 'fallback-original' : 'manwah-spatial-renderer-v1',
+              isFallback: true,
+              durationMs: Date.now() - genStartedAt,
               createdAt: new Date().toISOString()
             };
           } catch (healErr) {
@@ -510,6 +519,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
  * 专业级智能扩图接口：基于已有机位图，支持四周外扩、左右延展、上下拉升，生成新全景 Revision
  */
 router.post('/outpaint', async (req: Request, res: Response) => {
+  const routeStartedAt = Date.now();
   try {
     const {
       projectId = 'manwah-noble-space-01',
@@ -668,6 +678,8 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
         outpaintMode,
         scale,
         aspectRatio,
+        model: gatewayData.model || modelToUse,
+        durationMs: Date.now() - routeStartedAt,
         label: outpaintMode === 'horizontal' ? `左右扩图 (${scale}x)` : outpaintMode === 'vertical' ? `上下扩图 (${scale}x)` : `四周扩图 (${scale}x)`,
         metaSummary: `视野向${outpaintMode === 'horizontal' ? '左右两侧' : outpaintMode === 'vertical' ? '上下两侧' : '四周'}自然延展 ${scale}x · 保留主沙发与摆位`
       }
@@ -687,6 +699,7 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
  * 支持纯提示词指令修改、蒙版标记（画笔涂抹/多边形框选/矩形与椭圆几何标记）局部重绘、以及上传参考图替换/融合修改
  */
 router.post('/inpaint-edit', async (req: Request, res: Response) => {
+  const routeStartedAt = Date.now();
   try {
     const {
       projectId = 'manwah-noble-space-01',
@@ -996,6 +1009,8 @@ MANDATORY QUALITY RULES:
         objectKey,
         aspectRatio,
         label: modeLabel,
+        model: gatewayData.model || modelToUse,
+        durationMs: Date.now() - routeStartedAt,
         metaSummary: `${modeLabel}${cleanInstruction ? `：${cleanInstruction.slice(0, 36)}` : ''}`
       }
     });
@@ -1022,6 +1037,7 @@ export const EMPTY_PLATE_PROMPT = `商企-清除家具：以窗口1（空间母�
 [CRITICAL NEGATIVE INSTRUCTION]: no sofa, no chair, no armchair, no coffee table, no side table, no rug, no carpet, no floor lamp, no plants, no people, no text, no watermark, no labels, no changes to walls, ceiling, floor, windows or camera angle.`;
 
 router.post('/empty-plate', async (req: Request, res: Response) => {
+  const routeStartedAt = Date.now();
   try {
     const {
       projectId = 'manwah-noble-space-01',
@@ -1124,7 +1140,9 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
       data: {
         objectKey,
         imageUrl: `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
-        sourceRevisionId
+        sourceRevisionId,
+        model: gatewayData.model || preferredModel,
+        durationMs: Date.now() - routeStartedAt
       }
     });
   } catch (err: any) {

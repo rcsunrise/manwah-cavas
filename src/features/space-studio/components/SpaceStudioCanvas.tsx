@@ -1,6 +1,6 @@
 // src/features/space-studio/components/SpaceStudioCanvas.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SPACE_AUTO_FALLBACK_MODELS } from '../../../config/imageModelRegistry';
+import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
@@ -396,6 +396,14 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     return currentRevision.label || `${typeLabel} v${num}`;
   }, [currentRevision, activeShot.revisions.length]);
 
+  const currentRevisionGenMeta = currentRevision
+    ? formatGenerationMeta({
+        model: currentRevision.generationModel,
+        createdAt: currentRevision.createdAt,
+        durationMs: currentRevision.generationDurationMs
+      })
+    : '';
+
   // 5. 提取当前图片代理 Key（此时 activeCandidate 已安全完成初始化，彻底根治 TDZ ReferenceError）
   const primaryKey = currentRevision?.objectKey || (activeShot.templateCode === 'A00' ? sceneMaster?.objectKey : undefined);
   const extractedKey = primaryKey || (() => {
@@ -474,6 +482,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
       badgeText: string;
       badgeColorClass: string;
       summaryTag?: string;
+      /** 出图模型 · 时间 · 耗时 */
+      genMeta?: string;
+      genFallback?: boolean;
       isSelected: boolean;
       isFavorite?: boolean;
       createdAt?: string;
@@ -518,6 +529,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
         badgeText,
         badgeColorClass: badgeColor,
         summaryTag: rev.metaSummary || rev.label || `版本 v${num}`,
+        genMeta: formatGenerationMeta({ model: rev.generationModel, createdAt: rev.createdAt, durationMs: rev.generationDurationMs }),
+        genFallback: rev.generationFallback,
         isSelected,
         createdAt: rev.createdAt,
         canDelete: activeShot.revisions.length > 1 && Boolean(onDeleteRevision)
@@ -539,6 +552,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             badgeText: `方案 #${cand.variantIndex || 1}`,
             badgeColorClass: 'bg-blue-900/80 text-blue-300 border-blue-500/30',
             summaryTag: cand.summaryTag || `候选变体 ${cand.variantIndex || 1}`,
+            genMeta: formatGenerationMeta({ model: cand.model, createdAt: cand.createdAt, durationMs: cand.durationMs }),
+            genFallback: cand.isFallback,
             isSelected,
             isFavorite: cand.isFavorite,
             createdAt: cand.createdAt,
@@ -1863,7 +1878,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <span>镜头生成记录与方案 (共 {unifiedCards.length} 版)</span>
                     </span>
                     <span className="text-[10px] text-neutral-400 font-mono whitespace-nowrap shrink-0">
-                      (当前展示: {currentRevisionTitle})
+                      (当前展示: {currentRevisionTitle}{currentRevisionGenMeta ? ` · ${currentRevisionGenMeta}` : ''})
                     </span>
 
                     {/* 预设尺寸快速切换 */}
@@ -2060,9 +2075,17 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                           </div>
                         )}
 
-                        {/* Summary Footer */}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1.5 pt-4 text-[9px] text-neutral-300 font-medium truncate pointer-events-none">
-                          {card.summaryTag}
+                        {/* Summary Footer：摘要 + 出图模型 · 时间 · 耗时 */}
+                        <div
+                          className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-1.5 pt-4 text-[9px] text-neutral-300 font-medium pointer-events-none"
+                          title={card.genMeta || undefined}
+                        >
+                          <div className="truncate">{card.summaryTag}</div>
+                          {card.genMeta && (
+                            <div className={`truncate font-mono text-[8px] ${card.genFallback ? 'text-amber-300' : 'text-neutral-400'}`}>
+                              {card.genFallback ? '备用 · ' : ''}{card.genMeta}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

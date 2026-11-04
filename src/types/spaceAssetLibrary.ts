@@ -361,6 +361,13 @@ export interface CandidateItem {
   seed?: number;
   isFavorite?: boolean;
   score?: number;
+  /** 实际出图模型（多模型轮换时为最终成功的模型） */
+  model?: string;
+  provider?: string;
+  /** 是否由备用模型或兜底图产生 */
+  isFallback?: boolean;
+  /** 出图耗时（毫秒） */
+  durationMs?: number;
   createdAt: string;
 }
 

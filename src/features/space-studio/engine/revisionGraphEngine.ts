@@ -30,6 +30,15 @@ export function findRevisionForCandidate<R extends { objectKey?: string; imageUr
   );
 }
 
+/** 候选图的出图模型与耗时，写入由它生成的版本 */
+export function candidateGenerationMeta(candidate: { model?: string; durationMs?: number; isFallback?: boolean }) {
+  return {
+    ...(candidate.model ? { generationModel: candidate.model } : {}),
+    ...(typeof candidate.durationMs === 'number' ? { generationDurationMs: candidate.durationMs } : {}),
+    ...(candidate.isFallback ? { generationFallback: true } : {})
+  };
+}
+
 export interface GraphNode {
   id: string;
   revisionNumber: number;

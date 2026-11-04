@@ -636,6 +636,12 @@ export interface ShotRevision {
   createdAt: string;
   /** A00 母版清除家具后生成的空场景版本（只有硬装的空房间） */
   isEmptyPlate?: boolean;
+  /** 实际出图模型 ID */
+  generationModel?: string;
+  /** 出图耗时（毫秒） */
+  generationDurationMs?: number;
+  /** 是否由备用模型或兜底图产生 */
+  generationFallback?: boolean;
 }
 
 export interface ShotInstance {

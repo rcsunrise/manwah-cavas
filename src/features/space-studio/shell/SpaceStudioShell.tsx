@@ -89,7 +89,7 @@ import { buildRenderCandidatesPayload, STUDIO_SWAP_ANGLE_GUARD_PREFIX } from '..
 import { measureImageSize, resolveHumanPassAspectRatio, resolveHumanPassBaseRevision } from '../engine/humanPassBase';
 import { ValidationEngine } from '../engine/validationEngine';
 import { RevisionGraphModal } from '../components/RevisionGraphModal';
-import { RevisionGraphEngine, findRevisionForCandidate, nextRevisionNumber } from '../engine/revisionGraphEngine';
+import { RevisionGraphEngine, candidateGenerationMeta, findRevisionForCandidate, nextRevisionNumber } from '../engine/revisionGraphEngine';
 import { HumanPhasePanel } from '../components/HumanPhasePanel';
 import { InteractiveViewport } from '../components/InteractiveViewport';
 import { DesignPhasePanel } from '../components/DesignPhasePanel';
@@ -1156,6 +1156,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             imageUrl: data.data.imageUrl,
             thumbnailUrl: data.data.imageUrl,
             promptSnapshotId: `empty-plate-${sourceRev.id}`,
+            generationModel: data.data.model,
+            generationDurationMs: data.data.durationMs,
             status: 'approved',
             provenance: 'AI_ESTIMATED',
             productionTruth: false,
@@ -1998,6 +2000,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           imageUrl: candidate.imageUrl,
           thumbnailUrl: candidate.imageUrl,
           promptSnapshotId: candidate.id,
+          ...candidateGenerationMeta(candidate),
           status: 'approved',
           score: {
             productIdentity: 95,
@@ -2196,6 +2199,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         imageUrl: initialCandidate.imageUrl,
         thumbnailUrl: initialCandidate.imageUrl,
         promptSnapshotId: initialCandidate.id,
+        ...candidateGenerationMeta(initialCandidate),
         status: 'approved',
         score: {
           productIdentity: 94,
@@ -2818,6 +2822,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         imageUrl: initialCandidate.imageUrl,
         thumbnailUrl: initialCandidate.imageUrl,
         promptSnapshotId: initialCandidate.id,
+        ...candidateGenerationMeta(initialCandidate),
         status: 'approved',
         revisionType: 'human',
         label: isBaseUploaded
@@ -2981,6 +2986,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         imageUrl: data.data.imageUrl,
         thumbnailUrl: data.data.imageUrl,
         promptSnapshotId: `outpaint-${data.data.revisionId}`,
+        generationModel: data.data.model,
+        generationDurationMs: data.data.durationMs,
         status: 'approved',
         score: {
           productIdentity: 96,
@@ -3162,6 +3169,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         imageUrl: data.data.imageUrl,
         thumbnailUrl: data.data.imageUrl,
         promptSnapshotId: `inpaint-${data.data.revisionId}`,
+        generationModel: data.data.model,
+        generationDurationMs: data.data.durationMs,
         status: 'approved',
         score: {
           productIdentity: 98,

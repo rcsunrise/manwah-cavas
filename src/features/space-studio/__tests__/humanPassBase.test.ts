@@ -92,3 +92,16 @@ describe('设为当前镜头结果不重复建版', () => {
     expect(findRevisionForCandidate(revs, { id: 'new', objectKey: 'k/new', imageUrl: '/img/new' })).toBeUndefined();
   });
 });
+
+describe('出图模型与时间显示', () => {
+  it('模型 ID 转为简短名称，两步出图分段转换', async () => {
+    const { formatGenerationModelLabel, formatGenerationMeta } = await import('../../../config/imageModelRegistry');
+    expect(formatGenerationModelLabel('gemini-3-pro-image')).toBe('Gemini 3 Pro');
+    expect(formatGenerationModelLabel('openai/gpt-image-2.5-flare-c')).toBe('GPT 2.5 Flare');
+    expect(formatGenerationModelLabel('gpt-image-2.5-flare-c + gemini-nano-banana-2.1-preview 精修')).toBe('GPT 2.5 Flare + Nano Banana 2.1 精修');
+    expect(formatGenerationModelLabel('fallback-original')).toBe('未出图·保留底图');
+    expect(formatGenerationModelLabel(undefined)).toBe('');
+    const meta = formatGenerationMeta({ model: 'gemini-3-pro-image', createdAt: new Date(2026, 10, 4, 10, 30).toISOString(), durationMs: 36400 });
+    expect(meta).toBe('Gemini 3 Pro · 11-04 10:30 · 36秒');
+  });
+});
