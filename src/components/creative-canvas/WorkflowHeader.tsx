@@ -1,6 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, LayoutGrid, Check, Sparkles, Save, History, CloudCheck, Loader2, AlertCircle, RefreshCw, PlusCircle, Dna, Download, Upload, Film, Database } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Check, Sparkles, Save, History, CloudCheck, Loader2, AlertCircle, RefreshCw, PlusCircle, Dna, Download, Upload, Film, Database, MoreHorizontal } from 'lucide-react';
 import { SaveStatus } from '../../types/creativeCanvas';
 
 interface WorkflowHeaderProps {
@@ -11,6 +11,7 @@ interface WorkflowHeaderProps {
   dnaCode?: string;
   productDnaVersionCode?: string;
   productDnaVersionId?: string;
+  isVideoPanelOpen?: boolean;
   onSaveDraftNow?: () => void;
   onOpenSaveModal?: () => void;
   onOpenHistoryModal?: () => void;
@@ -23,6 +24,9 @@ interface WorkflowHeaderProps {
   onImportJson?: (file: File) => void;
 }
 
+const formatTime = (iso?: string) =>
+  iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
 export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   workspaceName = '新建立体视觉企划案',
   saveStatus = 'saved',
@@ -31,6 +35,7 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
   dnaCode,
   productDnaVersionCode,
   productDnaVersionId,
+  isVideoPanelOpen = false,
   onSaveDraftNow,
   onOpenSaveModal,
   onOpenHistoryModal,
@@ -44,191 +49,161 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
 }) => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  // 更多菜单：点击外部或按 Esc 关闭
+  useEffect(() => {
+    if (!isMoreOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (!moreMenuRef.current?.contains(e.target as globalThis.Node)) setIsMoreOpen(false);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMoreOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMoreOpen]);
+
+  const runMenuAction = (action?: () => void) => {
+    setIsMoreOpen(false);
+    action?.();
+  };
+
+  // 保存状态胶囊：同时作为“立即保存草稿”的入口
+  const renderSaveStatus = () => {
+    const time = formatTime(lastSavedAt);
+    switch (saveStatus) {
+      case 'saving':
+        return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <Loader2 className="w-3 h-3 animate-spin text-amber-600" />, label: '正在保存...', title: '正在保存草稿到服务器与本地' };
+      case 'local_saved':
+        return { tone: 'text-sky-800 bg-sky-50 border-sky-200', icon: <Check className="w-3.5 h-3.5 text-sky-600" />, label: `已存本地 ${time}`, title: '已备用保存到本地存储，点击立即保存到服务器' };
+      case 'memory_only':
+        return { tone: 'text-amber-800 bg-amber-50 border-amber-300', icon: <AlertCircle className="w-3.5 h-3.5 text-amber-600" />, label: '临时保存', title: '仅临时存放在内存中，服务重启后可能丢失；点击立即保存' };
+      case 'save_failed':
+      case 'error':
+        return { tone: 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100', icon: <AlertCircle className="w-3.5 h-3.5 text-rose-600" />, label: '保存失败，点击重试', title: '点击立即重试保存当前工作流草稿' };
+      case 'offline_pending':
+      case 'unsynced':
+        return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <RefreshCw className="w-3 h-3 text-amber-500 animate-pulse" />, label: '有未保存改动', title: '将在 5 分钟内自动保存，点击立即保存' };
+      default:
+        return { tone: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />, label: `已保存 ${time}`, title: '草稿已保存（每 5 分钟自动保存），点击立即保存' };
+    }
+  };
+  const save = renderSaveStatus();
+
+  const menuItemClass = 'w-full flex items-center gap-2 px-3 py-2 text-xs text-stone-700 hover:bg-[#F9F5EF] hover:text-[#8C6F43] text-left transition-colors';
+
+  // 头部层级需高于视频面板（fixed z-40），否则“更多”下拉菜单会被面板盖住
   return (
-    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-[#E5E0D8] px-4 md:px-6 flex items-center justify-between gap-3 shrink-0 z-30 select-none">
-      {/* Left: Back button & Title */}
-      <div className="flex items-center gap-3 shrink-0 whitespace-nowrap">
+    <header className="h-14 bg-white/90 backdrop-blur-md border-b border-[#E5E0D8] px-3 md:px-5 flex items-center gap-3 shrink-0 z-50 select-none">
+      {/* 左：返回 + 画布身份 + 状态（DNA / 保存），状态紧挨着它描述的对象 */}
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 basis-0">
         <button
           onClick={() => navigate('/manwah')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-[#F9F5EF] text-stone-700 hover:text-[#B28C5A] text-xs font-bold transition-all"
+          className="shrink-0 w-8 h-8 rounded-xl bg-stone-100 hover:bg-[#F9F5EF] text-stone-700 hover:text-[#B28C5A] flex items-center justify-center transition-all"
+          title="返回工作流"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>返回工作流</span>
         </button>
 
-        <div className="w-[1px] h-5 bg-[#E5E0D8] mx-1" />
-
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center border border-[#E5E0D8]">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="shrink-0 w-7 h-7 rounded-lg bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center border border-[#E5E0D8]">
             <LayoutGrid className="w-4 h-4" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-serif font-bold text-sm text-[#2C2A29]">
-                视觉企划画布
-              </h1>
-              <span className="hidden xl:inline text-[10px] font-bold text-[#B28C5A] bg-[#F9F5EF] px-2 py-0.5 rounded-full border border-[#E5E0D8]">
-                无限画布工作流
-              </span>
-            </div>
-            <p className="text-[10px] text-stone-400 font-sans">
-              {workspaceName}
-            </p>
+          <div className="min-w-0">
+            <h1 className="font-serif font-bold text-sm text-[#2C2A29] whitespace-nowrap">视觉企划画布</h1>
+            <p className="text-[10px] text-stone-400 font-sans truncate" title={workspaceName}>{workspaceName}</p>
           </div>
         </div>
+
+        <div className="hidden lg:flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[#E5E0D8] bg-[#FAF8F5]">
+            <Dna className="w-3.5 h-3.5 text-[#B28C5A]" />
+            {dnaCode && productDnaVersionCode ? (
+              <button
+                onClick={onViewDnaVersion}
+                className="flex items-center gap-1.5 text-stone-800 hover:text-[#B28C5A] transition-colors"
+                title={`DNA Version ID: ${productDnaVersionId || '未确定'}`}
+              >
+                <span className="font-mono text-[11px] font-bold text-[#B28C5A]">{dnaCode}</span>
+                <span className="font-mono text-[10px] bg-[#B28C5A]/10 text-[#8C6F43] px-1.5 rounded-full border border-[#B28C5A]/20 font-bold">
+                  {productDnaVersionCode}
+                </span>
+              </button>
+            ) : (
+              <span className="text-[11px] text-stone-400 whitespace-nowrap">未绑定 DNA</span>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={onSaveDraftNow}
+          disabled={!onSaveDraftNow || saveStatus === 'saving'}
+          className={`hidden sm:flex shrink-0 items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium whitespace-nowrap transition-colors disabled:cursor-default ${save.tone}`}
+          title={save.title}
+        >
+          {save.icon}
+          <span>{save.label}</span>
+        </button>
       </div>
 
-      {/* Right: Save Status, DNA Version Status & Actions */}
-      {/* 窄屏下按钮不换行：次要按钮只留图标，仍放不下时横向滚动 */}
-      <div className="flex items-center gap-2 min-w-0 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&>*]:shrink-0">
-        {/* Product DNA Version Status Pill */}
-        <div className="hidden lg:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[#E5E0D8] bg-[#FAF8F5]">
-          <Dna className="w-3.5 h-3.5 text-[#B28C5A]" />
-          {dnaCode && productDnaVersionCode ? (
-            <button
-              onClick={onViewDnaVersion}
-              className="flex items-center gap-1.5 text-stone-800 hover:text-[#B28C5A] transition-colors"
-              title={`DNA Version ID: ${productDnaVersionId || '未确定'}`}
-            >
-              <span className="font-mono text-[11px] font-bold text-[#B28C5A]">{dnaCode}</span>
-              <span className="font-mono text-[10px] bg-[#B28C5A]/10 text-[#8C6F43] px-1.5 py-0.2 rounded-full border border-[#B28C5A]/20 font-bold">
-                {productDnaVersionCode}
-              </span>
-            </button>
-          ) : (
-            <span className="text-[11px] text-stone-400">未绑定 Product DNA</span>
-          )}
-        </div>
-        {/* Auto-save status indicator (5min policy) */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border transition-all">
-          {(saveStatus === 'saving') && (
-            <span className="flex items-center gap-1.5 text-amber-700 bg-amber-50 border-amber-200 px-2.5 py-0.5 rounded-full" title="正在保存草稿到服务器与本地">
-              <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
-              <span className="text-[11px] font-medium">正在保存草稿...</span>
-            </span>
-          )}
-
-          {(saveStatus === 'cloud_saved' || saveStatus === 'saved') && (
-            <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border-emerald-200 px-2.5 py-0.5 rounded-full" title="草稿已成功保存（系统每5分钟自动保存一次）">
-              <CloudCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-[11px] font-medium">
-                已保存<span className="hidden xl:inline">草稿 (5分钟自动)</span> {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
-              </span>
-            </span>
-          )}
-
-          {saveStatus === 'local_saved' && (
-            <span className="flex items-center gap-1.5 text-sky-800 bg-sky-50 border-sky-200 px-2.5 py-0.5 rounded-full" title="已备用保存到本地存储">
-              <Check className="w-3.5 h-3.5 text-sky-600" />
-              <span className="text-[11px] font-medium">
-                已存本地<span className="hidden xl:inline"> (5分钟自动)</span> {lastSavedAt ? `(${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
-              </span>
-            </span>
-          )}
-
-          {saveStatus === 'memory_only' && (
-            <span className="flex items-center gap-1.5 text-amber-800 bg-amber-50 border-amber-300 px-2.5 py-0.5 rounded-full" title="仅临时存放在内存中，重启后可能丢失">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-[11px] font-medium">临时保存，服务重启后可能丢失</span>
-            </span>
-          )}
-
-          {(saveStatus === 'save_failed' || saveStatus === 'error') && (
-            <button
-              onClick={onSaveDraftNow}
-              className="flex items-center gap-1.5 text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-0.5 rounded-full cursor-pointer transition-colors"
-              title="点击立即重试保存当前工作流草稿"
-            >
-              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-              <span className="text-[11px] font-medium">保存失败，点击重试</span>
-            </button>
-          )}
-
-          {(saveStatus === 'offline_pending' || saveStatus === 'unsynced') && (
-            <span className="flex items-center gap-1.5 text-amber-700 bg-amber-50 border-amber-200 px-2.5 py-0.5 rounded-full" title="有尚未保存的改动，将在5分钟内自动保存">
-              <RefreshCw className="w-3 h-3 text-amber-500 animate-pulse" />
-              <span className="text-[11px] font-medium">待自动保存<span className="hidden xl:inline"> (5分钟一次)</span></span>
-            </span>
-          )}
-        </div>
-
-        {/* Action: Manual Immediate Save Draft */}
-        {onSaveDraftNow && (
+      {/* 中：创作工具，画布上最常用的两个产出入口 */}
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-stone-100/80 border border-[#E5E0D8] shrink-0">
+        {onOpenLayoutEditor && (
           <button
-            onClick={onSaveDraftNow}
-            className="px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all shadow-xs flex items-center gap-1"
-            title="立即保存当前工作流草稿（无需等待5分钟自动保存）"
+            onClick={onOpenLayoutEditor}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold text-stone-700 hover:bg-white hover:text-amber-800 transition-all flex items-center gap-1.5"
+            title="进入全案海报工作台"
           >
-            <Save className="w-3.5 h-3.5 text-stone-500" />
-            <span className="hidden xl:inline">存草稿</span>
+            <LayoutGrid className="w-3.5 h-3.5 text-amber-700" />
+            <span className="hidden md:inline">全案海报</span>
           </button>
         )}
-
-        {/* Action: Create New Canvas */}
-        {onNewCanvas && (
+        {onOpenVideoPanel && (
           <button
-            onClick={onNewCanvas}
-            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-950 font-bold text-xs transition-all shadow-xs flex items-center gap-1.5"
-            title="清空当前状态，创建一个全新的视觉企划画布"
+            onClick={onOpenVideoPanel}
+            aria-pressed={isVideoPanelOpen}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              isVideoPanelOpen
+                ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-emerald-200'
+                : 'text-stone-700 hover:bg-white hover:text-emerald-800'
+            }`}
+            title={isVideoPanelOpen ? '收起视频创作面板' : '展开视频创作与运镜策划面板'}
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>新建画布</span>
+            <Film className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="hidden md:inline">视频创作</span>
           </button>
         )}
+      </div>
 
-        {/* Action: Open History Revisions Modal */}
+      {/* 右：版本相关 + 主操作 + 更多（低频文件操作收进菜单） */}
+      <div className="flex items-center justify-end gap-2 flex-1 basis-0 min-w-0">
         <button
           onClick={onOpenHistoryModal}
-          className="px-3 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-white text-stone-700 border border-[#E5E0D8] text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+          className="shrink-0 px-2.5 py-1.5 rounded-xl text-stone-700 hover:bg-stone-100 text-xs font-bold transition-all flex items-center gap-1.5"
           title="查看与恢复历史存档版本"
         >
           <History className="w-3.5 h-3.5 text-[#B28C5A]" />
           <span className="hidden xl:inline">版本历史</span>
           {currentRevisionNumber > 0 && (
-            <span className="font-mono text-[10px] bg-[#B28C5A] text-white px-1.5 py-0.2 rounded-full">
-              v{currentRevisionNumber}
-            </span>
+            <span className="font-mono text-[10px] bg-[#B28C5A] text-white px-1.5 rounded-full">v{currentRevisionNumber}</span>
           )}
         </button>
 
-        {/* Action: Open Storage Manager Modal */}
-        {onOpenStorageManager && (
-          <button
-            onClick={onOpenStorageManager}
-            className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-            title="一键查找并清除 Supabase 与本地存储的画布与素材"
-          >
-            <Database className="w-3.5 h-3.5 text-purple-700" />
-            <span className="hidden xl:inline">存储管理</span>
-          </button>
-        )}
+        <button
+          onClick={onOpenSaveModal}
+          className="shrink-0 px-3.5 py-1.5 rounded-xl bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5532] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+          title="将当前画布保存为一个可回溯的版本"
+        >
+          <Save className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">保存版本</span>
+        </button>
 
-        {/* Action: Open Long Image Layout Editor Modal */}
-        {onOpenLayoutEditor && (
-          <button
-            onClick={onOpenLayoutEditor}
-            className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-            title="进入全案海报工作台"
-          >
-            <LayoutGrid className="w-3.5 h-3.5 text-amber-700" />
-            <span className="hidden xl:inline">全案海报</span>
-          </button>
-        )}
-
-        {/* Action: Open Video Creation Panel */}
-        {onOpenVideoPanel && (
-          <button
-            onClick={onOpenVideoPanel}
-            className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-            title="展开视频创作与运镜策划面板"
-          >
-            <Film className="w-3.5 h-3.5 text-emerald-700" />
-            <span className="hidden xl:inline">视频创作</span>
-          </button>
-        )}
-
-        {/* Action: Import & Export JSON Draft */}
         <input
           type="file"
           ref={fileInputRef}
@@ -243,44 +218,57 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
           }}
         />
 
-        {onImportJson && (
+        <div className="relative shrink-0" ref={moreMenuRef}>
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="px-2.5 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-white text-stone-700 border border-[#E5E0D8] hover:border-[#B28C5A] text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-            title="选择并导入 JSON 备份文件还原画布与工作流"
+            onClick={() => setIsMoreOpen(open => !open)}
+            aria-haspopup="menu"
+            aria-expanded={isMoreOpen}
+            className={`w-8 h-8 rounded-xl flex items-center justify-center text-stone-600 transition-all ${isMoreOpen ? 'bg-stone-200' : 'hover:bg-stone-100'}`}
+            title="更多操作"
           >
-            <Upload className="w-3.5 h-3.5 text-[#B28C5A]" />
-            <span className="hidden sm:inline">导入 JSON</span>
+            <MoreHorizontal className="w-4 h-4" />
           </button>
-        )}
-
-        {onExportJson && (
-          <button
-            onClick={onExportJson}
-            className="px-2.5 py-1.5 rounded-xl bg-[#FAF8F5] hover:bg-white text-stone-700 border border-[#E5E0D8] hover:border-[#B28C5A] text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-            title="导出当前画布完整数据为标准 JSON 备份文件"
-          >
-            <Download className="w-3.5 h-3.5 text-stone-600" />
-            <span className="hidden sm:inline">导出 JSON</span>
-          </button>
-        )}
-
-        {/* Action: Save Current Version Modal */}
-        <button
-          onClick={onOpenSaveModal}
-          className="px-3.5 py-1.5 rounded-xl bg-[#B28C5A] hover:bg-[#8C6F43] active:bg-[#6E5532] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-        >
-          <Save className="w-3.5 h-3.5" />
-          <span>保存当前版本</span>
-        </button>
-
-        <button
-          onClick={() => navigate('/manwah')}
-          className="hidden md:flex px-3 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition-all shadow-sm items-center gap-1.5"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-          <span>传统视图</span>
-        </button>
+          {isMoreOpen && (
+            <div role="menu" className="absolute right-0 top-full mt-1.5 w-48 py-1 bg-white border border-[#E5E0D8] rounded-xl shadow-lg z-50">
+              {onNewCanvas && (
+                <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(onNewCanvas)}>
+                  <PlusCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>新建画布</span>
+                </button>
+              )}
+              {onSaveDraftNow && (
+                <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(onSaveDraftNow)}>
+                  <Save className="w-3.5 h-3.5 text-stone-500" />
+                  <span>立即保存草稿</span>
+                </button>
+              )}
+              {(onImportJson || onExportJson) && <div className="my-1 border-t border-stone-100" />}
+              {onImportJson && (
+                <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(() => fileInputRef.current?.click())}>
+                  <Upload className="w-3.5 h-3.5 text-[#B28C5A]" />
+                  <span>导入 JSON</span>
+                </button>
+              )}
+              {onExportJson && (
+                <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(onExportJson)}>
+                  <Download className="w-3.5 h-3.5 text-stone-500" />
+                  <span>导出 JSON</span>
+                </button>
+              )}
+              <div className="my-1 border-t border-stone-100" />
+              {onOpenStorageManager && (
+                <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(onOpenStorageManager)}>
+                  <Database className="w-3.5 h-3.5 text-purple-700" />
+                  <span>存储管理</span>
+                </button>
+              )}
+              <button role="menuitem" className={menuItemClass} onClick={() => runMenuAction(() => navigate('/manwah'))}>
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>切换到传统视图</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

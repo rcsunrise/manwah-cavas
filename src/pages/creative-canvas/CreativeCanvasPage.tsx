@@ -739,7 +739,8 @@ export default function CreativeCanvasPage() {
         onOpenHistoryModal={() => setShowHistoryModal(true)}
         onOpenStorageManager={() => setShowStorageModal(true)}
         onOpenLayoutEditor={handleOpenPosterStudio}
-        onOpenVideoPanel={() => handleOpenVideoPanel()}
+        isVideoPanelOpen={isVideoPanelOpen}
+        onOpenVideoPanel={() => (isVideoPanelOpen ? setIsVideoPanelOpen(false) : handleOpenVideoPanel())}
         onNewCanvas={handleCreateNewCanvas}
         onExportJson={handleExportJson}
         onImportJson={handleImportJson}
