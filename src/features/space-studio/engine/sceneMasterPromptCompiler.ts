@@ -194,7 +194,7 @@ export class SceneMasterPromptCompiler {
       styleFinishes.styleWallMoldingDirective,
       `spatial color harmony: ${styleDna.dominantColorTone}`,
       `curated architectural materiality: ${styleFinishes.styleMaterialPalette}`,
-      `lighting: ${styleFinishes.styleAtmosphericLighting}, pure soft natural daylight, subtle natural light falloff creating deep organic leather modeling, muted ambient ceiling without glaring yellow cove strips, authentic ambient-occlusion contact shadows grounding furniture`
+      `lighting: ${styleFinishes.styleAtmosphericLighting}, clear natural daylight with crisp contrast and true deep shadows, subtle natural light falloff creating deep organic leather modeling, muted ambient ceiling without glaring yellow cove strips, authentic ambient-occlusion contact shadows grounding furniture`
     ];
 
     // 4. 摄影机与构图约定 (经典大平层 26mm 超广角平视构图，视野开阔通透，严防沉底与局促小盒)

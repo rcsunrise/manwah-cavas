@@ -8,6 +8,7 @@ import { SpaceMultimodalRefereeService } from '../services/spaceMultimodalRefere
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
 
 import sharp from 'sharp';
+import { dehazeGrade, RENDER_CLARITY_CLAUSE } from '../services/spaceImageGrading';
 
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
@@ -219,7 +220,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
       {
         idx: 1,
         tag: `影棚背景置换 · 天然通透漫射光`,
-        promptAddon: 'soft natural diffuse daylight, clean neutral color temperature',
+        promptAddon: 'clear natural daylight with gentle but well-defined shadows, clean neutral color temperature, crisp contrast',
         cameraDelta: {} as { lensMm?: number; pitchDeg?: number }
       },
       {
@@ -1032,7 +1033,9 @@ export const EMPTY_PLATE_PROMPT = `商企-清除家具：以窗口1（空间母�
 
 [空间第一性锁定]: 相机机位、视角、透视、地平线、画幅比例与窗口1完全一致；墙面、吊顶与灯带、地面材质与反光、门窗、窗帘、窗景、壁灯与固定硬装造型100%保持不变，只把原来被家具遮挡的墙面与地面按周围材质自然补全，接缝与光影连续。
 
-输出一个空置的真实室内空间，整体为室内建筑摄影风格。
+输出一个空置的真实室内空间，整体为室内建筑摄影风格。保持窗口1的明暗对比与清晰度：黑位清晰、高光干净，不发灰、不加雾感、不变柔。
+
+${RENDER_CLARITY_CLAUSE}
 
 [CRITICAL NEGATIVE INSTRUCTION]: no sofa, no chair, no armchair, no coffee table, no side table, no rug, no carpet, no floor lamp, no plants, no people, no text, no watermark, no labels, no changes to walls, ceiling, floor, windows or camera angle.`;
 
@@ -1125,6 +1128,16 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
       throw new Error('空场景生成网关未返回有效图像数据');
     }
 
+    // 空场景是补画家具遮挡区域的二次生成，最容易发灰变软，且会被后续镜头锁定为背景：保存前去雾定级
+    try {
+      const graded = await dehazeGrade(imgBuffer);
+      if (graded.applied) {
+        imgBuffer = graded.buffer;
+        console.log(`[SpaceShootRoutes] empty plate dehaze graded (black ${graded.levels.black}, white ${graded.levels.white})`);
+      }
+    } catch (gradeErr: any) {
+      console.warn('[SpaceShootRoutes] empty plate dehaze grading skipped:', gradeErr?.message || gradeErr);
+    }
     imgBuffer = await sharp(imgBuffer).webp({ quality: 92 }).toBuffer();
     const revisionId = `empty-plate-${String(sourceRevisionId || shotCode).toLowerCase()}-${Date.now().toString(36)}`;
     const objectKey = SpaceObjectKeyBuilder.shotRevisionOriginal({

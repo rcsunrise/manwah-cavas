@@ -1131,7 +1131,7 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       (shot.templateCode === 'A02' || Math.abs(camera.yawDeg) >= 25)
         ? 'sofa overlapping window and wall seam, sofa blocking window glass, sofa floating off floor grid'
         : 'sofa overlapping window and wall seam, sofa blocking window glass, discontinuous backdrop behind sofa, crooked sofa angle, mismatched perspective alignment, sofa floating off floor grid, sofa angled awkwardly against walls',
-      'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, plastic textures, cheap laminate, cartoon CGI rendering, overexposed highlights',
+      'fake marble sticker, printed marble foil, cheap laminate table, repeating stone pattern, vinyl sticker wrap, blurred inkjet veins, flat plastic surface, peeling sticker edges, dull melamine slab, plastic textures, cheap laminate, cartoon CGI rendering, overexposed highlights, hazy, foggy, milky veil, washed out, low contrast, lifted blacks, flat grey tones, soft blurry focus',
       'mismatched wall colors, wrong architectural palette, generic sterile white room without intended style color tone, garish neon colors',
       'text, watermark, logo, letters, chinese characters, words, subtitles, labels, annotations, captions, tags, price tags, graphic overlays, typography, font, UI elements',
       ...sanitizedMustExclude,

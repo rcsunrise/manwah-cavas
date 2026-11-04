@@ -180,7 +180,7 @@ export function compileStyleArchitecturalFinishes(stylePreset: StylePreset): Sty
       styleMaterialPalette:
         'solid american dark walnut wood joinery, warm oat greige wall paneling (#E6DFD5), warm grey natural marble stone accents, brushed brass hardware, tailored linen sheers',
       styleAtmosphericLighting:
-        'elegant gentle natural afternoon daylight passing through tailored linen sheers, paired with warm 2700K ambient brass sconces',
+        'clear natural afternoon daylight from the windows (tailored linen sheers drawn open) casting crisp well-defined shadows, paired with warm 2700K ambient brass sconces',
       styleNegativeRules: [
         'cold flat sterile drywall',
         'modern plain white slab without moldings',

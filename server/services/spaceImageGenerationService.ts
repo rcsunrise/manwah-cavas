@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import sharp from 'sharp';
+import { dehazeGrade, withClarityClause } from './spaceImageGrading';
 import { GcsAssetStorage } from './storage/gcsAssetStorage';
 import { resolveApiConfig, isProviderKeyValid } from '../ai/providerConfig';
 import { resolveImageModel } from '../ai/modelRegistry';
@@ -164,7 +165,7 @@ async function requestGatewayImage(params: {
       ...(params.deptId ? { 'x-dept-id': params.deptId } : {})
     },
     body: JSON.stringify({
-      prompt: params.prompt,
+      prompt: withClarityClause(params.prompt),
       model: params.model,
       aspectRatio: params.aspectRatio,
       resolution: params.resolution,
@@ -1752,7 +1753,7 @@ CORE INVARIANTS:
               ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
             },
             body: JSON.stringify({
-              prompt: directivePrompt,
+              prompt: withClarityClause(directivePrompt),
               model: currentModelToAttempt,
               aspectRatio: mappedAspectRatio,
               resolution: currentResolution,
@@ -1847,6 +1848,27 @@ CORE INVARIANTS:
       }
 
       if (rawImageBuffer && rawImageBuffer.length > 0) {
+        // 多轮图生图后黑位抬升、画面发灰：保存前做去雾定级；模型原始输出另存一份便于对比与回退
+        try {
+          const graded = await dehazeGrade(rawImageBuffer);
+          if (graded.applied) {
+            const rawKey = effectiveObjectKey.replace(/(\.[a-z0-9]+)$/i, '.raw$1');
+            await this.storage
+              .put({
+                bucketType: 'generated',
+                objectKey: rawKey,
+                buffer: await sharp(rawImageBuffer).webp({ quality: 92 }).toBuffer(),
+                contentType: 'image/webp',
+                metadata: { projectId, shotCode, note: 'ungraded model output' }
+              })
+              .catch((e: any) => console.warn('[SpaceImageGenerationService] raw output backup failed:', e?.message || e));
+            rawImageBuffer = graded.buffer;
+            console.log(`[SpaceImageGenerationService] ${shotCode} dehaze graded (black ${graded.levels.black}, white ${graded.levels.white})`);
+          }
+        } catch (gradeErr: any) {
+          console.warn(`[SpaceImageGenerationService] ${shotCode} dehaze grading skipped:`, gradeErr?.message || gradeErr);
+        }
+
         if (effectiveObjectKey.endsWith('.webp')) {
           imageBuffer = await sharp(rawImageBuffer).webp({ quality: 90 }).toBuffer();
           contentType = 'image/webp';
