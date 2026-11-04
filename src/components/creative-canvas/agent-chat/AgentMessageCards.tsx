@@ -1,5 +1,5 @@
 import React from 'react';
-import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight } from 'lucide-react';
+import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight, Crosshair } from 'lucide-react';
 import {
   AgentActionOption,
   AgentClarifyCard,
@@ -137,6 +137,16 @@ const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
         <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${meta.tone}`}>{meta.label}</span>
       </div>
       {card.detail && <p className="text-[10px] text-stone-500 leading-relaxed">{card.detail}</p>}
+      {card.status === 'done' && card.locate && (
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: card.locate }))}
+          className="mt-1 flex items-center gap-1 text-[10px] font-bold text-[#8C6F43] hover:text-[#B28C5A] cursor-pointer"
+        >
+          <Crosshair className="w-3 h-3" />
+          在画布定位
+        </button>
+      )}
     </div>
   );
 };

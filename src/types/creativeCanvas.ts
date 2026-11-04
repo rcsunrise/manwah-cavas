@@ -112,6 +112,15 @@ export interface AgentTaskCard {
   title: string;
   status: 'running' | 'done' | 'failed' | 'cancelled';
   detail?: string;
+  /** 完成后可在画布上定位的结果节点 */
+  locate?: AgentLocateTarget;
+}
+
+/** 画布定位目标：优先按节点 id，其次按节点类型 + 屏号查找 */
+export interface AgentLocateTarget {
+  nodeId?: string;
+  nodeType?: string;
+  screenIndex?: number;
 }
 
 export type AgentSuggestion = AgentActionOption;

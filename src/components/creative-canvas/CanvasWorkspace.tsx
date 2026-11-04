@@ -102,6 +102,33 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   const [isMouseDown, setIsMouseDown] = useState<boolean>(false);
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
 
+  // 对话卡片“在画布定位”：按节点 id，或按节点类型 + 屏号找到结果节点，平移缩放过去并选中
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const onNodeClickRef = useRef(onNodeClick);
+  onNodeClickRef.current = onNodeClick;
+  useEffect(() => {
+    const handleLocate = (e: Event) => {
+      const target = (e as CustomEvent<{ nodeId?: string; nodeType?: string; screenIndex?: number }>).detail || {};
+      const all = nodesRef.current;
+      const screenOf = (n: Node) => Number((n.data as any)?.screenIndex ?? (n.data as any)?.sceneIndex);
+      const candidates = target.nodeId
+        ? all.filter(n => n.id === target.nodeId)
+        : all.filter(
+            n =>
+              (!target.nodeType || n.type === target.nodeType) &&
+              (target.screenIndex === undefined || screenOf(n) === target.screenIndex)
+          );
+      // 同一屏有多个版本时取最右侧（最新生成）的那个
+      const node = candidates.sort((a, b) => b.position.x - a.position.x)[0];
+      if (!node) return;
+      rfInstanceRef.current?.fitView({ nodes: [{ id: node.id }], padding: 0.6, duration: 400, maxZoom: 1.1 });
+      onNodeClickRef.current?.({} as React.MouseEvent, node);
+    };
+    window.addEventListener('canvas:select-node', handleLocate);
+    return () => window.removeEventListener('canvas:select-node', handleLocate);
+  }, []);
+
   const [renderModel, setRenderModel] = useState<string>(selectedModel || 'openai/gpt-image-2-c');
   const [renderRes, setRenderRes] = useState<'1K' | '2K' | '4K'>(selectedResolution || '2K');
   const [renderWithText, setRenderWithText] = useState<boolean>(true);

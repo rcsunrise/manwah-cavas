@@ -44,6 +44,7 @@ import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord,
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentComposer, MentionableNode } from './agent-chat/AgentComposer';
+import { AgentTaskStrip } from './agent-chat/AgentTaskStrip';
 import { ProductVisualDNA, AgentRun } from '../../types';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
@@ -2692,6 +2693,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       {/* Fixed Composer Input at Bottom ONLY when activeTab === 'chat' */}
       {activeTab === 'chat' && (
         <>
+          <AgentTaskStrip
+            isPlanGenerating={isPlanGenerating}
+            generatingScenes={generatingScenes}
+            batchState={batchState}
+            onPauseBatch={onPauseBatch}
+            onResumeBatch={onResumeBatch}
+            onCancelBatch={onCancelBatch}
+          />
           <AgentComposer
             isStreaming={isStreaming}
             onSend={(text, mentionedNodeIds) => onSendMessage(text, { mentionedNodeIds })}

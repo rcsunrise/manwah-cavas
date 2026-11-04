@@ -372,8 +372,10 @@ async function startServer() {
   app.use('/api/projects', projectRoutes);
   app.use(videoRoutes);
   app.use('/api/agent-runs', agentRoutes);
-  app.use('/api/agent', agentRoutes);
+  // 会话路由需先于 agentRoutes 挂载：否则 GET /api/agent/conversations 会被 GET /:runId 当成 runId="conversations" 截走，
+  // 前端拿不到会话列表，每次进入画布都新建会话、历史无法恢复
   app.use('/api/agent', agentConversationRoutes);
+  app.use('/api/agent', agentRoutes);
   app.use('/api/canvases', canvasRoutes);
   app.use('/api/creative-canvases', canvasRoutes);
   app.use('/api/canvases', layoutManifestRoutes);

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
@@ -24,6 +24,31 @@ const DNA_NEXT_STEPS: AgentSuggestion[] = [
   { label: '做视频分镜', actionId: 'open_video' }
 ];
 
+const CARD_STATE_KEY = 'creative-canvas:agent-card-states';
+const CARD_STATE_LIMIT = 300;
+type CardState = { plan?: AgentPlanCard['status']; answered?: string };
+
+function loadCardStates(): Record<string, CardState> {
+  try {
+    return JSON.parse(localStorage.getItem(CARD_STATE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveCardState(messageId: string, state: CardState) {
+  try {
+    const all = loadCardStates();
+    all[messageId] = { ...all[messageId], ...state };
+    const ids = Object.keys(all);
+    // 只保留最近的若干条，避免无限增长
+    for (const id of ids.slice(0, Math.max(0, ids.length - CARD_STATE_LIMIT))) delete all[id];
+    localStorage.setItem(CARD_STATE_KEY, JSON.stringify(all));
+  } catch {
+    // 存储不可用时卡片状态仅在本次会话内有效
+  }
+}
+
 function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage[] {
   const mapped: AgentMessage[] = historyMsgs.map(m => {
     const rawText = typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content);
@@ -40,7 +65,20 @@ function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage
   mapped.forEach((m, i) => {
     if (m.sender === 'agent') lastAgentIdx = i;
   });
-  return mapped.map((m, i) => (i === lastAgentIdx ? m : { ...m, planCard: undefined, clarifyCard: undefined, suggestions: undefined }));
+  const states = loadCardStates();
+  return mapped.map((m, i) => {
+    const state = states[m.id];
+    const planCard = m.planCard && state?.plan ? { ...m.planCard, status: state.plan } : m.planCard;
+    const clarifyCard = m.clarifyCard && state?.answered ? { ...m.clarifyCard, answered: state.answered } : m.clarifyCard;
+    if (i === lastAgentIdx) return { ...m, planCard, clarifyCard };
+    // 更早的消息：只保留用户处理过的卡片（显示已确认/已取消/已回答），未处理的旧提议不再展示
+    return {
+      ...m,
+      planCard: state?.plan ? planCard : undefined,
+      clarifyCard: state?.answered ? clarifyCard : undefined,
+      suggestions: undefined
+    };
+  });
 }
 
 const PLAN_NEXT_STEPS: AgentSuggestion[] = [
@@ -335,16 +373,26 @@ export function useCreativeCanvasWorkspace(
 
   const updateAgentMessage = useCallback((id: string, patch: Partial<AgentMessage>) => {
     setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
+    if (patch.planCard || patch.clarifyCard?.answered) {
+      saveCardState(id, { plan: patch.planCard?.status, answered: patch.clarifyCard?.answered });
+    }
   }, []);
 
   // 企划生成任务卡：开始时插入，结束时原地更新状态
   const planTaskMsgIdRef = useRef<string | null>(null);
-  const finishPlanTask = useCallback((status: AgentTaskCard['status'], detail?: string) => {
+  const finishTaskCard = useCallback((id: string | null | undefined, status: AgentTaskCard['status'], detail?: string, locate?: AgentLocateTarget) => {
+    if (!id) return;
+    setMessages(prev =>
+      prev.map(m =>
+        m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail, locate } } : m
+      )
+    );
+  }, []);
+  const finishPlanTask = useCallback((status: AgentTaskCard['status'], detail?: string, locate?: AgentLocateTarget) => {
     const id = planTaskMsgIdRef.current;
     planTaskMsgIdRef.current = null;
-    if (!id) return;
-    setMessages(prev => prev.map(m => (m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail } } : m)));
-  }, []);
+    finishTaskCard(id, status, detail, locate);
+  }, [finishTaskCard]);
 
   const handleSelectDnaVersion = useCallback(async (versionId: string) => {
     try {
@@ -1476,7 +1524,7 @@ export function useCreativeCanvasWorkspace(
         });
 
         setIsPlanGenerating(false);
-        finishPlanTask('done', `已在画布生成 ${screenCount === 1 ? '1 个分镜方案节点' : `1 个总策划节点和 ${screenCount} 个分镜方案节点`}`);
+        finishPlanTask('done', `已在画布生成 ${screenCount === 1 ? '1 个分镜方案节点' : `1 个总策划节点和 ${screenCount} 个分镜方案节点`}`, { nodeType: 'nineGridPlanNode' });
         addAgentMessage(
           screenCount === 1
             ? '🎉 单屏视觉企划方案生成成功！已转换为 1 个策划节点和 1 个分镜方案节点并同步显示在画布中。'
@@ -1545,7 +1593,7 @@ export function useCreativeCanvasWorkspace(
                     });
 
                     setIsPlanGenerating(false);
-                    finishPlanTask('done', '已从后台同步就绪');
+                    finishPlanTask('done', '已从后台同步就绪', { nodeType: 'nineGridPlanNode' });
                     addAgentMessage(
                       screenCount === 1
                         ? '🎉 单屏视觉企划方案已从后台同步就绪！已转换为 1 个策划节点和 1 个分镜方案节点并同步显示在画布中。'
@@ -1601,7 +1649,9 @@ export function useCreativeCanvasWorkspace(
     isPlanGeneratingRef.current = true;
     setIsPlanGenerating(true);
     setPlanError(null);
-    addAgentMessage(`正在重新策划第 ${screenIndex} 屏分镜...`);
+    const replanTaskId = addAgentMessage('', {
+      taskCard: { title: `重新策划第 ${screenIndex} 屏`, status: 'running', detail: promptHint || undefined }
+    });
 
     try {
       const authHeaders = await getAuthHeaders();
@@ -1628,7 +1678,10 @@ export function useCreativeCanvasWorkspace(
 
         setNodes(prev =>
           prev.map(n => {
-            if (n.id === `scene-plan-node-${screenIndex}`) {
+            const isTargetScene =
+              n.id === `scene-plan-node-${screenIndex}` ||
+              (n.type === 'scenePlanNode' && Number((n.data as any)?.screenIndex) === screenIndex);
+            if (isTargetScene) {
               return {
                 ...n,
                 data: {
@@ -1641,7 +1694,7 @@ export function useCreativeCanvasWorkspace(
                   aspectRatio: screen.aspectRatio || '3:4',
                   status: 'completed',
                   onViewDetail: () => {
-                    setSelectedNodeId(`scene-plan-node-${screenIndex}`);
+                    setSelectedNodeId(n.id);
                     setSelectedSceneIndex(screenIndex);
                   },
                   onReplanScene: () => handleReplanSingleScene(screenIndex)
@@ -1653,18 +1706,18 @@ export function useCreativeCanvasWorkspace(
         );
 
         setIsPlanGenerating(false);
-        addAgentMessage(`✅ 第 ${screenIndex} 屏分镜（${screen.screenTitle}）重新策划完成！节点已更新。`);
+        finishTaskCard(replanTaskId, 'done', `「${screen.screenTitle}」已更新到画布`, { nodeType: 'scenePlanNode', screenIndex });
       } else {
         const errStr = data.error || data.message || '单屏重新策划失败';
         setPlanError(errStr);
         setIsPlanGenerating(false);
-        addAgentMessage(`❌ 第 ${screenIndex} 屏重新策划失败：${errStr}`);
+        finishTaskCard(replanTaskId, 'failed', errStr);
       }
     } catch (err: any) {
       const errStr = err?.message || '请求失败';
       setPlanError(errStr);
       setIsPlanGenerating(false);
-      addAgentMessage(`❌ 单屏重新策划异常：${errStr}`);
+      finishTaskCard(replanTaskId, 'failed', errStr);
     } finally {
       isPlanGeneratingRef.current = false;
     }
@@ -1861,7 +1914,8 @@ export function useCreativeCanvasWorkspace(
     reviewFeedback?: string, 
     overrideModel?: string, 
     overrideResolution?: '1K' | '2K' | '4K',
-    withText?: boolean
+    withText?: boolean,
+    fromBatch?: boolean
   ): Promise<boolean> => {
     if (generatingScenesRef.current.has(screenIndex)) {
       console.warn(`第 ${screenIndex} 屏图片生成正在进行中，忽略重复触发`);
@@ -1965,7 +2019,11 @@ export function useCreativeCanvasWorkspace(
       return 'Google Gemini 3.1 Flash (极速高精)';
     };
     const modelLabel = getModelFriendlyName(modelToUse);
-    addAgentMessage(`正在调用 ${modelLabel} (${resolutionToUse}) 渲染引擎生成第 ${screenIndex} 屏画面...`);
+    const renderTaskId = fromBatch
+      ? null
+      : addAgentMessage('', {
+          taskCard: { title: `渲染第 ${screenIndex} 屏${withText ? '（带文案）' : ''}`, status: 'running', detail: `${modelLabel} · ${resolutionToUse}` }
+        });
 
     // Determine initial node position and exact scene plan node ID
     const currentRunId = currentRun?.id;
@@ -2284,7 +2342,9 @@ export function useCreativeCanvasWorkspace(
           ];
         });
 
-        addAgentMessage(`✅ 第 ${screenIndex} 屏渲染图片生成成功！已加入画布节点，请在右侧进行审阅。`);
+        if (renderTaskId) {
+          finishTaskCard(renderTaskId, 'done', '已加入画布，可在节点上审阅', { nodeId: resultNodeId });
+        }
         return true;
       } else {
         throw new Error('渲染服务未响应有效图片');
@@ -2306,7 +2366,8 @@ export function useCreativeCanvasWorkspace(
           return n;
         })
       );
-      addAgentMessage(`❌ 第 ${screenIndex} 屏渲染图片失败：${errText}`);
+      if (renderTaskId) finishTaskCard(renderTaskId, 'failed', errText);
+      else addAgentMessage(`❌ 第 ${screenIndex} 屏渲染图片失败：${errText}`);
       return false;
     } finally {
       generatingScenesRef.current.delete(screenIndex);
@@ -2501,7 +2562,8 @@ export function useCreativeCanvasWorkspace(
             undefined,
             undefined,
             undefined,
-            batchWithTextRef.current
+            batchWithTextRef.current,
+            true
           );
           if (!succeeded) {
             throw new Error('生成服务未返回有效图片；任务已标记为失败');
