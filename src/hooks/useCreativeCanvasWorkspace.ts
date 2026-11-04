@@ -56,6 +56,8 @@ function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage
       id: m.id,
       sender: m.role === 'user' ? 'user' : 'agent',
       ...(m.role === 'user' ? { text: rawText } : extractAgentActions(rawText)),
+      model: typeof m.content === 'object' ? m.content.model : undefined,
+      requestedModel: typeof m.content === 'object' ? m.content.requestedModel : undefined,
       timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: m.status as any,
       error_code: m.error_code as any
@@ -894,6 +896,8 @@ export function useCreativeCanvasWorkspace(
               ...m,
               id: completedRecord.id,
               ...extractAgentActions((completedRecord.content && completedRecord.content.text) || accumulatedText),
+              model: completedRecord.content?.model,
+              requestedModel: completedRecord.content?.requestedModel,
               status: 'completed' as any
             };
           }
@@ -968,6 +972,8 @@ export function useCreativeCanvasWorkspace(
               ...m,
               id: record.id,
               ...extractAgentActions((record.content && record.content.text) || accumulatedText),
+              model: record.content?.model,
+              requestedModel: record.content?.requestedModel,
               status: 'completed' as any
             };
           }

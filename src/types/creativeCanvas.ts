@@ -62,6 +62,10 @@ export interface AgentMessage {
   taskCard?: AgentTaskCard;
   /** 下一步可做：可直接点击的后续动作 */
   suggestions?: AgentSuggestion[];
+  /** 实际作答的模型（可能因不可用而与所选模型不同） */
+  model?: string;
+  /** 会话所选的模型 */
+  requestedModel?: string;
 }
 
 /** 对话中可触发的画布动作（第一期由前端分派，第二期由后端工具调用产生） */

@@ -45,6 +45,7 @@ import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentComposer, MentionableNode } from './agent-chat/AgentComposer';
 import { AgentTaskStrip } from './agent-chat/AgentTaskStrip';
+import { AgentMarkdown, AgentModelTag } from './agent-chat/AgentMessageContent';
 import { ProductVisualDNA, AgentRun } from '../../types';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
@@ -2447,11 +2448,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
                     }`}
                   >
-                    {(msg.text || msg.status === 'streaming') && (
-                      <p className="whitespace-pre-wrap">
-                        {msg.text || '思考回复中...'}
-                      </p>
-                    )}
+                    {(msg.text || msg.status === 'streaming') &&
+                      (msg.sender === 'agent' && msg.text ? (
+                        <AgentMarkdown text={msg.text} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">
+                          {msg.text || '思考回复中...'}
+                        </p>
+                      ))}
 
                     {/* Local Asset Search Results Card embedded in Message */}
                     {msg.localAssetCard && (
@@ -2617,6 +2621,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       }`}
                     >
                       {msg.timestamp}
+                      {msg.sender === 'agent' && msg.model && (
+                        <>
+                          <span className="mx-1">·</span>
+                          <AgentModelTag model={msg.model} requestedModel={msg.requestedModel} />
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>

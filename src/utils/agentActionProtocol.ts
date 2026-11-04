@@ -138,7 +138,7 @@ export function buildCanvasSummary(input: {
   }
 
   lines.push(
-    `- 当前企划参数：${planSettings.screenCount ?? '默认'} 屏，比例 ${planSettings.aspectRatio || '默认'}，策划模型 ${planSettings.model || '默认'}`
+    `- 当前企划参数：${planSettings.screenCount ?? '默认'} 屏，比例 ${planSettings.aspectRatio || '默认'}，企划生成模型 ${planSettings.model || '默认'}（生成企划方案用，不是当前对话模型）`
   );
   if (selectedSceneIndex) lines.push(`- 当前选中分镜：第 ${selectedSceneIndex} 屏`);
 

@@ -616,6 +616,14 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 }
 
 const DEFAULT_CHAT_MODEL = process.env.AGENT_TEXT_MODEL || 'gemini-3.7-flash';
+
+/** 本地兜底模板的“模型”标识：界面据此提示“模型不可用” */
+export const LOCAL_TEMPLATE_MODEL = 'agent-g-local-template';
+
+/** 在系统提示开头声明本轮实际调用的模型，模型被问到“你是什么模型”时能如实回答 */
+function withModelIdentity(systemInstruction: string, modelId: string): string {
+  return `【模型身份】本轮对话由模型 ${modelId} 作答。被问到你是什么模型时，如实回答 ${modelId}；画布状态中的“企划生成模型”是另一项功能使用的模型，不是你。\n\n${systemInstruction}`;
+}
 const CHAT_MODEL_ALIASES: Record<string, string> = { 'gpt-6': 'gpt-6-astra', 'gpt-5.6': 'gpt-5.6-sol' };
 const CHAT_STREAM_TIMEOUT_MS = 90_000;
 
@@ -704,6 +712,7 @@ async function invokeAgentModelStream(params: {
   providerResponseId: string | null;
   streamFailed: boolean;
   errorCode: AgentErrorCode;
+  usedModel: string | null;
 }> {
   const {
     userId,
@@ -720,6 +729,7 @@ async function invokeAgentModelStream(params: {
   let providerResponseId: string | null = null;
   let streamFailed = false;
   let errorCode: AgentErrorCode = 'UNKNOWN_AGENT_ERROR';
+  let usedModel: string | null = null;
 
   const requestedModel = rawModel || 'gemini-2.5-flash';
   const isGptModel = /^(gpt-|openai\/|chatgpt)/i.test(requestedModel);
@@ -759,7 +769,7 @@ async function invokeAgentModelStream(params: {
       if (!last || last.role !== 'user' || last.content.trim() !== userPrompt.trim()) {
         turns.push({ role: 'user', content: userPrompt });
       }
-      const messages = [{ role: 'system', content: systemInstruction }, ...turns];
+      const messages = [{ role: 'system', content: withModelIdentity(systemInstruction, chatModel) }, ...turns];
       const text = await streamChatCompletions({
         baseUrl: apiConfig.baseUrl,
         apiKey: apiConfig.apiKey,
@@ -773,6 +783,7 @@ async function invokeAgentModelStream(params: {
       });
       if (text.trim().length > 0) {
         providerResponseId = `chatcmpl_${Date.now()}`;
+        usedModel = chatModel;
         executedSuccessfully = true;
       } else {
         console.warn(`[AgentConversationRoutes] chat/completions (${chatModel}) returned empty content, trying other transports`);
@@ -785,16 +796,18 @@ async function invokeAgentModelStream(params: {
   // A. If OpenAI-family model (e.g., gpt-6, gpt-5.5), route to createAgentResponse
   if (isGptModel && isValidKey && apiConfig) {
     try {
+      const responsesModel = requestedModel === 'gpt-6' ? 'gpt-6-astra' : requestedModel;
       const response = await createAgentResponse(apiConfig, {
-        model: requestedModel === 'gpt-6' ? 'gpt-6-astra' : requestedModel,
+        model: responsesModel,
         input: userPrompt,
-        instructions: systemInstruction,
+        instructions: withModelIdentity(systemInstruction, responsesModel),
         reasoningEffort: 'medium',
         maxOutputTokens: 2048
       });
       if (response && response.outputText) {
         accumulatedText = response.outputText;
         providerResponseId = response.id || `resp_${Date.now()}`;
+        usedModel = responsesModel;
         const chunks = accumulatedText.match(/.{1,12}/g) || [accumulatedText];
         for (const c of chunks) {
           if (isClientClosed()) break;
@@ -828,7 +841,7 @@ async function invokeAgentModelStream(params: {
         model: geminiModel,
         contents,
         config: {
-          systemInstruction,
+          systemInstruction: withModelIdentity(systemInstruction, geminiModel),
           temperature: 0.7,
           maxOutputTokens: 2048
         }
@@ -847,6 +860,7 @@ async function invokeAgentModelStream(params: {
       }
       // 空流不算成功，交给后续兜底，避免把空回复记为“已完成”
       executedSuccessfully = accumulatedText.length > 0;
+      if (executedSuccessfully) usedModel = geminiModel;
     } catch (geminiErr: any) {
       console.warn(`[AgentConversationRoutes] Gemini native transport error:`, geminiErr.message);
       const msgLower = (geminiErr?.message || '').toLowerCase();
@@ -875,6 +889,7 @@ async function invokeAgentModelStream(params: {
         await new Promise(r => setTimeout(r, 15));
       }
       providerResponseId = `agent_g_local_${crypto.randomBytes(6).toString('hex')}`;
+      usedModel = LOCAL_TEMPLATE_MODEL;
       executedSuccessfully = true;
       streamFailed = false;
     } else {
@@ -886,7 +901,8 @@ async function invokeAgentModelStream(params: {
     accumulatedText,
     providerResponseId,
     streamFailed,
-    errorCode
+    errorCode,
+    usedModel
   };
 }
 
@@ -1038,6 +1054,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
   let streamFailed = false;
   let errorCode: AgentErrorCode = 'UNKNOWN_AGENT_ERROR';
   let providerResponseId: string | null = null;
+  let answeredModel: string | null = null;
   let localCardData: any = null;
 
   // Agent G Tool Dispatch: Check if message requests local asset inspection
@@ -1111,6 +1128,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     providerResponseId = result.providerResponseId;
     streamFailed = result.streamFailed;
     errorCode = result.errorCode;
+    answeredModel = result.usedModel;
   }
 
   const assistantMsgRecord: AgentChatMessageRecord = {
@@ -1120,7 +1138,10 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     role: 'assistant',
     content: {
       text: accumulatedText,
-      localAssetCard: localCardData || undefined
+      localAssetCard: localCardData || undefined,
+      // 实际作答模型（可能因不可用而与会话所选模型不同），界面据此标注
+      model: answeredModel || undefined,
+      requestedModel: conv.model
     },
     status: isClientClosed ? 'failed' : streamFailed ? 'failed' : 'completed',
     provider_response_id: providerResponseId,
@@ -1219,6 +1240,7 @@ router.post('/conversations/:conversationId/retry', async (req: AuthenticatedReq
   let streamFailed = false;
   let errorCode: AgentErrorCode = 'UNKNOWN_AGENT_ERROR';
   let providerResponseId: string | null = null;
+  let answeredModel: string | null = null;
   const assistantCreatedAt = new Date().toISOString();
 
   res.on('close', () => {
@@ -1301,6 +1323,7 @@ router.post('/conversations/:conversationId/retry', async (req: AuthenticatedReq
     providerResponseId = result.providerResponseId;
     streamFailed = result.streamFailed;
     errorCode = result.errorCode;
+    answeredModel = result.usedModel;
   }
 
   const assistantMsgRecord: AgentChatMessageRecord = {
@@ -1308,7 +1331,7 @@ router.post('/conversations/:conversationId/retry', async (req: AuthenticatedReq
     conversation_id: conversationId,
     user_id: userId,
     role: 'assistant',
-    content: { text: accumulatedText },
+    content: { text: accumulatedText, model: answeredModel || undefined, requestedModel: conv.model },
     status: isClientClosed || streamFailed ? 'failed' : 'completed',
     provider_response_id: providerResponseId,
     parent_message_id: lastUserMsg.id,
