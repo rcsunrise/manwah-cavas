@@ -54,7 +54,67 @@ export interface AgentMessage {
     reviewStatus: 'pendingReview' | 'approved' | 'rejected';
     textLayers?: CanvasTextLayer[];
   };
+  /** 追问卡：执行前缺信息时先问用户 */
+  clarifyCard?: AgentClarifyCard;
+  /** 计划卡：花钱/耗时的操作先给方案，用户确认后才执行 */
+  planCard?: AgentPlanCard;
+  /** 任务卡：执行中的任务状态 */
+  taskCard?: AgentTaskCard;
+  /** 下一步可做：可直接点击的后续动作 */
+  suggestions?: AgentSuggestion[];
 }
+
+/** 对话中可触发的画布动作（第一期由前端分派，第二期由后端工具调用产生） */
+export type AgentActionId =
+  | 'upload_product'
+  | 'generate_plan'
+  | 'render_all'
+  | 'search_market'
+  | 'open_video'
+  | 'open_poster'
+  | 'goto_setup'
+  | 'goto_render'
+  | 'replan_screen'
+  | 'render_screen';
+
+/** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
+export interface AgentActionParams {
+  screenCount?: number;
+  aspectRatio?: string;
+  screenIndex?: number;
+  hint?: string;
+  keywords?: string;
+}
+
+export interface AgentActionOption {
+  label: string;
+  actionId?: AgentActionId;
+  params?: AgentActionParams;
+  /** 不对应动作时，点击后作为一条用户消息发出 */
+  prompt?: string;
+}
+
+export interface AgentClarifyCard {
+  question: string;
+  options: AgentActionOption[];
+  answered?: string;
+}
+
+export interface AgentPlanCard {
+  title: string;
+  items: Array<{ label: string; value: string }>;
+  actionId: AgentActionId;
+  params?: AgentActionParams;
+  status: 'pending' | 'confirmed' | 'cancelled';
+}
+
+export interface AgentTaskCard {
+  title: string;
+  status: 'running' | 'done' | 'failed' | 'cancelled';
+  detail?: string;
+}
+
+export type AgentSuggestion = AgentActionOption;
 
 export interface WelcomeNodeData extends Record<string, unknown> {
   title: string;
@@ -494,6 +554,8 @@ export interface AgentContextSnapshot {
   assetVersionId?: string | null;
   copyVersionId?: string | null;
   typographySpecId?: string | null;
+  /** 画布状态摘要（DNA、企划分镜、引用素材等），供智能体判断能做什么 */
+  canvasSummary?: string;
 }
 
 export interface AgentConversationRecord {

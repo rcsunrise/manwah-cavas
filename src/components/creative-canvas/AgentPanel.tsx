@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Sparkles,
   Send,
@@ -40,7 +40,10 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
-import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord } from '../../types/creativeCanvas';
+import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard } from '../../types/creativeCanvas';
+import { describePlanParams } from '../../utils/agentActionProtocol';
+import { AgentMessageCards } from './agent-chat/AgentMessageCards';
+import { AgentComposer, MentionableNode } from './agent-chat/AgentComposer';
 import { ProductVisualDNA, AgentRun } from '../../types';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
@@ -55,7 +58,12 @@ interface AgentPanelProps {
   showFullDnaDrawer: boolean;
   setShowFullDnaDrawer: (show: boolean) => void;
   onUploadFile: (file: File) => void;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, options?: { mentionedNodeIds?: string[] }) => void;
+  /** 由面板插入一条智能体消息（可带卡片），返回消息 id */
+  onPostAgentMessage?: (text: string, extras?: Partial<AgentMessage>) => string;
+  /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
+  onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
+  onOpenVideoPanel?: () => void;
 
   // C2 Props
   agentRun: AgentRun | null;
@@ -63,8 +71,8 @@ interface AgentPanelProps {
   planError: string | null;
   selectedNodeId: string | null;
   selectedSceneIndex: number | null;
-  onGenerateNineGridPlan: () => void;
-  onReplanSingleScene: (screenIndex: number) => void;
+  onGenerateNineGridPlan: (promptHint?: string, overrides?: { screenCount?: number; aspectRatio?: string }) => void;
+  onReplanSingleScene: (screenIndex: number, promptHint?: string) => void;
   planAgentModel?: string;
   setPlanAgentModel?: (model: string) => void;
   planReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
@@ -388,11 +396,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onRetryMessage,
   onCreateNewConversation,
   onSelectConversation,
-  onChangeConversationModel
+  onChangeConversationModel,
+  onPostAgentMessage,
+  onUpdateAgentMessage,
+  onOpenVideoPanel
 }) => {
   const [activeTab, setActiveTab] = useState<'setup' | 'render' | 'chat' | 'typography'>('setup');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
-  const [inputValue, setInputValue] = useState('');
   const [feedbackInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -606,12 +616,187 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     reader.readAsText(file);
   };
 
-  const handleSend = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputValue.trim()) return;
-    onSendMessage(inputValue.trim());
-    setInputValue('');
+  // ===== 对话动作分派（第一期：前端按动作调用现有能力；第二期改由后端工具调用产生） =====
+  const chatUploadInputRef = useRef<HTMLInputElement | null>(null);
+  // 与配置页的 hasDna 判定一致（该变量在下方声明，这里需在渲染早期使用）
+  const chatHasDna = uploadState === 'completed' || !!activeDna || !!agentRun?.dna || nodes.some(n => n.id === 'dna-node-1' || n.type === 'productDnaNode' || n.type === 'productDna');
+  const hasPlan = Boolean(agentRun?.plan);
+
+  const postAgent = (text: string, extras?: Partial<AgentMessage>) => onPostAgentMessage?.(text, extras);
+
+  const screenExists = (screenIndex?: number) =>
+    Boolean(screenIndex && agentRun?.plan?.screens?.some((sc: any) => sc.screenIndex === screenIndex));
+
+  const askToGeneratePlanFirst = () =>
+    postAgent('还没有企划方案，没有可操作的分镜。', {
+      clarifyCard: {
+        question: '要先生成企划方案吗？',
+        options: [{ label: '生成全案企划', actionId: 'generate_plan' }]
+      }
+    });
+
+  const runAgentAction = (actionId: AgentActionId, params?: AgentActionParams) => {
+    switch (actionId) {
+      case 'upload_product':
+        chatUploadInputRef.current?.click();
+        return;
+      case 'generate_plan':
+        if (!chatHasDna) {
+          postAgent('生成企划前需要先有产品主图和 DNA。', {
+            clarifyCard: {
+              question: '要先上传产品主图吗？上传后会自动提取造型、材质与色彩 DNA。',
+              options: [
+                { label: '上传产品主图', actionId: 'upload_product' },
+                { label: '去企划配置', actionId: 'goto_setup' }
+              ]
+            }
+          });
+          return;
+        }
+        if (isPlanGenerating) {
+          postAgent('企划方案正在生成中，完成后会在这里通知你。');
+          return;
+        }
+        postAgent(hasPlan ? '重新生成会替换画布上现有的分镜方案节点，确认参数后开始：' : '确认以下参数后开始生成企划方案：', {
+          planCard: {
+            title: hasPlan ? '重新生成企划方案' : '生成全案企划方案',
+            actionId: 'generate_plan',
+            params,
+            status: 'pending',
+            items: [
+              { label: '屏数', value: `${params?.screenCount ?? planScreenCount ?? '默认'} 屏` },
+              { label: '画面比例', value: params?.aspectRatio || planAspectRatio || '默认' },
+              { label: '策划模型', value: planAgentModel },
+              { label: '联网检索', value: planEnableSearch ? `开启${planSearchKeywords ? `（${planSearchKeywords}）` : ''}` : '关闭' },
+              { label: '产品 DNA', value: productDnaVersionCode || activeDna?.category || '已提取' },
+              ...(params?.hint ? [{ label: '要求', value: params.hint }] : [])
+            ]
+          }
+        });
+        return;
+      case 'replan_screen':
+      case 'render_screen':
+        if (!hasPlan) {
+          askToGeneratePlanFirst();
+          return;
+        }
+        if (!screenExists(params?.screenIndex)) {
+          postAgent(`画布上没有第 ${params?.screenIndex ?? '?'} 屏分镜，请确认屏号。`);
+          return;
+        }
+        postAgent('确认后开始执行：', {
+          planCard: {
+            title: actionId === 'replan_screen' ? `重新策划第 ${params!.screenIndex} 屏` : `渲染第 ${params!.screenIndex} 屏`,
+            actionId,
+            params,
+            status: 'pending',
+            items: [
+              ...describePlanParams(actionId, params),
+              ...(actionId === 'render_screen' ? [{ label: '渲染引擎', value: `${selectedModel || '默认'} · ${selectedResolution || '默认'}` }] : [])
+            ]
+          }
+        });
+        return;
+      case 'render_all':
+        if (!hasPlan) {
+          askToGeneratePlanFirst();
+          return;
+        }
+        // 批量渲染自带确认弹窗（选择分镜、显示消耗），这里直接打开
+        onTriggerBatchMissingModal?.();
+        return;
+      case 'search_market':
+        onSearchMarketReference?.(params?.keywords || planSearchKeywords || undefined);
+        return;
+      case 'open_video':
+        onOpenVideoPanel?.();
+        return;
+      case 'open_poster':
+        onOpenPosterStudio?.(params?.screenIndex || selectedSceneIndex || 1);
+        return;
+      case 'goto_setup':
+        setActiveTab('setup');
+        return;
+      case 'goto_render':
+        setActiveTab('render');
+        return;
+    }
   };
+
+  const handleChooseOption = (option: AgentActionOption, messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    if (msg?.clarifyCard && !msg.clarifyCard.answered) {
+      onUpdateAgentMessage?.(messageId, { clarifyCard: { ...msg.clarifyCard, answered: option.label } });
+    }
+    if (option.actionId) runAgentAction(option.actionId, option.params);
+    else if (option.prompt) onSendMessage(option.prompt);
+  };
+
+  // 计划卡确认后才真正调用画布能力（含智能体在对话中提出的计划）
+  const handleConfirmPlan = (messageId: string, card: AgentPlanCard) => {
+    const params = card.params;
+    if (card.actionId === 'generate_plan' && (!chatHasDna || isPlanGenerating)) {
+      runAgentAction('generate_plan', params);
+      return;
+    }
+    if ((card.actionId === 'replan_screen' || card.actionId === 'render_screen') && !screenExists(params?.screenIndex)) {
+      runAgentAction(card.actionId, params);
+      return;
+    }
+    onUpdateAgentMessage?.(messageId, { planCard: { ...card, status: 'confirmed' } });
+    switch (card.actionId) {
+      case 'generate_plan':
+        onGenerateNineGridPlan(params?.hint, { screenCount: params?.screenCount, aspectRatio: params?.aspectRatio });
+        return;
+      case 'replan_screen':
+        onReplanSingleScene(params!.screenIndex!, params?.hint);
+        return;
+      case 'render_screen':
+        onGenerateSceneImage?.(params!.screenIndex!);
+        return;
+      default:
+        runAgentAction(card.actionId, params);
+    }
+  };
+
+  const handleCancelPlan = (messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    if (msg?.planCard) onUpdateAgentMessage?.(messageId, { planCard: { ...msg.planCard, status: 'cancelled' } });
+  };
+
+  const handleAdjustPlan = (card: AgentPlanCard) => {
+    setActiveTab(card.actionId === 'render_all' ? 'render' : 'setup');
+  };
+
+  // 输入框上方的快捷任务：随工作流阶段变化
+  const quickActions: AgentActionOption[] = !chatHasDna
+    ? [{ label: '上传产品主图', actionId: 'upload_product' }]
+    : hasPlan
+    ? [
+        { label: '批量渲染分镜', actionId: 'render_all' },
+        { label: '做全案海报', actionId: 'open_poster' },
+        { label: '做视频分镜', actionId: 'open_video' },
+        { label: '重新生成企划', actionId: 'generate_plan' }
+      ]
+    : [
+        { label: '生成全案企划', actionId: 'generate_plan' },
+        { label: '联网查竞品', actionId: 'search_market' },
+        { label: '做视频分镜', actionId: 'open_video' }
+      ];
+
+  // @ 可引用的画布素材：有标题的节点，带缩略图（欢迎引导节点不是素材）
+  const mentionableNodes = useMemo<MentionableNode[]>(
+    () =>
+      nodes.flatMap((n: any) => {
+        if (n?.type === 'welcomeNode') return [];
+        const d = n?.data || {};
+        const title = d.title || d.label || d.screenTitle;
+        if (!title || typeof title !== 'string') return [];
+        const image = d.imageUrl || d.originalImageUrl || d.previewUrl || d.rendered_image_url;
+        return [{ id: n.id, title, imageUrl: typeof image === 'string' ? image : undefined }];
+      }),
+    [nodes]
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2200,7 +2385,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               }}
             />
 
-            {/* Conversation Guidelines */}
+            {/* Conversation Guidelines：对话刚开始时展示 */}
+            {messages.length <= 2 && (
             <div className="p-3 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex items-start gap-3">
               <Info className="w-4 h-4 text-[#B28C5A] shrink-0 mt-0.5" />
               <div className="text-xs text-stone-600 leading-relaxed">
@@ -2210,6 +2396,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 {agentRun?.plan && '输入对话指令可让 Agent G 实时微调全案或单屏构图逻辑。'}
               </div>
             </div>
+            )}
 
             {/* Context Snapshot Chips Indicator */}
             {(selectedSceneIndex || productDnaVersionCode || assetVersionId) && (
@@ -2259,9 +2446,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">
-                      {msg.text || (msg.status === 'streaming' ? '思考回复中...' : '')}
-                    </p>
+                    {(msg.text || msg.status === 'streaming') && (
+                      <p className="whitespace-pre-wrap">
+                        {msg.text || '思考回复中...'}
+                      </p>
+                    )}
 
                     {/* Local Asset Search Results Card embedded in Message */}
                     {msg.localAssetCard && (
@@ -2391,6 +2580,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       </div>
                     )}
 
+                    {msg.sender === 'agent' && (
+                      <AgentMessageCards
+                        message={msg}
+                        onChooseOption={handleChooseOption}
+                        onConfirmPlan={handleConfirmPlan}
+                        onCancelPlan={handleCancelPlan}
+                        onAdjustPlan={handleAdjustPlan}
+                      />
+                    )}
+
                     {msg.status === 'streaming' && (
                       <div className="flex items-center gap-1.5 mt-2 text-[#B28C5A] font-bold text-[10px]">
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -2492,42 +2691,28 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
       {/* Fixed Composer Input at Bottom ONLY when activeTab === 'chat' */}
       {activeTab === 'chat' && (
-        <div className="p-4 border-t border-[#E5E0D8] bg-white/90 backdrop-blur-md shrink-0">
-          <form onSubmit={handleSend} className="relative flex items-center gap-2">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              disabled={isStreaming}
-              placeholder={isStreaming ? "智能体正在回复中..." : "描述你希望生成的企划要求或重新策划建议……"}
-              className="w-full pl-4 pr-12 py-3 bg-[#F9F5EF]/80 border border-[#E5E0D8] rounded-2xl text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none focus:ring-1 focus:ring-[#B28C5A] focus:border-[#B28C5A] transition-all disabled:opacity-60"
-            />
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={onStopGenerating}
-                className="absolute right-2 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
-                title="停止生成"
-              >
-                <Pause className="w-3 h-3" />
-                <span>停止</span>
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!inputValue.trim()}
-                className="absolute right-2 p-2 bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-40 text-white rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
-                title="发送"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </form>
-          <div className="mt-2 text-[10px] text-center text-stone-400 flex items-center justify-center gap-1">
-            <CheckCircle className="w-3 h-3 text-emerald-500" />
-            <span>MANWAH 视觉企划智能体 · 阶段 C2 企划工作流</span>
-          </div>
-        </div>
+        <>
+          <AgentComposer
+            isStreaming={isStreaming}
+            onSend={(text, mentionedNodeIds) => onSendMessage(text, { mentionedNodeIds })}
+            onStop={onStopGenerating}
+            onUploadFile={onUploadFile}
+            quickActions={quickActions}
+            onQuickAction={option => option.actionId && runAgentAction(option.actionId, option.params)}
+            mentionableNodes={mentionableNodes}
+          />
+          <input
+            ref={chatUploadInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) onUploadFile(file);
+              e.target.value = '';
+            }}
+          />
+        </>
       )}
 
       {/* Full DNA Drawer Overlay inside Agent Panel */}

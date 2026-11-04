@@ -131,6 +131,8 @@ export default function CreativeCanvasPage() {
     isStreaming,
     streamError,
     handleSendMessageStream,
+    addAgentMessage,
+    updateAgentMessage,
     handleStopGenerating,
     handleRetryMessage,
     handleCreateNewConversation,
@@ -787,6 +789,9 @@ export default function CreativeCanvasPage() {
             setShowFullDnaDrawer={setShowFullDnaDrawer}
             onUploadFile={handleUploadFile}
             onSendMessage={handleSendMessageStream}
+            onPostAgentMessage={addAgentMessage}
+            onUpdateAgentMessage={updateAgentMessage}
+            onOpenVideoPanel={() => handleOpenVideoPanel()}
             currentConversation={currentConversation}
             conversationsList={conversationsList}
             isStreaming={isStreaming}

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
@@ -15,6 +15,39 @@ import { arrangeCleanTreeLayout, arrangeGrid3x3Layout, arrangeSeamlessVerticalLa
 import { logCanvasDiagnostic } from '../utils/canvasDiagnostic';
 import { getAuthHeaders } from '../utils/apiUtils';
 import { localAssetService } from '../services/localAssetService';
+import { buildCanvasSummary, extractAgentActions, stripAgentActions } from '../utils/agentActionProtocol';
+
+// 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
+const DNA_NEXT_STEPS: AgentSuggestion[] = [
+  { label: '生成全案企划', actionId: 'generate_plan' },
+  { label: '联网查竞品', actionId: 'search_market' },
+  { label: '做视频分镜', actionId: 'open_video' }
+];
+
+function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage[] {
+  const mapped: AgentMessage[] = historyMsgs.map(m => {
+    const rawText = typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content);
+    return {
+      id: m.id,
+      sender: m.role === 'user' ? 'user' : 'agent',
+      ...(m.role === 'user' ? { text: rawText } : extractAgentActions(rawText)),
+      timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: m.status as any,
+      error_code: m.error_code as any
+    };
+  });
+  let lastAgentIdx = -1;
+  mapped.forEach((m, i) => {
+    if (m.sender === 'agent') lastAgentIdx = i;
+  });
+  return mapped.map((m, i) => (i === lastAgentIdx ? m : { ...m, planCard: undefined, clarifyCard: undefined, suggestions: undefined }));
+}
+
+const PLAN_NEXT_STEPS: AgentSuggestion[] = [
+  { label: '批量渲染分镜', actionId: 'render_all' },
+  { label: '做全案海报', actionId: 'open_poster' },
+  { label: '做视频分镜', actionId: 'open_video' }
+];
 
 const initialNodes: Node[] = [
   {
@@ -284,16 +317,33 @@ export function useCreativeCanvasWorkspace(
     }
   ]);
 
-  const addAgentMessage = useCallback((text: string) => {
+  // extras 可附带结构化卡片（追问 / 计划 / 任务 / 下一步建议），返回消息 id 便于后续更新卡片状态
+  const addAgentMessage = useCallback((text: string, extras?: Partial<AgentMessage>) => {
+    const id = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setMessages(prev => [
       ...prev,
       {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id,
         sender: 'agent',
         text,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ...extras
       }
     ]);
+    return id;
+  }, []);
+
+  const updateAgentMessage = useCallback((id: string, patch: Partial<AgentMessage>) => {
+    setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
+  }, []);
+
+  // 企划生成任务卡：开始时插入，结束时原地更新状态
+  const planTaskMsgIdRef = useRef<string | null>(null);
+  const finishPlanTask = useCallback((status: AgentTaskCard['status'], detail?: string) => {
+    const id = planTaskMsgIdRef.current;
+    planTaskMsgIdRef.current = null;
+    if (!id) return;
+    setMessages(prev => prev.map(m => (m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail } } : m)));
   }, []);
 
   const handleSelectDnaVersion = useCallback(async (versionId: string) => {
@@ -388,14 +438,7 @@ export function useCreativeCanvasWorkspace(
       try {
         const historyMsgs = await AgentChatService.loadMessages(conv.id);
         if (historyMsgs && historyMsgs.length > 0) {
-          const mappedMsgs: AgentMessage[] = historyMsgs.map(m => ({
-            id: m.id,
-            sender: m.role === 'user' ? 'user' : 'agent',
-            text: typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content),
-            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: m.status as any,
-            error_code: m.error_code as any
-          }));
+          const mappedMsgs: AgentMessage[] = mapHistoryMessages(historyMsgs);
           setMessages(mappedMsgs);
         }
       } catch (historyErr) {
@@ -407,7 +450,7 @@ export function useCreativeCanvasWorkspace(
   }, []);
 
   // G0-1: Streamed message sending
-  const handleSendMessageStream = useCallback(async (textText: string) => {
+  const handleSendMessageStream = useCallback(async (textText: string, options?: { mentionedNodeIds?: string[] }) => {
     if (!textText.trim() || isStreaming) return;
 
     const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
@@ -432,11 +475,24 @@ export function useCreativeCanvasWorkspace(
       projectId: targetProjectId,
       canvasId: targetCanvasId,
       activeSceneKey: selectedSceneIndex ? `scene-0${selectedSceneIndex}` : undefined,
-      selectedNodeIds: selectedNodeId ? [selectedNodeId] : undefined,
+      // @ 引用的画布素材与当前选中节点一并作为上下文
+      selectedNodeIds: (() => {
+        const ids = [...(options?.mentionedNodeIds || []), ...(selectedNodeId ? [selectedNodeId] : [])];
+        return ids.length > 0 ? Array.from(new Set(ids)) : undefined;
+      })(),
       productDnaVersionId: productDnaVersionId || null,
       assetVersionId: activeAssetVersionId,
       copyVersionId: null,
-      typographySpecId: null
+      typographySpecId: null,
+      canvasSummary: buildCanvasSummary({
+        dna: activeDna,
+        dnaReady: uploadState === 'completed' || nodes.some(n => n.id === 'dna-node-1' || n.type === 'productDnaNode'),
+        plan: agentRun?.plan,
+        planSettings: { screenCount: planScreenCount, aspectRatio: planAspectRatio, model: planAgentModel },
+        nodes,
+        mentionedNodeIds: options?.mentionedNodeIds,
+        selectedSceneIndex
+      })
     };
 
     const userMsgId = `user-msg-${Date.now()}`;
@@ -725,7 +781,7 @@ export function useCreativeCanvasWorkspace(
         accumulatedText += delta;
         setMessages(prev => prev.map(m => {
           if (m.id === assistantMsgId) {
-            return { ...m, text: accumulatedText };
+            return { ...m, text: stripAgentActions(accumulatedText) };
           }
           return m;
         }));
@@ -738,7 +794,7 @@ export function useCreativeCanvasWorkspace(
             return {
               ...m,
               id: completedRecord.id,
-              text: (completedRecord.content && completedRecord.content.text) || accumulatedText,
+              ...extractAgentActions((completedRecord.content && completedRecord.content.text) || accumulatedText),
               status: 'completed' as any
             };
           }
@@ -755,14 +811,14 @@ export function useCreativeCanvasWorkspace(
               ...m,
               status: 'failed' as any,
               error_code: err.code as any,
-              text: accumulatedText ? `${accumulatedText}\n\n[回答中断: ${err.message}]` : `[发送失败: ${err.message}]`
+              text: accumulatedText ? `${stripAgentActions(accumulatedText)}\n\n[回答中断: ${err.message}]` : `[发送失败: ${err.message}]`
             };
           }
           return m;
         }));
       }
     });
-  }, [currentConversation, workspaceIdParam, isStreaming, selectedSceneIndex, selectedNodeId, productDnaVersionId, nodes]);
+  }, [currentConversation, workspaceIdParam, isStreaming, selectedSceneIndex, selectedNodeId, productDnaVersionId, nodes, activeDna, agentRun, planScreenCount, planAspectRatio, planAgentModel, uploadState]);
 
   const handleStopGenerating = useCallback(() => {
     if (abortControllerRef.current) {
@@ -800,7 +856,7 @@ export function useCreativeCanvasWorkspace(
         accumulatedText += delta;
         setMessages(prev => prev.map(m => {
           if (m.id === assistantMsgId) {
-            return { ...m, text: accumulatedText };
+            return { ...m, text: stripAgentActions(accumulatedText) };
           }
           return m;
         }));
@@ -812,7 +868,7 @@ export function useCreativeCanvasWorkspace(
             return {
               ...m,
               id: record.id,
-              text: (record.content && record.content.text) || accumulatedText,
+              ...extractAgentActions((record.content && record.content.text) || accumulatedText),
               status: 'completed' as any
             };
           }
@@ -828,7 +884,7 @@ export function useCreativeCanvasWorkspace(
               ...m,
               status: 'failed' as any,
               error_code: err.code as any,
-              text: accumulatedText ? `${accumulatedText}\n\n[重试失败: ${err.message}]` : `[重试失败: ${err.message}]`
+              text: accumulatedText ? `${stripAgentActions(accumulatedText)}\n\n[重试失败: ${err.message}]` : `[重试失败: ${err.message}]`
             };
           }
           return m;
@@ -866,14 +922,7 @@ export function useCreativeCanvasWorkspace(
     try {
       const historyMsgs = await AgentChatService.loadMessages(convId);
       if (historyMsgs && historyMsgs.length > 0) {
-        const mappedMsgs: AgentMessage[] = historyMsgs.map(m => ({
-          id: m.id,
-          sender: m.role === 'user' ? 'user' : 'agent',
-          text: typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content),
-          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: m.status as any,
-          error_code: m.error_code as any
-        }));
+        const mappedMsgs: AgentMessage[] = mapHistoryMessages(historyMsgs);
         setMessages(mappedMsgs);
       }
     } catch (e) {
@@ -985,7 +1034,7 @@ export function useCreativeCanvasWorkspace(
       if (data.success && data.productDna) {
         setActiveDna(data.productDna);
         setUploadState('completed');
-        addAgentMessage('✅ 产品 DNA 提取完成！点击下方【生成全案企划】按钮即可启动爆款详情页  屏方案策划。');
+        addAgentMessage('✅ 产品 DNA 提取完成！可以开始策划详情页方案了。', { suggestions: DNA_NEXT_STEPS });
 
         setNodes(prev =>
           prev.map(n => {
@@ -1230,11 +1279,15 @@ export function useCreativeCanvasWorkspace(
   const isPlanGeneratingRef = useRef(false);
 
   // Phase C2: Generate 9-grid plan
-  const handleGenerateNineGridPlan = async (promptHint?: string) => {
+  const handleGenerateNineGridPlan = async (promptHint?: string, overrides?: { screenCount?: number; aspectRatio?: string }) => {
     if (isPlanGeneratingRef.current) {
       console.warn('企划生成请求正在进行中，自动忽略重复触发');
       return;
     }
+    const screenCount = overrides?.screenCount ?? planScreenCount;
+    const aspectRatio = overrides?.aspectRatio ?? planAspectRatio;
+    if (overrides?.screenCount) setPlanScreenCount(overrides.screenCount);
+    if (overrides?.aspectRatio) setPlanAspectRatio(overrides.aspectRatio);
 
     const proj = activeProject || (await getOrCreateProject());
     if (!proj) {
@@ -1251,11 +1304,14 @@ export function useCreativeCanvasWorkspace(
         : planAgentModel === 'gpt-6'
         ? 'GPT-6 Astra'
         : planAgentModel;
-    addAgentMessage(
-      planAgentModel.startsWith('gpt-')
-        ? `正在使用 ${modelDisplayName} 结构化输出生成 ${planScreenCount} 屏企划方案...`
-        : `正在使用 ${modelDisplayName} 策划引擎生成 ${planScreenCount} 屏企划方案...`
-    );
+    finishPlanTask('cancelled');
+    planTaskMsgIdRef.current = addAgentMessage('', {
+      taskCard: {
+        title: `生成 ${screenCount} 屏企划方案`,
+        status: 'running',
+        detail: `${modelDisplayName}${planAgentModel.startsWith('gpt-') ? ' 结构化输出' : ' 策划引擎'} · 深度思考可能需要 1~2 分钟`
+      }
+    });
 
     let activeRunIdForRecovery: string | null = agentRun?.id || null;
     try {
@@ -1351,8 +1407,8 @@ export function useCreativeCanvasWorkspace(
           agentModel: planAgentModel,
           reasoningEffort: planReasoningEffort,
           targetAudience: planTargetAudience,
-          screenCount: planScreenCount,
-          aspectRatio: planAspectRatio,
+          screenCount,
+          aspectRatio,
           dna: activeDna,
           enableWebSearch: planEnableSearch,
           searchKeywords: planSearchKeywords,
@@ -1420,15 +1476,18 @@ export function useCreativeCanvasWorkspace(
         });
 
         setIsPlanGenerating(false);
+        finishPlanTask('done', `已在画布生成 ${screenCount === 1 ? '1 个分镜方案节点' : `1 个总策划节点和 ${screenCount} 个分镜方案节点`}`);
         addAgentMessage(
-          planScreenCount === 1
+          screenCount === 1
             ? '🎉 单屏视觉企划方案生成成功！已转换为 1 个策划节点和 1 个分镜方案节点并同步显示在画布中。'
-            : `🎉 全案视觉企划方案生成成功！已转换为 1 个总策划节点和 ${planScreenCount} 个分镜方案节点并同步显示在画布中。`
+            : `🎉 全案视觉企划方案生成成功！已转换为 1 个总策划节点和 ${screenCount} 个分镜方案节点并同步显示在画布中。`,
+          { suggestions: PLAN_NEXT_STEPS }
         );
       } else {
         const errStr = genData.error || genData.message || '服务端生成企划失败';
         setPlanError(errStr);
         setIsPlanGenerating(false);
+        finishPlanTask('failed', errStr);
         addAgentMessage(`❌ 全案企划生成异常：${errStr}`);
       }
     } catch (err: any) {
@@ -1438,7 +1497,7 @@ export function useCreativeCanvasWorkspace(
       const currentRunId = activeRunIdForRecovery || agentRun?.id;
       if (currentRunId) {
         try {
-          addAgentMessage(`⏳ 正在同步后台 ${planScreenCount} 屏策划生成进度（模型已在后台调用或深度生成中，正在为您同步状态）...`);
+          addAgentMessage(`⏳ 正在同步后台 ${screenCount} 屏策划生成进度（模型已在后台调用或深度生成中，正在为您同步状态）...`);
           const authHeaders = await getAuthHeaders();
           for (let pollAttempt = 0; pollAttempt < 45; pollAttempt += 1) {
             await new Promise(resolve => setTimeout(resolve, 2500));
@@ -1486,10 +1545,12 @@ export function useCreativeCanvasWorkspace(
                     });
 
                     setIsPlanGenerating(false);
+                    finishPlanTask('done', '已从后台同步就绪');
                     addAgentMessage(
-                      planScreenCount === 1
+                      screenCount === 1
                         ? '🎉 单屏视觉企划方案已从后台同步就绪！已转换为 1 个策划节点和 1 个分镜方案节点并同步显示在画布中。'
-                        : `🎉 全案视觉企划方案已从后台同步就绪！已转换为 1 个总策划节点和 ${planScreenCount} 个分镜方案节点并同步显示在画布中。`
+                        : `🎉 全案视觉企划方案已从后台同步就绪！已转换为 1 个总策划节点和 ${screenCount} 个分镜方案节点并同步显示在画布中。`,
+                      { suggestions: PLAN_NEXT_STEPS }
                     );
                     recovered = true;
                     return;
@@ -1517,6 +1578,7 @@ export function useCreativeCanvasWorkspace(
         }
         setPlanError(errStr);
         setIsPlanGenerating(false);
+        finishPlanTask('failed', errStr);
         addAgentMessage(`❌ 全案企划生成失败：${errStr}`);
       }
     } finally {
@@ -4167,6 +4229,7 @@ export function useCreativeCanvasWorkspace(
     handleReanalyze,
     addUserMessage,
     addAgentMessage,
+    updateAgentMessage,
     clearCanvasWorkspace,
 
     // G0-1 Exports

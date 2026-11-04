@@ -25,6 +25,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
 import { bridgeRelayHub } from '../services/bridgeRelayHub';
+import { getTokenModelIds } from '../services/video/videoModelAvailability';
 
 const router = Router();
 
@@ -562,10 +563,42 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 4. 提出下一步设计与美学优化建议。
 
 【原则与强约束】：
-- 你只能进行问答与建议，严禁修改画布数据、严禁创建/删除节点。
-- 严禁触发图片生成或调用生图服务。
-- 严禁触发任何计费扣费操作。
-- 说话简明专业、客观温和、结构清晰。`;
+- 你不能直接修改画布或调用生图服务；需要执行操作时，只能通过下方【动作协议】提出，由用户在界面上确认后才会执行。
+- 不要声称你已经执行、生成或修改了任何内容（不要说“已为您设定/已生成”），用“确认后将……”这类说法。
+- 说话简明专业、客观温和、结构清晰；正文控制在 200 字以内，除非用户要求详细分析。
+
+【动作协议】：
+当用户的意图可以落到下列动作时，在回复正文之后附加一个动作块（只能有一个，放在最后，必须是合法 JSON）：
+<agent_actions>{"plan": {...}} 或 {"clarify": {...}}，可同时带 "suggestions": [...]</agent_actions>
+
+可用动作 actionId 与参数：
+- generate_plan：生成/重新生成详情页企划。params: screenCount(1~12), aspectRatio("4:3"/"3:4"/"1:1"/"9:16"/"16:9"), hint(策划要点)
+- replan_screen：重新策划某一屏。params: screenIndex(必填), hint(调整要求)
+- render_screen：渲染某一屏分镜图。params: screenIndex(必填)
+- render_all：批量渲染全部未渲染分镜
+- search_market：联网检索竞品与爆款参考。params: keywords
+- open_video：打开视频创作面板
+- open_poster：打开全案海报工作台。params: screenIndex
+- upload_product：上传产品主图
+- goto_setup / goto_render：切到企划配置 / 渲染引擎设置
+
+三种结构：
+1. plan：明确要执行某个动作时使用，界面会显示“确认执行”卡片。
+   例：{"plan": {"actionId": "generate_plan", "params": {"screenCount": 8}, "title": "详情页扩到 8 屏"}}
+2. clarify：缺少关键信息、或前置条件不满足时先追问，options 为 2~4 个可点选项（每项给 actionId+params，或给 prompt 作为用户的回答）。
+   例：{"clarify": {"question": "要重做哪一屏？", "options": [{"label": "第 1 屏", "actionId": "replan_screen", "params": {"screenIndex": 1}}, {"label": "全部重做", "prompt": "全部分镜都重新策划"}]}}
+3. suggestions：回答完问题后给 2~3 个“下一步可做”。
+   例：{"suggestions": [{"label": "批量渲染分镜", "actionId": "render_all"}, {"label": "写详情文案", "prompt": "帮我为每一屏写一句卖点文案"}]}
+
+使用规则：
+- 依据下方画布状态判断前置条件：没有产品 DNA 时不能 generate_plan，应 clarify 并给 upload_product；没有企划时不能 replan/render，应 clarify 并给 generate_plan。
+- screenIndex 必须是画布状态里存在的屏号。
+- 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
+- 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
+
+  if (context?.canvasSummary) {
+    prompt += `\n\n【当前画布状态】:\n${String(context.canvasSummary).slice(0, 2500)}`;
+  }
 
   if (context) {
     prompt += `\n\n【当前画布只读上下文快照】:`;
@@ -580,6 +613,78 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
   }
 
   return prompt;
+}
+
+const DEFAULT_CHAT_MODEL = process.env.AGENT_TEXT_MODEL || 'gemini-3.7-flash';
+const CHAT_MODEL_ALIASES: Record<string, string> = { 'gpt-6': 'gpt-6-astra', 'gpt-5.6': 'gpt-5.6-sol' };
+const CHAT_STREAM_TIMEOUT_MS = 90_000;
+
+/** 所选模型令牌未开通时回落到默认对话模型（/v1/models 结果带缓存，探测失败则按原样请求） */
+async function resolveAvailableChatModel(requested: string): Promise<string> {
+  const model = CHAT_MODEL_ALIASES[requested] || requested;
+  const available = await getTokenModelIds();
+  if (!available || available.has(model)) return model;
+  const fallback = available.has(DEFAULT_CHAT_MODEL) ? DEFAULT_CHAT_MODEL : model;
+  if (fallback !== model) console.info(`[AgentConversationRoutes] Model ${model} not enabled for this token, using ${fallback}`);
+  return fallback;
+}
+
+/** OpenAI 兼容的流式对话：逐行解析 SSE 的 delta.content，返回完整文本 */
+async function streamChatCompletions(params: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  isClientClosed: () => boolean;
+  onDelta: (chunk: string) => void;
+}): Promise<string> {
+  const base = String(params.baseUrl || '').replace(/\/+$/, '').replace(/\/(v1beta|v1)$/, '');
+  const res = await fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${params.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: params.model, messages: params.messages, stream: true, temperature: 0.7, max_tokens: 2048 }),
+    signal: AbortSignal.timeout(CHAT_STREAM_TIMEOUT_MS)
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let lastData = '';
+  while (true) {
+    if (params.isClientClosed()) {
+      await reader.cancel().catch(() => {});
+      break;
+    }
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.slice(5).trim();
+      if (!data || data === '[DONE]') continue;
+      lastData = data;
+      try {
+        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta) {
+          text += delta;
+          params.onDelta(delta);
+        }
+      } catch {
+        // 半行或非 JSON 心跳，忽略
+      }
+    }
+  }
+  if (!text) {
+    console.warn(`[AgentConversationRoutes] Empty chat stream from ${params.model}; last chunk: ${(lastData || buffer).slice(0, 400)}`);
+  }
+  return text;
 }
 
 /**
@@ -634,6 +739,48 @@ async function invokeAgentModelStream(params: {
   }
 
   let executedSuccessfully = false;
+
+  // A0. OpenAI 兼容 /v1/chat/completions 流式（tiantoken 等网关的主通道，gemini / gpt 均可）。
+  //     令牌未开通所选模型时换用已开通的对话模型，避免上游静默返回空内容。
+  if (isValidKey && apiConfig?.apiKey) {
+    try {
+      const chatModel = await resolveAvailableChatModel(requestedModel);
+      const turns = historyMessages
+        // 本地兜底模板的回复不是模型说的话，带进上下文会误导模型
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && !String(m.provider_response_id || '').startsWith('agent_g_local_'))
+        .map(m => ({
+          role: m.role as string,
+          content: typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content || '')
+        }))
+        .filter(m => m.content.trim().length > 0)
+        .slice(-20);
+      // 对话必须以本轮用户提问结尾，否则 Gemini 会返回 0 token
+      const last = turns[turns.length - 1];
+      if (!last || last.role !== 'user' || last.content.trim() !== userPrompt.trim()) {
+        turns.push({ role: 'user', content: userPrompt });
+      }
+      const messages = [{ role: 'system', content: systemInstruction }, ...turns];
+      const text = await streamChatCompletions({
+        baseUrl: apiConfig.baseUrl,
+        apiKey: apiConfig.apiKey,
+        model: chatModel,
+        messages,
+        isClientClosed,
+        onDelta: chunk => {
+          accumulatedText += chunk;
+          onDelta(chunk);
+        }
+      });
+      if (text.trim().length > 0) {
+        providerResponseId = `chatcmpl_${Date.now()}`;
+        executedSuccessfully = true;
+      } else {
+        console.warn(`[AgentConversationRoutes] chat/completions (${chatModel}) returned empty content, trying other transports`);
+      }
+    } catch (chatErr: any) {
+      console.warn('[AgentConversationRoutes] chat/completions transport error, trying other transports:', chatErr?.message);
+    }
+  }
 
   // A. If OpenAI-family model (e.g., gpt-6, gpt-5.5), route to createAgentResponse
   if (isGptModel && isValidKey && apiConfig) {
@@ -698,7 +845,8 @@ async function invokeAgentModelStream(params: {
           onDelta(textChunk);
         }
       }
-      executedSuccessfully = true;
+      // 空流不算成功，交给后续兜底，避免把空回复记为“已完成”
+      executedSuccessfully = accumulatedText.length > 0;
     } catch (geminiErr: any) {
       console.warn(`[AgentConversationRoutes] Gemini native transport error:`, geminiErr.message);
       const msgLower = (geminiErr?.message || '').toLowerCase();
