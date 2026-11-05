@@ -196,6 +196,77 @@ export function getAssetFromStore(objectKey: string): { objectKey: string; mimeT
   return null;
 }
 
+// ===== 内嵌图片外置：节点里的 data:image 大图上传到存储，草稿里只留 URL =====
+// 一张 3MB 主图被多个节点引用时，草稿会膨胀到近 10MB，云端保存超时、浏览器本地备份超出配额，画布就再也存不上了。
+const INLINE_IMAGE_MIN_CHARS = 32 * 1024;
+const inlineImageUrlCache = new Map<string, string>();
+
+function inlineImageKey(dataUrl: string): { hash: string; mime: string; ext: string } {
+  const mime = (dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,/i)?.[1] || 'image/png').toLowerCase();
+  const ext = mime.split('/')[1].replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png';
+  const hash = crypto.createHash('sha256').update(dataUrl).digest('hex').slice(0, 32);
+  return { hash, mime, ext };
+}
+
+export async function storeInlineImage(canvasId: string, dataUrl: string): Promise<string | null> {
+  const { hash, mime, ext } = inlineImageKey(dataUrl);
+  const cached = inlineImageUrlCache.get(hash);
+  if (cached) return cached;
+  const safeCanvas = canvasId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+  // 不带斜杠：本地兜底路由 /assets/:objectKey 只匹配单段路径
+  const objectKey = `inline-${safeCanvas}-${hash}.${ext}`;
+  const result = await uploadToSupabaseStorage(objectKey, dataUrl, mime);
+  if (result.upload === 'success') {
+    inlineImageUrlCache.set(hash, result.publicUrl);
+    return result.publicUrl;
+  }
+  // 云端没传上时退回本服务的资产地址（已落本地盘），不缓存，下次再试云端
+  return `/api/canvases/assets/${objectKey}`;
+}
+
+/** 深度遍历节点数据，把大于阈值的 data:image 换成存储 URL；返回替换后的节点与替换数量 */
+async function externalizeInlineImages(canvasId: string, nodes: any[]): Promise<{ nodes: any[]; replaced: number }> {
+  const found = new Set<string>();
+  const collect = (v: any, depth: number) => {
+    if (depth > 8 || v === null || v === undefined) return;
+    if (typeof v === 'string') {
+      if (v.length >= INLINE_IMAGE_MIN_CHARS && v.startsWith('data:image/')) found.add(v);
+      return;
+    }
+    if (Array.isArray(v)) v.forEach(x => collect(x, depth + 1));
+    else if (typeof v === 'object') Object.values(v).forEach(x => collect(x, depth + 1));
+  };
+  collect(nodes, 0);
+  if (found.size === 0) return { nodes, replaced: 0 };
+
+  const mapping = new Map<string, string>();
+  for (const dataUrl of found) {
+    try {
+      const url = await storeInlineImage(canvasId, dataUrl);
+      if (url) mapping.set(dataUrl, url);
+    } catch (e: any) {
+      console.warn('[CreativeCanvas] inline image upload failed:', e?.message || e);
+    }
+  }
+  let replaced = 0;
+  const swap = (v: any, depth: number): any => {
+    if (depth > 8 || v === null || v === undefined) return v;
+    if (typeof v === 'string') {
+      const url = mapping.get(v);
+      if (url) replaced++;
+      return url || v;
+    }
+    if (Array.isArray(v)) return v.map(x => swap(x, depth + 1));
+    if (typeof v === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, x] of Object.entries(v)) out[k] = swap(x, depth + 1);
+      return out;
+    }
+    return v;
+  };
+  return { nodes: swap(nodes, 0), replaced };
+}
+
 function serverLogDiagnostic(data: any) {
   const cleaned: Record<string, any> = {};
   for (const [k, v] of Object.entries(data)) {
@@ -702,6 +773,23 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
 });
 
 // 3. Auto-save Draft (PATCH /api/canvases/:canvasId/draft)
+/**
+ * POST /api/canvases/:canvasId/inline-images  { dataUrl } -> { url }
+ * 前端把节点里的内嵌大图换成 URL，后续自动保存只传几 KB
+ */
+router.post('/:canvasId/inline-images', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const dataUrl = String(req.body?.dataUrl || '');
+    if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl) || dataUrl.length > 40 * 1024 * 1024) {
+      return res.status(400).json({ success: false, error: { message: 'dataUrl must be a base64 image', code: 'INVALID_INLINE_IMAGE' } });
+    }
+    const url = await storeInlineImage(String(req.params.canvasId), dataUrl);
+    return res.json({ success: true, url });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const user = req.user!;
@@ -731,9 +819,14 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
       existing = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
     }
 
-    const cleanedIncomingNodes = cleanNodes(nodesDraft || []);
+    let cleanedIncomingNodes = cleanNodes(nodesDraft || []);
     const cleanedIncomingEdges = cleanEdges(edgesDraft || []);
     const cleanedIncomingViewport = cleanViewport(viewportDraft || { x: 0, y: 0, zoom: 1 });
+    const externalized = await externalizeInlineImages(canvasId, cleanedIncomingNodes);
+    cleanedIncomingNodes = externalized.nodes;
+    if (externalized.replaced > 0) {
+      console.info(`[CreativeCanvas] ${canvasId}: replaced ${externalized.replaced} inline images with storage URLs`);
+    }
 
     if (existing && !isExplicitClear) {
       const existingNodes = parseJsonIfNeeded(existing.nodes_draft || existing.nodesDraft, []);

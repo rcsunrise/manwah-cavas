@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
@@ -58,6 +58,7 @@ function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage
       ...(m.role === 'user' ? { text: rawText } : extractAgentActions(rawText)),
       model: typeof m.content === 'object' ? m.content.model : undefined,
       requestedModel: typeof m.content === 'object' ? m.content.requestedModel : undefined,
+      videoCard: typeof m.content === 'object' && m.content.videoCard?.videoUrl ? m.content.videoCard : undefined,
       timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: m.status as any,
       error_code: m.error_code as any
@@ -395,6 +396,8 @@ export function useCreativeCanvasWorkspace(
   // G0-1: Conversation & Agent Chat States
   const [currentConversation, setCurrentConversation] = useState<AgentConversationRecord | null>(null);
   const [conversationsList, setConversationsList] = useState<AgentConversationRecord[]>([]);
+  const currentConversationRef = useRef<AgentConversationRecord | null>(null);
+  currentConversationRef.current = currentConversation;
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [streamError, setStreamError] = useState<{ code: AgentErrorCode; message: string } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -492,6 +495,19 @@ export function useCreativeCanvasWorkspace(
     ]);
   }, []);
 
+  // 视频任务完成后把成片回传到对话：先本地显示，再落库（失败不影响画布）
+  const postVideoResultToChat = useCallback((card: AgentVideoCard) => {
+    const meta = [card.modelKey, card.resolution, card.durationSeconds ? `${Math.round(card.durationSeconds)}s` : ''].filter(Boolean).join(' · ');
+    const text = `🎬 视频已生成：${card.title || card.jobId}${meta ? `（${meta}）` : ''}`;
+    addAgentMessage(text, { videoCard: card });
+    const conv = currentConversationRef.current;
+    if (conv) {
+      AgentChatService.appendNote(conv.id, text, { videoCard: card }).catch(err =>
+        console.warn('[AgentChat] video note not persisted:', err?.message || err)
+      );
+    }
+  }, [addAgentMessage]);
+
   // G0-1: Conversation initialization and load
   const loadOrInitConversation = useCallback(async (projId: string, canvId: string, isFreshCanvas = false) => {
     try {
@@ -510,9 +526,27 @@ export function useCreativeCanvasWorkspace(
           }
         }
       }
+      // 从占位画布（/creative-canvas/new）跳到真实项目时，把正在进行的会话一起带过来，而不是另开一个空会话
+      const prevConv = currentConversationRef.current;
+      const PLACEHOLDERS = ['latest', 'new', 'default_project'];
+      if (prevConv && PLACEHOLDERS.includes(prevConv.project_id) && !PLACEHOLDERS.includes(projId)) {
+        try {
+          // 空会话不带过去，免得盖住项目里已有的历史对话
+          const prevMsgs = await AgentChatService.loadMessages(prevConv.id).catch(() => []);
+          const moved = prevMsgs.length > 0 ? await AgentChatService.moveToProject(prevConv.id, projId) : null;
+          if (moved) list = [moved, ...list.filter(c => c.id !== moved.id)];
+        } catch (moveErr) {
+          console.warn('Failed to move placeholder conversation to project (non-fatal):', moveErr);
+        }
+      }
       setConversationsList(list);
 
       let conv = list.find(c => c.status === 'active');
+      // 占位画布（/new）上先不建会话：项目一确定页面就会跳到项目地址，发第一条消息时再按需创建
+      if (!conv && PLACEHOLDERS.includes(projId)) {
+        setCurrentConversation(null);
+        return;
+      }
       if (!conv) {
         try {
           conv = await AgentChatService.createConversation(projId, canvId);
@@ -3930,6 +3964,73 @@ export function useCreativeCanvasWorkspace(
     };
   }, []);
 
+  // 1.5 内嵌大图外置：节点里的 data:image（如上传的主图、视频任务的首帧）上传一次换成 URL。
+  // 否则同一张几 MB 的图被多个节点引用，草稿近 10MB，云端保存超时、本地备份超配额，画布就存不上了。
+  const inlineImageUploadsRef = useRef<Map<string, Promise<string | null>>>(new Map());
+  useEffect(() => {
+    if (hydrationState !== 'ready') return;
+    const timer = setTimeout(() => {
+      const found = new Set<string>();
+      const collect = (v: any, depth: number) => {
+        if (depth > 6 || v === null || v === undefined) return;
+        if (typeof v === 'string') {
+          if (v.length >= 32 * 1024 && v.startsWith('data:image/')) found.add(v);
+          return;
+        }
+        if (typeof v === 'function') return;
+        if (Array.isArray(v)) v.forEach(x => collect(x, depth + 1));
+        else if (typeof v === 'object') Object.values(v).forEach(x => collect(x, depth + 1));
+      };
+      nodesRef.current.forEach(n => collect(n.data, 0));
+      if (found.size === 0) return;
+
+      const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
+      const uploads = [...found].map(dataUrl => {
+        let p = inlineImageUploadsRef.current.get(dataUrl);
+        if (!p) {
+          p = (async () => {
+            try {
+              const headers = await getAuthHeaders();
+              const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/inline-images`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataUrl })
+              });
+              const json = await res.json().catch(() => null);
+              return res.ok && json?.url ? String(json.url) : null;
+            } catch {
+              return null;
+            }
+          })();
+          inlineImageUploadsRef.current.set(dataUrl, p);
+          // 失败的允许下次重试
+          p.then(url => { if (!url) inlineImageUploadsRef.current.delete(dataUrl); });
+        }
+        return p.then(url => [dataUrl, url] as const);
+      });
+
+      Promise.all(uploads).then(pairs => {
+        const mapping = new Map(pairs.filter(([, url]) => Boolean(url)) as [string, string][]);
+        if (mapping.size === 0) return;
+        const swap = (v: any, depth: number): any => {
+          if (depth > 6 || v === null || v === undefined) return v;
+          if (typeof v === 'string') return mapping.get(v) || v;
+          if (typeof v === 'function' || typeof v !== 'object') return v;
+          if (Array.isArray(v)) return v.map(x => swap(x, depth + 1));
+          const out: Record<string, any> = {};
+          for (const [k, x] of Object.entries(v)) out[k] = swap(x, depth + 1);
+          return out;
+        };
+        hasUserMutationRef.current = true;
+        setNodes(prev => prev.map(n => {
+          const nextData = swap(n.data, 0);
+          return JSON.stringify(nextData) === JSON.stringify(n.data) ? n : { ...n, data: nextData };
+        }));
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [nodes, hydrationState, workspaceIdParam, setNodes]);
+
   // 2. Debounced Auto-Save Draft Effect（停止操作 10 秒后保存，持续操作最多 60 秒保存一次）
   useEffect(() => {
     if (hydrationState !== 'ready' || isRestoringRef.current || !hasUserMutationRef.current) {
@@ -4620,6 +4721,7 @@ export function useCreativeCanvasWorkspace(
     handleStopGenerating,
     handleRetryMessage,
     handleCreateNewConversation,
+    postVideoResultToChat,
     handleSelectConversation,
     handleChangeConversationModel,
     activeProject,

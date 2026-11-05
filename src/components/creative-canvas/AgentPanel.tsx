@@ -67,7 +67,7 @@ interface AgentPanelProps {
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
-  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode'>) => void;
+  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle'>) => void;
   /** 修改画布图片中的文字（局部重绘） */
   onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
 
@@ -331,6 +331,16 @@ const getCssAspectRatio = (ratioStr?: string): string => {
   return '3/4';
 };
 
+type AgentPanelTab = 'chat' | 'setup' | 'render' | 'typography';
+
+/** 侧栏分页：按使用频率排序，对话是主入口；渲染与排版依赖已有的详情页企划 */
+const AGENT_PANEL_TABS: { id: AgentPanelTab; label: string; hint: string; icon: typeof Bot; needsPlan?: boolean }[] = [
+  { id: 'chat', label: '智能对话', hint: '和 Agent G 对话：提需求、出方案、点评画面与视频', icon: Bot },
+  { id: 'setup', label: '企划配置', hint: '产品主图、详情页企划参数与企划生成', icon: Sliders },
+  { id: 'render', label: '渲染引擎', hint: '逐屏查看提示词、渲染、审核与批量生成', icon: Sparkles, needsPlan: true },
+  { id: 'typography', label: '文案排版', hint: '逐屏润色文案与海报文字排版', icon: Layers, needsPlan: true }
+];
+
 export const AgentPanel: React.FC<AgentPanelProps> = ({
   messages,
   uploadState,
@@ -408,7 +418,18 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onOpenVideoPanel,
   onEditImageText
 }) => {
-  const [activeTab, setActiveTab] = useState<'setup' | 'render' | 'chat' | 'typography'>('setup');
+  // 智能对话是最常用入口，默认打开；记住用户上次停留的分页
+  const [activeTab, setActiveTabState] = useState<AgentPanelTab>(() => {
+    try {
+      const saved = localStorage.getItem('creative-canvas:agent-panel-tab');
+      if (saved === 'setup' || saved === 'render' || saved === 'chat' || saved === 'typography') return saved;
+    } catch {}
+    return 'chat';
+  });
+  const setActiveTab = (tab: AgentPanelTab) => {
+    setActiveTabState(tab);
+    try { localStorage.setItem('creative-canvas:agent-panel-tab', tab); } catch {}
+  };
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
   const [feedbackInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -482,6 +503,44 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   // Prompt Textarea Direct Control, Auto-Focus & Visual Feedback State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 面板宽度可拖动左边缘调节（桌面端），记住上次宽度；双击边缘恢复默认
+  const PANEL_DEFAULT_WIDTH = 440;
+  const PANEL_MIN_WIDTH = 360;
+  const clampPanelWidth = (w: number) =>
+    Math.round(Math.min(Math.max(w, PANEL_MIN_WIDTH), Math.max(PANEL_MIN_WIDTH, Math.min(960, window.innerWidth * 0.7))));
+  const [panelWidth, setPanelWidth] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('creative-canvas:agent-panel-width'));
+      if (saved > 0) return clampPanelWidth(saved);
+    } catch {}
+    return PANEL_DEFAULT_WIDTH;
+  });
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  const savePanelWidth = (w: number) => {
+    try { localStorage.setItem('creative-canvas:agent-panel-width', String(w)); } catch {}
+  };
+  const handlePanelResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    let latest = startWidth;
+    setIsResizingPanel(true);
+    const onMove = (ev: PointerEvent) => {
+      latest = clampPanelWidth(startWidth + (startX - ev.clientX));
+      setPanelWidth(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      setIsResizingPanel(false);
+      savePanelWidth(latest);
+    };
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
   const [composerFill, setComposerFill] = useState<{ text: string; mode: 'replace' | 'append'; nonce: number } | null>(null);
   const [promptValue, setPromptValue] = useState<string>(planTargetAudience || '');
   const [isPromptHighlighted, setIsPromptHighlighted] = useState(false);
@@ -750,7 +809,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'open_video':
         onOpenVideoPanel?.(
           params?.videoBrief || params?.focusPoints?.length
-            ? { videoBrief: params.videoBrief, focusPoints: params.focusPoints, videoMode: params.videoMode }
+            ? { videoBrief: params.videoBrief, focusPoints: params.focusPoints, videoMode: params.videoMode, videoStyle: params.videoStyle }
             : undefined
         );
         return;
@@ -904,69 +963,24 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         </button>
 
         <div className="flex-1 flex flex-col items-center gap-4">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('setup');
-              setIsPanelCollapsed(false);
-            }}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === 'setup'
-                ? 'bg-[#F9F5EF] text-[#B28C5A] border border-[#B28C5A]/40'
-                : 'text-stone-500 hover:bg-[#F4EFE6] hover:text-stone-800'
-            }`}
-            title="企划配置"
-          >
-            <Sliders className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('render');
-              setIsPanelCollapsed(false);
-            }}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === 'render'
-                ? 'bg-[#F9F5EF] text-[#B28C5A] border border-[#B28C5A]/40'
-                : 'text-stone-500 hover:bg-[#F4EFE6] hover:text-stone-800'
-            }`}
-            title="渲染引擎"
-          >
-            <Sparkles className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('chat');
-              setIsPanelCollapsed(false);
-            }}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === 'chat'
-                ? 'bg-[#F9F5EF] text-[#B28C5A] border border-[#B28C5A]/40'
-                : 'text-stone-500 hover:bg-[#F4EFE6] hover:text-stone-800'
-            }`}
-            title="智能对话"
-          >
-            <Bot className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('typography');
-              setIsPanelCollapsed(false);
-            }}
-            className={`p-2.5 rounded-xl transition-all ${
-              activeTab === 'typography'
-                ? 'bg-[#F9F5EF] text-[#B28C5A] border border-[#B28C5A]/40'
-                : 'text-stone-500 hover:bg-[#F4EFE6] hover:text-stone-800'
-            }`}
-            title="文案排版"
-          >
-            <Layers className="w-4 h-4" />
-          </button>
+          {AGENT_PANEL_TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.id);
+                setIsPanelCollapsed(false);
+              }}
+              className={`p-2.5 rounded-xl transition-all ${
+                activeTab === tab.id
+                  ? 'bg-[#F9F5EF] text-[#B28C5A] border border-[#B28C5A]/40'
+                  : 'text-stone-500 hover:bg-[#F4EFE6] hover:text-stone-800'
+              }`}
+              title={tab.label}
+            >
+              <tab.icon className="w-4 h-4" />
+            </button>
+          ))}
         </div>
 
         <button
@@ -982,7 +996,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   }
 
   return (
-    <aside className="relative w-full md:w-[440px] md:min-w-[380px] md:max-w-[520px] h-full flex flex-col bg-[#FDFBF7] border-l border-[#E5E0D8] shrink-0 z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] select-none transition-all duration-300">
+    <aside
+      className={`relative w-full md:w-[var(--agent-panel-w)] h-full flex flex-col bg-[#FDFBF7] border-l border-[#E5E0D8] shrink-0 z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] select-none ${
+        isResizingPanel ? '' : 'transition-[width] duration-300'
+      }`}
+      style={{ '--agent-panel-w': `${panelWidth}px` } as React.CSSProperties}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="拖动调节面板宽度"
+        title="拖动调节宽度，双击恢复默认"
+        onPointerDown={handlePanelResizeStart}
+        onDoubleClick={() => {
+          setPanelWidth(PANEL_DEFAULT_WIDTH);
+          savePanelWidth(PANEL_DEFAULT_WIDTH);
+        }}
+        className={`hidden md:block absolute -left-1 top-0 h-full w-2 z-30 cursor-col-resize group/resize`}
+      >
+        <div className={`mx-auto h-full w-0.5 transition-colors ${isResizingPanel ? 'bg-[#B28C5A]' : 'bg-transparent group-hover/resize:bg-[#B28C5A]/60'}`} />
+      </div>
       {/* Panel Header */}
       <div className="p-4 md:p-5 border-b border-[#E5E0D8] bg-white/80 backdrop-blur-md flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
@@ -1050,61 +1083,27 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
       {/* Fixed Functional Lanes Tab Bar */}
       <div className="grid grid-cols-4 bg-[#F4EFE6] p-1 border-b border-[#E5E0D8] shrink-0 text-xs font-bold">
-        <button
-          type="button"
-          onClick={() => setActiveTab('setup')}
-          className={`py-2 text-center rounded-lg transition-all flex items-center justify-center gap-1 ${
-            activeTab === 'setup'
-              ? 'bg-white text-[#2C2A29] shadow-xs border border-[#E5E0D8]'
-              : 'text-stone-500 hover:text-stone-800'
-          }`}
-          title="产品主图、详情页企划调参与企划生成"
-        >
-          <Sliders className="w-3.5 h-3.5 text-[#B28C5A]" />
-          <span>企划配置</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('render')}
-          className={`py-2 text-center rounded-lg transition-all flex items-center justify-center gap-1 ${
-            activeTab === 'render'
-              ? 'bg-white text-[#2C2A29] shadow-xs border border-[#E5E0D8]'
-              : 'text-stone-500 hover:text-stone-800'
-          }`}
-          title="渲染引擎模型、精度与全案受控批量画面生成"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-[#B28C5A]" />
-          <span>渲染引擎</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('chat')}
-          className={`py-2 text-center rounded-lg transition-all flex items-center justify-center gap-1 ${
-            activeTab === 'chat'
-              ? 'bg-white text-[#2C2A29] shadow-xs border border-[#E5E0D8]'
-              : 'text-stone-500 hover:text-stone-800'
-          }`}
-          title="AI 智能体对话思考流与全案灵感沟通"
-        >
-          <Bot className="w-3.5 h-3.5 text-[#B28C5A]" />
-          <span>智能对话</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('typography')}
-          className={`py-2 text-center rounded-lg transition-all flex items-center justify-center gap-1 ${
-            activeTab === 'typography'
-              ? 'bg-white text-[#2C2A29] shadow-xs border border-[#E5E0D8]'
-              : 'text-stone-500 hover:text-stone-800'
-          }`}
-          title="海报文字排版与文案润色工坊"
-        >
-          <Layers className="w-3.5 h-3.5 text-[#B28C5A]" />
-          <span>文案排版</span>
-        </button>
+        {AGENT_PANEL_TABS.map(tab => {
+          const waitingForPlan = tab.needsPlan && !hasPlan;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 text-center rounded-lg transition-all flex items-center justify-center gap-1 ${
+                activeTab === tab.id
+                  ? 'bg-white text-[#2C2A29] shadow-xs border border-[#E5E0D8]'
+                  : waitingForPlan
+                  ? 'text-stone-400 hover:text-stone-600'
+                  : 'text-stone-500 hover:text-stone-800'
+              }`}
+              title={waitingForPlan ? `${tab.hint}（需先生成详情页企划）` : tab.hint}
+            >
+              <tab.icon className={`w-3.5 h-3.5 ${waitingForPlan && activeTab !== tab.id ? 'text-stone-400' : 'text-[#B28C5A]'}`} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Unified Scrollable Main Content Area */}
@@ -2623,6 +2622,43 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             <Download className="w-3 h-3" />
                             <span>导出 4:3 无损海报</span>
                           </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {msg.videoCard && (
+                      <div className="mt-2.5 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#FAF8F5]">
+                        <video
+                          src={msg.videoCard.videoUrl}
+                          poster={msg.videoCard.posterUrl}
+                          controls
+                          playsInline
+                          preload="metadata"
+                          className="w-full max-h-64 bg-black"
+                        />
+                        <div className="flex items-center gap-2 px-2.5 py-2">
+                          <button
+                            type="button"
+                            disabled={isStreaming}
+                            onClick={() =>
+                              onSendMessage(
+                                `点评这条视频「${msg.videoCard!.title || '成片'}」：对比之前定的视频创意，看是否达到预期，哪里需要改`,
+                                msg.videoCard!.nodeId ? { mentionedNodeIds: [msg.videoCard!.nodeId] } : undefined
+                              )
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9C7A4D] disabled:opacity-50 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                          >
+                            点评这条视频
+                          </button>
+                          <a
+                            href={msg.videoCard.videoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            download
+                            className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-[#8C6F43] text-[10px] font-bold transition-colors"
+                          >
+                            下载
+                          </a>
                         </div>
                       </div>
                     )}

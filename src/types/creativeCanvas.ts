@@ -35,6 +35,18 @@ export interface LocalAssetSearchCardData {
   assets: LocalAssetItem[];
 }
 
+/** 视频生成完成后回到对话里的成片卡片 */
+export interface AgentVideoCard {
+  jobId: string;
+  videoUrl: string;
+  title?: string;
+  posterUrl?: string;
+  modelKey?: string;
+  durationSeconds?: number;
+  resolution?: string;
+  nodeId?: string;
+}
+
 export interface AgentMessage {
   id: string;
   sender: 'agent' | 'user';
@@ -62,6 +74,8 @@ export interface AgentMessage {
   taskCard?: AgentTaskCard;
   /** 下一步可做：可直接点击的后续动作 */
   suggestions?: AgentSuggestion[];
+  /** 视频成片：任务完成后回传到对话 */
+  videoCard?: AgentVideoCard;
   /** 实际作答的模型（可能因不可用而与所选模型不同） */
   model?: string;
   /** 会话所选的模型 */
@@ -99,6 +113,8 @@ export interface AgentActionParams {
   focusPoints?: string[];
   /** 打开视频创作：AI 导演分镜（默认）或直接生成单条视频 */
   videoMode?: 'product_showcase' | 'generate_video';
+  /** AI 导演运镜：smart_mix=多镜头混剪（按创意分段），single_take=一镜到底 */
+  videoStyle?: 'smart_mix' | 'single_take';
 }
 
 export interface AgentActionOption {
@@ -588,6 +604,7 @@ export interface AgentContextSnapshot {
 
 export interface AgentVideoNodeRef {
   nodeId: string;
+  jobId?: string;
   title?: string;
   videoUrl?: string;
   assetVersionId?: string;

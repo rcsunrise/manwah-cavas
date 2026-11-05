@@ -53,6 +53,7 @@ interface VideoCreationPanelProps {
     videoBrief?: string;
     focusPoints?: string[];
     videoMode?: 'product_showcase' | 'generate_video';
+    videoStyle?: 'smart_mix' | 'single_take';
     nonce: number;
   } | null;
 }
@@ -246,6 +247,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     if (appliedBriefNonceRef.current === incomingBrief.nonce) return;
     appliedBriefNonceRef.current = incomingBrief.nonce;
     setActiveTab(incomingBrief.videoMode === 'generate_video' ? 'generate_video' : 'product_showcase');
+    // 对话里的创意通常按顺序描述多个卖点，默认用多镜头分镜，否则一镜到底只能表现开头和结尾
+    if (incomingBrief.videoMode !== 'generate_video') setStyle(incomingBrief.videoStyle || 'smart_mix');
     if (incomingBrief.videoBrief) {
       setPromptBeforeExpand(userPrompt);
       setUserPrompt(incomingBrief.videoBrief);
@@ -363,7 +366,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
     autoStoryboardPendingRef.current = false;
     handleGeneratePlanRef.current?.();
-  }, [isOpen, userPrompt, selectedFocusPoints, activeTab, isGeneratingPlan, selectedNode, referenceImages.length]);
+  }, [isOpen, userPrompt, selectedFocusPoints, activeTab, style, isGeneratingPlan, selectedNode, referenceImages.length]);
 
   if (!isOpen) return null;
 

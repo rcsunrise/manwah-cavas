@@ -595,7 +595,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - render_screen：渲染某一屏分镜图。params: screenIndex(必填)
 - render_all：批量渲染全部未渲染分镜
 - search_market：联网检索竞品与爆款参考。params: keywords
-- open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划多镜头（默认）/"generate_video"=直接生成单条视频)
+- open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用)
 - open_poster：打开全案海报工作台。params: screenIndex
 - upload_product：上传产品主图
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
@@ -732,7 +732,9 @@ interface UserAttachment {
 async function buildVideoReviewAttachment(message: string, snapshot: AgentContextSnapshot | undefined): Promise<UserAttachment | undefined> {
   const videos = Array.isArray(snapshot?.videoNodes) ? snapshot!.videoNodes!.slice(0, 5) : [];
   if (videos.length === 0) return undefined;
-  const pointed = videos.find(v => snapshot?.selectedNodeIds?.includes(v.nodeId));
+  const selected = snapshot?.selectedNodeIds || [];
+  // 选中/引用的可能是生成节点或成果节点，按节点 id 或任务 id 匹配
+  const pointed = videos.find(v => selected.includes(v.nodeId) || (v.jobId && selected.some(id => id.includes(v.jobId!))));
   if (!pointed && !VIDEO_REVIEW_INTENT.test(message)) return undefined;
   // 优先用户 @ 引用或选中的视频，否则取最新一条已生成的视频
   const target = pointed || videos.find(v => v.videoUrl || v.assetVersionId);
@@ -1482,7 +1484,7 @@ router.patch('/conversations/:conversationId', async (req: AuthenticatedRequest,
   try {
     const userId = req.user!.id;
     const conversationId = String(req.params.conversationId || '');
-    const { title, status } = req.body;
+    const { title, status, projectId } = req.body;
 
     const conv = await getConversationById(conversationId);
     if (!conv) {
@@ -1499,6 +1501,24 @@ router.patch('/conversations/:conversationId', async (req: AuthenticatedRequest,
       });
     }
 
+    // 画布从占位地址（/creative-canvas/new）跳到真实项目时，把当前会话一起带过去
+    if (projectId !== undefined) {
+      const target = String(projectId);
+      if (!PLACEHOLDER_PROJECT_IDS.has(conv.project_id) || PLACEHOLDER_PROJECT_IDS.has(target)) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'Only placeholder conversations can be moved to a project', code: 'INVALID_AGENT_CONTEXT' }
+        });
+      }
+      if (!(await assertCanvasOwnership(conv.user_id, target, `canvas_${target}`))) {
+        return res.status(403).json({
+          success: false,
+          error: { message: 'Project or canvas does not belong to the authenticated user', code: 'INVALID_AGENT_CONTEXT' }
+        });
+      }
+      conv.project_id = target;
+      conv.canvas_id = `canvas_${target}`;
+    }
     if (title !== undefined) conv.title = String(title);
     if (status !== undefined && (status === 'active' || status === 'archived')) {
       conv.status = status;
@@ -1537,5 +1557,58 @@ function generateMockAgentResponse(userPrompt: string, ctx?: AgentContextSnapsho
 
 如需进一步澄清视觉需求，请随时与我交流！`;
 }
+
+/**
+ * POST /api/agent/conversations/:conversationId/notes
+ * 由界面写入的助手侧通知（如视频生成完成回传的成片卡片），不调用模型，只落库以便刷新后仍在对话里。
+ */
+router.post('/conversations/:conversationId/notes', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
+  const conversationId = String(req.params.conversationId || '');
+  const { text, videoCard } = req.body || {};
+  const conv = await getConversationById(conversationId);
+  if (!conv) {
+    return res.status(404).json({ success: false, error: { message: 'Conversation not found', code: 'CONVERSATION_NOT_FOUND' } });
+  }
+  if (conv.user_id !== userId && conv.user_id !== 'default_user') {
+    return res.status(403).json({ success: false, error: { message: 'Forbidden access to conversation', code: 'CONVERSATION_FORBIDDEN' } });
+  }
+  if (typeof text !== 'string' || !text.trim() || text.length > 2000) {
+    return res.status(400).json({ success: false, error: { message: 'Invalid note text', code: 'INVALID_AGENT_CONTEXT' } });
+  }
+  let card: Record<string, unknown> | undefined;
+  if (videoCard && typeof videoCard === 'object') {
+    const url = String(videoCard.videoUrl || '');
+    if (!/^https?:\/\//.test(url) && !url.startsWith('/api/')) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid video url', code: 'INVALID_AGENT_CONTEXT' } });
+    }
+    const pick = (v: unknown, max = 300) => (typeof v === 'string' ? v.slice(0, max) : undefined);
+    card = {
+      jobId: pick(videoCard.jobId, 120),
+      videoUrl: url.slice(0, 2000),
+      title: pick(videoCard.title, 120),
+      posterUrl: pick(videoCard.posterUrl, 2000),
+      modelKey: pick(videoCard.modelKey, 120),
+      resolution: pick(videoCard.resolution, 20),
+      nodeId: pick(videoCard.nodeId, 200),
+      durationSeconds: typeof videoCard.durationSeconds === 'number' ? videoCard.durationSeconds : undefined
+    };
+  }
+  const now = new Date().toISOString();
+  const record: AgentChatMessageRecord = {
+    id: crypto.randomUUID(),
+    conversation_id: conversationId,
+    user_id: userId,
+    role: 'assistant',
+    content: { text: text.trim(), kind: 'note', ...(card ? { videoCard: card } : {}) },
+    status: 'completed',
+    created_at: now,
+    updated_at: now
+  };
+  await saveMessageRecord(record);
+  conv.updated_at = now;
+  await saveConversationRecord(conv);
+  return res.status(201).json({ success: true, message: record });
+});
 
 export default router;

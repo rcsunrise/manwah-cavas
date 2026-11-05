@@ -227,6 +227,34 @@ export class AgentChatService {
   }
 
   /**
+   * 把挂在占位画布上的会话移到真实项目（画布从 /new 跳到项目地址时）
+   */
+  static async moveToProject(conversationId: string, projectId: string): Promise<AgentConversationRecord | null> {
+    const headers = await getAuthHeader();
+    const res = await fetchWithRetry(`/api/agent/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId })
+    });
+    const json = await parseAgentJsonResponse(res);
+    return json.conversation || null;
+  }
+
+  /**
+   * 写入一条助手侧通知（不调用模型），如视频成片回传
+   */
+  static async appendNote(conversationId: string, text: string, extras?: { videoCard?: unknown }): Promise<AgentChatMessageRecord | null> {
+    const headers = await getAuthHeader();
+    const res = await fetchWithRetry(`/api/agent/conversations/${conversationId}/notes`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, ...extras })
+    });
+    const json = await parseAgentJsonResponse(res);
+    return json.message || null;
+  }
+
+  /**
    * Load history messages for conversation
    */
   static async loadMessages(conversationId: string): Promise<AgentChatMessageRecord[]> {

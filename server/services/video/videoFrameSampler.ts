@@ -10,7 +10,7 @@ import sharp from 'sharp';
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
-const DOWNLOAD_TIMEOUT_MS = 60_000;
+const DOWNLOAD_TIMEOUT_MS = 120_000;
 const FRAME_WIDTH = 640;
 const CACHE_LIMIT = 20;
 

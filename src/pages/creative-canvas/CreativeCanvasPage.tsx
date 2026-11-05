@@ -133,6 +133,7 @@ export default function CreativeCanvasPage() {
     streamError,
     handleSendMessageStream,
     addAgentMessage,
+    postVideoResultToChat,
     updateAgentMessage,
     isOpenInOtherTab,
     handleStopGenerating,
@@ -166,7 +167,11 @@ export default function CreativeCanvasPage() {
   });
 
   React.useEffect(() => {
-    if (workspaceId === 'new' && activeProject?.id && activeProject.id !== 'new') {
+    // /creative-canvas/new 这个路由没有 :workspaceId 参数（workspaceId 为 undefined），也要跳到项目地址；
+    // 否则画布从 canvas_latest 加载、却按项目 id 保存，刷新后读到的是旧画布
+    const onPlaceholderRoute = !workspaceId || workspaceId === 'new' || workspaceId === 'latest';
+    const isRealProject = activeProject?.id && !['new', 'latest', 'default_project'].includes(activeProject.id);
+    if (onPlaceholderRoute && isRealProject) {
       navigate(`/creative-canvas/${activeProject.id}`, { replace: true });
     }
   }, [workspaceId, activeProject?.id, navigate]);
@@ -285,6 +290,7 @@ export default function CreativeCanvasPage() {
     videoBrief?: string;
     focusPoints?: string[];
     videoMode?: 'product_showcase' | 'generate_video';
+    videoStyle?: 'smart_mix' | 'single_take';
     nonce: number;
   } | null>(null);
 
@@ -386,6 +392,10 @@ export default function CreativeCanvasPage() {
 
   const rawNodesRef = React.useRef<any[]>(rawNodes);
   rawNodesRef.current = rawNodes;
+  const postVideoResultToChatRef = React.useRef(postVideoResultToChat);
+  postVideoResultToChatRef.current = postVideoResultToChat;
+  // 本次会话里已回传到对话的视频任务（只回传在页面上从生成中变为完成的任务，刷新加载的历史成片不重复发）
+  const announcedVideoJobsRef = React.useRef<Set<string>>(new Set());
 
   // Dual-track real-time synchronization of video generation jobs to canvas nodes (SSE + Active Polling)
   React.useEffect(() => {
@@ -473,6 +483,24 @@ export default function CreativeCanvasPage() {
         (n: any) => n.id === `node-video-gen-${updatedJob.id}` || n.data?.job?.id === updatedJob.id
       );
       if (!genNode) return;
+      const prevStatus = genNode.data?.job?.status;
+      if (
+        updatedJob.status === 'ready' && effectiveUrl &&
+        prevStatus && prevStatus !== 'ready' &&
+        !announcedVideoJobsRef.current.has(updatedJob.id)
+      ) {
+        announcedVideoJobsRef.current.add(updatedJob.id);
+        postVideoResultToChatRef.current({
+          jobId: updatedJob.id,
+          videoUrl: effectiveUrl,
+          title: genNode.data?.title || updatedJob.shotId || '视频',
+          posterUrl: updatedJob.posterUrl,
+          modelKey: updatedJob.modelKey,
+          durationSeconds: updatedJob.videoSettings?.durationSeconds,
+          resolution: updatedJob.videoSettings?.resolution,
+          nodeId: `node-video-res-${updatedJob.id}`
+        });
+      }
       const resultNodeId = `node-video-res-${updatedJob.id}`;
       const resultEdgeId = `edge-${genNode.id}-${resultNodeId}`;
       setEdges((currentEdges: any[]) =>

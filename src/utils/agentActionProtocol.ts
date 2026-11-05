@@ -15,7 +15,7 @@ import {
  * 发给智能体后，用户问视频效果时服务端会据此抽帧给模型看。
  */
 export function collectVideoNodeRefs(nodes: any[]): AgentVideoNodeRef[] {
-  const refs: AgentVideoNodeRef[] = [];
+  const refs: (AgentVideoNodeRef & { at: number; order: number })[] = [];
   const seenJobs = new Set<string>();
   const ordered = [
     ...nodes.filter(n => n?.type === 'videoResultNode'),
@@ -33,7 +33,10 @@ export function collectVideoNodeRefs(nodes: any[]): AgentVideoNodeRef[] {
     if (seenJobs.has(jobKey)) continue;
     seenJobs.add(jobKey);
     refs.push({
+      at: Date.parse(job.readyAt || job.updatedAt || job.createdAt || '') || 0,
+      order: refs.length,
       nodeId: n.id,
+      jobId: job.id || undefined,
       title: d.title || (job.shotId ? `${job.shotId} 视频` : '视频'),
       videoUrl: typeof videoUrl === 'string' && !videoUrl.startsWith('blob:') ? videoUrl : undefined,
       assetVersionId,
@@ -43,8 +46,11 @@ export function collectVideoNodeRefs(nodes: any[]): AgentVideoNodeRef[] {
       resolution: job.videoSettings?.resolution
     });
   }
-  // 画布节点按添加顺序排列，最新的在后面
-  return refs.reverse().slice(0, 5);
+  // 按任务完成时间倒序（最新在前）；没有时间的按节点添加顺序，越后越新
+  return refs
+    .sort((a, b) => (b.at - a.at) || (b.order - a.order))
+    .slice(0, 5)
+    .map(({ at: _at, order: _order, ...ref }) => ref);
 }
 
 const OPEN_TAG = '<agent_actions>';
@@ -109,6 +115,7 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
     if (points.length > 0) params.focusPoints = points;
   }
   if (raw.videoMode === 'product_showcase' || raw.videoMode === 'generate_video') params.videoMode = raw.videoMode;
+  if (raw.videoStyle === 'smart_mix' || raw.videoStyle === 'single_take') params.videoStyle = raw.videoStyle;
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -140,7 +147,12 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
   if (actionId === 'open_video') {
-    items.push({ label: '方式', value: params?.videoMode === 'generate_video' ? '直接生成单条视频' : 'AI 导演规划分镜' });
+    items.push({
+      label: '方式',
+      value: params?.videoMode === 'generate_video'
+        ? '直接生成单条视频'
+        : params?.videoStyle === 'single_take' ? 'AI 导演规划 · 一镜到底' : 'AI 导演规划 · 多镜头分镜'
+    });
     if (params?.videoBrief) items.push({ label: '执行后', value: params.videoMode === 'generate_video' ? '创意填入视频面板，可再调整后生成视频' : '创意填入视频面板，AI 导演自动生成分镜方案' });
   }
   if (items.length === 0 && actionId === 'render_all') items.push({ label: '范围', value: '全部未渲染的分镜' });
