@@ -67,7 +67,8 @@ const ACTION_IDS: AgentActionId[] = [
   'goto_render',
   'replan_screen',
   'render_screen',
-  'edit_image_text'
+  'edit_image_text',
+  'set_product_image'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -78,6 +79,7 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   edit_image_text: '修改图中文字',
   search_market: '联网检索竞品',
   open_video: '生成视频分镜',
+  set_product_image: '设为产品主图并提取 DNA',
   open_poster: '打开全案海报'
 };
 
@@ -109,6 +111,7 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.newText === 'string' && raw.newText.trim()) params.newText = raw.newText.trim().slice(0, 60);
   if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
   if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) params.nodeId = raw.nodeId.trim().slice(0, 120);
+  if (typeof raw.imageUrl === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(raw.imageUrl.trim())) params.imageUrl = raw.imageUrl.trim().slice(0, 2000);
   if (typeof raw.videoBrief === 'string' && raw.videoBrief.trim()) params.videoBrief = raw.videoBrief.trim().slice(0, 800);
   if (Array.isArray(raw.focusPoints)) {
     const points = raw.focusPoints.map((p: any) => String(p || '').trim()).filter((p: string) => p.length >= 2 && p.length <= 20).slice(0, 6);
@@ -146,6 +149,7 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.hint) items.push({ label: '要求', value: params.hint });
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
+  if (actionId === 'set_product_image') items.push({ label: '执行后', value: '替换画布上的产品主图，并重新提取造型、材质与色彩 DNA' });
   if (actionId === 'open_video') {
     items.push({
       label: '方式',
@@ -288,7 +292,7 @@ export function extractAgentActions(text: string): Pick<AgentMessage, 'text' | '
     const actionId: AgentActionId = payload.plan.actionId;
     const params = normalizeParams(payload.plan.params);
     // 单屏操作必须指明是哪一屏；改字必须给出新文字
-    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText)) {
+    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText) || (actionId === 'set_product_image' && !params?.imageUrl)) {
       // 缺少关键参数时不出计划卡，正文里模型通常已说明
     } else {
       result.planCard = {

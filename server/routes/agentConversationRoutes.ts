@@ -27,6 +27,7 @@ import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
 import { bridgeRelayHub } from '../services/bridgeRelayHub';
 import { getTokenModelIds } from '../services/video/videoModelAvailability';
 import { sampleVideoFrames } from '../services/video/videoFrameSampler';
+import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 
 /** Agent G 对话的默认模型（新建会话、未指定模型时使用） */
 const DEFAULT_AGENT_MODEL = 'gpt-6';
@@ -597,7 +598,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - search_market：联网检索竞品与爆款参考。params: keywords
 - open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用)
 - open_poster：打开全案海报工作台。params: screenIndex
-- upload_product：上传产品主图
+- upload_product：上传产品主图（打开文件选择）
+- set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
 - edit_image_text：修改图片里已有的文字（如海报标题、卖点文案），只重绘文字区域，产品与画面不变。params: newText(必填，改成的文字), oldText(要被替换的原文；替换整行主标题时可省略), nodeId(目标图片节点 id；用户 @ 引用了图片或画布状态里有明确目标时填写)
 
@@ -727,6 +729,57 @@ const VIDEO_REVIEW_INTENT =
 interface UserAttachment {
   text: string;
   images: string[];
+}
+
+/** 用户随消息附带的图片：只接受本项目存储（Supabase 公开桶）或本服务画布资产地址，最多 4 张；
+ *  服务端会去下载这些图，不能放任意地址，防止被用来探测内网 */
+function sanitizeImageAttachments(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  let storageHost = '';
+  try {
+    storageHost = new URL(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').host;
+  } catch {}
+  const allowed = (u: string) => {
+    if (u.startsWith('/api/canvases/assets/') && !u.includes('..')) return true;
+    try {
+      const parsed = new URL(u);
+      return parsed.protocol === 'https:' && Boolean(storageHost) && parsed.host === storageHost
+        && parsed.pathname.startsWith('/storage/v1/object/public/');
+    } catch {
+      return false;
+    }
+  };
+  return raw
+    .filter((u): u is string => typeof u === 'string')
+    .map(u => u.trim())
+    .filter(u => u.length <= 2000 && allowed(u))
+    .slice(0, 4);
+}
+
+async function buildImageAttachment(urls: string[]): Promise<UserAttachment | undefined> {
+  if (urls.length === 0) return undefined;
+  const images: string[] = [];
+  for (const url of urls) {
+    try {
+      images.push(await VideoSourceImageResolver.toVisionDataUrl(url));
+    } catch (err: any) {
+      console.warn('[AgentConversationRoutes] attachment image unreadable:', err?.message || err);
+    }
+  }
+  const list = urls.map((u, i) => `图${i + 1}: ${u}`).join('\n');
+  return {
+    text: images.length > 0
+      ? `【附：用户随消息上传的图片 ${images.length} 张，已附在本条消息里，请结合图片回答】
+${list}`
+      : `【附：用户上传了 ${urls.length} 张图片，但读取失败，请如实告知看不到图片】`,
+    images
+  };
+}
+
+function mergeAttachments(...parts: (UserAttachment | undefined)[]): UserAttachment | undefined {
+  const present = parts.filter((p): p is UserAttachment => Boolean(p));
+  if (present.length === 0) return undefined;
+  return { text: present.map(p => p.text).join('\n\n'), images: present.flatMap(p => p.images) };
 }
 
 async function buildVideoReviewAttachment(message: string, snapshot: AgentContextSnapshot | undefined): Promise<UserAttachment | undefined> {
@@ -1011,6 +1064,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
   const userId = req.user!.id;
   const conversationId = String(req.params.conversationId || '');
   const { message, context_snapshot, model: requestModel } = req.body;
+  const attachmentUrls = sanitizeImageAttachments(req.body?.attachments);
 
   let conv = await getConversationById(conversationId);
   if (!conv) {
@@ -1079,7 +1133,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     conversation_id: conversationId,
     user_id: userId,
     role: 'user',
-    content: { text: message.trim() },
+    content: { text: message.trim(), ...(attachmentUrls.length > 0 ? { images: attachmentUrls } : {}) },
     status: 'completed',
     context_snapshot: context_snapshot || null,
     created_at: now,
@@ -1207,7 +1261,10 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
   } else {
     incrementAgentMetric('textProviderCalls');
     const history = await getMessagesByConversation(conversationId);
-    const userAttachment = await buildVideoReviewAttachment(trimmedMsg, context_snapshot);
+    const userAttachment = mergeAttachments(
+      await buildImageAttachment(attachmentUrls),
+      await buildVideoReviewAttachment(trimmedMsg, context_snapshot)
+    );
     const result = await invokeAgentModelStream({
       userId,
       model: conv.model,

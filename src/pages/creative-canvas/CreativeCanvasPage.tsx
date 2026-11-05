@@ -134,6 +134,7 @@ export default function CreativeCanvasPage() {
     handleSendMessageStream,
     addAgentMessage,
     postVideoResultToChat,
+    uploadChatImage,
     updateAgentMessage,
     isOpenInOtherTab,
     handleStopGenerating,
@@ -827,6 +828,7 @@ export default function CreativeCanvasPage() {
             showFullDnaDrawer={showFullDnaDrawer}
             setShowFullDnaDrawer={setShowFullDnaDrawer}
             onUploadFile={handleUploadFile}
+            onUploadChatImage={uploadChatImage}
             onSendMessage={handleSendMessageStream}
             onPostAgentMessage={addAgentMessage}
             onUpdateAgentMessage={updateAgentMessage}

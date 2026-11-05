@@ -61,7 +61,9 @@ interface AgentPanelProps {
   showFullDnaDrawer: boolean;
   setShowFullDnaDrawer: (show: boolean) => void;
   onUploadFile: (file: File) => void;
-  onSendMessage: (text: string, options?: { mentionedNodeIds?: string[] }) => void;
+  /** 对话里的图片附件上传，返回存储地址 */
+  onUploadChatImage?: (file: File) => Promise<string>;
+  onSendMessage: (text: string, options?: { mentionedNodeIds?: string[]; imageUrls?: string[] }) => void;
   /** 由面板插入一条智能体消息（可带卡片），返回消息 id */
   onPostAgentMessage?: (text: string, extras?: Partial<AgentMessage>) => string;
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
@@ -349,6 +351,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   showFullDnaDrawer,
   setShowFullDnaDrawer,
   onUploadFile,
+  onUploadChatImage,
   onSendMessage,
   agentRun,
   isPlanGenerating,
@@ -813,6 +816,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             : undefined
         );
         return;
+      case 'set_product_image': {
+        const url = params?.imageUrl;
+        if (!url) return;
+        postAgent('正在把这张图设为产品主图…');
+        fetch(url)
+          .then(r => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.blob();
+          })
+          .then(blob => {
+            const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+            onUploadFile(new File([blob], `chat-image.${ext}`, { type: blob.type || 'image/png' }));
+          })
+          .catch(err => postAgent(`设为产品主图失败：${err?.message || '图片读取失败'}，可以点输入框左下角 + 重新上传。`));
+        return;
+      }
       case 'open_poster':
         onOpenPosterStudio?.(params?.screenIndex || selectedSceneIndex || 1);
         return;
@@ -2489,6 +2508,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
                     }`}
                   >
+                    {msg.images && msg.images.length > 0 && (
+                      <div className={`flex flex-wrap gap-1.5 ${msg.text ? 'mb-2' : ''}`}>
+                        {msg.images.map(url => (
+                          <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
+                            <img src={url} alt="" className="w-24 h-24 object-cover rounded-lg border border-white/20" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     {(msg.text || msg.status === 'streaming') &&
                       (msg.sender === 'agent' && msg.text ? (
                         <AgentMarkdown text={msg.text} />
@@ -2811,9 +2839,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           />
           <AgentComposer
             isStreaming={isStreaming}
-            onSend={(text, mentionedNodeIds) => onSendMessage(text, { mentionedNodeIds })}
+            onSend={(text, mentionedNodeIds, imageUrls) => onSendMessage(text, { mentionedNodeIds, imageUrls })}
             onStop={onStopGenerating}
             onUploadFile={onUploadFile}
+            onUploadAttachment={onUploadChatImage}
             quickActions={quickActions}
             onQuickAction={option => option.actionId && runAgentAction(option.actionId, option.params)}
             mentionableNodes={mentionableNodes}

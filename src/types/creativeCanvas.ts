@@ -76,6 +76,8 @@ export interface AgentMessage {
   suggestions?: AgentSuggestion[];
   /** 视频成片：任务完成后回传到对话 */
   videoCard?: AgentVideoCard;
+  /** 用户随消息发送的图片 */
+  images?: string[];
   /** 实际作答的模型（可能因不可用而与所选模型不同） */
   model?: string;
   /** 会话所选的模型 */
@@ -94,10 +96,13 @@ export type AgentActionId =
   | 'goto_render'
   | 'replan_screen'
   | 'render_screen'
-  | 'edit_image_text';
+  | 'edit_image_text'
+  | 'set_product_image';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
+  /** 设为产品主图：对话里用户发的图片地址 */
+  imageUrl?: string;
   screenCount?: number;
   aspectRatio?: string;
   screenIndex?: number;

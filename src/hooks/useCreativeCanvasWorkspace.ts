@@ -59,6 +59,7 @@ function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage
       model: typeof m.content === 'object' ? m.content.model : undefined,
       requestedModel: typeof m.content === 'object' ? m.content.requestedModel : undefined,
       videoCard: typeof m.content === 'object' && m.content.videoCard?.videoUrl ? m.content.videoCard : undefined,
+      images: typeof m.content === 'object' && Array.isArray(m.content.images) ? m.content.images : undefined,
       timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: m.status as any,
       error_code: m.error_code as any
@@ -495,6 +496,27 @@ export function useCreativeCanvasWorkspace(
     ]);
   }, []);
 
+  // 对话里粘贴/拖入的图片：先传到存储拿到地址，随消息发给智能体（不再直接当产品主图做 DNA）
+  const uploadChatImage = useCallback(async (file: File): Promise<string> => {
+    if (file.size > 20 * 1024 * 1024) throw new Error('图片超过 20MB');
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('读取图片失败'));
+      reader.readAsDataURL(file);
+    });
+    const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/inline-images`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl })
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.url) throw new Error(json?.error?.message || `上传失败 (${res.status})`);
+    return String(json.url);
+  }, [workspaceIdParam]);
+
   // 视频任务完成后把成片回传到对话：先本地显示，再落库（失败不影响画布）
   const postVideoResultToChat = useCallback((card: AgentVideoCard) => {
     const meta = [card.modelKey, card.resolution, card.durationSeconds ? `${Math.round(card.durationSeconds)}s` : ''].filter(Boolean).join(' · ');
@@ -591,7 +613,10 @@ export function useCreativeCanvasWorkspace(
   }, []);
 
   // G0-1: Streamed message sending
-  const handleSendMessageStream = useCallback(async (textText: string, options?: { mentionedNodeIds?: string[] }) => {
+  const handleSendMessageStream = useCallback(async (textText: string, options?: { mentionedNodeIds?: string[]; imageUrls?: string[] }) => {
+    const imageUrls = (options?.imageUrls || []).slice(0, 4);
+    // 只发图片不写字时，给模型一个默认问题
+    if (!textText.trim() && imageUrls.length > 0) textText = '看看这张图';
     if (!textText.trim() || isStreaming) return;
 
     const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
@@ -645,10 +670,12 @@ export function useCreativeCanvasWorkspace(
       id: userMsgId,
       sender: 'user',
       text: textText.trim(),
-      timestamp: timestampStr
+      timestamp: timestampStr,
+      ...(imageUrls.length > 0 ? { images: imageUrls } : {})
     };
 
     const trimmed = textText.trim();
+    // 带图的消息直接交给模型看图回答，不走本地关键词拦截
 
     // Agent G Execution Interceptor: Autonomous 4:3 Poster Layout from Local Assets
     const isPosterLayoutIntent =
@@ -656,7 +683,7 @@ export function useCreativeCanvasWorkspace(
       /(使用|用).*(本地|素材).*(海报|排版)/i.test(trimmed) ||
       /(4:3|四比三).*(海报|排版)/i.test(trimmed);
 
-    if (isPosterLayoutIntent) {
+    if (isPosterLayoutIntent && imageUrls.length === 0) {
       if (!localAssetService.isConnected()) {
         const assistantMsg: AgentMessage = {
           id: assistantMsgId,
@@ -860,7 +887,7 @@ export function useCreativeCanvasWorkspace(
       /(有哪些|有什么|看下|列出).*(文件|素材|资料|图片|图)/i.test(trimmed) ||
       /^(找|搜|查|查找|搜索)\s*(2650|沙发|主图|面料|皮纹|logo|pdf|文件)/i.test(trimmed);
 
-    if (isLocalSearchIntent) {
+    if (isLocalSearchIntent && imageUrls.length === 0) {
       if (localAssetService.isConnected()) {
         let kw = trimmed.replace(/(查找|搜索|请帮我找|帮我找|找一下|找|搜|本地|电脑里的|素材|资料|图片|文件|这里|库里|当前|有哪些|有什么|看一下|看下|列出|清单)/gi, '').trim();
 
@@ -918,6 +945,7 @@ export function useCreativeCanvasWorkspace(
       message: textText.trim(),
       contextSnapshot,
       model: currentConversation?.model || conv.model,
+      attachments: imageUrls,
       abortController: controller,
       onDelta: (delta) => {
         accumulatedText += delta;
@@ -4722,6 +4750,7 @@ export function useCreativeCanvasWorkspace(
     handleRetryMessage,
     handleCreateNewConversation,
     postVideoResultToChat,
+    uploadChatImage,
     handleSelectConversation,
     handleChangeConversationModel,
     activeProject,

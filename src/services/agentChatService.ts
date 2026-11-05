@@ -276,6 +276,8 @@ export class AgentChatService {
     message: string;
     contextSnapshot?: AgentContextSnapshot;
     model?: string;
+    /** 随消息发送的图片地址（已上传到存储） */
+    attachments?: string[];
     onDelta?: (delta: string) => void;
     onComplete?: (assistantMessage: AgentChatMessageRecord) => void;
     onError?: (err: { code: AgentErrorCode; message: string }) => void;
@@ -286,6 +288,7 @@ export class AgentChatService {
       message,
       contextSnapshot,
       model,
+      attachments,
       onDelta,
       onComplete,
       onError,
@@ -302,7 +305,8 @@ export class AgentChatService {
         body: JSON.stringify({
           message,
           context_snapshot: contextSnapshot,
-          model
+          model,
+          ...(attachments && attachments.length > 0 ? { attachments } : {})
         })
       });
 

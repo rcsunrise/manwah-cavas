@@ -55,6 +55,14 @@ describe('agentActionProtocol', () => {
     expect(r.planCard?.items.map(i => i.label)).toEqual(['视频创意', '展示重点', '方式', '执行后']);
   });
 
+  it('only accepts storage image urls for set_product_image', () => {
+    const ok = extractAgentActions('这是沙发产品图<agent_actions>{"plan": {"actionId": "set_product_image", "params": {"imageUrl": "https://x.supabase.co/storage/v1/object/public/a/b.png"}}}</agent_actions>');
+    expect(ok.planCard?.params?.imageUrl).toContain('supabase.co');
+    expect(ok.planCard?.items.map(i => i.label)).toEqual(['执行后']);
+    const bad = extractAgentActions('hi<agent_actions>{"plan": {"actionId": "set_product_image", "params": {"imageUrl": "javascript:alert(1)"}}}</agent_actions>');
+    expect(bad.planCard).toBeUndefined();
+  });
+
   it('hides partially streamed tags', () => {
     expect(stripAgentActions('正文<agent_ac')).toBe('正文');
     expect(stripAgentActions('正文<agent_actions>{"pla')).toBe('正文');

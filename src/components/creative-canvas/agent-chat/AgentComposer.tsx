@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, Pause, Plus, AtSign, X, ImageIcon } from 'lucide-react';
+import { Send, Pause, Plus, AtSign, X, ImageIcon, Loader2 } from 'lucide-react';
 import { AgentActionOption } from '../../../types/creativeCanvas';
 
 export interface MentionableNode {
@@ -10,7 +10,9 @@ export interface MentionableNode {
 
 interface AgentComposerProps {
   isStreaming?: boolean;
-  onSend: (text: string, mentionedNodeIds: string[]) => void;
+  onSend: (text: string, mentionedNodeIds: string[], imageUrls: string[]) => void;
+  /** 上传对话图片，返回存储地址；不传时退回为直接上传产品主图 */
+  onUploadAttachment?: (file: File) => Promise<string>;
   onStop?: () => void;
   onUploadFile: (file: File) => void;
   quickActions: AgentActionOption[];
@@ -35,6 +37,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   onSend,
   onStop,
   onUploadFile,
+  onUploadAttachment,
   quickActions,
   onQuickAction,
   mentionableNodes,
@@ -45,6 +48,33 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  type Attachment = { id: string; file: File; previewUrl: string; status: 'uploading' | 'ready' | 'error'; url?: string; error?: string };
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const removeAttachment = (id: string) =>
+    setAttachments(prev => {
+      const hit = prev.find(a => a.id === id);
+      if (hit) URL.revokeObjectURL(hit.previewUrl);
+      return prev.filter(a => a.id !== id);
+    });
+  // 图片先作为附件放进输入框，由用户决定：随消息发给智能体，或点"设为主图"提取 DNA
+  const addImage = (file: File) => {
+    if (!onUploadAttachment) {
+      onUploadFile(file);
+      return;
+    }
+    if (attachments.length >= 4) return;
+    const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setAttachments(prev => [...prev, { id, file, previewUrl: URL.createObjectURL(file), status: 'uploading' }]);
+    onUploadAttachment(file).then(
+      url => setAttachments(prev => prev.map(a => (a.id === id ? { ...a, status: 'ready', url } : a))),
+      err => setAttachments(prev => prev.map(a => (a.id === id ? { ...a, status: 'error', error: err?.message || '上传失败' } : a)))
+    );
+    textareaRef.current?.focus();
+  };
+  const setAsProductImage = (att: Attachment) => {
+    onUploadFile(att.file);
+    removeAttachment(att.id);
+  };
 
   useEffect(() => {
     if (!fillRequest) return;
@@ -94,15 +124,56 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     });
   };
 
+  const attachmentsUploading = attachments.some(a => a.status === 'uploading');
+  const readyImageUrls = attachments.filter(a => a.status === 'ready' && a.url).map(a => a.url!);
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming) return;
+    if ((!trimmed && readyImageUrls.length === 0) || isStreaming || attachmentsUploading) return;
     // 只带上正文里仍然保留的引用（用户可能手动删掉了 @标签）
     const activeMentionIds = mentions.filter(m => trimmed.includes(`@${m.title}`)).map(m => m.id);
-    onSend(trimmed, activeMentionIds);
+    onSend(trimmed, activeMentionIds, readyImageUrls);
     setText('');
     setMentions([]);
     setMentionQuery(null);
+    attachments.forEach(a => URL.revokeObjectURL(a.previewUrl));
+    setAttachments([]);
+  };
+
+  // 粘贴 / 拖入图片：和 + 按钮一样上传为产品主图；纯文字粘贴照常进入输入框
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const firstImageFile = (files: FileList | DataTransferItemList | null | undefined): File | null => {
+    if (!files) return null;
+    for (let i = 0; i < files.length; i++) {
+      const item = files[i] as File | DataTransferItem;
+      if ('kind' in item) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) return item.getAsFile();
+      } else if (item.type.startsWith('image/')) {
+        return item;
+      }
+    }
+    return null;
+  };
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = firstImageFile(e.clipboardData?.items);
+    if (!file) return;
+    e.preventDefault();
+    // 阻止冒泡到画布的全局粘贴监听，避免同一张图上传两次
+    e.stopPropagation();
+    addImage(file);
+  };
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingImage) setIsDraggingImage(true);
+  };
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    setIsDraggingImage(false);
+    const file = firstImageFile(e.dataTransfer.files);
+    if (!file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    addImage(file);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -142,7 +213,55 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
         </div>
       )}
 
-      <div className="relative rounded-2xl border border-[#E5E0D8] bg-[#F9F5EF]/80 focus-within:border-[#B28C5A] focus-within:ring-1 focus-within:ring-[#B28C5A] transition-all">
+      <div
+        className={`relative rounded-2xl border bg-[#F9F5EF]/80 focus-within:border-[#B28C5A] focus-within:ring-1 focus-within:ring-[#B28C5A] transition-all ${
+          isDraggingImage ? 'border-[#B28C5A] ring-2 ring-[#B28C5A]/40' : 'border-[#E5E0D8]'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={e => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDraggingImage(false);
+        }}
+        onDrop={handleDrop}
+      >
+        {isDraggingImage && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[#F9F5EF]/90 text-xs font-bold text-[#8C6F43]">
+            松开即可添加图片
+          </div>
+        )}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-3 pt-2.5">
+            {attachments.map(att => (
+              <div key={att.id} className="relative w-[88px] rounded-lg border border-[#E5E0D8] bg-white overflow-hidden">
+                <img src={att.previewUrl} alt="" className="w-full h-16 object-cover" />
+                {att.status === 'uploading' && (
+                  <div className="absolute inset-x-0 top-0 h-16 flex items-center justify-center bg-white/60">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#B28C5A]" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(att.id)}
+                  className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/55 text-white flex items-center justify-center cursor-pointer"
+                  title="移除"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+                {att.status === 'error' ? (
+                  <div className="px-1 py-1 text-[9px] text-rose-600 truncate" title={att.error}>{att.error}</div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAsProductImage(att)}
+                    className="w-full py-1 text-[9px] font-bold text-[#8C6F43] hover:bg-[#F9F5EF] border-t border-[#E5E0D8] cursor-pointer"
+                    title="替换画布上的产品主图并提取产品 DNA"
+                  >
+                    设为产品主图
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         {mentions.length > 0 && (
           <div className="flex flex-wrap gap-1 px-3 pt-2">
             {mentions.map(m => (
@@ -177,7 +296,8 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
           }}
           onClick={e => updateMentionQuery(text, e.currentTarget.selectionStart)}
           onKeyDown={handleKeyDown}
-          placeholder={isStreaming ? '智能体正在回复中...' : '说说你的需求，输入 @ 引用画布素材，如：@产品主图 做 6 屏详情页'}
+          onPaste={handlePaste}
+          placeholder={isStreaming ? '智能体正在回复中...' : attachments.length > 0 ? '说说想对这张图做什么，或直接发送让智能体看图' : '说说你的需求，输入 @ 引用画布素材；可粘贴或拖入图片'}
           className="w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none disabled:opacity-60 max-h-32"
         />
 
@@ -187,7 +307,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="w-7 h-7 rounded-lg flex items-center justify-center text-stone-500 hover:bg-white hover:text-[#B28C5A] transition-colors cursor-pointer"
-              title="上传产品主图"
+              title="添加图片（也可直接粘贴或拖入）"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -207,7 +327,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
               className="hidden"
               onChange={e => {
                 const file = e.target.files?.[0];
-                if (file) onUploadFile(file);
+                if (file) addImage(file);
                 e.target.value = '';
               }}
             />
@@ -227,7 +347,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
             <button
               type="button"
               onClick={submit}
-              disabled={!text.trim()}
+              disabled={(!text.trim() && readyImageUrls.length === 0) || attachmentsUploading}
               className="p-2 bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-40 text-white rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
               title="发送（Enter 发送，Shift+Enter 换行）"
             >
