@@ -165,6 +165,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     '面料/皮面质感与缝线工艺'
   ]);
   const [customFocusInput, setCustomFocusInput] = useState('');
+  // AI 扩写状态
+  const [isExpandingPrompt, setIsExpandingPrompt] = useState(false);
+  const [expandError, setExpandError] = useState<string | null>(null);
+  const [expandNote, setExpandNote] = useState<string | null>(null);
+  const [promptBeforeExpand, setPromptBeforeExpand] = useState<string | null>(null);
+  const [aiFocusPoints, setAiFocusPoints] = useState<string[]>([]);
 
   // Director LLM Model
   const [selectedDirectorModel, setSelectedDirectorModel] = useState<string>('gemini-3.7-flash');
@@ -354,14 +360,51 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     setCustomFocusInput('');
   };
 
-  // AI Prompt Expansion helper
-  const handleExpandPrompt = () => {
-    const focusStr = selectedFocusPoints.join('、');
-    if (!userPrompt.trim()) {
-      setUserPrompt(`镜头45度微仰缓缓推进，室内晨光洒在家具边缘，重点展示【${focusStr || '材质纹理与空间光影'}】，画面平稳高级，4K电影质感`);
-    } else {
-      setUserPrompt(prev => `${prev}，运镜平稳缓慢推进，聚焦微距展示【${focusStr || '材质工艺'}】，柔和环境光流动，高保真4K超清`);
+  // AI 扩写：多模态大模型看产品图，结合原始描述、展示重点、视频模型与时长改写；同时按图推荐展示重点
+  const handleExpandPrompt = async () => {
+    if (isExpandingPrompt) return;
+    const imageUrl = referenceImages[0]?.url || selectedNode?.imageUrl;
+    const capability = capabilities.find(c => c.key === selectedModelKey) || capabilities[0];
+    setIsExpandingPrompt(true);
+    setExpandError(null);
+    setExpandNote(null);
+    try {
+      const result = await VideoGenerationService.expandPrompt({
+        mode: activeTab === 'product_showcase' ? 'product_showcase' : 'generate_video',
+        userPrompt,
+        productTitle: productTitle || selectedNode?.title,
+        focusPoints: selectedFocusPoints,
+        imageUrl,
+        durationSeconds: videoSettings.durationSeconds,
+        videoModelName: capability?.displayName,
+        supportsLastFrame: Boolean(capability?.modes.includes('first_last_frame')),
+        directorModelKey: selectedDirectorModel
+      });
+      setPromptBeforeExpand(userPrompt);
+      setUserPrompt(result.prompt);
+      const fresh = result.suggestedFocusPoints.filter(p => !focusPointsList.includes(p));
+      if (fresh.length > 0) {
+        setFocusPointsList(prev => [...fresh, ...prev.filter(p => !fresh.includes(p))]);
+        setAiFocusPoints(fresh);
+      }
+      setExpandNote(
+        `已由 ${result.model} ${result.usedImage ? '看图' : '仅按文字（没有可用的产品图）'}改写` +
+          (fresh.length > 0 && activeTab === 'product_showcase'
+            ? `，并${result.usedImage ? '按产品图' : ''}补充了 ${fresh.length} 个展示重点（✦ 标记）`
+            : '')
+      );
+    } catch (err: any) {
+      setExpandError(err?.message || '扩写失败，请稍后重试');
+    } finally {
+      setIsExpandingPrompt(false);
     }
+  };
+
+  const handleUndoExpand = () => {
+    if (promptBeforeExpand === null) return;
+    setUserPrompt(promptBeforeExpand);
+    setPromptBeforeExpand(null);
+    setExpandNote(null);
   };
 
   // Generate Director Brief
@@ -381,7 +424,10 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       referenceImages: referenceImages.map(img => ({ url: img.url, title: img.title })),
       productTitle: productTitle || selectedNode?.title,
       productCategory: '家具',
-      targetDurationSeconds: videoSettings.durationSeconds
+      targetDurationSeconds: videoSettings.durationSeconds,
+      // 让导演知道生成端：模型能力决定是否安排依赖尾帧的功能镜头
+      videoModelName: currentCapability?.displayName,
+      supportsLastFrame: Boolean(currentCapability?.modes.includes('first_last_frame'))
     });
 
     if (onPlanCreated && selectedNode) {
@@ -702,6 +748,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                     }`}
                   >
                     {isSelected && <Check className="w-3 h-3 text-purple-600 stroke-[3]" />}
+                    {!isSelected && aiFocusPoints.includes(point) && <Sparkles className="w-3 h-3 text-purple-400" />}
                     <span>{point}</span>
                   </button>
                 );
@@ -761,10 +808,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
             <button
               type="button"
               onClick={handleExpandPrompt}
-              className="inline-flex items-center gap-1 text-[11px] text-purple-600 hover:text-purple-800 font-medium"
+              disabled={isExpandingPrompt}
+              title="由大模型看产品图，结合展示重点、视频模型与时长改写"
+              className="inline-flex items-center gap-1 text-[11px] text-purple-600 hover:text-purple-800 disabled:opacity-60 font-medium"
             >
-              <Sparkles className="w-3 h-3" />
-              <span>AI扩写融合重点</span>
+              {isExpandingPrompt ? <RotateCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              <span>{isExpandingPrompt ? 'AI 正在看图改写…' : 'AI扩写融合重点'}</span>
             </button>
           </div>
           <textarea
@@ -774,6 +823,16 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
             placeholder="描述你想呈现的镜头画面，如：镜头缓慢向右平移，室内晨光洒在沙发扶手边缘..."
             className="w-full text-xs p-3 border border-neutral-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none leading-relaxed"
           />
+          {(expandNote || expandError) && (
+            <div className={`mt-1 flex items-center justify-between gap-2 text-[11px] ${expandError ? 'text-red-600' : 'text-neutral-500'}`}>
+              <span>{expandError || expandNote}</span>
+              {!expandError && promptBeforeExpand !== null && (
+                <button type="button" onClick={handleUndoExpand} className="shrink-0 text-purple-600 hover:text-purple-800 font-medium">
+                  撤销改写
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Video Synthesis Model and Settings (For direct or fine-tuning) */}

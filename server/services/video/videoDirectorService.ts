@@ -97,7 +97,7 @@ function toShotPlan(draft: ShotDraft, idx: number, durationSeconds: number, sour
   };
 }
 
-function normalizeDraft(raw: any): ShotDraft | null {
+function normalizeDraft(raw: any, allowEndFrame: boolean): ShotDraft | null {
   if (!raw || typeof raw.prompt !== 'string' || !raw.prompt.trim()) return null;
   const shotType: VideoShotType = SHOT_TYPES.includes(raw.shotType) ? raw.shotType : 'hero';
   const isFunction = shotType === 'function';
@@ -109,9 +109,10 @@ function normalizeDraft(raw: any): ShotDraft | null {
     subjectMotion: String(raw.subjectMotion || (isFunction ? '功能机构动作' : '产品静止')),
     // 功能镜头强制锁机位：产品和镜头同时运动是变形的主要来源
     cameraLocked: isFunction || raw.cameraLocked === true,
-    needsEndFrame: isFunction || raw.needsEndFrame === true,
+    // 所选视频模型不支持尾帧时，尾帧要求没有意义，不再让界面提示用户补图
+    needsEndFrame: allowEndFrame && (isFunction || raw.needsEndFrame === true),
     firstFrameHint: raw.firstFrameHint ? String(raw.firstFrameHint) : undefined,
-    endFrameHint: raw.endFrameHint ? String(raw.endFrameHint) : undefined,
+    endFrameHint: allowEndFrame && raw.endFrameHint ? String(raw.endFrameHint) : undefined,
     prompt: raw.prompt
   };
 }
@@ -137,8 +138,12 @@ export class VideoDirectorService {
       productTitle,
       productCategory,
       productDetails,
-      targetDurationSeconds
+      targetDurationSeconds,
+      videoModelName,
+      supportsLastFrame
     } = request;
+    // 未告知时按支持处理（与旧行为一致）
+    const allowEndFrame = supportsLastFrame !== false;
 
     const planVersionId = `plan-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const isSingleTake = style === 'single_take';
@@ -210,6 +215,8 @@ ${visionImages.length > 0 ? '- 附带的图片是产品实拍图，是材质、�
 - 产品DNA: ${dnaSummary || productDetails || '未提供'}
 - 用户创意要求: ${userPrompt || '未提供'}
 - 创作模式: ${mode === 'product_showcase' ? '产品展示' : '自由生成'}
+- 视频生成模型: ${videoModelName || '未指定'}（${allowEndFrame ? '支持首尾帧' : '不支持尾帧，只能以首帧图生视频'}）
+- 每个镜头时长: ${shotDurationSeconds} 秒（每个镜头都按这个时长生成；运镜速度据此放慢，${shotDurationSeconds >= 10 ? '时长较长，宁可更慢也不要在一个镜头里叠加第二个动作' : '动作要在时长内自然完成'}）
 
 【分镜结构】
 ${isSingleTake
@@ -221,7 +228,9 @@ ${isSingleTake
 2. 镜头内禁止换背景、换场景、大幅改变光照或色调；首帧是什么环境就保持什么环境。
 3. 禁止从全景推到微距。detail 镜头应使用原图局部裁切作为首帧（在 firstFrameHint 写明裁哪个部位），镜头只做横向平移或极小幅度推近。
 4. 运镜幅度要小：横移或弧线不超过 15°，推拉不超过画幅的 10%；禁止 360° 环绕和快速运动。
-5. function 镜头只演示图片或卖点中确实存在的功能（电动躺平、脚托伸出、旋转、开合等），needsEndFrame=true，并在 endFrameHint 写明需要用户补充的“动作完成态”实拍图及机位（如：躺平状态的正侧面 90° 实拍图，与首帧同机位）。功能镜头首选正侧面或 3/4 侧面机位。
+${allowEndFrame
+  ? '5. function 镜头只演示图片或卖点中确实存在的功能（电动躺平、脚托伸出、旋转、开合等），needsEndFrame=true，并在 endFrameHint 写明需要用户补充的“动作完成态”实拍图及机位（如：躺平状态的正侧面 90° 实拍图，与首帧同机位）。功能镜头首选正侧面或 3/4 侧面机位。'
+  : '5. 所选视频模型不支持尾帧：没有尾帧约束的大幅机构动作（电动躺平、脚托伸出、开合）极易变形，默认不安排 function 镜头，在 summary 中说明建议换用支持首尾帧的模型来演示功能；仅当用户创意要求明确要求演示功能时，才安排一个机位锁定、动作幅度很小的 function 镜头，needsEndFrame=false。'}
 6. prompt 用英文，必须以 productFacts.anchorEn 开头，只描述本镜头的构图、运镜与主体运动，不要堆砌空泛形容词，不要描述图片中不存在的部件或场景。
 7. 任何字段都不得出现节点 ID（如 img-node-1、asset-xxx）或文件名。
 
@@ -308,7 +317,7 @@ ${isSingleTake
               : undefined;
             const anchor = facts?.anchorEn || cleanedProductTitle;
             const drafts = (Array.isArray(parsed.shots) ? parsed.shots : [])
-              .map(normalizeDraft)
+              .map((raw: any) => normalizeDraft(raw, allowEndFrame))
               .filter((d: ShotDraft | null): d is ShotDraft => d !== null)
               .slice(0, isSingleTake ? 1 : 5)
               // 导演偶尔漏写锚定短语，补在开头，保证每条提示词都钉住颜色与材质
@@ -358,7 +367,8 @@ ${isSingleTake
     };
     const drafts: ShotDraft[] = [heroDraft];
     if (!isSingleTake) {
-      for (const fn of functionFocus.slice(0, 2)) {
+      // 不支持尾帧的模型不做功能演示镜头（没有尾帧约束极易变形）
+      for (const fn of allowEndFrame ? functionFocus.slice(0, 2) : []) {
         drafts.push({
           shotType: 'function',
           title: `功能演示：${fn}`,

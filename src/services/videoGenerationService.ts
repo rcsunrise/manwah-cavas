@@ -88,6 +88,30 @@ export class VideoGenerationService {
   }
 
   /**
+   * 「AI扩写融合重点」：多模态大模型看产品图改写创意描述，并推荐展示重点
+   */
+  public static async expandPrompt(request: {
+    mode: 'generate_video' | 'product_showcase';
+    userPrompt?: string;
+    productTitle?: string;
+    focusPoints?: string[];
+    imageUrl?: string;
+    durationSeconds?: number;
+    videoModelName?: string;
+    supportsLastFrame?: boolean;
+    directorModelKey?: string;
+  }): Promise<{ prompt: string; suggestedFocusPoints: string[]; model: string; usedImage: boolean }> {
+    const res = await fetch('/api/gateway/video/expand-prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error?.message || `扩写失败 (${res.status})`);
+    return data;
+  }
+
+  /**
    * Submits a video generation task with idempotency
    */
   public static async submitGeneration(

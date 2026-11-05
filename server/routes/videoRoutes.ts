@@ -6,6 +6,7 @@ import multer from 'multer';
 import { supabaseAdmin } from '../../src/lib/supabase';
 import { getAvailableVideoCapabilities, resolveVideoCapability } from '../services/video/videoCapabilityRegistry';
 import { VideoDirectorService } from '../services/video/videoDirectorService';
+import { expandVideoPrompt } from '../services/video/videoPromptExpandService';
 import { VideoJobService } from '../services/video/videoJobService';
 import { annotateCapabilityAvailability } from '../services/video/videoModelAvailability';
 import { GcsVideoStorage } from '../services/storage/gcsVideoStorage';
@@ -200,7 +201,9 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       productTitle,
       productCategory,
       productDetails,
-      targetDurationSeconds
+      targetDurationSeconds,
+      videoModelName,
+      supportsLastFrame
     } = req.body;
     if (!canvasId || !userPrompt) {
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'canvasId and userPrompt are required' } });
@@ -222,13 +225,40 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       productTitle,
       productCategory,
       productDetails,
-      targetDurationSeconds
+      targetDurationSeconds,
+      videoModelName: typeof videoModelName === 'string' ? videoModelName : undefined,
+      supportsLastFrame: typeof supportsLastFrame === 'boolean' ? supportsLastFrame : undefined
     });
 
     res.json({ plan });
   } catch (err: any) {
     console.error('[videoRoutes] director-brief error:', err);
     res.status(500).json({ error: { code: 'DIRECTOR_FAILED', message: err.message } });
+  }
+});
+
+/**
+ * POST /api/gateway/video/expand-prompt
+ * 「AI扩写融合重点」：多模态大模型看产品图，改写创意描述并推荐展示重点
+ */
+router.post('/api/gateway/video/expand-prompt', async (req: Request, res: Response) => {
+  try {
+    const { mode, userPrompt, productTitle, focusPoints, imageUrl, durationSeconds, videoModelName, supportsLastFrame, directorModelKey } = req.body || {};
+    const result = await expandVideoPrompt({
+      mode: mode === 'product_showcase' ? 'product_showcase' : 'generate_video',
+      userPrompt: typeof userPrompt === 'string' ? userPrompt.slice(0, 1000) : '',
+      productTitle: typeof productTitle === 'string' ? productTitle.slice(0, 200) : '',
+      focusPoints: Array.isArray(focusPoints) ? focusPoints.map(String).slice(0, 12) : [],
+      imageUrl: typeof imageUrl === 'string' ? imageUrl : undefined,
+      durationSeconds: Number(durationSeconds) || undefined,
+      videoModelName: typeof videoModelName === 'string' ? videoModelName : undefined,
+      supportsLastFrame: supportsLastFrame === true,
+      directorModelKey: typeof directorModelKey === 'string' ? directorModelKey : undefined
+    });
+    res.json(result);
+  } catch (err: any) {
+    console.error('[videoRoutes] expand-prompt error:', err?.message || err);
+    res.status(502).json({ error: { code: 'EXPAND_FAILED', message: err?.message || '扩写失败' } });
   }
 });
 

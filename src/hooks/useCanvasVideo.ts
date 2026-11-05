@@ -115,6 +115,8 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       productCategory?: string;
       productDetails?: string;
       targetDurationSeconds?: number;
+      videoModelName?: string;
+      supportsLastFrame?: boolean;
     }) => {
       setIsGeneratingPlan(true);
       setError(null);

@@ -198,4 +198,8 @@ export interface VideoDirectorBriefRequest {
   productDetails?: string;
   /** 面板所选的单镜头视频时长（秒），方案中每个镜头按此时长生成 */
   targetDurationSeconds?: number;
+  /** 面板所选的视频生成模型名称，供导演了解生成端 */
+  videoModelName?: string;
+  /** 所选视频模型是否支持首尾帧；为 false 时导演不安排依赖尾帧的功能镜头 */
+  supportsLastFrame?: boolean;
 }
