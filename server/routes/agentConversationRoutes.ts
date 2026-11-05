@@ -620,6 +620,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 视频模型单镜头只支持 5、6 或 10 秒：每镜时长用 5 或 10（MiniMax 可用 6），总时长按镜头数凑，不要给 3 秒、8 秒这类模型做不了的时长。
 - 视频以哪件产品为准要说清楚：用户发了产品图并要做它的视频，就按图描述产品并填 referenceImageUrl，不要套用画布上另一件产品的 DNA；没发图时才按画布产品 DNA。
 - 用户在聊视频时，plan 和 suggestions 都不要给 generate_plan（那是详情页海报企划）；下一步建议给视频相关的，如带 videoBrief 的 open_video、或用 prompt 追问时长/镜头数/风格。只有用户明确要做详情页或海报时才用 generate_plan。
+- 正文里只要出现“确认后将……”“确认后会……”，就必须在动作块里附上对应的 plan，否则用户看不到确认按钮、什么也执行不了；没有 plan 时不要写“确认后”。
+- 用户直接发来一份已写好的方案（比如粘贴了分镜清单、时长、比例），视为要求执行：不要复述，直接给出对应的 plan（视频分镜用 open_video，把清单原样填进 videoShots、比例填 videoRatio），正文一两句说明即可。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 
