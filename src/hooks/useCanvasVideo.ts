@@ -7,6 +7,7 @@ import {
   VideoPlaybackInfo,
   VideoCreationMode,
   VideoStyle,
+  VideoShotOutline,
   VideoSettings,
   ACTIVE_VIDEO_JOB_STATUSES
 } from '../types/creativeCanvasVideo';
@@ -117,6 +118,7 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       targetDurationSeconds?: number;
       videoModelName?: string;
       supportsLastFrame?: boolean;
+      shotOutline?: VideoShotOutline[];
     }) => {
       setIsGeneratingPlan(true);
       setError(null);

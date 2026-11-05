@@ -29,7 +29,9 @@ import {
   VideoDirectorPlan,
   VideoJob,
   VideoShotPlan,
-  VideoShotType
+  VideoShotType,
+  VideoShotOutline,
+  VideoCapability
 } from '../../../types/creativeCanvasVideo';
 import { useCanvasVideo } from '../../../hooks/useCanvasVideo';
 import { VideoGenerationService } from '../../../services/videoGenerationService';
@@ -53,7 +55,10 @@ interface VideoCreationPanelProps {
     videoBrief?: string;
     focusPoints?: string[];
     videoMode?: 'product_showcase' | 'generate_video';
-    videoStyle?: 'smart_mix' | 'single_take';
+    videoStyle?: 'smart_mix' | 'single_take' | 'outline';
+    videoShots?: VideoShotOutline[];
+    videoRatio?: string;
+    referenceImageUrl?: string;
     nonce: number;
   } | null;
 }
@@ -96,6 +101,49 @@ interface PersistedPanelState {
   selectedModelKey?: string;
   videoSettings?: VideoSettings;
   directorPlan?: VideoDirectorPlan | null;
+  shotOutline?: VideoShotOutline[] | null;
+}
+
+/** 模型支持的时长里离目标最近的一个（同样近取较长的，宁可慢一点也不截断动作） */
+function snapDuration(cap: VideoCapability | undefined, seconds: number): number {
+  const options = Array.from(new Set((cap?.variants || []).map(v => v.durationSeconds))).sort((a, b) => a - b);
+  if (options.length === 0) return seconds;
+  return options.reduce((best, cur) => {
+    const d = Math.abs(cur - seconds);
+    const bd = Math.abs(best - seconds);
+    return d < bd || (d === bd && cur > best) ? cur : best;
+  }, options[0]);
+}
+
+/** 镜头时长 + 分辨率 + 比例要落在模型的某个规格上 */
+function settingsForShot(cap: VideoCapability | undefined, base: VideoSettings, seconds: number): VideoSettings {
+  const durationSeconds = snapDuration(cap, seconds);
+  const variants = (cap?.variants || []).filter(v => v.durationSeconds === durationSeconds);
+  const resolution = variants.some(v => v.resolution === base.resolution) ? base.resolution : variants[0]?.resolution || base.resolution;
+  const variant = variants.find(v => v.resolution === resolution);
+  const ratio = !variant || variant.ratios.includes(base.ratio) ? base.ratio : variant.ratios[0] || base.ratio;
+  return { ...base, durationSeconds, resolution, ratio };
+}
+
+/** 按分镜大纲挑视频模型：比例必须支持，各镜头时长偏差总和最小；同分优先当前模型，其次默认模型 */
+function pickModelForOutline(
+  caps: VideoCapability[],
+  outline: VideoShotOutline[],
+  ratio: string | undefined,
+  currentKey: string,
+  defaultKey: string
+): VideoCapability | undefined {
+  const usable = caps.filter(c => c.available !== false && c.enabled !== false);
+  const pool = usable.filter(c => !ratio || c.variants.some(v => v.ratios.includes(ratio)));
+  const candidates = pool.length > 0 ? pool : usable;
+  const score = (c: VideoCapability) =>
+    outline.reduce((acc, s) => acc + Math.abs(snapDuration(c, s.durationSeconds) - s.durationSeconds), 0);
+  return [...candidates].sort((a, b) => {
+    const diff = score(a) - score(b);
+    if (diff !== 0) return diff;
+    const rank = (c: VideoCapability) => (c.key === currentKey ? 0 : c.key === defaultKey ? 1 : 2);
+    return rank(a) - rank(b);
+  })[0];
 }
 
 const panelStateKey = (canvasId: string) => `creative-canvas:video-panel:${canvasId}`;
@@ -197,6 +245,10 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const [generatingKeyframeShotId, setGeneratingKeyframeShotId] = useState<string | null>(null);
   const [uploadingEndFrameShotId, setUploadingEndFrameShotId] = useState<string | null>(null);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  // 按构思分镜：对话里定好的镜头大纲（镜头数、顺序、每镜时长）
+  const [shotOutline, setShotOutline] = useState<VideoShotOutline[] | null>(null);
+  const [outlineMatchPending, setOutlineMatchPending] = useState(false);
+  const outlineRatioRef = useRef<string | undefined>(undefined);
   const [batchSubmitError, setBatchSubmitError] = useState<string | null>(null);
   const autoFilledTitleRef = useRef<string | null>(null);
 
@@ -215,6 +267,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       if (saved.selectedDirectorModel) setSelectedDirectorModel(saved.selectedDirectorModel);
       if (saved.selectedModelKey) setSelectedModelKey(saved.selectedModelKey);
       if (saved.videoSettings) setVideoSettings(saved.videoSettings);
+      setShotOutline(Array.isArray(saved.shotOutline) ? saved.shotOutline : null);
+    } else {
+      setShotOutline(null);
     }
     // 切换到没有存档的画布时清掉上一张画布的方案
     setDirectorPlan(saved?.directorPlan || null);
@@ -234,21 +289,40 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       selectedDirectorModel,
       selectedModelKey,
       videoSettings,
-      directorPlan
+      directorPlan,
+      shotOutline
     });
-  }, [canvasId, hydratedCanvasId, activeTab, style, userPrompt, productTitle, focusPointsList, selectedFocusPoints, selectedDirectorModel, selectedModelKey, videoSettings, directorPlan]);
+  }, [canvasId, hydratedCanvasId, activeTab, style, userPrompt, productTitle, focusPointsList, selectedFocusPoints, selectedDirectorModel, selectedModelKey, videoSettings, directorPlan, shotOutline]);
 
   // 填入 Agent G 带来的视频创意：等本画布存档恢复完成后再写，避免被存档覆盖；同一 nonce 只填一次
   const appliedBriefNonceRef = useRef<number | null>(null);
   // 对话里要的是视频分镜：填入创意后自动让 AI 导演出分镜方案（等状态更新后再触发）
-  const autoStoryboardPendingRef = useRef(false);
+  // 用 state 而不是 ref：要等创意、运镜模式、分镜大纲这些状态都提交后，下一次渲染再触发，
+  // 否则触发时拿到的还是上一轮的参数（曾因此按旧的智能混剪 + 6 秒出了 5 个镜头）
+  const [autoStoryboardPending, setAutoStoryboardPending] = useState(false);
   useEffect(() => {
     if (!incomingBrief || hydratedCanvasId !== canvasId) return;
     if (appliedBriefNonceRef.current === incomingBrief.nonce) return;
     appliedBriefNonceRef.current = incomingBrief.nonce;
     setActiveTab(incomingBrief.videoMode === 'generate_video' ? 'generate_video' : 'product_showcase');
     // 对话里的创意通常按顺序描述多个卖点，默认用多镜头分镜，否则一镜到底只能表现开头和结尾
-    if (incomingBrief.videoMode !== 'generate_video') setStyle(incomingBrief.videoStyle || 'smart_mix');
+    const outline = (incomingBrief.videoShots || []).filter(s => s.title && s.content && s.durationSeconds > 0);
+    if (incomingBrief.videoMode !== 'generate_video') {
+      setStyle(
+        outline.length > 0 && incomingBrief.videoStyle !== 'single_take'
+          ? 'outline'
+          : incomingBrief.videoStyle === 'outline'
+          ? 'smart_mix'
+          : incomingBrief.videoStyle || 'smart_mix'
+      );
+    }
+    setShotOutline(outline.length > 0 ? outline : null);
+    // 模型匹配要等能力列表加载完成，见下方 effect
+    outlineRatioRef.current = incomingBrief.videoRatio;
+    setOutlineMatchPending(outline.length > 0);
+    if (incomingBrief.referenceImageUrl) {
+      setReferenceImages([{ id: `chat-ref-${incomingBrief.nonce}`, url: incomingBrief.referenceImageUrl, title: '对话里发的参考图' }]);
+    }
     if (incomingBrief.videoBrief) {
       setPromptBeforeExpand(userPrompt);
       setUserPrompt(incomingBrief.videoBrief);
@@ -260,11 +334,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       setAiFocusPoints(points);
     }
     setExpandError(null);
-    const autoStoryboard = incomingBrief.videoMode !== 'generate_video' && Boolean(incomingBrief.videoBrief);
-    autoStoryboardPendingRef.current = autoStoryboard;
+    const autoStoryboard =
+      incomingBrief.videoMode !== 'generate_video' && (Boolean(incomingBrief.videoBrief) || outline.length > 0);
+    setAutoStoryboardPending(autoStoryboard);
     setExpandNote(
       autoStoryboard
-        ? `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，AI 导演正在生成分镜方案`
+        ? `已填入 Agent G 对话中的视频创意${outline.length > 0 ? `（${outline.length} 个镜头）` : ''}${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，AI 导演正在生成分镜方案`
         : `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，可调整后${
             incomingBrief.videoMode === 'generate_video' ? '直接生成视频' : '生成分镜方案'
           }`
@@ -331,6 +406,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
   // 镜头按面板所选时长提交生成：时长（或切换模型导致的时长）变化时同步到已有分镜方案的展示
   useEffect(() => {
+    // 按构思分镜的每个镜头时长各不相同，不跟随面板时长
+    if (style === 'outline') return;
     const durationSeconds = videoSettings.durationSeconds;
     setDirectorPlan(prev => {
       if (!prev || prev.shots.every(shot => shot.durationSeconds === durationSeconds)) return prev;
@@ -340,7 +417,43 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         estimatedDurationSeconds: durationSeconds * prev.shots.length
       };
     });
-  }, [videoSettings.durationSeconds, setDirectorPlan]);
+  }, [videoSettings.durationSeconds, style, setDirectorPlan]);
+
+  // 按大纲匹配视频模型与参数：比例、各镜头时长都要落在模型支持的规格上；有调整就如实写在提示里
+  useEffect(() => {
+    if (!outlineMatchPending || !shotOutline || capabilities.length === 0) return;
+    const ratio = outlineRatioRef.current;
+    const cap = pickModelForOutline(capabilities, shotOutline, ratio, selectedModelKey, defaultModelKey);
+    setOutlineMatchPending(false);
+    if (!cap) return;
+    const snapped = shotOutline.map(s => ({ ...s, durationSeconds: snapDuration(cap, s.durationSeconds) }));
+    const changes = shotOutline
+      .map((s, i) =>
+        snapped[i].durationSeconds !== s.durationSeconds ? `镜头${i + 1} ${s.durationSeconds}s→${snapped[i].durationSeconds}s` : ''
+      )
+      .filter(Boolean);
+    setShotOutline(snapped);
+    setSelectedModelKey(cap.key);
+    const ratioOk = Boolean(ratio) && cap.variants.some(v => v.ratios.includes(ratio!));
+    setVideoSettings(prev => settingsForShot(cap, { ...prev, ratio: ratioOk ? ratio! : prev.ratio }, snapped[0].durationSeconds));
+    const total = snapped.reduce((acc, s) => acc + s.durationSeconds, 0);
+    setExpandNote(
+      `按对话分镜：${snapped.length} 个镜头共 ${total} 秒，视频模型匹配为 ${cap.displayName}` +
+        (ratio ? (ratioOk ? `，比例 ${ratio}` : `，该模型不支持 ${ratio}，沿用当前比例`) : '') +
+        (changes.length > 0 ? `；模型不支持的时长已就近调整（${changes.join('、')}）` : '') +
+        '。AI 导演正在补全每个镜头的提示词'
+    );
+  }, [outlineMatchPending, shotOutline, capabilities, selectedModelKey, defaultModelKey]);
+
+  // 没选参考图也没选中节点时，默认用画布上的产品主图
+  const fallbackProductImage = (() => {
+    const node = (allNodes || []).find(
+      n => n?.type === 'productImageNode' && typeof n?.data?.imageUrl === 'string' && n.data.imageUrl
+    );
+    return node
+      ? { id: `node-${node.id}`, url: String(node.data.imageUrl), title: '产品主图', assetVersionId: node.data.assetVersionId || undefined }
+      : null;
+  })();
 
   // Sync video model
   useEffect(() => {
@@ -358,15 +471,15 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   // 自动出分镜要在 isOpen 提前返回之前注册，保证每次渲染的 hook 数量一致
   const handleGeneratePlanRef = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (!isOpen || !autoStoryboardPendingRef.current || isGeneratingPlan || activeTab !== 'product_showcase') return;
-    if (!selectedNode && referenceImages.length === 0) {
-      autoStoryboardPendingRef.current = false;
+    if (!isOpen || !autoStoryboardPending || isGeneratingPlan || activeTab !== 'product_showcase' || outlineMatchPending) return;
+    if (!selectedNode && referenceImages.length === 0 && !fallbackProductImage) {
+      setAutoStoryboardPending(false);
       setExpandNote('已填入 Agent G 对话中的视频创意。请先选择一张产品参考图，再点击生成分镜方案');
       return;
     }
-    autoStoryboardPendingRef.current = false;
+    setAutoStoryboardPending(false);
     handleGeneratePlanRef.current?.();
-  }, [isOpen, userPrompt, selectedFocusPoints, activeTab, style, isGeneratingPlan, selectedNode, referenceImages.length]);
+  }, [isOpen, autoStoryboardPending, userPrompt, selectedFocusPoints, activeTab, style, isGeneratingPlan, selectedNode, referenceImages.length, outlineMatchPending, fallbackProductImage?.url]);
 
   if (!isOpen) return null;
 
@@ -466,8 +579,15 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
   // Generate Director Brief
   const handleGeneratePlan = async () => {
-    if (!selectedNode && referenceImages.length === 0) return;
-    const primaryImg = referenceImages[0] || (selectedNode?.imageUrl ? { id: `node-${selectedNode.id}`, url: selectedNode.imageUrl, title: selectedNode.title, assetVersionId: selectedNode.assetVersionId || undefined } : undefined);
+    if (!selectedNode && referenceImages.length === 0 && !fallbackProductImage) return;
+    const primaryImg =
+      referenceImages[0] ||
+      (selectedNode?.imageUrl
+        ? { id: `node-${selectedNode.id}`, url: selectedNode.imageUrl, title: selectedNode.title, assetVersionId: selectedNode.assetVersionId || undefined }
+        : undefined) ||
+      fallbackProductImage ||
+      undefined;
+    const effectiveRefs = referenceImages.length > 0 ? referenceImages : fallbackProductImage ? [fallbackProductImage] : [];
 
     const plan = await generatePlan({
       mode: activeTab,
@@ -478,13 +598,14 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       sourceAssetVersionId: primaryImg?.assetVersionId || selectedNode?.assetVersionId,
       sourceImageUrl: primaryImg?.url,
       directorModelKey: selectedDirectorModel,
-      referenceImages: referenceImages.map(img => ({ url: img.url, title: img.title })),
+      referenceImages: effectiveRefs.map(img => ({ url: img.url, title: img.title })),
       productTitle: productTitle || selectedNode?.title,
       productCategory: '家具',
       targetDurationSeconds: videoSettings.durationSeconds,
       // 让导演知道生成端：模型能力决定是否安排依赖尾帧的功能镜头
       videoModelName: currentCapability?.displayName,
-      supportsLastFrame: Boolean(currentCapability?.modes.includes('first_last_frame'))
+      supportsLastFrame: Boolean(currentCapability?.modes.includes('first_last_frame')),
+      ...(style === 'outline' && shotOutline?.length ? { shotOutline } : {})
     });
 
     if (onPlanCreated && selectedNode) {
@@ -545,10 +666,19 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     });
   };
 
-  const handleSubmitDirectVideo = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string) => {
-    if (!selectedNode && referenceImages.length === 0) return;
+  const handleSubmitDirectVideo = async (
+    shotPrompt?: string,
+    shotId?: string,
+    keyframeUrl?: string,
+    endFrameUrl?: string,
+    shotDurationSeconds?: number
+  ) => {
+    if (!selectedNode && referenceImages.length === 0 && !fallbackProductImage) return;
     const finalPrompt = shotPrompt || userPrompt || '产品静止，镜头缓慢平移，光影自然流动';
-    const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl;
+    const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl || fallbackProductImage?.url;
+    // 按构思分镜时每个镜头按自己的时长生成（就近落到模型支持的规格）
+    const settings =
+      style === 'outline' && shotDurationSeconds ? settingsForShot(currentCapability, videoSettings, shotDurationSeconds) : videoSettings;
 
     const job = await submitVideo({
       sourceNodeId: selectedNode?.id || 'ref-upload',
@@ -559,7 +689,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       mode: activeTab,
       style,
       modelKey: selectedModelKey,
-      settings: videoSettings,
+      settings,
       prompt: finalPrompt,
       shotId
     });
@@ -569,9 +699,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     return job;
   };
 
-  const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string) => {
+  const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string, shotDurationSeconds?: number) => {
     try {
-      await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl, endFrameUrl);
+      await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl, endFrameUrl, shotDurationSeconds);
     } catch {
       // 错误已由 useCanvasVideo 写入 error 状态并在面板展示
     }
@@ -587,7 +717,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       // 单个镜头失败不影响后续镜头提交
       for (const shot of directorPlan.shots) {
         try {
-          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl);
+          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl, shot.durationSeconds);
         } catch (err: any) {
           console.warn(`Batch submit failed for shot ${shot.shotId}:`, err);
           failedShots.push(shot.title || shot.shotId);
@@ -665,7 +795,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         {activeTab === 'product_showcase' && (
           <div>
             <label className="block text-xs font-medium text-neutral-700 mb-1.5">运镜模式</label>
-            <div className="grid grid-cols-2 gap-2 bg-neutral-100 p-1 rounded-lg">
+            <div className={`grid ${shotOutline?.length ? 'grid-cols-3' : 'grid-cols-2'} gap-2 bg-neutral-100 p-1 rounded-lg`}>
               <button
                 type="button"
                 onClick={() => setStyle('single_take')}
@@ -688,6 +818,20 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
               >
                 智能混剪 (3分镜细节特写)
               </button>
+              {shotOutline?.length ? (
+                <button
+                  type="button"
+                  onClick={() => setStyle('outline')}
+                  className={`py-1.5 px-3 rounded text-xs font-medium transition ${
+                    style === 'outline'
+                      ? 'bg-white text-purple-900 shadow-sm font-semibold'
+                      : 'text-neutral-600 hover:text-neutral-900'
+                  }`}
+                  title="镜头数、顺序和每个镜头的时长按对话里定的分镜执行"
+                >
+                  按构思分镜 ({shotOutline.length}镜 · {shotOutline.reduce((acc, s) => acc + s.durationSeconds, 0)}s)
+                </button>
+              ) : null}
             </div>
           </div>
         )}
@@ -698,7 +842,11 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
             <label className="text-xs font-medium text-neutral-700 flex items-center gap-1">
               <span>参考商品图片</span>
               <span className="text-[11px] text-neutral-400 font-normal">
-                ({referenceImages.length} 张已选)
+                {referenceImages.length > 0
+                  ? `(${referenceImages.length} 张已选)`
+                  : fallbackProductImage && !selectedNode
+                  ? '(未选择，默认用画布产品主图)'
+                  : '(0 张已选)'}
               </span>
             </label>
             <button
@@ -1151,7 +1299,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleSubmitDirectVideoClick(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl)}
+                        onClick={() => handleSubmitDirectVideoClick(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl, shot.durationSeconds)}
                         disabled={isSubmittingJob}
                         className="py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-[11px] font-medium transition flex items-center justify-center gap-1 shadow-2xs disabled:opacity-50"
                       >

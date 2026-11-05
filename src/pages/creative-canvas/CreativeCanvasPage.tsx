@@ -291,7 +291,10 @@ export default function CreativeCanvasPage() {
     videoBrief?: string;
     focusPoints?: string[];
     videoMode?: 'product_showcase' | 'generate_video';
-    videoStyle?: 'smart_mix' | 'single_take';
+    videoStyle?: 'smart_mix' | 'single_take' | 'outline';
+    videoShots?: { title: string; durationSeconds: number; camera?: string; content: string }[];
+    videoRatio?: string;
+    referenceImageUrl?: string;
     nonce: number;
   } | null>(null);
 

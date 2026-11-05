@@ -97,6 +97,22 @@ function toShotPlan(draft: ShotDraft, idx: number, durationSeconds: number, sour
   };
 }
 
+/** 直接由一条分镜大纲生成镜头（导演漏镜头或不可用时兜底），不写材质颜色断言，保真靠首帧 */
+function outlineDraft(s: { title: string; content: string; camera?: string }, anchor: string): ShotDraft {
+  const camera = s.camera || '极慢运镜';
+  const locked = /锁定|固定|静止机位/.test(camera);
+  return {
+    shotType: /细节|纹理|特写|材质|缝线/.test(s.title + s.content) ? 'detail' : /收尾|结尾|拉远/.test(s.title + camera) ? 'closing' : 'hero',
+    title: s.title,
+    composition: s.content,
+    cameraMotion: camera,
+    subjectMotion: locked ? '产品按画面描述动作' : '产品静止',
+    cameraLocked: locked,
+    needsEndFrame: false,
+    prompt: `${anchor ? `The ${anchor}` : 'The product shown in the first frame'}. ${s.content}. Camera: ${camera}, slow and steady; the product keeps its shape, color and material.`
+  };
+}
+
 function normalizeDraft(raw: any, allowEndFrame: boolean): ShotDraft | null {
   if (!raw || typeof raw.prompt !== 'string' || !raw.prompt.trim()) return null;
   const shotType: VideoShotType = SHOT_TYPES.includes(raw.shotType) ? raw.shotType : 'hero';
@@ -140,13 +156,25 @@ export class VideoDirectorService {
       productDetails,
       targetDurationSeconds,
       videoModelName,
-      supportsLastFrame
+      supportsLastFrame,
+      shotOutline
     } = request;
+    // 按构思分镜：对话里定好的镜头大纲，镜头数、顺序、每镜时长都以它为准
+    const outline = (Array.isArray(shotOutline) ? shotOutline : [])
+      .filter(s => s && typeof s.title === 'string' && typeof s.content === 'string' && Number(s.durationSeconds) > 0)
+      .slice(0, 8)
+      .map(s => ({
+        title: s.title.trim().slice(0, 30),
+        content: s.content.trim().slice(0, 200),
+        camera: typeof s.camera === 'string' ? s.camera.trim().slice(0, 60) : '',
+        durationSeconds: Math.round(Number(s.durationSeconds))
+      }));
+    const isOutline = style === 'outline' && outline.length > 0;
     // 未告知时按支持处理（与旧行为一致）
     const allowEndFrame = supportsLastFrame !== false;
 
     const planVersionId = `plan-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    const isSingleTake = style === 'single_take';
+    const isSingleTake = style === 'single_take' && !isOutline;
     // 面板所选时长是唯一真值：每个镜头都按该时长提交生成，方案中的镜头时长与之保持一致
     const shotDurationSeconds = Number(targetDurationSeconds) > 0 ? Math.round(Number(targetDurationSeconds)) : 5;
 
@@ -216,10 +244,16 @@ ${visionImages.length > 0 ? '- 附带的图片是产品实拍图，是材质、�
 - 用户创意要求: ${userPrompt || '未提供'}
 - 创作模式: ${mode === 'product_showcase' ? '产品展示' : '自由生成'}
 - 视频生成模型: ${videoModelName || '未指定'}（${allowEndFrame ? '支持首尾帧' : '不支持尾帧，只能以首帧图生视频'}）
-- 每个镜头时长: ${shotDurationSeconds} 秒（每个镜头都按这个时长生成；运镜速度据此放慢，${shotDurationSeconds >= 10 ? '时长较长，宁可更慢也不要在一个镜头里叠加第二个动作' : '动作要在时长内自然完成'}）
+${isOutline
+  ? '- 每个镜头时长: 见下方分镜大纲（各镜头不同；运镜速度按各自时长放慢，10 秒以上的镜头宁可更慢也不要叠加第二个动作）'
+  : `- 每个镜头时长: ${shotDurationSeconds} 秒（每个镜头都按这个时长生成；运镜速度据此放慢，${shotDurationSeconds >= 10 ? '时长较长，宁可更慢也不要在一个镜头里叠加第二个动作' : '动作要在时长内自然完成'}）`}
 
 【分镜结构】
-${isSingleTake
+${isOutline
+  ? `- 按构思分镜：用户已在对话里定好分镜大纲，必须严格输出 ${outline.length} 个镜头，顺序、镜头标题与大纲一一对应，不得增删或合并镜头。你的工作是把每条大纲落成可执行的构图、运镜与英文提示词，shotType 按镜头内容判断。
+- 大纲若与下方硬性规则冲突（如 360° 环绕、从全景推到微距、镜头内换场景），保留该镜头的意图但改成符合规则的做法（如改为小幅弧线、改用原图局部作为首帧），并在 summary 里说明改了哪些镜头、为什么。
+${outline.map((s, i) => `  ${i + 1}. ${s.title}（${s.durationSeconds} 秒）${s.camera ? `｜运镜：${s.camera}` : ''}｜画面：${s.content}`).join('\n')}`
+  : isSingleTake
   ? '- 一镜到底：只输出 1 个镜头。默认 shotType=hero；仅当用户创意要求明确要演示某个功能时才用 function。'
   : '- 多镜头：输出 3~5 个镜头，顺序为 hero（全景亮相）→ function（每个确实存在的功能一个镜头，可没有）→ detail（材质/工艺细节）→ closing（可选收尾）。'}
 
@@ -319,15 +353,24 @@ ${allowEndFrame
             const drafts = (Array.isArray(parsed.shots) ? parsed.shots : [])
               .map((raw: any) => normalizeDraft(raw, allowEndFrame))
               .filter((d: ShotDraft | null): d is ShotDraft => d !== null)
-              .slice(0, isSingleTake ? 1 : 5)
+              .slice(0, isOutline ? outline.length : isSingleTake ? 1 : 5)
               // 导演偶尔漏写锚定短语，补在开头，保证每条提示词都钉住颜色与材质
               .map((d: ShotDraft) =>
                 anchor && !d.prompt.toLowerCase().includes(anchor.toLowerCase()) ? { ...d, prompt: `${anchor}, ${d.prompt}` } : d
               );
 
+            if (isOutline && drafts.length < outline.length) {
+              // 导演漏了镜头：缺的按大纲直接补，保证镜头数与大纲一致
+              for (let i = drafts.length; i < outline.length; i++) drafts.push(outlineDraft(outline[i], anchor));
+            }
             if (drafts.length > 0) {
               const shots = drafts.map((draft: ShotDraft, idx: number) =>
-                toShotPlan(draft, idx, shotDurationSeconds, sourceAssetVersionId)
+                toShotPlan(
+                  isOutline ? { ...draft, title: outline[idx].title } : draft,
+                  idx,
+                  isOutline ? outline[idx].durationSeconds : shotDurationSeconds,
+                  sourceAssetVersionId
+                )
               );
               return {
                 planVersionId,
@@ -365,6 +408,19 @@ ${allowEndFrame
         ? `The ${anchor}, full product in frame. ${userPrompt}`
         : `The ${anchor}, full product centered in frame, three-quarter front view. Very slow, gentle lateral camera slide of less than 10 degrees; the product stays completely still.`
     };
+    if (isOutline) {
+      // 导演不可用时直接按大纲出镜头，保证镜头数、顺序、时长与对话一致
+      const outlineShots = outline.map((s, idx) => toShotPlan(outlineDraft(s, anchor), idx, s.durationSeconds, sourceAssetVersionId));
+      return {
+        planVersionId,
+        summary: `按对话分镜：${outline.length} 个镜头，共 ${outlineShots.reduce((acc, cur) => acc + cur.durationSeconds, 0)} 秒。导演模型暂不可用，提示词按大纲直接生成，可逐镜微调。`,
+        lockedRules: LOCKED_RULES,
+        shots: outlineShots,
+        estimatedDurationSeconds: outlineShots.reduce((acc, cur) => acc + cur.durationSeconds, 0),
+        directorModel: `${targetModel} 不可用 · 按大纲生成`,
+        createdAt: new Date().toISOString()
+      };
+    }
     const drafts: ShotDraft[] = [heroDraft];
     if (!isSingleTake) {
       // 不支持尾帧的模型不做功能演示镜头（没有尾帧约束极易变形）

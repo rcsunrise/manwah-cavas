@@ -69,7 +69,7 @@ interface AgentPanelProps {
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
-  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle'>) => void;
+  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'>) => void;
   /** 修改画布图片中的文字（局部重绘） */
   onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
 
@@ -811,8 +811,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'open_video':
         onOpenVideoPanel?.(
-          params?.videoBrief || params?.focusPoints?.length
-            ? { videoBrief: params.videoBrief, focusPoints: params.focusPoints, videoMode: params.videoMode, videoStyle: params.videoStyle }
+          params?.videoBrief || params?.focusPoints?.length || params?.videoShots?.length
+            ? {
+                videoBrief: params.videoBrief,
+                focusPoints: params.focusPoints,
+                videoMode: params.videoMode,
+                videoStyle: params.videoStyle,
+                videoShots: params.videoShots,
+                videoRatio: params.videoRatio,
+                referenceImageUrl: params.referenceImageUrl
+              }
             : undefined
         );
         return;

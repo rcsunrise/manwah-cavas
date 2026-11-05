@@ -203,7 +203,8 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       productDetails,
       targetDurationSeconds,
       videoModelName,
-      supportsLastFrame
+      supportsLastFrame,
+      shotOutline
     } = req.body;
     if (!canvasId || !userPrompt) {
       res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'canvasId and userPrompt are required' } });
@@ -227,7 +228,8 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
       productDetails,
       targetDurationSeconds,
       videoModelName: typeof videoModelName === 'string' ? videoModelName : undefined,
-      supportsLastFrame: typeof supportsLastFrame === 'boolean' ? supportsLastFrame : undefined
+      supportsLastFrame: typeof supportsLastFrame === 'boolean' ? supportsLastFrame : undefined,
+      shotOutline: Array.isArray(shotOutline) ? shotOutline.slice(0, 8) : undefined
     });
 
     res.json({ plan });

@@ -119,7 +119,13 @@ export interface AgentActionParams {
   /** 打开视频创作：AI 导演分镜（默认）或直接生成单条视频 */
   videoMode?: 'product_showcase' | 'generate_video';
   /** AI 导演运镜：smart_mix=多镜头混剪（按创意分段），single_take=一镜到底 */
-  videoStyle?: 'smart_mix' | 'single_take';
+  videoStyle?: 'smart_mix' | 'single_take' | 'outline';
+  /** 视频分镜大纲：每个镜头的标题、时长、运镜与画面内容 */
+  videoShots?: { title: string; durationSeconds: number; camera?: string; content: string }[];
+  /** 视频画面比例，如 16:9 / 9:16 / 1:1 / 4:3 / 3:4 */
+  videoRatio?: string;
+  /** 视频参考图（对话里用户发的图片地址）；不填时用画布产品主图 */
+  referenceImageUrl?: string;
 }
 
 export interface AgentActionOption {

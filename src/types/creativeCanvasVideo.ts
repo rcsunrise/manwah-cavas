@@ -9,7 +9,15 @@ export type VideoCreationMode =
   | 'commerce_video'   // 带货视频 (策划剧情、口播与投放内容)
   | 'viral_replicate'; // 爆款复刻 (参考爆款结构并替换为商品)
 
-export type VideoStyle = 'smart_mix' | 'single_take'; // 智能混剪 | 一镜到底
+export type VideoStyle = 'smart_mix' | 'single_take' | 'outline'; // 智能混剪 | 一镜到底 | 按构思分镜（镜头数、顺序、时长按对话里定的大纲）
+
+/** 对话里定好的分镜大纲：一个镜头一条 */
+export interface VideoShotOutline {
+  title: string;
+  durationSeconds: number;
+  camera?: string;
+  content: string;
+}
 
 export type VideoAudioMode = 'none' | 'native';
 
@@ -202,4 +210,6 @@ export interface VideoDirectorBriefRequest {
   videoModelName?: string;
   /** 所选视频模型是否支持首尾帧；为 false 时导演不安排依赖尾帧的功能镜头 */
   supportsLastFrame?: boolean;
+  /** 按构思分镜：严格按此大纲出镜头（数量、顺序、每镜时长） */
+  shotOutline?: VideoShotOutline[];
 }

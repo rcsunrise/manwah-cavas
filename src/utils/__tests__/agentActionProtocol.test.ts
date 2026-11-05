@@ -63,6 +63,18 @@ describe('agentActionProtocol', () => {
     expect(bad.planCard).toBeUndefined();
   });
 
+  it('carries a shot list and switches open_video to outline mode', () => {
+    const r = extractAgentActions(
+      '拆成3个镜头<agent_actions>{"plan": {"actionId": "open_video", "params": {"videoBrief": "客厅日光下展示黑色科技沙发", "videoShots": [{"title": "整体亮相", "durationSeconds": 5, "camera": "缓慢推近", "content": "客厅全景中沙发完整入画"}, {"title": "灯带细节", "durationSeconds": 10, "content": "扶手青蓝灯带近景"}, {"title": "坏镜头", "durationSeconds": 99, "content": "x"}], "videoRatio": "9:16"}}}</agent_actions>'
+    );
+    expect(r.planCard?.params?.videoStyle).toBe('outline');
+    expect(r.planCard?.params?.videoShots).toHaveLength(2);
+    expect(r.planCard?.params?.videoRatio).toBe('9:16');
+    const labels = r.planCard?.items.map(i => i.label) || [];
+    expect(labels).toContain('镜头1 · 5s');
+    expect(labels).toContain('镜头2 · 10s');
+  });
+
   it('hides partially streamed tags', () => {
     expect(stripAgentActions('正文<agent_ac')).toBe('正文');
     expect(stripAgentActions('正文<agent_actions>{"pla')).toBe('正文');

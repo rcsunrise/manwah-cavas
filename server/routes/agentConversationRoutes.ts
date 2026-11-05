@@ -596,7 +596,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - render_screen：渲染某一屏分镜图。params: screenIndex(必填)
 - render_all：批量渲染全部未渲染分镜
 - search_market：联网检索竞品与爆款参考。params: keywords
-- open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用)
+- open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用), videoShots(分镜清单，用户要分镜/拆成视频任务时必填：[{title(4~12字), durationSeconds(每镜秒数), camera(运镜，如"缓慢推近""小幅横移""机位锁定"), content(这个镜头画面里要表现什么，20~80字)}]，2~8 个镜头，给了就严格按它出镜头), videoRatio(画面比例 "16:9"/"9:16"/"1:1"/"4:3"/"3:4"，按投放场景选：详情页/官网 16:9，短视频信息流 9:16), referenceImageUrl(视频以哪张图为准：用户在对话里发了产品图并要用它做视频时，填【附：用户随消息上传的图片】里的地址；不填则用画布产品主图)
 - open_poster：打开全案海报工作台。params: screenIndex
 - upload_product：上传产品主图（打开文件选择）
 - set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
@@ -616,6 +616,9 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - screenIndex 必须是画布状态里存在的屏号；nodeId 必须是画布状态里列出的图片节点 id。
 - 用户要求改图中文字（“标题改成…”“把××改成××”）时用 edit_image_text 的 plan，不要用 render_screen 重新渲染整张图。
 - 讨论视频创意、运镜、视频分镜时，给出构思后用 open_video 的 plan，并把完整构思写进 videoBrief（不要只写一句“打开面板”），否则构思不会进入视频生成。
+- 用户要“构思分镜”“拆成视频任务”时，正文列出分镜，同时在 open_video 的 videoShots 里给出同样的镜头清单（镜头数、顺序、时长与正文一致），每个镜头就是一个视频生成任务。
+- 视频模型单镜头只支持 5、6 或 10 秒：每镜时长用 5 或 10（MiniMax 可用 6），总时长按镜头数凑，不要给 3 秒、8 秒这类模型做不了的时长。
+- 视频以哪件产品为准要说清楚：用户发了产品图并要做它的视频，就按图描述产品并填 referenceImageUrl，不要套用画布上另一件产品的 DNA；没发图时才按画布产品 DNA。
 - 用户在聊视频时，plan 和 suggestions 都不要给 generate_plan（那是详情页海报企划）；下一步建议给视频相关的，如带 videoBrief 的 open_video、或用 prompt 追问时长/镜头数/风格。只有用户明确要做详情页或海报时才用 generate_plan。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;

@@ -118,7 +118,29 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
     if (points.length > 0) params.focusPoints = points;
   }
   if (raw.videoMode === 'product_showcase' || raw.videoMode === 'generate_video') params.videoMode = raw.videoMode;
-  if (raw.videoStyle === 'smart_mix' || raw.videoStyle === 'single_take') params.videoStyle = raw.videoStyle;
+  if (raw.videoStyle === 'smart_mix' || raw.videoStyle === 'single_take' || raw.videoStyle === 'outline') params.videoStyle = raw.videoStyle;
+  if (Array.isArray(raw.videoShots)) {
+    const shots = raw.videoShots
+      .map((s: any) => {
+        const title = String(s?.title || '').trim().slice(0, 30);
+        const content = String(s?.content || '').trim().slice(0, 200);
+        const duration = Math.round(Number(s?.durationSeconds));
+        const camera = String(s?.camera || '').trim().slice(0, 60);
+        if (!title || !content || !Number.isFinite(duration) || duration < 2 || duration > 15) return null;
+        return { title, content, durationSeconds: duration, ...(camera ? { camera } : {}) };
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+    if (shots.length > 0) {
+      params.videoShots = shots;
+      // 给了镜头清单就是按构思分镜
+      if (params.videoStyle !== 'single_take') params.videoStyle = 'outline';
+    }
+  }
+  if (typeof raw.videoRatio === 'string' && /^(16:9|9:16|1:1|4:3|3:4)$/.test(raw.videoRatio.trim())) params.videoRatio = raw.videoRatio.trim();
+  if (typeof raw.referenceImageUrl === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(raw.referenceImageUrl.trim())) {
+    params.referenceImageUrl = raw.referenceImageUrl.trim().slice(0, 2000);
+  }
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -149,15 +171,35 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.hint) items.push({ label: '要求', value: params.hint });
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
+  if (params?.videoShots?.length) {
+    const total = params.videoShots.reduce((acc, s) => acc + s.durationSeconds, 0);
+    items.push({ label: '分镜', value: `${params.videoShots.length} 个镜头，共约 ${total} 秒` });
+    params.videoShots.forEach((s, i) => {
+      items.push({ label: `镜头${i + 1} · ${s.durationSeconds}s`, value: `${s.title}：${s.camera ? `${s.camera}，` : ''}${s.content}` });
+    });
+  }
+  if (params?.videoRatio) items.push({ label: '画面比例', value: params.videoRatio });
+  if (params?.referenceImageUrl) items.push({ label: '参考图', value: '使用对话里发的图片' });
   if (actionId === 'set_product_image') items.push({ label: '执行后', value: '替换画布上的产品主图，并重新提取造型、材质与色彩 DNA' });
   if (actionId === 'open_video') {
     items.push({
       label: '方式',
       value: params?.videoMode === 'generate_video'
         ? '直接生成单条视频'
-        : params?.videoStyle === 'single_take' ? 'AI 导演规划 · 一镜到底' : 'AI 导演规划 · 多镜头分镜'
+        : params?.videoStyle === 'single_take'
+        ? 'AI 导演规划 · 一镜到底'
+        : params?.videoStyle === 'outline'
+        ? '按构思分镜 · 镜头数与时长照上面执行，自动匹配视频模型'
+        : 'AI 导演规划 · 多镜头分镜'
     });
-    if (params?.videoBrief) items.push({ label: '执行后', value: params.videoMode === 'generate_video' ? '创意填入视频面板，可再调整后生成视频' : '创意填入视频面板，AI 导演自动生成分镜方案' });
+    if (params?.videoBrief || params?.videoShots?.length) {
+      items.push({
+        label: '执行后',
+        value: params.videoMode === 'generate_video'
+          ? '创意填入视频面板，可再调整后生成视频'
+          : '创意填入视频面板，AI 导演按分镜补全提示词，可一键生成全部镜头'
+      });
+    }
   }
   if (items.length === 0 && actionId === 'render_all') items.push({ label: '范围', value: '全部未渲染的分镜' });
   if (actionId === 'generate_plan') items.push({ label: '其他', value: '未提及的参数沿用企划配置' });
