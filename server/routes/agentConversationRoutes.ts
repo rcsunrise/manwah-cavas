@@ -27,6 +27,9 @@ import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
 import { bridgeRelayHub } from '../services/bridgeRelayHub';
 import { getTokenModelIds } from '../services/video/videoModelAvailability';
 
+/** Agent G 对话的默认模型（新建会话、未指定模型时使用） */
+const DEFAULT_AGENT_MODEL = 'gpt-6';
+
 const router = Router();
 
 // The JSON store is an explicit test adapter. Production conversation facts
@@ -325,7 +328,7 @@ router.post('/conversations', async (req: AuthenticatedRequest, res: Response) =
     const userId = req.user!.id;
     const { projectId, canvasId, title } = req.body;
     const provider = process.env.AGENT_TEXT_PROVIDER || 'gemini';
-    const model = process.env.AGENT_TEXT_MODEL || 'gemini-2.5-flash';
+    const model = process.env.AGENT_TEXT_MODEL || DEFAULT_AGENT_MODEL;
 
     if (!projectId || !canvasId) {
       return res.status(400).json({
@@ -733,7 +736,7 @@ async function invokeAgentModelStream(params: {
   let errorCode: AgentErrorCode = 'UNKNOWN_AGENT_ERROR';
   let usedModel: string | null = null;
 
-  const requestedModel = rawModel || 'gemini-2.5-flash';
+  const requestedModel = rawModel || DEFAULT_AGENT_MODEL;
   const isGptModel = /^(gpt-|openai\/|chatgpt)/i.test(requestedModel);
 
   // 1. Resolve configured API provider
@@ -929,7 +932,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
       title: `视觉企划对话 - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       status: 'active',
       provider: String(process.env.AGENT_TEXT_PROVIDER || 'gemini'),
-      model: String(requestModel || process.env.AGENT_TEXT_MODEL || 'gemini-2.5-flash'),
+      model: String(requestModel || process.env.AGENT_TEXT_MODEL || DEFAULT_AGENT_MODEL),
       created_at: now,
       updated_at: now
     };

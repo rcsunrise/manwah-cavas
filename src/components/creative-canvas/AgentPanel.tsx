@@ -997,14 +997,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         <div className="flex items-center gap-2">
           {/* Agent G Model Selector */}
           <select
-            value={currentConversation?.model || 'gemini-2.5-flash'}
+            value={currentConversation?.model || 'gpt-6'}
             onChange={(e) => onChangeConversationModel?.(e.target.value)}
             className="text-[10px] font-bold bg-[#FAF8F5] text-[#8C6F43] hover:text-[#B28C5A] px-2 py-1 rounded-lg border border-[#B28C5A]/40 outline-none max-w-[150px] truncate cursor-pointer transition-colors"
             title="选择 Agent G 思考与推理模型"
           >
-            <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
-            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash</option>
             <option value="gpt-6">👑 GPT-6 Astra</option>
+            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash</option>
+            <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
             <option value="gpt-5.5">💎 GPT-5.5</option>
           </select>
 

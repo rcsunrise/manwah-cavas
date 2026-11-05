@@ -530,8 +530,8 @@ export function useCreativeCanvasWorkspace(
             canvas_id: canvId,
             title: '全新企划对话',
             status: 'active',
-            provider: 'google',
-            model: 'gemini-2.5-flash',
+            provider: 'openai',
+            model: 'gpt-6',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           };
