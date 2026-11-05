@@ -93,6 +93,12 @@ export interface AgentActionParams {
   newText?: string;
   oldText?: string;
   nodeId?: string;
+  /** 打开视频创作：对话中商定的视频创意要求（填入面板的创意描述，交给 AI 导演） */
+  videoBrief?: string;
+  /** 打开视频创作：要展示的重点 */
+  focusPoints?: string[];
+  /** 打开视频创作：AI 导演分镜（默认）或直接生成单条视频 */
+  videoMode?: 'product_showcase' | 'generate_video';
 }
 
 export interface AgentActionOption {
@@ -576,6 +582,19 @@ export interface AgentContextSnapshot {
   typographySpecId?: string | null;
   /** 画布状态摘要（DNA、企划分镜、引用素材等），供智能体判断能做什么 */
   canvasSummary?: string;
+  /** 画布上已生成的视频（最新在前），用户问视频效果时服务端据此抽帧给模型看 */
+  videoNodes?: AgentVideoNodeRef[];
+}
+
+export interface AgentVideoNodeRef {
+  nodeId: string;
+  title?: string;
+  videoUrl?: string;
+  assetVersionId?: string;
+  prompt?: string;
+  modelKey?: string;
+  durationSeconds?: number;
+  resolution?: string;
 }
 
 export interface AgentConversationRecord {

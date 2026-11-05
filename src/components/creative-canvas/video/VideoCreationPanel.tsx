@@ -48,6 +48,13 @@ interface VideoCreationPanelProps {
   allNodes?: any[];
   onPlanCreated?: (plan: VideoDirectorPlan, sourceNodeId: string) => void;
   onJobSubmitted?: (job: VideoJob, sourceNodeId: string) => void;
+  /** Agent G 对话中商定的视频创意；nonce 变化时填入创意描述与展示重点 */
+  incomingBrief?: {
+    videoBrief?: string;
+    focusPoints?: string[];
+    videoMode?: 'product_showcase' | 'generate_video';
+    nonce: number;
+  } | null;
 }
 
 const PRESET_FOCUS_POINTS = [
@@ -128,7 +135,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   selectedNode,
   allNodes,
   onPlanCreated,
-  onJobSubmitted
+  onJobSubmitted,
+  incomingBrief
 }) => {
   const {
     capabilities,
@@ -228,6 +236,33 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       directorPlan
     });
   }, [canvasId, hydratedCanvasId, activeTab, style, userPrompt, productTitle, focusPointsList, selectedFocusPoints, selectedDirectorModel, selectedModelKey, videoSettings, directorPlan]);
+
+  // 填入 Agent G 带来的视频创意：等本画布存档恢复完成后再写，避免被存档覆盖；同一 nonce 只填一次
+  const appliedBriefNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!incomingBrief || hydratedCanvasId !== canvasId) return;
+    if (appliedBriefNonceRef.current === incomingBrief.nonce) return;
+    appliedBriefNonceRef.current = incomingBrief.nonce;
+    setActiveTab(incomingBrief.videoMode === 'generate_video' ? 'generate_video' : 'product_showcase');
+    if (incomingBrief.videoBrief) {
+      setPromptBeforeExpand(userPrompt);
+      setUserPrompt(incomingBrief.videoBrief);
+    }
+    const points = incomingBrief.focusPoints || [];
+    if (points.length > 0) {
+      setFocusPointsList(prev => [...points.filter(p => !prev.includes(p)), ...prev]);
+      setSelectedFocusPoints(points);
+      setAiFocusPoints(points);
+    }
+    setExpandError(null);
+    setExpandNote(
+      `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，可调整后${
+        incomingBrief.videoMode === 'generate_video' ? '直接生成视频' : '生成分镜方案'
+      }`
+    );
+    // userPrompt 只用于记录填入前的内容，不作为触发条件
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingBrief, hydratedCanvasId, canvasId]);
 
   // Sync selectedNode image to reference images if not already present
   useEffect(() => {

@@ -46,6 +46,15 @@ describe('agentActionProtocol', () => {
     expect(missing.planCard).toBeUndefined();
   });
 
+  it('carries the agreed video idea in an open_video plan', () => {
+    const r = extractAgentActions(
+      '建议升级为“晨光入座”<agent_actions>{"plan": {"actionId": "open_video", "params": {"videoBrief": "晨光中从客厅全景缓慢横移推进，依次展示轮廓、真皮纹理与金属底座", "focusPoints": ["浅牛油果绿真皮", "金属底座框架", "x"], "videoMode": "product_showcase"}}}</agent_actions>'
+    );
+    expect(r.planCard?.params?.videoBrief).toContain('晨光');
+    expect(r.planCard?.params?.focusPoints).toEqual(['浅牛油果绿真皮', '金属底座框架']);
+    expect(r.planCard?.items.map(i => i.label)).toEqual(['视频创意', '展示重点', '方式', '执行后']);
+  });
+
   it('hides partially streamed tags', () => {
     expect(stripAgentActions('正文<agent_ac')).toBe('正文');
     expect(stripAgentActions('正文<agent_actions>{"pla')).toBe('正文');

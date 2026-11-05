@@ -15,7 +15,7 @@ import { arrangeCleanTreeLayout, arrangeGrid3x3Layout, arrangeSeamlessVerticalLa
 import { logCanvasDiagnostic } from '../utils/canvasDiagnostic';
 import { getAuthHeaders } from '../utils/apiUtils';
 import { localAssetService } from '../services/localAssetService';
-import { buildCanvasSummary, extractAgentActions, stripAgentActions } from '../utils/agentActionProtocol';
+import { buildCanvasSummary, collectVideoNodeRefs, extractAgentActions, stripAgentActions } from '../utils/agentActionProtocol';
 
 // 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
 const DNA_NEXT_STEPS: AgentSuggestion[] = [
@@ -599,7 +599,8 @@ export function useCreativeCanvasWorkspace(
         nodes,
         mentionedNodeIds: options?.mentionedNodeIds,
         selectedSceneIndex
-      })
+      }),
+      videoNodes: collectVideoNodeRefs(nodes)
     };
 
     const userMsgId = `user-msg-${Date.now()}`;

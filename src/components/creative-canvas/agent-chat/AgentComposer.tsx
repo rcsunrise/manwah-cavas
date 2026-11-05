@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Pause, Plus, AtSign, X, ImageIcon } from 'lucide-react';
 import { AgentActionOption } from '../../../types/creativeCanvas';
 
@@ -16,6 +16,8 @@ interface AgentComposerProps {
   quickActions: AgentActionOption[];
   onQuickAction: (option: AgentActionOption) => void;
   mentionableNodes: MentionableNode[];
+  /** 外部把文字填进输入框（编辑重发、引用回复）；nonce 变化才生效 */
+  fillRequest?: { text: string; mode: 'replace' | 'append'; nonce: number } | null;
 }
 
 /** 从光标位置往前找正在输入的 @ 引用，返回 @ 的位置与已输入的关键词 */
@@ -35,13 +37,25 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   onUploadFile,
   quickActions,
   onQuickAction,
-  mentionableNodes
+  mentionableNodes,
+  fillRequest
 }) => {
   const [text, setText] = useState('');
   const [mentions, setMentions] = useState<MentionableNode[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!fillRequest) return;
+    setText(prev => (fillRequest.mode === 'append' && prev.trim() ? `${prev.trimEnd()}\n${fillRequest.text}` : fillRequest.text));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [fillRequest?.nonce]);
 
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];

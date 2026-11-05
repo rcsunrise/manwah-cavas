@@ -26,6 +26,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# 系统依赖：ffmpeg 用于智能体“看视频”时抽帧（server/services/video/videoFrameSampler.ts）
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 # 仅安装生产运行依赖（减少镜像体积并提升安全水位）
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

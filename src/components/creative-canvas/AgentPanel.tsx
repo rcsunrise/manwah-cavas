@@ -43,6 +43,7 @@ import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard } from '../../types/creativeCanvas';
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
+import { AgentMessageActions } from './agent-chat/AgentMessageActions';
 import { AgentComposer, MentionableNode } from './agent-chat/AgentComposer';
 import { AgentTaskStrip } from './agent-chat/AgentTaskStrip';
 import { AgentMarkdown, AgentModelTag } from './agent-chat/AgentMessageContent';
@@ -65,7 +66,8 @@ interface AgentPanelProps {
   onPostAgentMessage?: (text: string, extras?: Partial<AgentMessage>) => string;
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
-  onOpenVideoPanel?: () => void;
+  /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
+  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode'>) => void;
   /** 修改画布图片中的文字（局部重绘） */
   onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
 
@@ -480,6 +482,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   // Prompt Textarea Direct Control, Auto-Focus & Visual Feedback State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [composerFill, setComposerFill] = useState<{ text: string; mode: 'replace' | 'append'; nonce: number } | null>(null);
   const [promptValue, setPromptValue] = useState<string>(planTargetAudience || '');
   const [isPromptHighlighted, setIsPromptHighlighted] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
@@ -745,7 +748,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         onSearchMarketReference?.(params?.keywords || planSearchKeywords || undefined);
         return;
       case 'open_video':
-        onOpenVideoPanel?.();
+        onOpenVideoPanel?.(
+          params?.videoBrief || params?.focusPoints?.length
+            ? { videoBrief: params.videoBrief, focusPoints: params.focusPoints, videoMode: params.videoMode }
+            : undefined
+        );
         return;
       case 'open_poster':
         onOpenPosterStudio?.(params?.screenIndex || selectedSceneIndex || 1);
@@ -2464,7 +2471,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               {messages.map((msg, index) => (
                 <div
                   key={msg.id ? `${msg.id}-${index}` : `msg-${index}`}
-                  className={`flex items-start gap-3 ${
+                  className={`group flex items-start gap-3 ${
                     msg.sender === 'user' ? 'flex-row-reverse' : ''
                   }`}
                 >
@@ -2478,8 +2485,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
 
+                  <div className={`max-w-[84%] min-w-0 flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                   <div
-                    className={`max-w-[84%] rounded-2xl p-3.5 text-xs leading-relaxed shadow-sm ${
+                    className={`max-w-full rounded-2xl p-3.5 text-xs leading-relaxed shadow-sm ${
                       msg.sender === 'user'
                         ? 'bg-stone-800 text-white rounded-tr-none'
                         : 'bg-white text-[#2C2A29] border border-[#E5E0D8] rounded-tl-none'
@@ -2666,6 +2674,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       )}
                     </span>
                   </div>
+                  {msg.status !== 'streaming' && msg.text && (
+                    <AgentMessageActions
+                      text={msg.text}
+                      isUser={msg.sender === 'user'}
+                      disabled={isStreaming}
+                      alwaysVisible={index === messages.length - 1}
+                      canRegenerate={msg.sender === 'agent' && index === messages.length - 1 && index > 0 && messages[index - 1].sender === 'user'}
+                      onEdit={text => setComposerFill({ text, mode: 'replace', nonce: Date.now() })}
+                      onQuote={text => {
+                        const firstLines = text.split(/\n/).map(l => l.trim()).filter(Boolean).slice(0, 3).join(' ');
+                        const quoted = firstLines.length > 120 ? `${firstLines.slice(0, 120)}…` : firstLines;
+                        setComposerFill({ text: `关于「${quoted}」：`, mode: 'append', nonce: Date.now() });
+                      }}
+                      onRegenerate={() => {
+                        const prevUser = messages[index - 1];
+                        if (prevUser?.text) onSendMessage(prevUser.text);
+                      }}
+                    />
+                  )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2756,6 +2784,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             quickActions={quickActions}
             onQuickAction={option => option.actionId && runAgentAction(option.actionId, option.params)}
             mentionableNodes={mentionableNodes}
+            fillRequest={composerFill}
           />
           <input
             ref={chatUploadInputRef}

@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
 import { bridgeRelayHub } from '../services/bridgeRelayHub';
 import { getTokenModelIds } from '../services/video/videoModelAvailability';
+import { sampleVideoFrames } from '../services/video/videoFrameSampler';
 
 /** Agent G 对话的默认模型（新建会话、未指定模型时使用） */
 const DEFAULT_AGENT_MODEL = 'gpt-6';
@@ -498,6 +499,20 @@ async function versionBelongsToConversation(
     && (!ownerRecord.user_id || ownerRecord.user_id === conv.user_id);
 }
 
+// 新建画布在首次保存前使用的占位 id（/creative-canvas/new、latest 等）
+const PLACEHOLDER_PROJECT_IDS = new Set(['latest', 'new', 'default_project']);
+
+/**
+ * 会话挂在占位画布上（/creative-canvas/new 对应 latest 画布）时，画布里加载的产品项目会带着真实项目 id。
+ * 这种情况下接受该上下文，但不改动会话归属：会话必须留在用户所在的画布上，
+ * 否则刷新页面后按画布查不到它，历史对话就"消失"了。
+ */
+async function placeholderAcceptsContext(conv: AgentConversationRecord, snapshot: AgentContextSnapshot | undefined): Promise<boolean> {
+  if (!snapshot?.projectId || snapshot.projectId === conv.project_id) return false;
+  if (!PLACEHOLDER_PROJECT_IDS.has(conv.project_id) || PLACEHOLDER_PROJECT_IDS.has(snapshot.projectId)) return false;
+  return assertCanvasOwnership(conv.user_id, snapshot.projectId, snapshot.canvasId || `canvas_${snapshot.projectId}`);
+}
+
 async function validateContextSnapshot(snapshot: AgentContextSnapshot | undefined, conv: AgentConversationRecord): Promise<{ valid: boolean; reason?: string }> {
   if (!snapshot) return { valid: true };
 
@@ -580,7 +595,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - render_screen：渲染某一屏分镜图。params: screenIndex(必填)
 - render_all：批量渲染全部未渲染分镜
 - search_market：联网检索竞品与爆款参考。params: keywords
-- open_video：打开视频创作面板
+- open_video：打开视频创作面板，并把对话里商定的视频创意带过去。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划多镜头（默认）/"generate_video"=直接生成单条视频)
 - open_poster：打开全案海报工作台。params: screenIndex
 - upload_product：上传产品主图
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
@@ -598,6 +613,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 依据下方画布状态判断前置条件：没有产品 DNA 时不能 generate_plan，应 clarify 并给 upload_product；没有企划时不能 replan/render，应 clarify 并给 generate_plan。
 - screenIndex 必须是画布状态里存在的屏号；nodeId 必须是画布状态里列出的图片节点 id。
 - 用户要求改图中文字（“标题改成…”“把××改成××”）时用 edit_image_text 的 plan，不要用 render_screen 重新渲染整张图。
+- 讨论视频创意、运镜、分镜时，给出构思后用 open_video 的 plan，并把完整构思写进 videoBrief（不要只写一句“打开面板”），否则构思不会进入视频生成。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 
@@ -647,7 +663,7 @@ async function streamChatCompletions(params: {
   baseUrl: string;
   apiKey: string;
   model: string;
-  messages: Array<{ role: string; content: string }>;
+  messages: Array<{ role: string; content: any }>;
   isClientClosed: () => boolean;
   onDelta: (chunk: string) => void;
 }): Promise<string> {
@@ -703,11 +719,61 @@ async function streamChatCompletions(params: {
 /**
  * Universal Multi-Transport Agent Model Streamer with Self-Healing Fallback
  */
+/** 判断用户是不是在问画布上的视频效果（评价、找问题），是则抽帧给模型看 */
+const VIDEO_REVIEW_INTENT =
+  /(视频|成片|片子|镜头|运镜|画面).{0,12}(怎么样|如何|评价|看看|看下|好不好|问题|分析|点评|哪里|变形|效果|满意|觉得|改进|优化)|(怎么样|评价|看看|看下|分析|点评|觉得).{0,12}(视频|成片|片子|镜头)/i;
+
+interface UserAttachment {
+  text: string;
+  images: string[];
+}
+
+async function buildVideoReviewAttachment(message: string, snapshot: AgentContextSnapshot | undefined): Promise<UserAttachment | undefined> {
+  const videos = Array.isArray(snapshot?.videoNodes) ? snapshot!.videoNodes!.slice(0, 5) : [];
+  if (videos.length === 0) return undefined;
+  const pointed = videos.find(v => snapshot?.selectedNodeIds?.includes(v.nodeId));
+  if (!pointed && !VIDEO_REVIEW_INTENT.test(message)) return undefined;
+  // 优先用户 @ 引用或选中的视频，否则取最新一条已生成的视频
+  const target = pointed || videos.find(v => v.videoUrl || v.assetVersionId);
+  if (!target) return undefined;
+
+  const s = (v: unknown, max = 600) => String(v ?? '').slice(0, max);
+  const info = [
+    `视频节点 ${s(target.nodeId, 80)}「${s(target.title || '视频', 60)}」`,
+    target.modelKey ? `生成模型 ${s(target.modelKey, 60)}` : '',
+    target.durationSeconds ? `时长 ${Number(target.durationSeconds)} 秒` : '',
+    target.resolution ? `分辨率 ${s(target.resolution, 20)}` : '',
+    target.prompt ? `生成提示词：${s(target.prompt)}` : ''
+  ].filter(Boolean).join('；');
+
+  try {
+    const startedAt = Date.now();
+    const sample = await sampleVideoFrames({ videoUrl: target.videoUrl, assetVersionId: target.assetVersionId }, 5);
+    console.log(`[AgentConversationRoutes] sampled ${sample.frames.length} frames from ${target.nodeId} in ${Date.now() - startedAt}ms`);
+    const frameList = sample.frames.map((f, i) => `第${i + 1}张=${f.label}（${f.atSeconds}s）`).join('，');
+    return {
+      text:
+        `【附：画布视频画面】${info}。实际时长 ${sample.durationSeconds} 秒。` +
+        `附图是从该视频按时间顺序抽取的 ${sample.frames.length} 帧：${frameList}。` +
+        `请依据这些画面如实评价（产品造型/颜色/材质是否前后一致、有无变形、运镜与构图、光线、与提示词是否一致），指出具体是哪一帧的问题并给出可执行的改进建议；看不出的细节不要编造。`,
+      images: sample.frames.map(f => f.dataUrl)
+    };
+  } catch (err: any) {
+    console.warn(`[AgentConversationRoutes] video frame sampling failed for ${target.nodeId}:`, err?.message || err);
+    return {
+      text: `【附：画布视频信息】${info}。（读取视频画面失败：${s(err?.message, 120)}。只能依据生成参数回答，请向用户说明你没有看到实际画面。）`,
+      images: []
+    };
+  }
+}
+
 async function invokeAgentModelStream(params: {
   userId: string;
   model: string;
   historyMessages: AgentChatMessageRecord[];
   userPrompt: string;
+  /** 附加给本轮用户消息的文字与图片（如视频抽帧）；仅 chat/completions 通道带图片 */
+  userAttachment?: UserAttachment;
   systemInstruction: string;
   contextSnapshot?: AgentContextSnapshot;
   isClientClosed: () => boolean;
@@ -724,6 +790,7 @@ async function invokeAgentModelStream(params: {
     model: rawModel,
     historyMessages,
     userPrompt,
+    userAttachment,
     systemInstruction,
     contextSnapshot,
     isClientClosed,
@@ -774,7 +841,19 @@ async function invokeAgentModelStream(params: {
       if (!last || last.role !== 'user' || last.content.trim() !== userPrompt.trim()) {
         turns.push({ role: 'user', content: userPrompt });
       }
-      const messages = [{ role: 'system', content: withModelIdentity(systemInstruction, chatModel) }, ...turns];
+      const messages: Array<{ role: string; content: any }> = [{ role: 'system', content: withModelIdentity(systemInstruction, chatModel) }, ...turns];
+      if (userAttachment) {
+        // 附加内容（如视频抽帧）只挂在本轮用户消息上：文字说明 + 图片
+        const lastTurn = messages[messages.length - 1];
+        lastTurn.content = [
+          { type: 'text', text: `${lastTurn.content}
+
+${userAttachment.text}` },
+          ...userAttachment.images.map(url => ({ type: 'image_url', image_url: { url } }))
+        ];
+      }
+      const streamStartedAt = Date.now();
+      let firstTokenMs = 0;
       const text = await streamChatCompletions({
         baseUrl: apiConfig.baseUrl,
         apiKey: apiConfig.apiKey,
@@ -782,10 +861,18 @@ async function invokeAgentModelStream(params: {
         messages,
         isClientClosed,
         onDelta: chunk => {
+          if (!firstTokenMs) firstTokenMs = Date.now() - streamStartedAt;
           accumulatedText += chunk;
           onDelta(chunk);
         }
       });
+      const promptChars = messages.reduce(
+        (n, m) => n + (typeof m.content === 'string' ? m.content.length : (m.content as any[]).reduce((k, p) => k + (p.text?.length || 0), 0)),
+        0
+      );
+      console.log(
+        `[AgentConversationRoutes] ${chatModel} first token ${firstTokenMs}ms, total ${Date.now() - streamStartedAt}ms, prompt ${promptChars} chars, images ${userAttachment?.images.length || 0}, reply ${text.length} chars`
+      );
       if (text.trim().length > 0) {
         providerResponseId = `chatcmpl_${Date.now()}`;
         usedModel = chatModel;
@@ -798,13 +885,16 @@ async function invokeAgentModelStream(params: {
     }
   }
 
-  // A. If OpenAI-family model (e.g., gpt-6, gpt-5.5), route to createAgentResponse
-  if (isGptModel && isValidKey && apiConfig) {
+  // A. OpenAI 系模型的备用通道：仅在 A0 流式通道没有成功时才调用（否则会在流式回复结束后
+  //    再非流式重答一遍并重复推送，GPT 模型的回复时间翻倍、内容重复）
+  if (!executedSuccessfully && isGptModel && isValidKey && apiConfig) {
     try {
       const responsesModel = requestedModel === 'gpt-6' ? 'gpt-6-astra' : requestedModel;
       const response = await createAgentResponse(apiConfig, {
         model: responsesModel,
-        input: userPrompt,
+        input: userAttachment ? `${userPrompt}
+
+${userAttachment.text}` : userPrompt,
         instructions: withModelIdentity(systemInstruction, responsesModel),
         reasoningEffort: 'medium',
         maxOutputTokens: 2048
@@ -967,7 +1057,10 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     });
   }
 
-  const ctxCheck = await validateContextSnapshot(context_snapshot, conv);
+  const snapshotForCheck = context_snapshot && await placeholderAcceptsContext(conv, context_snapshot)
+    ? { ...context_snapshot, projectId: conv.project_id, canvasId: conv.canvas_id }
+    : context_snapshot;
+  const ctxCheck = await validateContextSnapshot(snapshotForCheck, conv);
   if (!ctxCheck.valid) {
     return res.status(400).json({
       success: false,
@@ -1111,11 +1204,13 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
   } else {
     incrementAgentMetric('textProviderCalls');
     const history = await getMessagesByConversation(conversationId);
+    const userAttachment = await buildVideoReviewAttachment(trimmedMsg, context_snapshot);
     const result = await invokeAgentModelStream({
       userId,
       model: conv.model,
       historyMessages: history,
       userPrompt: message,
+      userAttachment,
       systemInstruction,
       contextSnapshot: context_snapshot || undefined,
       isClientClosed: () => isClientClosed || res.writableEnded,

@@ -280,6 +280,14 @@ export default function CreativeCanvasPage() {
     assetVersionId?: string | null;
   } | null>(null);
 
+  // Agent G 对话中商定的视频创意：确认 open_video 计划后带入视频面板（nonce 保证同样内容也能再次填入）
+  const [videoBriefRequest, setVideoBriefRequest] = React.useState<{
+    videoBrief?: string;
+    focusPoints?: string[];
+    videoMode?: 'product_showcase' | 'generate_video';
+    nonce: number;
+  } | null>(null);
+
   const handleOpenVideoPanel = React.useCallback((targetNode?: any) => {
     let nodeToUse = targetNode;
     if (!nodeToUse && selectedNodeId) {
@@ -794,7 +802,10 @@ export default function CreativeCanvasPage() {
             onSendMessage={handleSendMessageStream}
             onPostAgentMessage={addAgentMessage}
             onUpdateAgentMessage={updateAgentMessage}
-            onOpenVideoPanel={() => handleOpenVideoPanel()}
+            onOpenVideoPanel={brief => {
+              if (brief) setVideoBriefRequest({ ...brief, nonce: Date.now() });
+              handleOpenVideoPanel();
+            }}
             onEditImageText={handleEditImageText}
             currentConversation={currentConversation}
             conversationsList={conversationsList}
@@ -952,6 +963,7 @@ export default function CreativeCanvasPage() {
           allNodes={nodes}
           onPlanCreated={handlePlanCreated}
           onJobSubmitted={handleJobSubmitted}
+          incomingBrief={videoBriefRequest}
         />
 
         {/* Supabase Storage & History Manager Modal */}

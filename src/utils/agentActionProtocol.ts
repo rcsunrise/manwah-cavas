@@ -6,8 +6,46 @@ import {
   AgentActionParams,
   AgentClarifyCard,
   AgentMessage,
-  AgentPlanCard
+  AgentPlanCard,
+  AgentVideoNodeRef
 } from '../types/creativeCanvas';
+
+/**
+ * 收集画布上已生成的视频（最新在前，最多 5 条）：视频成果节点优先，其次是已出片的视频生成节点。
+ * 发给智能体后，用户问视频效果时服务端会据此抽帧给模型看。
+ */
+export function collectVideoNodeRefs(nodes: any[]): AgentVideoNodeRef[] {
+  const refs: AgentVideoNodeRef[] = [];
+  const seenJobs = new Set<string>();
+  const ordered = [
+    ...nodes.filter(n => n?.type === 'videoResultNode'),
+    ...nodes.filter(n => n?.type === 'videoGenerationNode')
+  ];
+  for (const n of ordered) {
+    const d = n.data || {};
+    const job = d.job || {};
+    const videoUrl = d.videoUrl || job.videoUrl || job.supabaseVideoUrl || undefined;
+    const assetVersionId = d.assetVersionId || job.assetVersionId || undefined;
+    const ready = Boolean(videoUrl) || job.status === 'ready' || n.type === 'videoResultNode';
+    if (!ready || (!videoUrl && !assetVersionId)) continue;
+    // 同一个任务既有生成节点又有成果节点时只保留一条
+    const jobKey = job.id || assetVersionId || n.id;
+    if (seenJobs.has(jobKey)) continue;
+    seenJobs.add(jobKey);
+    refs.push({
+      nodeId: n.id,
+      title: d.title || (job.shotId ? `${job.shotId} 视频` : '视频'),
+      videoUrl: typeof videoUrl === 'string' && !videoUrl.startsWith('blob:') ? videoUrl : undefined,
+      assetVersionId,
+      prompt: typeof job.prompt === 'string' ? job.prompt.slice(0, 600) : undefined,
+      modelKey: d.modelKey || job.modelKey,
+      durationSeconds: d.durationSeconds || job.videoSettings?.durationSeconds,
+      resolution: job.videoSettings?.resolution
+    });
+  }
+  // 画布节点按添加顺序排列，最新的在后面
+  return refs.reverse().slice(0, 5);
+}
 
 const OPEN_TAG = '<agent_actions>';
 const CLOSE_TAG = '</agent_actions>';
@@ -65,6 +103,12 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.newText === 'string' && raw.newText.trim()) params.newText = raw.newText.trim().slice(0, 60);
   if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
   if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) params.nodeId = raw.nodeId.trim().slice(0, 120);
+  if (typeof raw.videoBrief === 'string' && raw.videoBrief.trim()) params.videoBrief = raw.videoBrief.trim().slice(0, 800);
+  if (Array.isArray(raw.focusPoints)) {
+    const points = raw.focusPoints.map((p: any) => String(p || '').trim()).filter((p: string) => p.length >= 2 && p.length <= 20).slice(0, 6);
+    if (points.length > 0) params.focusPoints = points;
+  }
+  if (raw.videoMode === 'product_showcase' || raw.videoMode === 'generate_video') params.videoMode = raw.videoMode;
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -93,6 +137,12 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.oldText) items.push({ label: '原文', value: `「${params.oldText}」` });
   if (params?.newText) items.push({ label: '改为', value: `「${params.newText}」` });
   if (params?.hint) items.push({ label: '要求', value: params.hint });
+  if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
+  if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
+  if (actionId === 'open_video') {
+    items.push({ label: '方式', value: params?.videoMode === 'generate_video' ? '直接生成单条视频' : 'AI 导演规划分镜' });
+    if (params?.videoBrief) items.push({ label: '执行后', value: '创意填入视频面板，可再调整后生成分镜' });
+  }
   if (items.length === 0 && actionId === 'render_all') items.push({ label: '范围', value: '全部未渲染的分镜' });
   if (actionId === 'generate_plan') items.push({ label: '其他', value: '未提及的参数沿用企划配置' });
   return items;
@@ -160,6 +210,15 @@ export function buildCanvasSummary(input: {
       return `${n.id}「${title}」${flags ? `(${flags})` : ''}`;
     });
     lines.push(`- 画布图片节点（可作为改字等操作的目标，nodeId 用前面的 id）：${desc.join('；')}`);
+  }
+
+  const videos = collectVideoNodeRefs(nodes);
+  if (videos.length > 0) {
+    const desc = videos.map(v => {
+      const meta = [v.modelKey, v.durationSeconds ? `${v.durationSeconds}秒` : '', v.resolution].filter(Boolean).join('/');
+      return `${v.nodeId}「${v.title}」${meta ? `(${meta})` : ''}`;
+    });
+    lines.push(`- 画布视频（最新在前；用户问视频效果时会附上抽帧画面）：${desc.join('；')}`);
   }
 
   if (mentionedNodeIds && mentionedNodeIds.length > 0) {
