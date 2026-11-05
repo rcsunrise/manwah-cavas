@@ -79,7 +79,8 @@ export type AgentActionId =
   | 'goto_setup'
   | 'goto_render'
   | 'replan_screen'
-  | 'render_screen';
+  | 'render_screen'
+  | 'edit_image_text';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
@@ -88,6 +89,10 @@ export interface AgentActionParams {
   screenIndex?: number;
   hint?: string;
   keywords?: string;
+  /** 修改图中文字：要改成的文字 / 被替换的原文 / 目标图片节点 */
+  newText?: string;
+  oldText?: string;
+  nodeId?: string;
 }
 
 export interface AgentActionOption {
@@ -118,6 +123,8 @@ export interface AgentTaskCard {
   detail?: string;
   /** 完成后可在画布上定位的结果节点 */
   locate?: AgentLocateTarget;
+  /** 结果图（在对话里直接展示） */
+  resultImageUrl?: string;
 }
 
 /** 画布定位目标：优先按节点 id，其次按节点类型 + 屏号查找 */

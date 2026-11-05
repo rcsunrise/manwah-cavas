@@ -581,6 +581,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - open_poster：打开全案海报工作台。params: screenIndex
 - upload_product：上传产品主图
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
+- edit_image_text：修改图片里已有的文字（如海报标题、卖点文案），只重绘文字区域，产品与画面不变。params: newText(必填，改成的文字), oldText(要被替换的原文；替换整行主标题时可省略), nodeId(目标图片节点 id；用户 @ 引用了图片或画布状态里有明确目标时填写)
 
 三种结构：
 1. plan：明确要执行某个动作时使用，界面会显示“确认执行”卡片。
@@ -592,7 +593,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 
 使用规则：
 - 依据下方画布状态判断前置条件：没有产品 DNA 时不能 generate_plan，应 clarify 并给 upload_product；没有企划时不能 replan/render，应 clarify 并给 generate_plan。
-- screenIndex 必须是画布状态里存在的屏号。
+- screenIndex 必须是画布状态里存在的屏号；nodeId 必须是画布状态里列出的图片节点 id。
+- 用户要求改图中文字（“标题改成…”“把××改成××”）时用 edit_image_text 的 plan，不要用 render_screen 重新渲染整张图。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 

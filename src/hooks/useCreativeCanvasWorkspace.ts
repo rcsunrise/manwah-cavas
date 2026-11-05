@@ -433,11 +433,17 @@ export function useCreativeCanvasWorkspace(
 
   // 企划生成任务卡：开始时插入，结束时原地更新状态
   const planTaskMsgIdRef = useRef<string | null>(null);
-  const finishTaskCard = useCallback((id: string | null | undefined, status: AgentTaskCard['status'], detail?: string, locate?: AgentLocateTarget) => {
+  const finishTaskCard = useCallback((
+    id: string | null | undefined,
+    status: AgentTaskCard['status'],
+    detail?: string,
+    locate?: AgentLocateTarget,
+    extra?: Partial<AgentTaskCard>
+  ) => {
     if (!id) return;
     setMessages(prev =>
       prev.map(m =>
-        m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail, locate } } : m
+        m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail, locate, ...extra } } : m
       )
     );
   }, []);
@@ -1692,6 +1698,90 @@ export function useCreativeCanvasWorkspace(
   };
 
   // Phase C2: Single screen replanning
+  /**
+   * 对话改字：修改画布图片中已有的文字（如海报标题），只重绘文字区域。
+   * 结果作为新版本节点放在原图右侧并连线，原图保留。
+   */
+  const handleEditImageText = async (params: { newText?: string; oldText?: string; nodeId?: string }) => {
+    const newText = params.newText?.trim();
+    if (!newText) return;
+    const currentNodes = nodesRef.current;
+    const hasImage = (n: Node | undefined) => typeof (n?.data as any)?.imageUrl === 'string' && Boolean((n?.data as any)?.imageUrl);
+    // 目标图：显式指定 → 当前选中 → 最近一张带文字的生成图 → 最近一张生成图 → 画布上任意一张图（如产品主图）
+    const target =
+      currentNodes.find(n => n.id === params.nodeId && hasImage(n)) ||
+      currentNodes.find(n => n.id === selectedNodeId && hasImage(n)) ||
+      [...currentNodes].reverse().find(n => n.type === 'generatedImageNode' && (n.data as any)?.withText && hasImage(n)) ||
+      [...currentNodes].reverse().find(n => n.type === 'generatedImageNode' && hasImage(n)) ||
+      [...currentNodes].reverse().find(n => hasImage(n));
+    if (!target) {
+      addAgentMessage('画布上没有找到可以改字的图片。请先选中或 @ 引用一张带文字的海报。');
+      return;
+    }
+    const targetTitle = (target.data as any)?.title || (target.data as any)?.screenTitle || '目标图片';
+    const taskId = addAgentMessage('', {
+      taskCard: {
+        title: `修改图中文字：${params.oldText ? `「${params.oldText}」→` : ''}「${newText}」`,
+        status: 'running',
+        detail: `${targetTitle} · Nano Banana 2.1 局部重绘，约 1 分钟`
+      }
+    });
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/image-text-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ imageUrl: (target.data as any).imageUrl, newText, oldText: params.oldText })
+      });
+      const json = await parseJsonResponse<{ success?: boolean; data?: any; error?: string }>(res);
+      if (!res.ok || !json.success || !json.data) throw new Error(json.error || `改字失败 (HTTP ${res.status})`);
+      const result = json.data;
+
+      const newNodeId = `text-edit-${Date.now()}`;
+      const sourceWidth = Number((target as any).width || (target.style as any)?.width || 380);
+      setNodes(prev => [
+        ...prev.map(n => ({ ...n, selected: false })),
+        {
+          ...target,
+          id: newNodeId,
+          selected: true,
+          position: { x: target.position.x + sourceWidth + 60, y: target.position.y },
+          data: {
+            ...(target.data as any),
+            imageUrl: result.imageUrl,
+            title: `${targetTitle} · 改字`,
+            textEditedFrom: target.id,
+            textEdit: { from: result.originalLine, to: result.expectedLine, model: result.model, verified: result.verified }
+          }
+        }
+      ]);
+      setEdges(prev => [
+        ...prev,
+        {
+          id: `edge-text-edit-${target.id}-${newNodeId}`,
+          source: target.id,
+          target: newNodeId,
+          animated: false,
+          style: { stroke: '#B28C5A', strokeWidth: 1.5, strokeDasharray: '4 3' }
+        }
+      ]);
+      hasUserMutationRef.current = true;
+
+      const modelLabel = result.model === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1';
+      finishTaskCard(
+        taskId,
+        'done',
+        result.verified
+          ? `「${result.originalLine}」→「${result.expectedLine}」 · ${modelLabel} · 已逐字校验，画面其余部分保持原图`
+          : `⚠️ 逐字校验未通过（识别为「${result.recognizedLine || '无法识别'}」），请放大核对文字 · ${modelLabel}`,
+        { nodeId: newNodeId },
+        { resultImageUrl: result.imageUrl }
+      );
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '改字失败');
+    }
+  };
+
   const handleReplanSingleScene = async (screenIndex: number, promptHint?: string) => {
     if (isPlanGeneratingRef.current) {
       console.warn('正在生成或修改企划中，自动忽略重复触发');
@@ -4542,6 +4632,7 @@ export function useCreativeCanvasWorkspace(
     onSelectSceneIndex: handleSelectSceneIndex,
     handleGenerateNineGridPlan,
     handleReplanSingleScene,
+    handleEditImageText,
     handleNodeClick,
 
     // C4B-1 DNA Version Exports

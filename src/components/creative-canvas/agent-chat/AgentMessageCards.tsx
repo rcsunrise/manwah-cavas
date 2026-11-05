@@ -137,6 +137,11 @@ const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
         <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${meta.tone}`}>{meta.label}</span>
       </div>
       {card.detail && <p className="text-[10px] text-stone-500 leading-relaxed">{card.detail}</p>}
+      {card.status === 'done' && card.resultImageUrl && (
+        <a href={card.resultImageUrl} target="_blank" rel="noreferrer" className="block mt-1.5 rounded-lg overflow-hidden border border-[#E5E0D8] bg-white" title="查看大图">
+          <img src={card.resultImageUrl} alt="结果图" className="w-full max-h-56 object-contain" />
+        </a>
+      )}
       {card.status === 'done' && card.locate && (
         <button
           type="button"

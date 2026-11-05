@@ -38,6 +38,14 @@ describe('agentActionProtocol', () => {
     expect(result.planCard?.params).toEqual({ screenCount: 6, aspectRatio: '3:4' });
   });
 
+  it('parses an image text edit plan and requires the new text', () => {
+    const ok = extractAgentActions('好的<agent_actions>{"plan": {"actionId": "edit_image_text", "params": {"oldText": "云栖", "newText": "云栖之境", "nodeId": "gen-img-1"}}}</agent_actions>');
+    expect(ok.planCard?.params).toEqual({ oldText: '云栖', newText: '云栖之境', nodeId: 'gen-img-1' });
+    expect(ok.planCard?.items.map(i => i.label)).toEqual(['原文', '改为']);
+    const missing = extractAgentActions('好的<agent_actions>{"plan": {"actionId": "edit_image_text", "params": {"oldText": "云栖"}}}</agent_actions>');
+    expect(missing.planCard).toBeUndefined();
+  });
+
   it('hides partially streamed tags', () => {
     expect(stripAgentActions('正文<agent_ac')).toBe('正文');
     expect(stripAgentActions('正文<agent_actions>{"pla')).toBe('正文');

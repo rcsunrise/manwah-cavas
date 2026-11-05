@@ -217,6 +217,11 @@ export class VideoSourceImageResolver {
   /**
    * 内部方法：从相对路径、磁盘、Store 或 Base64 中解析 Buffer 与 Mime
    */
+  /** 读取任意形式的图片（公网链接、站内相对路径、本地资源 key、base64）为二进制 */
+  public static async loadImageBuffer(input: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    return this.extractBufferAndMime(input.trim());
+  }
+
   private static async extractBufferAndMime(
     input: string
   ): Promise<{ buffer: Buffer; mimeType: string }> {

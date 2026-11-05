@@ -66,6 +66,8 @@ interface AgentPanelProps {
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
   onOpenVideoPanel?: () => void;
+  /** 修改画布图片中的文字（局部重绘） */
+  onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
 
   // C2 Props
   agentRun: AgentRun | null;
@@ -401,7 +403,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onChangeConversationModel,
   onPostAgentMessage,
   onUpdateAgentMessage,
-  onOpenVideoPanel
+  onOpenVideoPanel,
+  onEditImageText
 }) => {
   const [activeTab, setActiveTab] = useState<'setup' | 'render' | 'chat' | 'typography'>('setup');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
@@ -699,6 +702,37 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           }
         });
         return;
+      case 'edit_image_text': {
+        if (!params?.newText) {
+          postAgent('请告诉我要把文字改成什么。');
+          return;
+        }
+        const imageNodes = nodes.filter((n: any) => typeof n?.data?.imageUrl === 'string' && n.data.imageUrl);
+        const target =
+          imageNodes.find((n: any) => n.id === params.nodeId) ||
+          imageNodes.find((n: any) => n.id === selectedNodeId) ||
+          [...imageNodes].reverse().find((n: any) => n.type === 'generatedImageNode' && n.data?.withText) ||
+          [...imageNodes].reverse().find((n: any) => n.type === 'generatedImageNode') ||
+          imageNodes[imageNodes.length - 1];
+        if (!target) {
+          postAgent('画布上没有找到可以改字的图片。请先选中或 @ 引用一张带文字的海报。');
+          return;
+        }
+        postAgent('确认后开始修改：', {
+          planCard: {
+            title: '修改图中文字',
+            actionId: 'edit_image_text',
+            params: { ...params, nodeId: target.id },
+            status: 'pending',
+            items: [
+              { label: '目标图', value: target.data?.title || target.data?.screenTitle || target.id },
+              ...describePlanParams('edit_image_text', params),
+              { label: '方式', value: '只重绘文字区域，其余画面保持原图（Nano Banana 2.1，Gemini 3 Pro 备用）' }
+            ]
+          }
+        });
+        return;
+      }
       case 'render_all':
         if (!hasPlan) {
           askToGeneratePlanFirst();
@@ -755,6 +789,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'render_screen':
         onGenerateSceneImage?.(params!.screenIndex!);
+        return;
+      case 'edit_image_text':
+        onEditImageText?.(params || {});
         return;
       default:
         runAgentAction(card.actionId, params);

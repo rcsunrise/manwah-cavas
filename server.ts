@@ -11,6 +11,7 @@ import adminRoutes from './server/routes/adminRoutes';
 import projectRoutes from './server/routes/projectRoutes';
 import agentRoutes from './server/routes/agentRoutes';
 import agentConversationRoutes from './server/routes/agentConversationRoutes';
+import imageTextEditRoutes from './server/routes/imageTextEditRoutes';
 import canvasRoutes from './server/routes/canvasRoutes';
 import assetRoutes from './server/routes/assetRoutes';
 import productDnaRoutes from './server/routes/productDnaRoutes';
@@ -375,6 +376,7 @@ async function startServer() {
   // 会话路由需先于 agentRoutes 挂载：否则 GET /api/agent/conversations 会被 GET /:runId 当成 runId="conversations" 截走，
   // 前端拿不到会话列表，每次进入画布都新建会话、历史无法恢复
   app.use('/api/agent', agentConversationRoutes);
+  app.use('/api/image-text-edit', imageTextEditRoutes);
   app.use('/api/agent', agentRoutes);
   app.use('/api/canvases', canvasRoutes);
   app.use('/api/creative-canvases', canvasRoutes);

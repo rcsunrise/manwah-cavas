@@ -59,6 +59,7 @@ export default function CreativeCanvasPage() {
     selectedSceneIndex,
     handleGenerateNineGridPlan,
     handleReplanSingleScene,
+    handleEditImageText,
     handleNodeClick,
     generatingScenes,
     uploadedBase64,
@@ -794,6 +795,7 @@ export default function CreativeCanvasPage() {
             onPostAgentMessage={addAgentMessage}
             onUpdateAgentMessage={updateAgentMessage}
             onOpenVideoPanel={() => handleOpenVideoPanel()}
+            onEditImageText={handleEditImageText}
             currentConversation={currentConversation}
             conversationsList={conversationsList}
             isStreaming={isStreaming}

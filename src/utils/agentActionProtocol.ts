@@ -22,7 +22,8 @@ const ACTION_IDS: AgentActionId[] = [
   'goto_setup',
   'goto_render',
   'replan_screen',
-  'render_screen'
+  'render_screen',
+  'edit_image_text'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -30,6 +31,7 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   replan_screen: '重新策划分镜',
   render_all: '批量渲染分镜',
   render_screen: '渲染单屏分镜',
+  edit_image_text: '修改图中文字',
   search_market: '联网检索竞品',
   open_video: '打开视频创作',
   open_poster: '打开全案海报'
@@ -60,6 +62,9 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (Number.isInteger(screenIndex) && screenIndex >= 1) params.screenIndex = screenIndex;
   if (typeof raw.hint === 'string' && raw.hint.trim()) params.hint = raw.hint.trim().slice(0, 300);
   if (typeof raw.keywords === 'string' && raw.keywords.trim()) params.keywords = raw.keywords.trim().slice(0, 100);
+  if (typeof raw.newText === 'string' && raw.newText.trim()) params.newText = raw.newText.trim().slice(0, 60);
+  if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
+  if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) params.nodeId = raw.nodeId.trim().slice(0, 120);
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -85,6 +90,8 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.screenCount) items.push({ label: '屏数', value: `${params.screenCount} 屏` });
   if (params?.aspectRatio) items.push({ label: '画面比例', value: params.aspectRatio });
   if (params?.keywords) items.push({ label: '关键词', value: params.keywords });
+  if (params?.oldText) items.push({ label: '原文', value: `「${params.oldText}」` });
+  if (params?.newText) items.push({ label: '改为', value: `「${params.newText}」` });
   if (params?.hint) items.push({ label: '要求', value: params.hint });
   if (items.length === 0 && actionId === 'render_all') items.push({ label: '范围', value: '全部未渲染的分镜' });
   if (actionId === 'generate_plan') items.push({ label: '其他', value: '未提及的参数沿用企划配置' });
@@ -142,6 +149,19 @@ export function buildCanvasSummary(input: {
   );
   if (selectedSceneIndex) lines.push(`- 当前选中分镜：第 ${selectedSceneIndex} 屏`);
 
+  const imageNodes = nodes
+    .filter(n => typeof n?.data?.imageUrl === 'string' && n.data.imageUrl && ['generatedImageNode', 'productImageNode', 'imageGenerationNode'].includes(n?.type))
+    .slice(-8);
+  if (imageNodes.length > 0) {
+    const desc = imageNodes.map(n => {
+      const d = n.data || {};
+      const title = d.title || d.screenTitle || d.label || '图片';
+      const flags = [d.withText ? '含文字' : '', Number.isInteger(d.sceneIndex) ? `第${d.sceneIndex}屏` : ''].filter(Boolean).join('/');
+      return `${n.id}「${title}」${flags ? `(${flags})` : ''}`;
+    });
+    lines.push(`- 画布图片节点（可作为改字等操作的目标，nodeId 用前面的 id）：${desc.join('；')}`);
+  }
+
   if (mentionedNodeIds && mentionedNodeIds.length > 0) {
     const titles = mentionedNodeIds
       .map(id => nodes.find(n => n?.id === id))
@@ -196,8 +216,8 @@ export function extractAgentActions(text: string): Pick<AgentMessage, 'text' | '
   if (!result.clarifyCard && payload?.plan && isActionId(payload.plan.actionId)) {
     const actionId: AgentActionId = payload.plan.actionId;
     const params = normalizeParams(payload.plan.params);
-    // 单屏操作必须指明是哪一屏
-    if ((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) {
+    // 单屏操作必须指明是哪一屏；改字必须给出新文字
+    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText)) {
       // 缺少关键参数时不出计划卡，正文里模型通常已说明
     } else {
       result.planCard = {
