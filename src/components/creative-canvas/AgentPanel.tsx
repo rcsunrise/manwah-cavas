@@ -347,7 +347,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   selectedSceneIndex,
   onGenerateNineGridPlan,
   onReplanSingleScene,
-  planAgentModel = 'gemini-2.5-flash',
+  planAgentModel = 'gpt-6',
   setPlanAgentModel,
   planReasoningEffort = 'medium',
   setPlanReasoningEffort,
@@ -639,7 +639,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     postAgent('还没有企划方案，没有可操作的分镜。', {
       clarifyCard: {
         question: '要先生成企划方案吗？',
-        options: [{ label: '生成全案企划', actionId: 'generate_plan' }]
+        options: [{ label: '生成详情页企划', actionId: 'generate_plan' }]
       }
     });
 
@@ -667,7 +667,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         }
         postAgent(hasPlan ? '重新生成会替换画布上现有的分镜方案节点，确认参数后开始：' : '确认以下参数后开始生成企划方案：', {
           planCard: {
-            title: hasPlan ? '重新生成企划方案' : '生成全案企划方案',
+            title: hasPlan ? '重新生成详情页企划（海报分镜）' : '生成详情页企划（海报分镜）',
             actionId: 'generate_plan',
             params,
             status: 'pending',
@@ -822,10 +822,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         { label: '批量渲染分镜', actionId: 'render_all' },
         { label: '做全案海报', actionId: 'open_poster' },
         { label: '做视频分镜', actionId: 'open_video' },
-        { label: '重新生成企划', actionId: 'generate_plan' }
+        { label: '重做详情页企划', actionId: 'generate_plan' }
       ]
     : [
-        { label: '生成全案企划', actionId: 'generate_plan' },
+        { label: '详情页企划', actionId: 'generate_plan' },
         { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
       ];
@@ -1010,9 +1010,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             title="选择 Agent G 思考与推理模型"
           >
             <option value="gpt-6">👑 GPT-6 Astra</option>
-            <option value="gemini-3.7-flash">🧠 Gemini 3.7 Flash</option>
-            <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
-            <option value="gpt-5.5">💎 GPT-5.5</option>
+            <option value="gemini-3.8-flash">🧠 Gemini 3.8 Flash</option>
+            <option value="gemini-3.7-flash">⚡ Gemini 3.7 Flash</option>
           </select>
 
           {conversationsList.length > 1 && (
@@ -1749,11 +1748,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       onChange={event => setPlanAgentModel?.(event.target.value)}
                       className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
                     >
-                      <option value="gemini-3.7-flash">Gemini 3.7 Flash（混合推理·思维链加速）</option>
                       <option value="gpt-6">GPT-6（旗舰全模态 Astra·最强全案企划）</option>
-                      <option value="gemini-2.5-flash">Gemini 2.5 Flash（官方原生·快速稳定）</option>
-                      <option value="gpt-5.6-sol">GPT-5.6 Sol（旗舰企划 Responses）</option>
-                      <option value="gpt-5.5">GPT-5.5</option>
+                      <option value="gemini-3.8-flash">Gemini 3.8 Flash（新一代·推理更强）</option>
+                      <option value="gemini-3.7-flash">Gemini 3.7 Flash（混合推理·速度快）</option>
                     </select>
                   </label>
                   <label className="space-y-1">

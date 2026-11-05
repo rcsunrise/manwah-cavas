@@ -19,7 +19,7 @@ import { buildCanvasSummary, collectVideoNodeRefs, extractAgentActions, stripAge
 
 // 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
 const DNA_NEXT_STEPS: AgentSuggestion[] = [
-  { label: '生成全案企划', actionId: 'generate_plan' },
+  { label: '详情页企划', actionId: 'generate_plan' },
   { label: '联网查竞品', actionId: 'search_market' },
   { label: '做视频分镜', actionId: 'open_video' }
 ];
@@ -335,7 +335,7 @@ export function useCreativeCanvasWorkspace(
 
   // Model & Resolution config for Image Generation
   const [selectedModel, setSelectedModel] = useState<string>('gemini-nano-banana-2.1-preview');
-  const [planAgentModel, setPlanAgentModel] = useState<string>('gemini-2.5-flash');
+  const [planAgentModel, setPlanAgentModel] = useState<string>('gpt-6');
   const [planReasoningEffort, setPlanReasoningEffort] = useState<'minimal' | 'low' | 'medium' | 'high'>('medium');
   const [planTargetAudience, setPlanTargetAudience] = useState<string>('');
   const [planScreenCount, setPlanScreenCount] = useState<number>(1);
@@ -1413,6 +1413,8 @@ export function useCreativeCanvasWorkspace(
     const modelDisplayName =
       planAgentModel === 'gemini-3.7-flash'
         ? 'Gemini 3.7 Flash'
+        : planAgentModel === 'gemini-3.8-flash'
+        ? 'Gemini 3.8 Flash'
         : planAgentModel === 'gpt-6'
         ? 'GPT-6 Astra'
         : planAgentModel;

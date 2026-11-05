@@ -467,7 +467,8 @@ ${marketResearchText ? `\n[行业最新竞品与市场联网检索参考 (Vector
         if (usesResponses) {
           try {
             const response = await createAgentResponse(providerConfig, {
-              model: selectedModel.id,
+              // 网关只认上游型号（如 gpt-6-astra），传注册表 id（gpt-6）会 503/unsupported model
+              model: selectedModel.upstreamModel || selectedModel.id,
               input: promptText,
               instructions: DETAIL_PLAN_INSTRUCTIONS,
               reasoningEffort: selectedEffort,

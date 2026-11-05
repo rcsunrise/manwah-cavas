@@ -590,12 +590,12 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 <agent_actions>{"plan": {...}} 或 {"clarify": {...}}，可同时带 "suggestions": [...]</agent_actions>
 
 可用动作 actionId 与参数：
-- generate_plan：生成/重新生成详情页企划。params: screenCount(1~12), aspectRatio("4:3"/"3:4"/"1:1"/"9:16"/"16:9"), hint(策划要点)
+- generate_plan：生成/重新生成电商详情页（海报）企划，产出的是静态海报分镜，不是视频。params: screenCount(1~12), aspectRatio("4:3"/"3:4"/"1:1"/"9:16"/"16:9"), hint(策划要点)
 - replan_screen：重新策划某一屏。params: screenIndex(必填), hint(调整要求)
 - render_screen：渲染某一屏分镜图。params: screenIndex(必填)
 - render_all：批量渲染全部未渲染分镜
 - search_market：联网检索竞品与爆款参考。params: keywords
-- open_video：打开视频创作面板，并把对话里商定的视频创意带过去。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划多镜头（默认）/"generate_video"=直接生成单条视频)
+- open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划多镜头（默认）/"generate_video"=直接生成单条视频)
 - open_poster：打开全案海报工作台。params: screenIndex
 - upload_product：上传产品主图
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
@@ -613,7 +613,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 依据下方画布状态判断前置条件：没有产品 DNA 时不能 generate_plan，应 clarify 并给 upload_product；没有企划时不能 replan/render，应 clarify 并给 generate_plan。
 - screenIndex 必须是画布状态里存在的屏号；nodeId 必须是画布状态里列出的图片节点 id。
 - 用户要求改图中文字（“标题改成…”“把××改成××”）时用 edit_image_text 的 plan，不要用 render_screen 重新渲染整张图。
-- 讨论视频创意、运镜、分镜时，给出构思后用 open_video 的 plan，并把完整构思写进 videoBrief（不要只写一句“打开面板”），否则构思不会进入视频生成。
+- 讨论视频创意、运镜、视频分镜时，给出构思后用 open_video 的 plan，并把完整构思写进 videoBrief（不要只写一句“打开面板”），否则构思不会进入视频生成。
+- 用户在聊视频时，plan 和 suggestions 都不要给 generate_plan（那是详情页海报企划）；下一步建议给视频相关的，如带 videoBrief 的 open_video、或用 prompt 追问时长/镜头数/风格。只有用户明确要做详情页或海报时才用 generate_plan。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 
@@ -929,8 +930,8 @@ ${userAttachment.text}` : userPrompt,
         }
       }
 
-      // If user selected GPT-6 but OpenAI transport was unavailable, fallback to gemini-2.5-flash
-      const geminiModel = isGptModel ? 'gemini-2.5-flash' : requestedModel;
+      // GPT 通道不可用时回落到 Gemini 3.7 Flash（网关已不提供 2.5）
+      const geminiModel = isGptModel ? 'gemini-3.7-flash' : requestedModel;
 
       const responseStream = await aiClient.models.generateContentStream({
         model: geminiModel,

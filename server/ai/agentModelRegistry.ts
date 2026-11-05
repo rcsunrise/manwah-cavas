@@ -44,7 +44,7 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
     displayName: 'Gemini 3.7 Flash',
     upstreamModel: 'gemini-3.7-flash',
     providerGroup: 'google_default',
-    aliases: ['gemini-3.7-flash-thinking', 'google/gemini-3.7-flash', 'google/gemini-3.7-flash-thinking', 'gemini-3.8-flash'],
+    aliases: ['gemini-3.7-flash-thinking', 'google/gemini-3.7-flash', 'google/gemini-3.7-flash-thinking', 'gemini-2.5-flash', 'google/gemini-2.5-flash'],
     transport: 'gemini_native',
     providers: ['routerhub', 'vectorengine', 'tiantoken'],
     structuredOutput: true,
@@ -52,6 +52,25 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
     reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high'],
     capabilities: {
       displayName: 'Gemini 3.7 Flash',
+      chatCompletions: true,
+      responses: true,
+      verificationStatus: 'verified',
+      providerGroup: 'google_default'
+    }
+  },
+  {
+    id: 'gemini-3.8-flash',
+    displayName: 'Gemini 3.8 Flash',
+    upstreamModel: 'gemini-3.8-flash',
+    providerGroup: 'google_default',
+    aliases: ['gemini-3.8-flash-thinking', 'google/gemini-3.8-flash', 'google/gemini-3.8-flash-thinking'],
+    transport: 'gemini_native',
+    providers: ['routerhub', 'vectorengine', 'tiantoken'],
+    structuredOutput: true,
+    previousResponseId: false,
+    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high'],
+    capabilities: {
+      displayName: 'Gemini 3.8 Flash',
       chatCompletions: true,
       responses: true,
       verificationStatus: 'verified',
@@ -83,25 +102,6 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
       currency: 'USD',
       unit: 'per_1m_tokens',
       internalReferencePrice: 10
-    }
-  },
-  {
-    id: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash',
-    upstreamModel: 'gemini-2.5-flash',
-    providerGroup: 'google_default',
-    aliases: ['google/gemini-2.5-flash'],
-    transport: 'gemini_native',
-    providers: ['routerhub', 'vectorengine', 'tiantoken'],
-    structuredOutput: true,
-    previousResponseId: false,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high'],
-    capabilities: {
-      displayName: 'Gemini 2.5 Flash',
-      chatCompletions: true,
-      responses: false,
-      verificationStatus: 'verified',
-      providerGroup: 'google_default'
     }
   },
   {

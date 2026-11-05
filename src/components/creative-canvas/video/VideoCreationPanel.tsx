@@ -239,6 +239,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
   // 填入 Agent G 带来的视频创意：等本画布存档恢复完成后再写，避免被存档覆盖；同一 nonce 只填一次
   const appliedBriefNonceRef = useRef<number | null>(null);
+  // 对话里要的是视频分镜：填入创意后自动让 AI 导演出分镜方案（等状态更新后再触发）
+  const autoStoryboardPendingRef = useRef(false);
   useEffect(() => {
     if (!incomingBrief || hydratedCanvasId !== canvasId) return;
     if (appliedBriefNonceRef.current === incomingBrief.nonce) return;
@@ -255,10 +257,14 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       setAiFocusPoints(points);
     }
     setExpandError(null);
+    const autoStoryboard = incomingBrief.videoMode !== 'generate_video' && Boolean(incomingBrief.videoBrief);
+    autoStoryboardPendingRef.current = autoStoryboard;
     setExpandNote(
-      `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，可调整后${
-        incomingBrief.videoMode === 'generate_video' ? '直接生成视频' : '生成分镜方案'
-      }`
+      autoStoryboard
+        ? `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，AI 导演正在生成分镜方案`
+        : `已填入 Agent G 对话中的视频创意${points.length > 0 ? `与 ${points.length} 个展示重点` : ''}，可调整后${
+            incomingBrief.videoMode === 'generate_video' ? '直接生成视频' : '生成分镜方案'
+          }`
     );
     // userPrompt 只用于记录填入前的内容，不作为触发条件
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,6 +351,19 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       }
     }
   }, [capabilities, defaultModelKey, selectedModelKey]);
+
+  // 自动出分镜要在 isOpen 提前返回之前注册，保证每次渲染的 hook 数量一致
+  const handleGeneratePlanRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!isOpen || !autoStoryboardPendingRef.current || isGeneratingPlan || activeTab !== 'product_showcase') return;
+    if (!selectedNode && referenceImages.length === 0) {
+      autoStoryboardPendingRef.current = false;
+      setExpandNote('已填入 Agent G 对话中的视频创意。请先选择一张产品参考图，再点击生成分镜方案');
+      return;
+    }
+    autoStoryboardPendingRef.current = false;
+    handleGeneratePlanRef.current?.();
+  }, [isOpen, userPrompt, selectedFocusPoints, activeTab, isGeneratingPlan, selectedNode, referenceImages.length]);
 
   if (!isOpen) return null;
 
@@ -469,6 +488,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       onPlanCreated(plan, selectedNode.id);
     }
   };
+  handleGeneratePlanRef.current = () => { void handleGeneratePlan(); };
 
   // Generate Static Keyframe image for single shot
   const handleGenerateKeyframe = async (shot: VideoShotPlan) => {

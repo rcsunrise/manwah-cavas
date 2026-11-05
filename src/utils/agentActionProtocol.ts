@@ -65,13 +65,13 @@ const ACTION_IDS: AgentActionId[] = [
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
-  generate_plan: '生成企划方案',
+  generate_plan: '生成详情页企划',
   replan_screen: '重新策划分镜',
   render_all: '批量渲染分镜',
   render_screen: '渲染单屏分镜',
   edit_image_text: '修改图中文字',
   search_market: '联网检索竞品',
-  open_video: '打开视频创作',
+  open_video: '生成视频分镜',
   open_poster: '打开全案海报'
 };
 
@@ -141,7 +141,7 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
   if (actionId === 'open_video') {
     items.push({ label: '方式', value: params?.videoMode === 'generate_video' ? '直接生成单条视频' : 'AI 导演规划分镜' });
-    if (params?.videoBrief) items.push({ label: '执行后', value: '创意填入视频面板，可再调整后生成分镜' });
+    if (params?.videoBrief) items.push({ label: '执行后', value: params.videoMode === 'generate_video' ? '创意填入视频面板，可再调整后生成视频' : '创意填入视频面板，AI 导演自动生成分镜方案' });
   }
   if (items.length === 0 && actionId === 'render_all') items.push({ label: '范围', value: '全部未渲染的分镜' });
   if (actionId === 'generate_plan') items.push({ label: '其他', value: '未提及的参数沿用企划配置' });
