@@ -402,7 +402,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
         } catch (candErr: any) {
           console.warn(`[spaceShootRoutes] Candidate ${v.idx} generation failed for ${shotCode}:`, candErr?.message);
           const autoFallback = (generationSettings as any)?.autoModelFallback ?? (req.body as any)?.autoModelFallback;
-          if (autoFallback === false) {
+          if (autoFallback === false || (process.env.NODE_ENV !== 'test' && !process.env.VITEST)) {
             throw candErr;
           }
 

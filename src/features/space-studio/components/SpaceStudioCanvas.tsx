@@ -418,7 +418,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     }
     return undefined;
   })();
-  const effectiveProxyKey = primaryKey || extractedKey || (activeShot.templateCode ? `shots/${activeShot.templateCode.toLowerCase()}/healed.svg` : undefined);
+  const effectiveProxyKey = primaryKey || extractedKey;
   const localFileUrl = effectiveProxyKey ? `/api/space/storage/local-file?key=${encodeURIComponent(effectiveProxyKey)}` : undefined;
 
   // 4. 定稿版本图片：当前选中的版本已有明确定稿图片时优先

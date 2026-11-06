@@ -1,6 +1,6 @@
 // server/services/storage/__tests__/gcsAssetStorage.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GcsAssetStorage } from '../gcsAssetStorage';
+import { GcsAssetStorage, isCorruptedFallbackSvgBuffer } from '../gcsAssetStorage';
 import fs from 'fs';
 import path from 'path';
 
@@ -74,5 +74,27 @@ describe('GcsAssetStorage (G1 Asset Core Spec)', () => {
         buffer: Buffer.from('test')
       })
     ).rejects.toThrow('Invalid objectKey provided');
+  });
+
+  it('detects and purges corrupted fallback SVG masquerading as bitmap (.webp)', async () => {
+    const fakeSvgBuf = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><text>MANWAH · 质检彩棚与实景底图口径</text></svg>',
+      'utf-8'
+    );
+    const objectKey = 'projects/test-proj/shots/A01/revisions/rev-corrupt/original.webp';
+
+    expect(isCorruptedFallbackSvgBuffer(fakeSvgBuf, objectKey)).toBe(true);
+    expect(isCorruptedFallbackSvgBuffer(fakeSvgBuf, 'shots/A01/healed.svg')).toBe(false);
+
+    // Manually write corrupted SVG to local cache path
+    const localPath = path.join(process.cwd(), '.data', 'space-storage', objectKey);
+    fs.mkdirSync(path.dirname(localPath), { recursive: true });
+    fs.writeFileSync(localPath, fakeSvgBuf);
+    expect(fs.existsSync(localPath)).toBe(true);
+
+    // getLocalFilePath should detect and purge the corrupted fallback SVG
+    const resolvedPath = storage.getLocalFilePath(objectKey);
+    expect(resolvedPath).toBeNull();
+    expect(fs.existsSync(localPath)).toBe(false);
   });
 });

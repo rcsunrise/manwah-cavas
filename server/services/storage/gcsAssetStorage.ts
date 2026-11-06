@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { Storage } from '@google-cloud/storage';
+import { supabaseAdmin } from '../../../src/lib/supabase';
 import {
   AssetObjectStorage,
   AssetStorageStatus,
@@ -18,6 +19,28 @@ import {
 
 const LOCAL_STORAGE_DIR = path.join(process.cwd(), '.data', 'space-storage');
 const SEED_STORAGE_DIR = path.join(process.cwd(), 'server', 'data', 'seeds', 'storage');
+const SUPABASE_FALLBACK_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'creative-canvas-assets';
+
+/**
+ * 识别被旧版 /local-file 兜底逻辑误写入位图后缀（.webp/.png/.jpg）的内部 SVG 占位图（约 7055 字节）
+ */
+export function isCorruptedFallbackSvgBuffer(buf: Buffer | null | undefined, objectKey: string): boolean {
+  if (!buf || buf.length === 0) return false;
+  if (objectKey.toLowerCase().endsWith('.svg')) return false;
+  if (buf.length > 32768) return false;
+  const head = buf.subarray(0, 160).toString('utf-8').trimStart();
+  if (head.startsWith('<svg') || head.startsWith('<?xml')) {
+    const sample = buf.subarray(0, 4096).toString('utf-8');
+    if (
+      sample.includes('质检彩棚与实景底图口径') ||
+      sample.includes('manwah-spatial-renderer') ||
+      sample.includes('高保真自愈守护')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export class GcsAssetStorage implements AssetObjectStorage {
   private static instance: GcsAssetStorage;
@@ -246,12 +269,45 @@ export class GcsAssetStorage implements AssetObjectStorage {
         if (this.strictGcsMode) {
           throw new Error(`[GcsAssetStorage STRICT] Failed to write asset to GCS: ${err.message}`);
         }
+        if (/does not exist|NoSuchBucket|Could not load the default credentials|socket disconnected|ECONNRESET|ETIMEDOUT/i.test(err?.message || '')) {
+          this.isGcsAvailable = false;
+          this.initError = err.message;
+        }
       }
     } else if (this.strictGcsMode) {
       throw new Error(`[GcsAssetStorage STRICT] GCS is not available (${this.initError || 'uninitialized'}), local fallback is strictly prohibited.`);
     }
 
-    // 2. 受控 Local Fallback (仅当未开启 strict 模式且处于开发环境)
+    // 2. Supabase Storage 云端持久层自动容灾 (当 GCS 写入受阻/无桶权限时，确保 Cloud Run 容器重启后原图绝不丢失)
+    const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    if (!isTestEnv && !isCorruptedFallbackSvgBuffer(buffer, objectKey)) {
+      try {
+        const sbKey = `space-storage/${sanitizedKey.replace(/^\/+/, '')}`;
+        const { error: sbErr } = await supabaseAdmin.storage
+          .from(SUPABASE_FALLBACK_BUCKET)
+          .upload(sbKey, buffer, {
+            contentType,
+            cacheControl: '31536000',
+            upsert: true
+          });
+        if (!sbErr) {
+          return {
+            storageProvider: 'local_fallback',
+            bucket: SUPABASE_FALLBACK_BUCKET,
+            objectKey,
+            bytes: buffer.length,
+            sha256,
+            contentType
+          };
+        } else {
+          console.warn(`[GcsAssetStorage.put] Supabase Storage backup warning for ${objectKey}:`, sbErr.message);
+        }
+      } catch (sbCatchErr: any) {
+        console.warn(`[GcsAssetStorage.put] Supabase Storage backup exception for ${objectKey}:`, sbCatchErr?.message);
+      }
+    }
+
+    // 3. 受控 Local Fallback (仅当未开启 strict 模式且处于开发环境)
     return {
       storageProvider: 'local_fallback',
       bucket: 'local-disk',
@@ -263,14 +319,33 @@ export class GcsAssetStorage implements AssetObjectStorage {
   }
 
   /**
-   * 统一获取对象文件的 Buffer (优先从 GCS，回退到本地存储)
+   * 统一获取对象文件的 Buffer (优先本地热缓存 -> GCS -> Supabase Storage 云端容灾 -> 静态种子)
    */
   public async getBuffer(
     objectKey: string,
     bucketType: 'source' | 'generated' | 'export' = 'generated'
   ): Promise<Buffer | null> {
     const bucketName = this.resolveBucketName(bucketType);
+    const sanitizedKey = objectKey.replace(/\\/g, '/');
+    const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
 
+    // 1. 本地热缓存直读（自动剔除被旧版兜底逻辑污染的 7055 字节 SVG 占位图）
+    if (fs.existsSync(localFilePath)) {
+      try {
+        const localBuf = fs.readFileSync(localFilePath);
+        if (isCorruptedFallbackSvgBuffer(localBuf, objectKey)) {
+          try {
+            fs.unlinkSync(localFilePath);
+          } catch {}
+        } else if (localBuf.length > 0) {
+          return localBuf;
+        }
+      } catch (err: any) {
+        console.warn(`[GcsAssetStorage.getBuffer] Local read failed for ${localFilePath}:`, err.message);
+      }
+    }
+
+    // 2. 尝试从 GCS 下载
     if (this.isGcsAvailable && this.gcsStorage) {
       try {
         const bucket = this.gcsStorage.bucket(bucketName);
@@ -278,23 +353,49 @@ export class GcsAssetStorage implements AssetObjectStorage {
         const [exists] = await file.exists();
         if (exists) {
           const [buf] = await file.download();
-          return buf;
+          if (buf && buf.length > 0 && !isCorruptedFallbackSvgBuffer(buf, objectKey)) {
+            try {
+              const parentDir = path.dirname(localFilePath);
+              if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+              fs.writeFileSync(localFilePath, buf);
+            } catch {}
+            return buf;
+          }
         }
       } catch (err: any) {
         console.warn(`[GcsAssetStorage.getBuffer] GCS download failed for ${objectKey}:`, err.message);
+        if (!this.strictGcsMode && /does not exist|NoSuchBucket|Could not load the default credentials|socket disconnected|ECONNRESET|ETIMEDOUT/i.test(err?.message || '')) {
+          this.isGcsAvailable = false;
+          this.initError = err.message;
+        }
       }
     }
 
-    const sanitizedKey = objectKey.replace(/\\/g, '/');
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
-    if (fs.existsSync(localFilePath)) {
+    // 3. 尝试从 Supabase Storage 持久层恢复（跨 Cloud Run 容器重启持久化）
+    const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    if (!isTestEnv) {
       try {
-        return fs.readFileSync(localFilePath);
-      } catch (err: any) {
-        console.warn(`[GcsAssetStorage.getBuffer] Local read failed for ${localFilePath}:`, err.message);
+        const sbKey = `space-storage/${sanitizedKey.replace(/^\/+/, '')}`;
+        const { data: blobData, error: sbErr } = await supabaseAdmin.storage
+          .from(SUPABASE_FALLBACK_BUCKET)
+          .download(sbKey);
+        if (!sbErr && blobData) {
+          const buf = Buffer.from(await blobData.arrayBuffer());
+          if (buf.length > 0 && !isCorruptedFallbackSvgBuffer(buf, objectKey)) {
+            try {
+              const parentDir = path.dirname(localFilePath);
+              if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+              fs.writeFileSync(localFilePath, buf);
+            } catch {}
+            return buf;
+          }
+        }
+      } catch (sbCatchErr: any) {
+        console.warn(`[GcsAssetStorage.getBuffer] Supabase Storage download failed for ${objectKey}:`, sbCatchErr?.message);
       }
     }
 
+    // 4. 静态内置种子资产
     const seedFilePath = path.join(SEED_STORAGE_DIR, sanitizedKey);
     if (fs.existsSync(seedFilePath)) {
       try {
@@ -467,7 +568,8 @@ export class GcsAssetStorage implements AssetObjectStorage {
     bucketType: 'source' | 'generated' | 'export' = 'generated'
   ): Promise<void> {
     const bucketName = this.resolveBucketName(bucketType);
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, objectKey.replace(/\\/g, '/'));
+    const sanitizedKey = objectKey.replace(/\\/g, '/');
+    const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
     if (fs.existsSync(localFilePath)) {
       try {
         fs.unlinkSync(localFilePath);
@@ -485,6 +587,14 @@ export class GcsAssetStorage implements AssetObjectStorage {
         }
       }
     }
+
+    const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    if (!isTestEnv) {
+      try {
+        const sbKey = `space-storage/${sanitizedKey.replace(/^\/+/, '')}`;
+        await supabaseAdmin.storage.from(SUPABASE_FALLBACK_BUCKET).remove([sbKey]);
+      } catch {}
+    }
   }
 
   /**
@@ -493,7 +603,21 @@ export class GcsAssetStorage implements AssetObjectStorage {
   public getLocalFilePath(objectKey: string): string | null {
     const sanitizedKey = objectKey.replace(/\\/g, '/');
     const localFilePath = path.join(LOCAL_STORAGE_DIR, sanitizedKey);
-    if (fs.existsSync(localFilePath)) return localFilePath;
+    if (fs.existsSync(localFilePath)) {
+      try {
+        const stat = fs.statSync(localFilePath);
+        if (stat.size > 0 && stat.size < 32768) {
+          const buf = fs.readFileSync(localFilePath);
+          if (isCorruptedFallbackSvgBuffer(buf, objectKey)) {
+            fs.unlinkSync(localFilePath);
+            return null;
+          }
+        }
+        return localFilePath;
+      } catch {
+        return localFilePath;
+      }
+    }
 
     const seedFilePath = path.join(SEED_STORAGE_DIR, sanitizedKey);
     if (fs.existsSync(seedFilePath)) {

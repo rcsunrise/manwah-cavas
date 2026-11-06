@@ -190,11 +190,42 @@ router.get(['/local-file', '/download'], async (req: Request, res: Response) => 
       }
     } catch {}
 
-    // 终极自愈守护：若文件未在存储中找到，动态生成高保真工业底图，严禁返回 404 导致客户端死黑与图像读取异常
-    const shotMatch = key.match(/(A0[0-9]|master)/i);
-    const shotCode = shotMatch ? shotMatch[1].toUpperCase() : 'A00';
-
+    // 尝试从本地/云端工程快照中恢复产品内联 Base64 参考图（例如 ref_1.webp 在容器重启后未单独落盘但快照中保有 publicUrl data:image/...）
     try {
+      const projectsDir = path.join(process.cwd(), '.data', 'space-projects');
+      if (fs.existsSync(projectsDir)) {
+        const files = fs.readdirSync(projectsDir).filter((f) => f.endsWith('.json'));
+        for (const f of files) {
+          const snapRaw = fs.readFileSync(path.join(projectsDir, f), 'utf-8');
+          if (!snapRaw.includes(key)) continue;
+          const snap = JSON.parse(snapRaw);
+          for (const prod of snap?.products || []) {
+            for (const ref of prod?.referenceImages || []) {
+              if (ref?.objectKey === key && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
+                const b64Match = ref.publicUrl.match(/^data:([^;]+);base64,(.+)$/);
+                if (b64Match) {
+                  const rawBuf = Buffer.from(b64Match[2], 'base64');
+                  const finalBuf = key.endsWith('.webp') ? await sharp(rawBuf).webp({ quality: 92 }).toBuffer() : rawBuf;
+                  await storage.put({
+                    bucketType: 'source',
+                    objectKey: key,
+                    buffer: finalBuf,
+                    contentType: key.endsWith('.webp') ? 'image/webp' : b64Match[1]
+                  });
+                  return await resolveAndSendBuffer(finalBuf, key);
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 仅在自动化测试环境下保留确定性 SVG 响应（且严禁覆写存储），生产环境真实返回 404 + no-store，杜绝将卡通 SVG 占位图伪装成真实生图结果并强缓存
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (process.env.NODE_ENV === 'test') {
+      const shotMatch = key.match(/(A0[0-9]|master)/i);
+      const shotCode = shotMatch ? shotMatch[1].toUpperCase() : 'A00';
       const fallbackBuf = SpaceImageGenerationService.renderDeterministicSpatialAsset({
         shotCode: shotCode === 'MASTER' ? 'A00' : shotCode,
         productName: '敏华芝华仕头等舱功能真皮沙发',
@@ -204,21 +235,12 @@ router.get(['/local-file', '/download'], async (req: Request, res: Response) => 
         styleName: '都会收藏家',
         camera: { lensMm: 35, heightCm: 120, yawDeg: 0, pitchDeg: -2 },
         variantIndex: 1,
-        variantTag: '高保真自愈守护'
+        variantTag: '测试底图'
       });
-
-      // 异步写入缓存，供后续快速读取
-      storage.put({
-        bucketType: 'generated',
-        objectKey: key,
-        buffer: fallbackBuf,
-        contentType: 'image/svg+xml'
-      }).catch(() => {});
-
       return await resolveAndSendBuffer(fallbackBuf, key);
-    } catch {
-      res.status(404).send('File not found in storage');
     }
+
+    return res.status(404).send('File not found in storage');
   } catch (error: any) {
     res.status(500).send(error.message);
   }
@@ -710,9 +732,9 @@ router.post('/styles/sync', async (req: Request, res: Response) => {
 
 /**
  * POST /api/space/storage/projects/snapshot
- * 将摄影画册作业快照持久化备份至服务端磁盘 .data/space-projects/
+ * 将摄影画册作业快照持久化备份至服务端磁盘 .data/space-projects/ 及云存储 (GCS / Supabase Storage)
  */
-router.post('/projects/snapshot', (req: Request, res: Response) => {
+router.post('/projects/snapshot', async (req: Request, res: Response) => {
   try {
     const payload = req.body;
     if (!payload || !payload.projectId) {
@@ -723,7 +745,57 @@ router.post('/projects/snapshot', (req: Request, res: Response) => {
       fs.mkdirSync(projectsDir, { recursive: true });
     }
     const filePath = path.join(projectsDir, `${payload.projectId}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    const jsonStr = JSON.stringify(payload, null, 2);
+    fs.writeFileSync(filePath, jsonStr, 'utf-8');
+
+    // 异步持久化快照与内联产品参考图至云端存储，防止无状态容器重启丢失
+    (async () => {
+      try {
+        for (const prod of payload?.products || []) {
+          for (const ref of prod?.referenceImages || []) {
+            if (ref?.objectKey && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
+              const existing = await storage.getBuffer(ref.objectKey, 'source');
+              if (!existing || existing.length === 0) {
+                const b64Match = ref.publicUrl.match(/^data:([^;]+);base64,(.+)$/);
+                if (b64Match) {
+                  const rawBuf = Buffer.from(b64Match[2], 'base64');
+                  const finalBuf = ref.objectKey.endsWith('.webp')
+                    ? await sharp(rawBuf).webp({ quality: 92 }).toBuffer()
+                    : rawBuf;
+                  await storage.put({
+                    bucketType: 'source',
+                    objectKey: ref.objectKey,
+                    buffer: finalBuf,
+                    contentType: ref.objectKey.endsWith('.webp') ? 'image/webp' : b64Match[1]
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 云端快照剔除数兆字节的内联 base64，改用已持久化的 objectKey 同源代理地址，确保毫秒级同步
+        const compactPayload = JSON.parse(jsonStr);
+        for (const prod of compactPayload?.products || []) {
+          for (const ref of prod?.referenceImages || []) {
+            if (ref?.objectKey && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
+              ref.publicUrl = `/api/space/storage/local-file?key=${encodeURIComponent(ref.objectKey)}`;
+            }
+          }
+        }
+
+        await storage.put({
+          bucketType: 'generated',
+          objectKey: `projects/snapshots/${payload.projectId}.json`,
+          buffer: Buffer.from(JSON.stringify(compactPayload, null, 2), 'utf-8'),
+          contentType: 'application/json',
+          metadata: { projectId: String(payload.projectId), updatedAt: new Date().toISOString() }
+        });
+      } catch (bgErr: any) {
+        console.warn('[spaceStorageRoutes] Snapshot cloud backup notice:', bgErr?.message);
+      }
+    })();
+
     return res.json({ success: true, projectId: payload.projectId, path: filePath });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
@@ -732,17 +804,31 @@ router.post('/projects/snapshot', (req: Request, res: Response) => {
 
 /**
  * GET /api/space/storage/projects/snapshot/:projectId
- * 读取服务端磁盘中缓存的摄影画册工程快照
+ * 读取服务端磁盘或云存储中缓存的摄影画册工程快照
  */
-router.get('/projects/snapshot/:projectId', (req: Request, res: Response) => {
+router.get('/projects/snapshot/:projectId', async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const filePath = path.join(process.cwd(), '.data', 'space-projects', `${projectId}.json`);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, error: 'Project snapshot not found' });
+    const projectsDir = path.join(process.cwd(), '.data', 'space-projects');
+    const filePath = path.join(projectsDir, `${projectId}.json`);
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      return res.json({ success: true, data: JSON.parse(raw) });
     }
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    return res.json({ success: true, data: JSON.parse(raw) });
+
+    // 若容器本地无缓存，尝试从云端存储恢复快照
+    const cloudBuf = await storage.getBuffer(`projects/snapshots/${projectId}.json`, 'generated');
+    if (cloudBuf && cloudBuf.length > 2) {
+      const raw = cloudBuf.toString('utf-8');
+      const parsed = JSON.parse(raw);
+      try {
+        if (!fs.existsSync(projectsDir)) fs.mkdirSync(projectsDir, { recursive: true });
+        fs.writeFileSync(filePath, raw, 'utf-8');
+      } catch {}
+      return res.json({ success: true, data: parsed });
+    }
+
+    return res.status(404).json({ success: false, error: 'Project snapshot not found' });
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message });
   }

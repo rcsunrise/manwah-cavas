@@ -961,13 +961,13 @@ export class SpaceImageGenerationService {
     }
 
     // 2. 调度系统统一图像生成网关 (TianToken / Google / RouterHub / OpenAI 统一中继)
-    const config = await resolveApiConfig('system');
+    const config = await resolveApiConfig(input.userId || 'system');
     let wasFallbackUsed = false;
     let refineNotice: string | undefined;
     let primaryModel = 'manwah-spatial-renderer-v1';
 
     if (!isProviderKeyValid(config?.apiKey) || process.env.NODE_ENV === 'test') {
-      imageBuffer = this.renderDeterministicSpatialAsset({
+      if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) { throw new Error('云端生图配置读取异常或未配置有效 API Key，请检查系统密钥配置或稍后重试。'); } imageBuffer = this.renderDeterministicSpatialAsset({
         shotCode,
         productName,
         productColor,
