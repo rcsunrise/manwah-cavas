@@ -20,7 +20,9 @@ import {
   Trash2,
   Sliders,
   Cpu,
-  Tv
+  Tv,
+  GripHorizontal,
+  PanelRightClose
 } from 'lucide-react';
 import {
   VideoCreationMode,
@@ -468,6 +470,56 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
   }, [capabilities, defaultModelKey, selectedModelKey]);
 
+  // 面板可拖动：拖标题栏把面板从右侧停靠变成浮动窗口；双击标题栏或点"停靠"回到右侧。位置按浏览器记住
+  const PANEL_POS_KEY = 'creative-canvas:video-panel-pos';
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PANEL_POS_KEY) || 'null');
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) return saved;
+    } catch {}
+    return null;
+  });
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const clampPanelPos = (x: number, y: number) => ({
+    x: Math.round(Math.min(Math.max(x, 8 - 440 + 120), window.innerWidth - 120)),
+    y: Math.round(Math.min(Math.max(y, 8), window.innerHeight - 80))
+  });
+  const savePanelPos = (pos: { x: number; y: number } | null) => {
+    try {
+      if (pos) localStorage.setItem(PANEL_POS_KEY, JSON.stringify(pos));
+      else localStorage.removeItem(PANEL_POS_KEY);
+    } catch {}
+  };
+  const handlePanelDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+    const panelEl = (e.currentTarget as HTMLElement).closest('#video-creation-panel') as HTMLElement | null;
+    if (!panelEl) return;
+    e.preventDefault();
+    const rect = panelEl.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    let latest = { x: rect.left, y: rect.top };
+    setIsDraggingPanel(true);
+    const onMove = (ev: PointerEvent) => {
+      latest = clampPanelPos(ev.clientX - offsetX, ev.clientY - offsetY);
+      setPanelPos(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.userSelect = '';
+      setIsDraggingPanel(false);
+      savePanelPos(latest);
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  const dockPanel = () => {
+    setPanelPos(null);
+    savePanelPos(null);
+  };
+
   // 自动出分镜要在 isOpen 提前返回之前注册，保证每次渲染的 hook 数量一致
   const handleGeneratePlanRef = useRef<(() => void) | null>(null);
   useEffect(() => {
@@ -734,7 +786,12 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   return (
     <aside
       id="video-creation-panel"
-      className="fixed top-14 right-0 bottom-0 w-[440px] bg-white border-l border-neutral-200 shadow-2xl z-40 flex flex-col font-sans"
+      className={
+        panelPos
+          ? `fixed w-[440px] bg-white border border-neutral-200 rounded-xl shadow-2xl z-40 flex flex-col font-sans overflow-hidden ${isDraggingPanel ? 'ring-2 ring-purple-300' : ''}`
+          : 'fixed top-14 right-0 bottom-0 w-[440px] bg-white border-l border-neutral-200 shadow-2xl z-40 flex flex-col font-sans'
+      }
+      style={panelPos ? { left: panelPos.x, top: panelPos.y, height: `min(calc(100vh - ${panelPos.y}px - 12px), 900px)` } : undefined}
     >
       {/* Hidden file input for uploading reference image */}
       <input
@@ -746,19 +803,41 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-neutral-100 bg-neutral-50/80">
+      <div
+        className={`flex items-center justify-between px-5 py-3.5 border-b border-neutral-100 bg-neutral-50/80 select-none ${
+          isDraggingPanel ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+        onPointerDown={handlePanelDragStart}
+        onDoubleClick={e => {
+          if (!(e.target as HTMLElement).closest('button')) dockPanel();
+        }}
+        title="拖动可移动面板，双击停靠回右侧"
+      >
         <div className="flex items-center gap-2">
+          <GripHorizontal className="w-3.5 h-3.5 text-neutral-300" />
           <Film className="w-4 h-4 text-purple-600" />
           <span className="text-xs text-neutral-400 font-medium">万能画布</span>
           <span className="text-xs text-neutral-300">/</span>
           <span className="text-sm font-semibold text-neutral-900">影视级视频创作</span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50 transition"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {panelPos && (
+            <button
+              onClick={dockPanel}
+              className="p-1 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50 transition"
+              title="停靠回右侧"
+            >
+              <PanelRightClose className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 rounded-md text-neutral-400 hover:text-neutral-700 hover:bg-neutral-200/50 transition"
+            title="关闭"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Mode Tabs */}
@@ -1406,14 +1485,30 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                 </span>
               )}
             </div>
-            <div className="max-h-24 overflow-y-auto space-y-1">
-              {jobs.slice(0, 3).map(job => (
+            <div className="max-h-[34vh] overflow-y-auto overscroll-contain space-y-1.5 pr-1">
+              {jobs.map(job => {
+                const anyJob = job as any;
+                const jobVideoUrl: string = anyJob.videoUrl || anyJob.supabaseVideoUrl || anyJob.playbackUrl || '';
+                const shotTitle = directorPlan?.shots.find(s => s.shotId === job.shotId)?.title;
+                const meta = [
+                  job.modelKey,
+                  job.videoSettings?.durationSeconds ? `${job.videoSettings.durationSeconds}s` : '',
+                  job.videoSettings?.ratio,
+                  job.createdAt ? new Date(job.createdAt).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''
+                ].filter(Boolean).join(' · ');
+                return (
                 <div
                   key={job.id}
-                  className="flex items-center justify-between px-2 py-1 bg-white border border-neutral-200 rounded text-[10px]"
+                  className="bg-white border border-neutral-200 rounded-lg text-[10px] overflow-hidden"
                 >
-                  <span className="font-mono text-neutral-600 truncate max-w-[120px]">{job.id}</span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                  <div className="min-w-0">
+                    <div className="font-medium text-neutral-800 truncate" title={job.id}>
+                      {shotTitle || job.shotId || job.id}
+                    </div>
+                    <div className="text-neutral-400 truncate">{meta || job.id}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <span
                       className={`px-1.5 py-0.5 rounded font-medium ${
                         job.status === 'ready'
@@ -1452,9 +1547,30 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                         重试转存
                       </button>
                     )}
+                    {jobVideoUrl && job.status === 'ready' && (
+                      <a href={jobVideoUrl} target="_blank" rel="noreferrer" download className="text-purple-600 hover:underline">
+                        下载
+                      </a>
+                    )}
                   </div>
+                  </div>
+                  {jobVideoUrl && job.status === 'ready' && (
+                    <video
+                      src={jobVideoUrl}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full max-h-48 bg-black"
+                    />
+                  )}
+                  {(job.status === 'failed' || job.status === 'submission_unknown') && job.errorMessage && (
+                    <div className="px-2 pb-1.5 text-rose-600 line-clamp-2" title={job.errorMessage}>
+                      {job.errorMessage}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
