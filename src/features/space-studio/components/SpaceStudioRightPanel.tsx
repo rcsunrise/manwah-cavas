@@ -697,19 +697,19 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
 
               <button
                 type="button"
-                onClick={() => onChangeComputeConfig?.({ model: 'gpt-image-2' })}
+                onClick={() => onChangeComputeConfig?.({ model: 'openai/gpt-image-2.6-flare-c' })}
                 className={`py-1 px-1 rounded-md text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 min-w-0 leading-tight transition-all cursor-pointer ${
                   cfg.model.includes('gpt')
                     ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                     : isLight ? 'text-stone-600 hover:text-stone-900 hover:bg-white' : 'text-neutral-400 hover:text-white hover:bg-white/5'
                 }`}
-                title="GPT Image 2 (电影级写实 · 材质保护)"
+                title="GPT Image 2.6 Flare（默认）· 下拉可切换 2.6 Sunburst 等"
               >
                 <span className="flex items-center gap-1 whitespace-nowrap">
                   <Cpu className="w-3 h-3" />
-                  <span>GPT 2</span>
+                  <span>GPT 2.6</span>
                 </span>
-                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">v2</span>
+                <span className="text-[8px] px-1 py-0.2 rounded bg-black/10 font-mono font-normal">Flare</span>
               </button>
             </div>
 
@@ -717,7 +717,8 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
             <div className="flex items-center justify-between gap-2 pt-0.5">
               <span className={`text-[10px] shrink-0 ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>模型微调核心:</span>
               <select
-                value={cfg.model}
+                // GPT 2.5 Flare 已由 2.6 Flare 接替：旧存档里的 2.5 Flare 显示为 2.6 Flare（服务端同样按 2.6 出图）
+                value={/gpt-image-2\.5-flare|^gpt-2\.5-flare$/.test(cfg.model) ? 'openai/gpt-image-2.6-flare-c' : cfg.model}
                 onChange={(e) => onChangeComputeConfig?.({ model: e.target.value })}
                 className={`flex-1 w-0 min-w-0 truncate border rounded px-2 py-1 text-[10px] focus:border-amber-400 outline-none font-mono ${
                   isLight ? 'bg-stone-50 border-stone-200 text-stone-900' : 'bg-black/50 border-white/10 text-amber-300'
@@ -730,12 +731,11 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
                 </optgroup>
                 <optgroup label="OpenAI GPT Image 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
-                  <option value="openai/gpt-image-2.6-sunburst-c">GPT 2.6 Sunburst (精细构图 · 复杂画面与标注编辑)</option>
-                  <option value="openai/gpt-image-2.6-flare-c">GPT 2.6 Flare (精细视觉创作 · 图文多模态编辑)</option>
+                  <option value="openai/gpt-image-2.6-flare-c">GPT 2.6 Flare (默认 · 产品保真与中文排版准确)</option>
+                  <option value="openai/gpt-image-2.6-sunburst-c">GPT 2.6 Sunburst (高质量终稿 · 光影质感更细腻)</option>
                   <option value="gpt-image-2">GPT Image 2 (电影级写实 · 材质保护)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
-                  <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
                 </optgroup>
               </select>
@@ -779,7 +779,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               </p>
             </div>
 
-            {/* 极简换景两步出图：GPT 2.5 Flare 换景保构图 ➔ Nano Banana 2.1 精修（仅 A01~A09 生效） */}
+            {/* 极简换景两步出图：GPT 2.6 Flare 换景保构图 ➔ Nano Banana 2.1 精修（仅 A01~A09 生效） */}
             {cfg.renderMode === 'studio_swap' && (
               <div className={`p-2 rounded-lg border transition-all ${
                 cfg.studioSwapRefinePass
@@ -813,7 +813,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 </div>
                 <p className={`text-[9.5px] mt-1 leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
                   {cfg.studioSwapRefinePass
-                    ? '✓ 开启中：A01~A09 先用 GPT 2.5 Flare 换景保住实拍图角度，再用 Nano Banana 2.1 精修皮革纹理与清晰度（每镜多一次生成）。A00 母版不受影响。'
+                    ? '✓ 开启中：A01~A09 先用 GPT 2.6 Flare 换景保住实拍图角度，再用 Nano Banana 2.1 精修皮革纹理与清晰度（每镜多一次生成）。A00 母版不受影响。'
                     : '✕ 已关闭：A01~A09 按上方选定模型单次生成。'}
                 </p>
               </div>

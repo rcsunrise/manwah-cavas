@@ -93,7 +93,7 @@ export interface SpaceGenerateImageInput {
   variantTag?: string;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
-  /** 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
+  /** 极简换景衍生镜头两步出图：GPT 2.6 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
   studioSwapRefinePass?: boolean;
   preserveBasePhotoOnly?: boolean;
   /** 人物入座：各角色位的入座简报（来自 compileHumanLayoutPrompt.slotBriefs），存在时使用精简编辑指令 */
@@ -138,7 +138,7 @@ function flattenPresetField(value: unknown): string[] {
  * - 参考图 1 (用户上传素材): 【绝对构图、几何透视与家具实体真值】
  * - 参考图 2 (母版空间图 A00): 【纯硬装材质、光影氛围与窗景样板】
  */
-export const STUDIO_SWAP_COMPOSE_MODEL = 'openai/gpt-image-2.5-flare-c';
+export const STUDIO_SWAP_COMPOSE_MODEL = 'openai/gpt-image-2.6-flare-c';
 export const STUDIO_SWAP_REFINE_MODEL = 'gemini-nano-banana-2.1-preview';
 
 export const STUDIO_SWAP_REFINE_PROMPT = `画面精修重绘：以窗口1为底图，构图、机位、透视、家具的位置角度与形态、房间的墙面吊顶地面与窗帘全部保持不变，不移动、不增减任何物体。参照窗口2（产品实拍图）还原沙发与单椅的真皮纹理、缝线走向、金属头枕支架、茶几与边几的石材和木纹细节以及真实颜色。提升整体清晰度、锐度与材质质感。整体空间室内建筑摄影风格。
@@ -991,7 +991,8 @@ export class SpaceImageGenerationService {
       else if (targetModel === 'google/gemini-nano-banana-2.1-preview' || targetModel === 'nano-banana-2.1') targetModel = 'gemini-nano-banana-2.1-preview';
       else if (targetModel === 'openai/gpt-image-2.6-flare-c' || targetModel === 'gpt-2.6-flare') targetModel = 'gpt-image-2.6-flare-c';
       else if (targetModel === 'openai/gpt-image-2.6-sunburst-c' || targetModel === 'gpt-2.6-sunburst') targetModel = 'gpt-image-2.6-sunburst-c';
-      else if (targetModel === 'openai/gpt-image-2.5-flare-c' || targetModel === 'gpt-2.5-flare') targetModel = 'gpt-image-2.5-flare-c';
+      // 摄影画册里 GPT 2.5 Flare 已由 2.6 Flare 接替，旧存档选择的 2.5 Flare 一并改用 2.6
+      else if (targetModel === 'openai/gpt-image-2.5-flare-c' || targetModel === 'gpt-2.5-flare' || targetModel === 'gpt-image-2.5-flare-c') targetModel = 'gpt-image-2.6-flare-c';
       else if (targetModel === 'openai/gpt-image-2.5-sunburst-c' || targetModel === 'gpt-2.5-sunburst') targetModel = 'gpt-image-2.5-sunburst-c';
       else if (targetModel === 'openai/gpt-image-2' || targetModel === 'gpt-image-2') targetModel = 'gpt-image-2-c';
       else if (targetModel === 'openai/gpt-image-2-c') targetModel = 'gpt-image-2-c';
@@ -1695,7 +1696,7 @@ CORE INVARIANTS:
 
       const isAutoFallback = input.autoModelFallback !== false;
       primaryModel = targetModel;
-      // 两步出图：衍生镜头第一步固定用 GPT 2.5 Flare（实测唯一能稳定保住实拍图构图与透视的模型）
+      // 两步出图：衍生镜头第一步固定用 GPT 2.6 Flare 换景保构图（接替 2.5 Flare）
       const useRefinePass = Boolean(input.studioSwapRefinePass) && useStudioSwapDirective && shotCode !== 'A00';
       if (useRefinePass) primaryModel = STUDIO_SWAP_COMPOSE_MODEL;
       const candidateModels: string[] = [primaryModel];
@@ -1844,7 +1845,7 @@ CORE INVARIANTS:
             usedModel = `${usedModel} + ${STUDIO_SWAP_REFINE_MODEL} 精修`;
           }
         } catch (refineErr: any) {
-          refineNotice = `精修步骤 (${STUDIO_SWAP_REFINE_MODEL}) 未完成，已保留 GPT 2.5 Flare 换景结果：${refineErr?.message || refineErr}`;
+          refineNotice = `精修步骤 (${STUDIO_SWAP_REFINE_MODEL}) 未完成，已保留 GPT 2.6 Flare 换景结果：${refineErr?.message || refineErr}`;
           console.warn(`[SpaceImageGenerationService] ${shotCode} refine pass failed:`, refineErr?.message || refineErr);
         }
       }

@@ -804,11 +804,11 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     return { gatewayBodies, result };
   };
 
-  it('two-step pass: GPT 2.5 Flare composes, then Nano Banana 2.1 refines on top of the composed image', async () => {
+  it('two-step pass: GPT 2.6 Flare composes, then Nano Banana 2.1 refines on top of the composed image', async () => {
     const { gatewayBodies, result } = await runRefineScenario(false);
     expect(gatewayBodies).toHaveLength(2);
-    // 第一步：无论右侧选了哪个模型，衍生镜头都用 GPT 2.5 Flare 换景
-    expect(gatewayBodies[0].model).toBe('openai/gpt-image-2.5-flare-c');
+    // 第一步：无论右侧选了哪个模型，衍生镜头都用 GPT 2.6 Flare 换景
+    expect(gatewayBodies[0].model).toBe('openai/gpt-image-2.6-flare-c');
     expect(gatewayBodies[0].prompt).toContain('保持窗口1的产品角度不变');
     // 第二步：Nano Banana 2.1 以第一步结果为底图（窗口1）、实拍图为材质参考（窗口2）精修
     expect(gatewayBodies[1].model).toBe('gemini-nano-banana-2.1-preview');
@@ -825,7 +825,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     const { gatewayBodies, result } = await runRefineScenario(true);
     expect(gatewayBodies).toHaveLength(2);
     expect(result.model).not.toContain('精修');
-    expect(result.warningNotice).toContain('已保留 GPT 2.5 Flare 换景结果');
+    expect(result.warningNotice).toContain('已保留 GPT 2.6 Flare 换景结果');
   });
 
   it('aligns derived shot A02 in studio_swap mode directly with ManwahStudio full scene master reference and clean prompt', async () => {

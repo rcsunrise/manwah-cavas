@@ -212,7 +212,7 @@ export function getModelById(modelId: string): ClientImageModelItem {
  */
 export const SPACE_AUTO_FALLBACK_MODELS: readonly { id: string; label: string }[] = [
   { id: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1' },
-  { id: 'openai/gpt-image-2.5-flare-c', label: 'GPT 2.5 Flare' },
+  { id: 'openai/gpt-image-2.6-flare-c', label: 'GPT 2.6 Flare' },
   { id: 'gpt-image-2-c', label: 'GPT 2-c' }
 ];
 
