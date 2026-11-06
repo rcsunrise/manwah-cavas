@@ -90,6 +90,22 @@ export class VideoGenerationService {
   /**
    * 「AI扩写融合重点」：多模态大模型看产品图改写创意描述，并推荐展示重点
    */
+  /** 把分镜视频按顺序拼成一条成片 */
+  public static async stitchVideos(request: {
+    canvasId: string;
+    clips: Array<{ videoUrl?: string; assetVersionId?: string }>;
+    transition?: 'cut' | 'fade';
+  }): Promise<{ videoUrl: string; durationSeconds: number; width: number; height: number; clipCount: number; sizeBytes: number }> {
+    const res = await fetch('/api/gateway/video/stitch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error?.message || `拼接失败 (${res.status})`);
+    return data.result;
+  }
+
   public static async expandPrompt(request: {
     mode: 'generate_video' | 'product_showcase';
     userPrompt?: string;

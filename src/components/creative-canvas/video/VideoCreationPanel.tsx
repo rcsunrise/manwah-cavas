@@ -52,6 +52,8 @@ interface VideoCreationPanelProps {
   allNodes?: any[];
   onPlanCreated?: (plan: VideoDirectorPlan, sourceNodeId: string) => void;
   onJobSubmitted?: (job: VideoJob, sourceNodeId: string) => void;
+  /** 拼接成片完成：回传到对话 */
+  onStitched?: (film: { videoUrl: string; durationSeconds: number; clipCount: number; title: string }) => void;
   /** Agent G 对话中商定的视频创意；nonce 变化时填入创意描述与展示重点 */
   incomingBrief?: {
     videoBrief?: string;
@@ -187,6 +189,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   allNodes,
   onPlanCreated,
   onJobSubmitted,
+  onStitched,
   incomingBrief
 }) => {
   const {
@@ -247,6 +250,13 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const [generatingKeyframeShotId, setGeneratingKeyframeShotId] = useState<string | null>(null);
   const [uploadingEndFrameShotId, setUploadingEndFrameShotId] = useState<string | null>(null);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  // 拼接成片
+  const [stitchTransition, setStitchTransition] = useState<'cut' | 'fade'>('fade');
+  const [isStitching, setIsStitching] = useState(false);
+  const [stitchError, setStitchError] = useState<string | null>(null);
+  const [stitchedFilm, setStitchedFilm] = useState<{ videoUrl: string; durationSeconds: number; clipCount: number } | null>(null);
+  // 近期任务里勾选的成片（分镜方案重新生成后，旧镜头不再对应方案，可以在这里手动挑来拼接）
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   // 按构思分镜：对话里定好的镜头大纲（镜头数、顺序、每镜时长）
   const [shotOutline, setShotOutline] = useState<VideoShotOutline[] | null>(null);
   const [outlineMatchPending, setOutlineMatchPending] = useState(false);
@@ -480,10 +490,48 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     return null;
   });
   const [isDraggingPanel, setIsDraggingPanel] = useState(false);
-  const clampPanelPos = (x: number, y: number) => ({
-    x: Math.round(Math.min(Math.max(x, 8 - 440 + 120), window.innerWidth - 120)),
-    y: Math.round(Math.min(Math.max(y, 8), window.innerHeight - 80))
+  // 浮动时的窗口大小：可拖右下角缩放，和位置一起记住
+  const PANEL_SIZE_KEY = 'creative-canvas:video-panel-size';
+  const [panelSize, setPanelSize] = useState<{ w: number; h: number }>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PANEL_SIZE_KEY) || 'null');
+      if (saved && saved.w >= 360 && saved.h >= 320) return saved;
+    } catch {}
+    return { w: 440, h: Math.min(760, Math.max(420, window.innerHeight - 120)) };
   });
+  const [isResizingPanel, setIsResizingPanel] = useState(false);
+  // 只要求标题栏留在屏幕内，窗口其余部分可以移到屏幕外
+  const clampPanelPos = (x: number, y: number) => ({
+    x: Math.round(Math.min(Math.max(x, 120 - panelSize.w), window.innerWidth - 120)),
+    y: Math.round(Math.min(Math.max(y, 8), window.innerHeight - 56))
+  });
+  const handlePanelResizeStart = (e: React.PointerEvent<HTMLDivElement>, mode: 'x' | 'y' | 'xy' = 'xy') => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...panelSize };
+    let latest = start;
+    setIsResizingPanel(true);
+    const onMove = (ev: PointerEvent) => {
+      latest = {
+        w: mode === 'y' ? start.w : Math.round(Math.min(Math.max(start.w + ev.clientX - startX, 360), Math.min(1100, window.innerWidth - 16))),
+        h: mode === 'x' ? start.h : Math.round(Math.min(Math.max(start.h + ev.clientY - startY, 320), window.innerHeight - 16))
+      };
+      setPanelSize(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.userSelect = '';
+      setIsResizingPanel(false);
+      try { localStorage.setItem(PANEL_SIZE_KEY, JSON.stringify(latest)); } catch {}
+    };
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
   const savePanelPos = (pos: { x: number; y: number } | null) => {
     try {
       if (pos) localStorage.setItem(PANEL_POS_KEY, JSON.stringify(pos));
@@ -783,16 +831,77 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
   };
 
+  // 每个分镜取最新一条已完成的视频，按分镜顺序拼接
+  const jobVideoUrlOf = (job: VideoJob): string => {
+    const anyJob = job as any;
+    return anyJob.videoUrl || anyJob.supabaseVideoUrl || anyJob.playbackUrl || '';
+  };
+  const stitchClips = (directorPlan?.shots || []).map(shot => {
+    const job = jobs.find(j => j.shotId === shot.shotId && j.status === 'ready' && jobVideoUrlOf(j));
+    return { shot, job, url: job ? jobVideoUrlOf(job) : '' };
+  });
+  const readyStitchClips = stitchClips.filter(c => c.url);
+  // 勾选的任务按镜头序号（shot-N）排序，同序号按生成时间
+  const shotOrder = (job: VideoJob) => Number(String(job.shotId || '').match(/^shot-(\d+)/)?.[1] || 999);
+  const selectedStitchJobs = jobs
+    .filter(j => selectedJobIds.includes(j.id) && j.status === 'ready' && jobVideoUrlOf(j))
+    .sort((a, b) => shotOrder(a) - shotOrder(b) || Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  const toggleJobSelected = (id: string) =>
+    setSelectedJobIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  const handleStitchFilm = async (source: 'plan' | 'selected' = 'plan') => {
+    const clips =
+      source === 'selected'
+        ? selectedStitchJobs.map(j => ({ videoUrl: jobVideoUrlOf(j), assetVersionId: j.assetVersionId || undefined }))
+        : readyStitchClips.map(c => ({ videoUrl: c.url, assetVersionId: c.job?.assetVersionId || undefined }));
+    if (clips.length < 2 || isStitching) return;
+    setIsStitching(true);
+    setStitchError(null);
+    try {
+      const film = await VideoGenerationService.stitchVideos({
+        canvasId,
+        clips,
+        transition: stitchTransition
+      });
+      setStitchedFilm(film);
+      onStitched?.({
+        videoUrl: film.videoUrl,
+        durationSeconds: film.durationSeconds,
+        clipCount: film.clipCount,
+        title: `成片 · ${film.clipCount} 个镜头`
+      });
+    } catch (err: any) {
+      setStitchError(err?.message || '拼接失败，请稍后重试');
+    } finally {
+      setIsStitching(false);
+    }
+  };
+
   return (
     <aside
       id="video-creation-panel"
       className={
         panelPos
-          ? `fixed w-[440px] bg-white border border-neutral-200 rounded-xl shadow-2xl z-40 flex flex-col font-sans overflow-hidden ${isDraggingPanel ? 'ring-2 ring-purple-300' : ''}`
+          ? `fixed bg-white border border-neutral-200 rounded-xl shadow-2xl z-40 flex flex-col font-sans overflow-hidden ${isDraggingPanel || isResizingPanel ? 'ring-2 ring-purple-300' : ''}`
           : 'fixed top-14 right-0 bottom-0 w-[440px] bg-white border-l border-neutral-200 shadow-2xl z-40 flex flex-col font-sans'
       }
-      style={panelPos ? { left: panelPos.x, top: panelPos.y, height: `min(calc(100vh - ${panelPos.y}px - 12px), 900px)` } : undefined}
+      style={panelPos ? { left: panelPos.x, top: panelPos.y, width: panelSize.w, height: panelSize.h } : undefined}
     >
+      {panelPos && (
+        <>
+          {/* 右边缘、下边缘、右下角都可拖动缩放 */}
+          <div onPointerDown={e => handlePanelResizeStart(e, 'x')} className="absolute top-0 right-0 bottom-5 w-2 z-50 cursor-ew-resize" title="拖动调整宽度" />
+          <div onPointerDown={e => handlePanelResizeStart(e, 'y')} className="absolute left-0 right-5 bottom-0 h-2 z-50 cursor-ns-resize" title="拖动调整高度" />
+          <div
+            onPointerDown={e => handlePanelResizeStart(e, 'xy')}
+            className="absolute right-0 bottom-0 w-6 h-6 z-50 cursor-nwse-resize flex items-end justify-end p-0.5"
+            title="拖动调整窗口大小"
+          >
+            <svg viewBox="0 0 16 16" className="w-4 h-4 text-neutral-400">
+              <path d="M14 6 L6 14 M14 10 L10 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+        </>
+      )}
       {/* Hidden file input for uploading reference image */}
       <input
         type="file"
@@ -1414,6 +1523,65 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                 </button>
               </div>
             )}
+
+            {/* 拼接成片：按分镜顺序把已生成的镜头剪成一条片子 */}
+            {directorPlan.shots.length > 1 && (
+              <div className="pt-2 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-neutral-600">
+                  <span>
+                    拼接成片 · 已生成 {readyStitchClips.length}/{directorPlan.shots.length} 个镜头
+                    {readyStitchClips.length > 0 && readyStitchClips.length < directorPlan.shots.length ? '（未生成的镜头会跳过）' : ''}
+                    {readyStitchClips.length === 0 && jobs.some(j => j.status === 'ready') ? '（本方案的镜头还没生成；旧镜头可在下方近期任务里勾选后拼接）' : ''}
+                  </span>
+                  <div className="flex items-center gap-1 bg-neutral-100 p-0.5 rounded-md">
+                    {(['fade', 'cut'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setStitchTransition(t)}
+                        className={`px-2 py-0.5 rounded text-[10px] ${stitchTransition === t ? 'bg-white text-purple-900 shadow-sm font-semibold' : 'text-neutral-500'}`}
+                      >
+                        {t === 'fade' ? '淡入淡出' : '硬切'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleStitchFilm('plan')}
+                  disabled={readyStitchClips.length < 2 || isStitching}
+                  className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  title={readyStitchClips.length < 2 ? '至少要有 2 个镜头生成完成' : '按分镜顺序拼接成一条片子'}
+                >
+                  {isStitching ? (
+                    <>
+                      <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>正在拼接成片...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Film className="w-3.5 h-3.5" />
+                      <span>
+                        拼接成片（{readyStitchClips.length} 个镜头 · 约{' '}
+                        {readyStitchClips.reduce((acc, c) => acc + (c.job?.videoSettings?.durationSeconds || c.shot.durationSeconds), 0)} 秒）
+                      </span>
+                    </>
+                  )}
+                </button>
+                {stitchError && <div className="text-[11px] text-rose-600">{stitchError}</div>}
+                {stitchedFilm && (
+                  <div className="rounded-lg border border-purple-200 overflow-hidden bg-white">
+                    <video src={stitchedFilm.videoUrl} controls playsInline preload="metadata" className="w-full max-h-72 bg-black" />
+                    <div className="flex items-center justify-between px-2.5 py-1.5 text-[11px] text-neutral-600">
+                      <span>成片 · {stitchedFilm.clipCount} 个镜头 · {stitchedFilm.durationSeconds} 秒（已发到对话）</span>
+                      <a href={stitchedFilm.videoUrl} target="_blank" rel="noreferrer" download className="text-purple-600 hover:underline">
+                        下载
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1478,13 +1646,41 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
         {jobs.length > 0 && (
           <div className="pt-2 border-t border-neutral-200">
             <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-1">
-              <span>近期任务 ({jobs.length})</span>
+              <span className="flex items-center gap-2">
+                <span>近期任务 ({jobs.length})</span>
+                {selectedStitchJobs.length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => handleStitchFilm('selected')}
+                    disabled={isStitching}
+                    className="px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-semibold disabled:opacity-50"
+                    title={`按镜头序号拼接所选的 ${selectedStitchJobs.length} 条视频（${stitchTransition === 'fade' ? '淡入淡出' : '硬切'}）`}
+                  >
+                    {isStitching ? '拼接中…' : `拼接所选 ${selectedStitchJobs.length} 条`}
+                  </button>
+                )}
+                {selectedJobIds.length > 0 && (
+                  <button type="button" onClick={() => setSelectedJobIds([])} className="text-[10px] text-neutral-400 hover:text-neutral-600">
+                    清除勾选
+                  </button>
+                )}
+              </span>
               {storageInfo && (
                 <span className="text-[10px] text-neutral-400">
                   存储: {storageInfo.provider === 'gcs' ? 'GCS私有桶 + Supabase' : '云端与本地双重备份'}
                 </span>
               )}
             </div>
+            {!directorPlan && stitchError && <div className="text-[11px] text-rose-600 mb-1">{stitchError}</div>}
+            {!directorPlan && stitchedFilm && (
+              <div className="mb-1.5 rounded-lg border border-purple-200 overflow-hidden bg-white">
+                <video src={stitchedFilm.videoUrl} controls playsInline preload="metadata" className="w-full max-h-56 bg-black" />
+                <div className="flex items-center justify-between px-2.5 py-1 text-[11px] text-neutral-600">
+                  <span>成片 · {stitchedFilm.clipCount} 个镜头 · {stitchedFilm.durationSeconds} 秒（已发到对话）</span>
+                  <a href={stitchedFilm.videoUrl} target="_blank" rel="noreferrer" download className="text-purple-600 hover:underline">下载</a>
+                </div>
+              </div>
+            )}
             <div className="max-h-[34vh] overflow-y-auto overscroll-contain space-y-1.5 pr-1">
               {jobs.map(job => {
                 const anyJob = job as any;
@@ -1502,7 +1698,16 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                   className="bg-white border border-neutral-200 rounded-lg text-[10px] overflow-hidden"
                 >
                   <div className="flex items-center justify-between gap-2 px-2 py-1.5">
-                  <div className="min-w-0">
+                  {jobVideoUrl && job.status === 'ready' && (
+                    <input
+                      type="checkbox"
+                      checked={selectedJobIds.includes(job.id)}
+                      onChange={() => toggleJobSelected(job.id)}
+                      className="shrink-0 accent-purple-600 cursor-pointer"
+                      title="勾选后可拼接成片"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     <div className="font-medium text-neutral-800 truncate" title={job.id}>
                       {shotTitle || job.shotId || job.id}
                     </div>

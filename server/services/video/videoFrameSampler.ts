@@ -31,7 +31,7 @@ export interface VideoFrameSample {
 const cache = new Map<string, VideoFrameSample>();
 
 /** 只允许抓取公网地址或本服务自身的视频路由，避免被用来访问内网（SSRF） */
-function resolveVideoUrl(input: { videoUrl?: string | null; assetVersionId?: string | null }): string {
+export function resolveVideoUrl(input: { videoUrl?: string | null; assetVersionId?: string | null }): string {
   const port = process.env.PORT || 3000;
   const raw = String(input.videoUrl || '').trim();
   if (raw.startsWith('/')) {
@@ -61,7 +61,7 @@ function resolveVideoUrl(input: { videoUrl?: string | null; assetVersionId?: str
   throw new Error('视频没有可用的播放地址');
 }
 
-function runFfmpeg(args: string[], timeoutMs = 30_000): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
+export function runFfmpeg(args: string[], timeoutMs = 30_000): Promise<{ stdout: Buffer; stderr: string; code: number | null }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(FFMPEG, args, { windowsHide: true });
     const out: Buffer[] = [];
@@ -80,7 +80,7 @@ function runFfmpeg(args: string[], timeoutMs = 30_000): Promise<{ stdout: Buffer
   });
 }
 
-async function downloadVideo(url: string, file: string): Promise<void> {
+export async function downloadVideo(url: string, file: string): Promise<void> {
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`视频下载失败（HTTP ${res.status}）`);
   const len = Number(res.headers.get('content-length') || 0);

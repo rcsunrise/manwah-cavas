@@ -996,6 +996,14 @@ export default function CreativeCanvasPage() {
           allNodes={nodes}
           onPlanCreated={handlePlanCreated}
           onJobSubmitted={handleJobSubmitted}
+          onStitched={film =>
+            postVideoResultToChat({
+              jobId: `stitch-${Date.now()}`,
+              videoUrl: film.videoUrl,
+              title: film.title,
+              durationSeconds: film.durationSeconds
+            })
+          }
           incomingBrief={videoBriefRequest}
         />
 

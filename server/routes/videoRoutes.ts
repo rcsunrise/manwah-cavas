@@ -7,6 +7,7 @@ import { supabaseAdmin } from '../../src/lib/supabase';
 import { getAvailableVideoCapabilities, resolveVideoCapability } from '../services/video/videoCapabilityRegistry';
 import { VideoDirectorService } from '../services/video/videoDirectorService';
 import { expandVideoPrompt } from '../services/video/videoPromptExpandService';
+import { stitchVideos } from '../services/video/videoStitchService';
 import { VideoJobService } from '../services/video/videoJobService';
 import { annotateCapabilityAvailability } from '../services/video/videoModelAvailability';
 import { GcsVideoStorage } from '../services/storage/gcsVideoStorage';
@@ -236,6 +237,34 @@ router.post('/api/gateway/video/director-brief', async (req: Request, res: Respo
   } catch (err: any) {
     console.error('[videoRoutes] director-brief error:', err);
     res.status(500).json({ error: { code: 'DIRECTOR_FAILED', message: err.message } });
+  }
+});
+
+/**
+ * POST /api/gateway/video/stitch
+ * 把分镜视频按顺序拼接成一条成片（硬切或淡入淡出），返回成片地址
+ */
+router.post('/api/gateway/video/stitch', async (req: Request, res: Response) => {
+  try {
+    const { canvasId, clips, transition } = req.body || {};
+    if (!canvasId || !Array.isArray(clips) || clips.length < 2) {
+      res.status(400).json({ error: { code: 'BAD_REQUEST', message: '至少需要 2 个镜头才能拼接' } });
+      return;
+    }
+    const startedAt = Date.now();
+    const result = await stitchVideos({
+      canvasId: String(canvasId),
+      clips: clips.slice(0, 12).map((c: any) => ({
+        videoUrl: typeof c?.videoUrl === 'string' ? c.videoUrl : undefined,
+        assetVersionId: typeof c?.assetVersionId === 'string' ? c.assetVersionId : undefined
+      })),
+      transition: transition === 'fade' ? 'fade' : 'cut'
+    });
+    console.log(`[videoRoutes] stitched ${result.clipCount} clips (${result.durationSeconds}s, ${(result.sizeBytes / 1024 / 1024).toFixed(1)}MB) in ${Date.now() - startedAt}ms`);
+    res.json({ result });
+  } catch (err: any) {
+    console.error('[videoRoutes] stitch error:', err?.message || err);
+    res.status(500).json({ error: { code: 'STITCH_FAILED', message: err?.message || '拼接失败' } });
   }
 });
 
