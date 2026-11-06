@@ -603,10 +603,17 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
                     <option value="google/gemini-3-pro-image-preview">Gemini 3.0 Pro</option>
                   </optgroup>
                   <optgroup label="OpenAI GPT 家族">
-                    <option value="openai/gpt-image-2-c">GPT image-2-c</option>
-                    <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画)</option>
-                    <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (高光细节)</option>
-                    <option value="openai/gpt-image-2">GPT image-2</option>
+                    <option value="openai/gpt-image-2.6-sunburst-c">GPT 2.6 Sunburst (精细构图与标注编辑)</option>
+                    <option value="openai/gpt-image-2.6-flare-c">GPT 2.6 Flare (精细视觉创作与编辑)</option>
+                    <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (高光细节 · 1K/2K/4K)</option>
+                    <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 1K/2K/4K)</option>
+                    <option value="openai/gpt-image-2-c">GPT image-2-c (高一致性母版)</option>
+                    <option value="openai/gpt-image-2">GPT image-2 (经典写实)</option>
+                    <option value="openai/gpt-image-2-all">GPT image-2-all (多图严格参考)</option>
+
+
+
+
                   </optgroup>
                 </select>
 

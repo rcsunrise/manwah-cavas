@@ -74,7 +74,7 @@ function extractImagesFromText(textStr: string, target: NormalizedImage[]): void
   const mdUrlMatch = textStr.match(/!\[[^\]]*\]\((https?:\/\/[^\s"'<>\)]+)\)/i);
   const extUrlMatch = textStr.match(/(https?:\/\/[^\s"'<>\)]+\.(?:png|jpg|jpeg|webp|gif)(?:\?[^\s"'<>\)]*)?)/i);
   const singleUrlMatch = /^https?:\/\/[^\s"'<>\)]+$/i.test(textStr) ? [textStr, textStr] : null;
-  const urlMatch = mdUrlMatch || extUrlMatch || singleUrlMatch;
+  const urlMatch = mdUrlMatch || extUrlMatch || singleUrlMatch || textStr.match(/(https?:\/\/[^\s"'<>\)]+)/i);
   if (urlMatch) {
     target.push({
       mimeType: 'image/png',
@@ -166,7 +166,7 @@ export function normalizeGeminiImageResponse(
         extractImagesFromText(textStr, images);
       } else if (Array.isArray(msg?.content)) {
         for (const cPart of msg.content) {
-          const u = cPart?.image_url?.url || cPart?.url;
+          const u = cPart?.image_url?.url || cPart?.url || cPart?.b64_json || cPart?.b64 || cPart?.base64 || cPart?.inlineData?.data || cPart?.inline_data?.data;
           if (typeof u === 'string' && u.trim()) {
             extractImagesFromText(u.trim(), images);
           } else if (typeof cPart?.text === 'string' && cPart.text.trim()) {

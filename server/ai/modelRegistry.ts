@@ -1,7 +1,7 @@
 import type { GenerationIntent } from './imageRequest';
 
 export type ImageIntent = GenerationIntent;
-export type ImageTransport = 'gemini_native' | 'openai_images' | 'openai_images_json_multi';
+export type ImageTransport = 'gemini_native' | 'openai_images' | 'openai_images_json_multi' | 'openai_chat_completions';
 
 export interface ImageModelCapabilities {
   textToImage: boolean;
@@ -77,6 +77,22 @@ export const IMAGE_MODEL_REGISTRY: readonly ImageModelDefinition[] = [
     transport: 'gemini_native',
     supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
     capabilities: geminiCapabilities
+  },
+  {
+    id: 'gpt-image-2.6-flare-c',
+    aliases: ['openai/gpt-image-2.6-flare-c', 'gpt-2.6-flare', 'gpt-image-2.6-flare'],
+    // 网关的 2.6 只开放 /v1/images/edits 与 /v1/images/generations，chat/completions 会返回
+    // "This model is not supported on the Chat Completions endpoint"
+    transport: 'openai_images',
+    supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
+    capabilities: openAiCapabilities
+  },
+  {
+    id: 'gpt-image-2.6-sunburst-c',
+    aliases: ['openai/gpt-image-2.6-sunburst-c', 'gpt-2.6-sunburst', 'gpt-image-2.6-sunburst'],
+    transport: 'openai_images',
+    supportedProviders: ['tiantoken', 'routerhub', 'vectorengine'],
+    capabilities: openAiCapabilities
   },
   {
     id: 'gpt-image-2.5-flare-c',

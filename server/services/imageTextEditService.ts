@@ -9,8 +9,10 @@ import { supabaseAdmin } from '../../src/lib/supabase';
 import { VideoSourceImageResolver } from './video/videoSourceImageResolver';
 import { persistAssetToDisk } from '../routes/canvasRoutes';
 
-const EDIT_MODELS = ['gemini-nano-banana-2.1-preview', 'gemini-3-pro-image'];
-/** 尝试顺序：Nano Banana 速度快，先试两次（结果有随机性），仍不行再换 Gemini 3 Pro */
+const EDIT_MODELS = ['gpt-image-2.5-sunburst-c', 'gemini-nano-banana-2.1-preview'];
+/** 按要求整体修改画面：默认 GPT 2.6 Flare（产品保真、出图快），失败时回落 Nano Banana 2.1 */
+const INSTRUCTION_EDIT_MODELS = ['gpt-image-2.6-flare-c', 'gemini-nano-banana-2.1-preview'];
+/** 改字尝试顺序：GPT 2.5 Sunburst（支持原生遮罩）先试两次（结果有随机性），仍不行再换 Nano Banana 2.1 */
 const ATTEMPT_PLAN = [EDIT_MODELS[0], EDIT_MODELS[0], EDIT_MODELS[1]];
 /** 对齐后编辑带以外的平均灰度差上限；正常局部改字约 4~6，超过说明模型重新构图了整张图 */
 const MAX_ALIGN_ERR = 12;
@@ -468,7 +470,7 @@ export async function editImageByInstruction(input: { imageUrl: string; instruct
 
   let lastError: any = null;
   let attempts = 0;
-  for (const model of EDIT_MODELS) {
+  for (const model of INSTRUCTION_EDIT_MODELS) {
     attempts++;
     try {
       const edited = await callImageEdit({ model, prompt, image: base, userId, aspectRatio });

@@ -730,6 +730,8 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (超低延迟)</option>
                 </optgroup>
                 <optgroup label="OpenAI GPT Image 家族" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="openai/gpt-image-2.6-sunburst-c">GPT 2.6 Sunburst (精细构图 · 复杂画面与标注编辑)</option>
+                  <option value="openai/gpt-image-2.6-flare-c">GPT 2.6 Flare (精细视觉创作 · 图文多模态编辑)</option>
                   <option value="gpt-image-2">GPT Image 2 (电影级写实 · 材质保护)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版)</option>
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>

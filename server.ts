@@ -114,7 +114,7 @@ function getImagePoints(model: string, resolution: string): number {
   const res = resolution || '1K';
 
   // 1. 极速版 (v2.5 Flash) - 0.02W
-  if (modelKey.includes('2.5') || modelKey.includes('极速')) {
+  if ((modelKey.includes('2.5') || modelKey.includes('极速')) && !modelKey.includes('gpt-image')) {
     return 200; 
   }
   
@@ -191,6 +191,10 @@ async function chargeUser(userId: string, tokens: number, model: string, resolut
         }
       } else if (cleanM === 'gemini-3-pro-image-preview' || cleanM === 'google/gemini-3-pro-image-preview') {
         markedModelName = `[💎新旗舰·预览版] ${model}`;
+      } else if (cleanM.includes('gpt-image-2.6')) {
+        markedModelName = `[渠道·2.6] ${model}`;
+      } else if (cleanM.includes('gpt-image-2.5')) {
+        markedModelName = `[渠道·2.5] ${model}`;
       } else if (cleanM.includes('2.5') || cleanM.includes('极速')) {
         markedModelName = `[🚀极速版·v2.5] ${model}`;
       } else if (cleanM.includes('gpt-image-2')) {
@@ -657,12 +661,18 @@ async function startServer() {
       }
 
       // Helper to calculate exact dimension string for OpenAI/VectorEngine based on aspect ratio
-      const computeOpenAiImageSize = (ratioStr: string, resStr: string): string => {
+      const computeOpenAiImageSize = (ratioStr: string, resStr: string, modelIdStr: string = model): string => {
         const is2K = resStr === '2K';
         const is4K = resStr === '4K';
+        const supportsNative4K = modelIdStr.includes('2.5') || modelIdStr.includes('2.6');
+        const pickSize = (s1k: string, s2k: string, s4k: string) => {
+          if (is4K && supportsNative4K) return s4k;
+          if (is2K || is4K) return s2k;
+          return s1k;
+        };
 
         if (!ratioStr || ratioStr === 'Auto' || ratioStr === '1:1') {
-          return (is2K || is4K) ? "2048x2048" : "1024x1024";
+          return pickSize("1024x1024", "2048x2048", "4096x4096");
         }
 
         const parts = String(ratioStr).trim().split(':');
@@ -673,51 +683,42 @@ async function startServer() {
             const ratio = w / h;
 
             if (Math.abs(ratio - 1.0) < 0.05) {
-              return (is2K || is4K) ? "2048x2048" : "1024x1024";
+              return pickSize("1024x1024", "2048x2048", "4096x4096");
             }
 
-            // Map to standard supported OpenAI / VectorEngine image sizes
-            // 16:9 landscape (~1.777)
             if (Math.abs(ratio - (16 / 9)) < 0.05 || Math.abs(ratio - 1.777) < 0.05) {
-              return (is2K || is4K) ? "2560x1440" : "1792x1024";
+              return pickSize("1792x1024", "2560x1440", "3840x2160");
             }
-            // 9:16 portrait (~0.5625)
             if (Math.abs(ratio - (9 / 16)) < 0.05 || Math.abs(ratio - 0.5625) < 0.05) {
-              return (is2K || is4K) ? "1440x2560" : "1024x1792";
+              return pickSize("1024x1792", "1440x2560", "2160x3840");
             }
-            // 4:3 (~1.333)
             if (Math.abs(ratio - (4 / 3)) < 0.05 || Math.abs(ratio - 1.333) < 0.05) {
-              return (is2K || is4K) ? "2048x1536" : "1472x1104";
+              return pickSize("1472x1104", "2048x1536", "4096x3072");
             }
-            // 3:4 (~0.75)
             if (Math.abs(ratio - (3 / 4)) < 0.05 || Math.abs(ratio - 0.75) < 0.05) {
-              return (is2K || is4K) ? "1536x2048" : "1104x1472";
+              return pickSize("1104x1472", "1536x2048", "3072x4096");
             }
-            // 3:2 (~1.5)
             if (Math.abs(ratio - 1.5) < 0.05) {
-              return (is2K || is4K) ? "2048x1365" : "1536x1024";
+              return pickSize("1536x1024", "2048x1365", "4096x2730");
             }
-            // 2:3 (~0.666)
             if (Math.abs(ratio - (2 / 3)) < 0.05) {
-              return (is2K || is4K) ? "1365x2048" : "1024x1536";
+              return pickSize("1024x1536", "1365x2048", "2730x4096");
             }
-            // 21:9 (~2.333)
             if (Math.abs(ratio - (21 / 9)) < 0.05 || ratio >= 2.0) {
-              return (is2K || is4K) ? "2560x1080" : "1792x768";
+              return pickSize("1792x768", "2560x1080", "4096x1728");
             }
 
-            // Fallbacks
             if (ratio > 1.2) {
-              return (is2K || is4K) ? "2560x1440" : "1792x1024";
+              return pickSize("1792x1024", "2560x1440", "3840x2160");
             } else if (ratio < 0.8) {
-              return (is2K || is4K) ? "1440x2560" : "1024x1792";
+              return pickSize("1024x1792", "1440x2560", "2160x3840");
             } else {
-              return (is2K || is4K) ? "2048x2048" : "1024x1024";
+              return pickSize("1024x1024", "2048x2048", "4096x4096");
             }
           }
         }
 
-        return (is2K || is4K) ? "2048x2048" : "1024x1024";
+        return pickSize("1024x1024", "2048x2048", "4096x4096");
       };
 
       // Helper to match the closest supported aspect ratio for Google Imagen model to prevent API errors
@@ -1108,7 +1109,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
             if (size && typeof size === 'string' && (size.includes('x') || size === 'auto')) {
               sizeStr = size;
             } else {
-              sizeStr = computeOpenAiImageSize(aspectRatio, resolution);
+              sizeStr = computeOpenAiImageSize(aspectRatio, resolution, finalModel);
             }
 
             const imgQuality = quality || 'high';
@@ -1118,7 +1119,64 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
             const roleManifest = buildImageRoleManifest(resolvedReferenceImages);
             const promptWithRoles = roleManifest ? `${prompt}\n\n[参考图角色与顺序] ${roleManifest}` : prompt;
 
-            if (intent === 'image_edit' && registeredModel.transport === 'openai_images_json_multi') {
+            if (registeredModel.transport === 'openai_chat_completions') {
+              const chatContentParts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [];
+              if (intent === 'image_edit') {
+                let appendedCount = 0;
+                for (let idx = 0; idx < resolvedReferenceImages.length && idx < registeredModel.capabilities.maxInputImages; idx++) {
+                  const imgObj = resolvedReferenceImages[idx];
+                  chatContentParts.push({
+                    type: 'text',
+                    text: `[参考图${idx + 1}｜${IMAGE_ROLE_LABELS[imgObj.role]}${imgObj.referenceAssetId ? `｜资产ID:${imgObj.referenceAssetId}` : ''}]`
+                  });
+                  chatContentParts.push({
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${imgObj.mimeType};base64,${imgObj.cleanB64}`
+                    }
+                  });
+                  appendedCount++;
+                }
+                if (appendedCount === 0) {
+                  throw new ProviderError(
+                    '图像编辑请求的参考图无效，已拒绝降级为文生图。',
+                    'invalid_image_input',
+                    400,
+                    false,
+                    currentProvider,
+                    finalModel
+                  );
+                }
+                if (resolvedMask) {
+                  chatContentParts.push({
+                    type: 'text',
+                    text: `[Mask 局部编辑蒙版图｜Alpha通道/涂抹区域｜作用于参考图1]`
+                  });
+                  chatContentParts.push({
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${resolvedMask.mimeType};base64,${resolvedMask.cleanB64}`
+                    }
+                  });
+                }
+              }
+              const basePromptText = intent === 'image_edit' ? promptWithRoles : prompt;
+              chatContentParts.push({
+                type: 'text',
+                text: `${basePromptText}\n\n[Output Image Specification: Aspect Ratio ${aspectRatio || '1:1'}, Resolution ${resolvedSize} (${sizeStr})]`
+              });
+              reqPayload = {
+                model: finalModel,
+                stream: false,
+                messages: [
+                  {
+                    role: 'user',
+                    content: chatContentParts
+                  }
+                ]
+              };
+              isMultipart = false;
+            } else if (intent === 'image_edit' && registeredModel.transport === 'openai_images_json_multi') {
               const publicUrls = resolvedReferenceImages.map(image => image.publicUrl);
               if (publicUrls.some(url => !url)) {
                 throw new ProviderError(
@@ -1149,6 +1207,8 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
               formData.append('prompt', promptWithRoles);
               formData.append('n', "1");
               formData.append('size', sizeStr);
+              formData.append('resolution', resolvedSize);
+              formData.append('image_size', resolvedSize);
               if (aspectRatio) {
                 formData.append('aspect_ratio', aspectRatio);
                 formData.append('aspectRatio', aspectRatio);
@@ -1185,13 +1245,15 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
               isMultipart = true;
             }
 
-            if (intent === 'text_to_image') {
+            if (intent === 'text_to_image' && registeredModel.transport !== 'openai_chat_completions') {
               reqPayload = {
                 model: finalModel,
                 prompt: prompt,
                 n: 1,
                 size: sizeStr,
                 aspect_ratio: aspectRatio,
+                resolution: resolvedSize,
+                image_size: resolvedSize,
                 aspectRatio: aspectRatio,
                 quality: imgQuality,
                 output_format: imgFormat
@@ -1282,9 +1344,32 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
           // Transform OpenAI response to Google format so frontend parses correctly
           if (isOpenAI) {
              const normalizedImages: Array<{ mimeType: string; data: string }> = [];
+             if (registeredModel.transport === 'openai_chat_completions' || (!Array.isArray(data.data) && Array.isArray(data.choices))) {
+               const parsedChat = normalizeGeminiImageResponse(data, {
+                 actualModel: finalModel,
+                 provider: currentProvider
+               });
+               for (const imgEntry of parsedChat.images || []) {
+                 if (typeof imgEntry?.data === 'string' && /^https?:\/\//i.test(imgEntry.data)) {
+                   data.data = [...(Array.isArray(data.data) ? data.data : []), { url: imgEntry.data, mimeType: imgEntry.mimeType }];
+                 } else if (typeof imgEntry?.data === 'string') {
+                   normalizedImages.push({ mimeType: imgEntry.mimeType || 'image/png', data: imgEntry.data });
+                 }
+               }
+             }
              for (const item of Array.isArray(data.data) ? data.data : []) {
                let imageData = item?.b64_json || item?.b64 || item?.base64 || item?.image || (typeof item === 'string' ? item : undefined);
                let mimeType = item?.mime_type || item?.mimeType || 'image/png';
+               if (typeof imageData === 'string') {
+                 const dataUrlMatch = imageData.match(/^data:([^;]+);base64,(.+)$/s);
+                 if (dataUrlMatch) {
+                   mimeType = dataUrlMatch[1] || mimeType;
+                   imageData = dataUrlMatch[2].replace(/\s+/g, '');
+                 } else if (/^https?:\/\//i.test(imageData) && !item?.url) {
+                   item.url = imageData;
+                   imageData = undefined;
+                 }
+               }
                if (!imageData && item?.url) {
                  // 上游已出图并计费，下载失败不能直接丢弃：放宽超时并重试，避免 2K 大图在慢网络下 15 秒超时后被判失败
                  let lastDownloadError: any = null;

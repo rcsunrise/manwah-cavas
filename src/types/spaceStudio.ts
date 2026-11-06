@@ -436,7 +436,13 @@ export type ComputeModelTier =
   | 'openai/gpt-image-2-c'
   | 'openai/gpt-image-2-all'
   | 'openai/gpt-image-2.5-flare-c'
-  | 'openai/gpt-image-2.5-sunburst-c';
+  | 'openai/gpt-image-2.5-sunburst-c'
+  | 'openai/gpt-image-2.6-flare-c'
+  | 'openai/gpt-image-2.6-sunburst-c'
+  | 'gpt-image-2.6-flare-c'
+  | 'gpt-image-2.6-sunburst-c'
+  | 'gpt-image-2.5-flare-c'
+  | 'gpt-image-2.5-sunburst-c';
 
 export type RenderResolution = '1K' | '2K' | '4K';
 

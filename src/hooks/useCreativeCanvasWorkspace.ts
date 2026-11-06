@@ -348,7 +348,8 @@ export function useCreativeCanvasWorkspace(
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number | null>(null);
 
   // Model & Resolution config for Image Generation
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-nano-banana-2.1-preview');
+  // 默认出图模型：GPT 2.6 Flare（实测产品保真、中文字准确、约 40 秒）；Sunburst 作为高质量选项
+  const [selectedModel, setSelectedModel] = useState<string>('openai/gpt-image-2.6-flare-c');
   const [planAgentModel, setPlanAgentModel] = useState<string>('gpt-6');
   const [planReasoningEffort, setPlanReasoningEffort] = useState<'minimal' | 'low' | 'medium' | 'high'>('medium');
   const [planTargetAudience, setPlanTargetAudience] = useState<string>('');
@@ -1867,7 +1868,7 @@ export function useCreativeCanvasWorkspace(
       taskCard: {
         title: `修改图中文字：${params.oldText ? `「${params.oldText}」→` : ''}「${newText}」`,
         status: 'running',
-        detail: `${targetTitle} · Nano Banana 2.1 局部重绘，约 1 分钟`
+        detail: `${targetTitle} · GPT 2.5 Sunburst 局部重绘，约 1 分钟`
       }
     });
     try {
@@ -1911,7 +1912,7 @@ export function useCreativeCanvasWorkspace(
       ]);
       hasUserMutationRef.current = true;
 
-      const modelLabel = result.model === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1';
+      const modelLabel = /sunburst/.test(result.model || '') ? 'GPT 2.5 Sunburst' : result.model === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1';
       const editDetail = result.verified
         ? `「${result.originalLine}」→「${result.expectedLine}」 · ${modelLabel} · 已逐字校验，画面其余部分保持原图`
         : `⚠️ 逐字校验未通过（识别为「${result.recognizedLine || '无法识别'}」），请放大核对文字 · ${modelLabel}`;
@@ -2379,6 +2380,8 @@ export function useCreativeCanvasWorkspace(
 
     generatingScenesRef.current.add(screenIndex);
     const getModelFriendlyName = (m: string) => {
+      if (m.includes('2.6-flare') || m.includes('2.6_flare')) return 'GPT 2.6 Flare (精细视觉创作·图文编辑)';
+      if (m.includes('2.6-sunburst') || m.includes('2.6_sunburst')) return 'GPT 2.6 Sunburst (旗舰构图·标注引导编辑)';
       if (m.includes('flare')) return 'GPT 2.5 Flare (高保真原画·局部Mask重绘)';
       if (m.includes('sunburst')) return 'GPT 2.5 Sunburst (旗舰高光·质感重绘)';
       if (m.includes('banana')) return 'Nano Banana 2.1 (极速响应·轻量多图融合)';

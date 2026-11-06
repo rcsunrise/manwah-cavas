@@ -107,10 +107,21 @@ const openAiImagesJsonMultiAdapter: ImageProviderAdapter = {
   }
 };
 
+const openAiChatCompletionsAdapter: ImageProviderAdapter = {
+  transport: 'openai_chat_completions',
+  buildEndpoint(baseUrl) {
+    return `${cleanOpenAiBase(baseUrl)}/v1/chat/completions`;
+  },
+  usesMultipart() {
+    return false;
+  }
+};
+
 const adapters: Record<ImageTransport, ImageProviderAdapter> = {
   gemini_native: geminiNativeAdapter,
   openai_images: openAiImagesAdapter,
-  openai_images_json_multi: openAiImagesJsonMultiAdapter
+  openai_images_json_multi: openAiImagesJsonMultiAdapter,
+  openai_chat_completions: openAiChatCompletionsAdapter
 };
 
 export function getImageProviderAdapter(model: ImageModelDefinition): ImageProviderAdapter {

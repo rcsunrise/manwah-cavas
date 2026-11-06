@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveImageModel } from '../server/ai/modelRegistry';
+import { getImageProviderAdapter } from '../server/ai/imageProviderAdapter';
+import { normalizeGeminiImageResponse } from '../server/ai/imageResponse';
 import { SPACE_IMAGE_MODELS, getModelById } from '../src/config/imageModelRegistry';
 
 describe('新增 2 款系列模型注册与协议解析校验', () => {
@@ -66,6 +68,94 @@ describe('新增 2 款系列模型注册与协议解析校验', () => {
       expect(sunburstItem.name).toContain('GPT 2.5 Sunburst');
       expect(sunburstItem.provider).toBe('openai');
       expect(sunburstItem.capabilities.supports4K).toBe(true);
+    });
+
+    it('2.5 系列模型严格走 /v1/images/generations 与 /v1/images/edits 端点', () => {
+      const flareGen = resolveImageModel('gpt-image-2.5-flare-c', 'text_to_image');
+      const flareAdapter = getImageProviderAdapter(flareGen);
+      expect(flareAdapter.buildEndpoint('https://api.tiantoken.com/v1', flareGen, 'text_to_image'))
+        .toBe('https://api.tiantoken.com/v1/images/generations');
+      expect(flareAdapter.buildEndpoint('https://api.tiantoken.com/v1', flareGen, 'image_edit'))
+        .toBe('https://api.tiantoken.com/v1/images/edits');
+      expect(flareAdapter.usesMultipart('text_to_image')).toBe(false);
+      expect(flareAdapter.usesMultipart('image_edit')).toBe(true);
+
+      const sunburstGen = resolveImageModel('gpt-image-2.5-sunburst-c', 'text_to_image');
+      const sunburstAdapter = getImageProviderAdapter(sunburstGen);
+      expect(sunburstAdapter.buildEndpoint('https://api.tiantoken.com/v1', sunburstGen, 'text_to_image'))
+        .toBe('https://api.tiantoken.com/v1/images/generations');
+      expect(sunburstAdapter.buildEndpoint('https://api.tiantoken.com/v1', sunburstGen, 'image_edit'))
+        .toBe('https://api.tiantoken.com/v1/images/edits');
+    });
+  });
+
+  describe('3. OpenAI GPT 2.6 家族：gpt-image-2.6-flare-c & gpt-image-2.6-sunburst-c (/v1/images)', () => {
+    it('后端 modelRegistry 支持 gpt-image-2.6-flare-c 与 gpt-image-2.6-sunburst-c 及其别名解析', () => {
+      const flare26 = resolveImageModel('gpt-image-2.6-flare-c', 'text_to_image');
+      expect(flare26.id).toBe('gpt-image-2.6-flare-c');
+      expect(flare26.transport).toBe('openai_images');
+      expect(flare26.capabilities.textToImage).toBe(true);
+      expect(flare26.capabilities.imageEdit).toBe(true);
+
+      const sunburst26 = resolveImageModel('openai/gpt-image-2.6-sunburst-c', 'image_edit');
+      expect(sunburst26.id).toBe('gpt-image-2.6-sunburst-c');
+      expect(sunburst26.transport).toBe('openai_images');
+      expect(sunburst26.capabilities.textToImage).toBe(true);
+      expect(sunburst26.capabilities.imageEdit).toBe(true);
+    });
+
+    // 网关实测：2.6 在 chat/completions 返回 "This model is not supported on the Chat Completions endpoint"，
+    // 只能走 /v1/images/generations 与 /v1/images/edits（与 2.5 相同）
+    it('2.6 系列模型走 /v1/images 端点（生图 JSON，改图 Multipart）', () => {
+      const flare26 = resolveImageModel('gpt-image-2.6-flare-c', 'image_edit');
+      const adapter = getImageProviderAdapter(flare26);
+      expect(adapter.buildEndpoint('https://api.tiantoken.com/v1beta', flare26, 'text_to_image'))
+        .toBe('https://api.tiantoken.com/v1/images/generations');
+      expect(adapter.buildEndpoint('https://api.tiantoken.com/v1', flare26, 'image_edit'))
+        .toBe('https://api.tiantoken.com/v1/images/edits');
+      expect(adapter.usesMultipart('text_to_image')).toBe(false);
+      expect(adapter.usesMultipart('image_edit')).toBe(true);
+    });
+
+    it('能够正确解析 /v1/chat/completions 返回的 Markdown 链接、Data URL 或 images 数组', () => {
+      const fakeB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='.repeat(3);
+      const parsedB64 = normalizeGeminiImageResponse({
+        id: 'chatcmpl-26',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: `![generated](data:image/png;base64,${fakeB64})`
+            }
+          }
+        ]
+      }, { actualModel: 'gpt-image-2.6-sunburst-c', provider: 'tiantoken' });
+      expect(parsedB64.images).toHaveLength(1);
+      expect(parsedB64.images[0].data).toBe(fakeB64);
+
+      const parsedUrl = normalizeGeminiImageResponse({
+        id: 'chatcmpl-26-url',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'Here is your image: ![image](https://cdn.example.com/generated/26_flare_output.png)'
+            }
+          }
+        ]
+      }, { actualModel: 'gpt-image-2.6-flare-c', provider: 'tiantoken' });
+      expect(parsedUrl.images).toHaveLength(1);
+      expect(parsedUrl.images[0].data).toBe('https://cdn.example.com/generated/26_flare_output.png');
+    });
+
+    it('前端客户端注册表 SPACE_IMAGE_MODELS 包含 2.6 Flare 与 2.6 Sunburst', () => {
+      const flare26Item = getModelById('gpt-image-2.6-flare-c');
+      expect(flare26Item.id).toBe('gpt-image-2.6-flare-c');
+      expect(flare26Item.capabilities.supports4K).toBe(true);
+
+      const sunburst26Item = getModelById('openai/gpt-image-2.6-sunburst-c');
+      expect(sunburst26Item.id).toBe('gpt-image-2.6-sunburst-c');
+      expect(sunburst26Item.capabilities.supports4K).toBe(true);
     });
   });
 });

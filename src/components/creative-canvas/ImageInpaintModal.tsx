@@ -884,6 +884,8 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
                   <option value="google/gemini-3-pro-image-preview">Gemini 3 Pro Image (复杂光影旗舰)</option>
                 </optgroup>
                 <optgroup label="OpenAI GPT 图像大模型 (高保真重绘)">
+                  <option value="openai/gpt-image-2.6-sunburst-c">GPT 2.6 Sunburst (精细构图 · 复杂画面与标注引导编辑)</option>
+                  <option value="openai/gpt-image-2.6-flare-c">GPT 2.6 Flare (精细视觉创作 · 图像生成与修改)</option>
                   <option value="gpt-image-2-c">GPT Image 2-c (高一致性母版 · 商业级重绘旗舰)</option>
                   <option value="openai/gpt-image-2.5-flare-c">GPT 2.5 Flare (高保真原画 · 局部Mask重绘)</option>
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>

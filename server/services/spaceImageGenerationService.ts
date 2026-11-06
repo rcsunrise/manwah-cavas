@@ -989,6 +989,8 @@ export class SpaceImageGenerationService {
       if (targetModel === 'gemini-2.5-flash') targetModel = 'gemini-2.5-flash-image';
       else if (targetModel === 'google/gemini-3-pro-image' || targetModel === 'gemini-3-pro-image-preview') targetModel = 'gemini-3-pro-image';
       else if (targetModel === 'google/gemini-nano-banana-2.1-preview' || targetModel === 'nano-banana-2.1') targetModel = 'gemini-nano-banana-2.1-preview';
+      else if (targetModel === 'openai/gpt-image-2.6-flare-c' || targetModel === 'gpt-2.6-flare') targetModel = 'gpt-image-2.6-flare-c';
+      else if (targetModel === 'openai/gpt-image-2.6-sunburst-c' || targetModel === 'gpt-2.6-sunburst') targetModel = 'gpt-image-2.6-sunburst-c';
       else if (targetModel === 'openai/gpt-image-2.5-flare-c' || targetModel === 'gpt-2.5-flare') targetModel = 'gpt-image-2.5-flare-c';
       else if (targetModel === 'openai/gpt-image-2.5-sunburst-c' || targetModel === 'gpt-2.5-sunburst') targetModel = 'gpt-image-2.5-sunburst-c';
       else if (targetModel === 'openai/gpt-image-2' || targetModel === 'gpt-image-2') targetModel = 'gpt-image-2-c';

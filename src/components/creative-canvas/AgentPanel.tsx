@@ -174,11 +174,29 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
 }) => {
   const models = [
     {
+      id: 'openai/gpt-image-2.6-flare-c',
+      icon: '⚡',
+      title: 'GPT 2.6 Flare',
+      subtitle: '默认出图 · 产品保真与中文排版准确，约 40 秒',
+      badge: '默认',
+      badgeColor: 'bg-orange-100 text-orange-800 border-orange-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
+      id: 'openai/gpt-image-2.6-sunburst-c',
+      icon: '🌟',
+      title: 'GPT 2.6 Sunburst',
+      subtitle: '高质量终稿 · 光影质感更细腻，约 80 秒',
+      badge: '高质量',
+      badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
       id: 'gemini-nano-banana-2.1-preview',
       icon: '🍌',
       title: 'Nano Banana 2.1',
       subtitle: '极速响应 · 轻量多图融合',
-      badge: '系统推荐',
+      badge: '备用',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
       activeColor: 'bg-[#B28C5A] text-white border-[#B28C5A] shadow-md ring-2 ring-[#B28C5A]/30'
     },
@@ -201,9 +219,45 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
     },
     {
+      id: 'openai/gpt-image-2.5-sunburst-c',
+      icon: '☀️',
+      title: 'GPT 2.5 Sunburst',
+      subtitle: '高光细节旗舰 · 1K/2K/4K生成',
+      badge: '2.5 高光',
+      badgeColor: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
+      id: 'openai/gpt-image-2.5-flare-c',
+      icon: '🔥',
+      title: 'GPT 2.5 Flare',
+      subtitle: '高保真原画 · 1K/2K/4K生成与编辑',
+      badge: '2.5 原画',
+      badgeColor: 'bg-rose-100 text-rose-800 border-rose-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
+      id: 'openai/gpt-image-2-c',
+      icon: '🪐',
+      title: 'GPT Image 2-c',
+      subtitle: '母版高一致性 · 五金缝线增强',
+      badge: '母版一致',
+      badgeColor: 'bg-sky-100 text-sky-800 border-sky-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
+      id: 'openai/gpt-image-2-all',
+      icon: '🧩',
+      title: 'GPT Image 2-all',
+      subtitle: '多图严格参考 · 公网URL融合',
+      badge: '多图融合',
+      badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
       id: 'openai/gpt-image-2',
       icon: '🌌',
-      title: 'GPT Image 2.5',
+      title: 'GPT Image 2',
       subtitle: '电影级写实 · 高保真备用',
       badge: '高保真渠道',
       badgeColor: 'bg-stone-100 text-stone-700 border-stone-300',
@@ -242,7 +296,7 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
               (selectedModel === 'gemini-nano-banana-2.1-preview' || selectedModel === 'nano-banana-2.1')) ||
             (m.id === 'google/gemini-3-pro-image' &&
               (selectedModel === 'gemini-3-pro-image' || selectedModel === 'google/gemini-3-pro-image' || selectedModel === 'gemini-3-pro-image-preview')) ||
-            (m.id === 'openai/gpt-image-2' && (selectedModel.includes('gpt-image')));
+            (m.id.startsWith('openai/') && selectedModel.replace(/^openai\//, '') === m.id.replace(/^openai\//, ''));
 
           return (
             <button
@@ -815,7 +869,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             items: [
               { label: '目标图', value: target.data?.title || target.data?.screenTitle || target.id },
               ...describePlanParams('edit_image_text', params),
-              { label: '方式', value: '只重绘文字区域，其余画面保持原图（Nano Banana 2.1，Gemini 3 Pro 备用）' }
+              { label: '方式', value: '只重绘文字区域，其余画面保持原图（GPT 2.5 Sunburst，Nano Banana 2.1 备用）' }
             ]
           }
         });

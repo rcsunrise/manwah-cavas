@@ -118,6 +118,38 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
     description: '严格注入多张产品参考原图，最大化锁死敏华沙发结构外观'
   },
   {
+    id: 'gpt-image-2.6-flare-c',
+    name: 'GPT 2.6 Flare (精细视觉创作与编辑)',
+    badge: '2.6 原画创作',
+    provider: 'openai',
+    tier: 'flagship',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '默认出图模型：精细视觉创作与编辑，产品保真与中文排版准确，速度快 (/v1/images)'
+  },
+  {
+    id: 'gpt-image-2.6-sunburst-c',
+    name: 'GPT 2.6 Sunburst (复杂构图与标注编辑旗舰)',
+    badge: '2.6 旗舰高光',
+    provider: 'openai',
+    tier: 'flagship',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: true,
+      supports4K: true,
+      maxReferences: 16
+    },
+    description: '高质量出图：光影与质感更细腻，适合终稿，耗时约为 Flare 的两倍 (/v1/images)'
+  },
+  {
     id: 'gpt-image-2.5-flare-c',
     name: 'GPT 2.5 Flare (高保真原画)',
     badge: '原画重绘',
@@ -169,7 +201,7 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
 
 export function getModelById(modelId: string): ClientImageModelItem {
   return (
-    SPACE_IMAGE_MODELS.find((m) => m.id === modelId) ||
+    SPACE_IMAGE_MODELS.find((m) => m.id === modelId || m.id === String(modelId || '').replace(/^(openai|google)\//, '')) ||
     SPACE_IMAGE_MODELS[0]
   );
 }
@@ -198,6 +230,8 @@ const GENERATION_MODEL_LABELS: Array<[RegExp, string]> = [
   [/gemini-3\.1-flash-image/, 'Gemini 3.1 Flash'],
   [/nano-banana-2\.1/, 'Nano Banana 2.1'],
   [/gemini-2\.5-flash-image/, 'Gemini 2.5 Flash'],
+  [/gpt-image-2\.6-flare/, 'GPT 2.6 Flare'],
+  [/gpt-image-2\.6-sunburst/, 'GPT 2.6 Sunburst'],
   [/gpt-image-2\.5-flare/, 'GPT 2.5 Flare'],
   [/gpt-image-2\.5-sunburst/, 'GPT 2.5 Sunburst'],
   [/gpt-image-2-all/, 'GPT Image 2 All'],

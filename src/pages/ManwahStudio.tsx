@@ -2110,6 +2110,24 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                        </button>
                        
                        <button 
+                         onClick={() => setModel('openai/gpt-image-2.6-sunburst-c')}
+                         className={`p-2 rounded-xl text-center border transition-all ${(model === 'openai/gpt-image-2.6-sunburst-c' || model === 'gpt-image-2.6-sunburst-c') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="GPT 2.6 Sunburst (/v1/chat/completions): 细节构图、复杂画面创作与图像修改、标注引导编辑"
+                       >
+                         <div className="text-lg mb-1 opacity-80">🌟</div>
+                         <div className="text-[10px] font-bold">Sunburst</div>
+                         <div className="text-[8px] opacity-70">v2.6 旗舰</div>
+                       </button>
+                       <button 
+                         onClick={() => setModel('openai/gpt-image-2.6-flare-c')}
+                         className={`p-2 rounded-xl text-center border transition-all ${(model === 'openai/gpt-image-2.6-flare-c' || model === 'gpt-image-2.6-flare-c') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="GPT 2.6 Flare (/v1/chat/completions): 面向精细视觉创作的图像生成与编辑，支持文字和图片输入"
+                       >
+                         <div className="text-lg mb-1 opacity-80">💫</div>
+                         <div className="text-[10px] font-bold">GPT Flare</div>
+                         <div className="text-[8px] opacity-70">v2.6 创作</div>
+                       </button>
+                       <button 
                          onClick={() => setModel('openai/gpt-image-2.5-flare-c')}
                          className={`p-2 rounded-xl text-center border transition-all ${(model === 'openai/gpt-image-2.5-flare-c' || model === 'gpt-image-2.5-flare-c') ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
                          title="GPT 2.5 Flare: 文生图、图生图、局部Mask重绘、高保真原画"
@@ -2168,7 +2186,7 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                             disabled={isDisabled}
                             onClick={() => {
                               setResolution(r);
-                              if ((r === '2K' || r === '4K') && model.includes('2.5')) {
+                              if ((r === '2K' || r === '4K') && isV25) {
                                  setModel('gemini-3.1-flash-image');
                               }
                             }} 
