@@ -61,6 +61,7 @@ export default function CreativeCanvasPage() {
     handleGenerateNineGridPlan,
     handleReplanSingleScene,
     handleEditImageText,
+    handleEditImage,
     handleNodeClick,
     generatingScenes,
     uploadedBase64,
@@ -142,6 +143,7 @@ export default function CreativeCanvasPage() {
     handleRetryMessage,
     handleCreateNewConversation,
     handleSelectConversation,
+    handleDeleteConversations,
     handleChangeConversationModel,
     activeProject,
     planTargetAudience,
@@ -845,6 +847,7 @@ export default function CreativeCanvasPage() {
               handleOpenVideoPanel();
             }}
             onEditImageText={handleEditImageText}
+            onEditImage={handleEditImage}
             currentConversation={currentConversation}
             conversationsList={conversationsList}
             isStreaming={isStreaming}
@@ -853,6 +856,7 @@ export default function CreativeCanvasPage() {
             onRetryMessage={handleRetryMessage}
             onCreateNewConversation={handleCreateNewConversation}
             onSelectConversation={handleSelectConversation}
+            onDeleteConversations={handleDeleteConversations}
             onChangeConversationModel={handleChangeConversationModel}
             agentRun={agentRun}
             isPlanGenerating={isPlanGenerating}

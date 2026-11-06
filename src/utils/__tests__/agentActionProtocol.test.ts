@@ -75,6 +75,13 @@ describe('agentActionProtocol', () => {
     expect(labels).toContain('镜头2 · 10s');
   });
 
+  it('requires an instruction for edit_image', () => {
+    const ok = extractAgentActions('好的<agent_actions>{"plan": {"actionId": "edit_image", "params": {"instruction": "背景换成暖色木地板客厅，光线更柔和", "nodeId": "gen-img-node-s1-poster-1"}}}</agent_actions>');
+    expect(ok.planCard?.params?.instruction).toContain('木地板');
+    expect(ok.planCard?.items.map(i => i.label)).toEqual(['修改要求', '方式']);
+    expect(extractAgentActions('好<agent_actions>{"plan": {"actionId": "edit_image", "params": {}}}</agent_actions>').planCard).toBeUndefined();
+  });
+
   it('hides partially streamed tags', () => {
     expect(stripAgentActions('正文<agent_ac')).toBe('正文');
     expect(stripAgentActions('正文<agent_actions>{"pla')).toBe('正文');

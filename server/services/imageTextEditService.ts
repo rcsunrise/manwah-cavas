@@ -155,7 +155,7 @@ export function closestAspectRatio(W: number, H: number): string {
   return best;
 }
 
-async function callImageEdit(params: { model: string; prompt: string; image: Buffer; mask: Buffer; userId: string; aspectRatio: string }): Promise<Buffer> {
+async function callImageEdit(params: { model: string; prompt: string; image: Buffer; mask?: Buffer; userId: string; aspectRatio: string }): Promise<Buffer> {
   const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
   const res = await fetch(gatewayUrl, {
     method: 'POST',
@@ -167,7 +167,7 @@ async function callImageEdit(params: { model: string; prompt: string; image: Buf
       aspectRatio: params.aspectRatio,
       resolution: '2K',
       images: [{ data: `data:image/png;base64,${params.image.toString('base64')}`, role: 'composition_reference' }],
-      mask: { data: params.mask.toString('base64'), mimeType: 'image/png' },
+      ...(params.mask ? { mask: { data: params.mask.toString('base64'), mimeType: 'image/png' } } : {}),
       userUuid: params.userId,
       userId: params.userId
     }),
@@ -439,4 +439,47 @@ export async function editImageText(input: ImageTextEditInput): Promise<ImageTex
   // 都没通过逐字校验：仍返回最接近的一版，由界面提示用户核对
   const saved = await saveResultImage(best.buffer);
   return { ...saved, model: best.model, originalLine: target.text, expectedLine, verified: false, recognizedLine: best.recognized, attempts };
+}
+
+export interface ImageInstructionEditResult {
+  imageUrl: string;
+  objectKey: string;
+  model: string;
+  attempts: number;
+}
+
+/**
+ * 按对话里的要求整体修改一张图（换背景、调光线、改氛围、加减道具等），产品本身必须保持不变。
+ * 改字请用 editImageText（只重绘文字区域，更精确）。
+ */
+export async function editImageByInstruction(input: { imageUrl: string; instruction: string; userId?: string }): Promise<ImageInstructionEditResult> {
+  const instruction = input.instruction?.trim();
+  if (!instruction) throw new Error('缺少修改要求');
+  const userId = input.userId || 'system';
+  const { buffer: rawBuffer } = await VideoSourceImageResolver.loadImageBuffer(input.imageUrl);
+  const base = await sharp(rawBuffer).rotate().resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true }).removeAlpha().png().toBuffer();
+  const meta = await sharp(base).metadata();
+  const W = meta.width!, H = meta.height!;
+  const aspectRatio = closestAspectRatio(W, H);
+  const prompt =
+    `按以下要求修改这张电商海报：${instruction}。` +
+    `必须遵守：画面中的家具产品（造型、比例、颜色、材质、缝线与结构细节）与原图完全一致，不得重画或变形；` +
+    `要求里没有提到的内容（构图、机位、文字、其余道具）保持原样；保持原图画幅比例，写实摄影质感。`;
+
+  let lastError: any = null;
+  let attempts = 0;
+  for (const model of EDIT_MODELS) {
+    attempts++;
+    try {
+      const edited = await callImageEdit({ model, prompt, image: base, userId, aspectRatio });
+      // 统一回原尺寸，便于在画布上与原图对比
+      const resized = await sharp(edited).resize(W, H, { fit: 'cover' }).png().toBuffer();
+      const saved = await saveResultImage(resized);
+      return { ...saved, model, attempts };
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[ImageInstructionEdit] ${model} attempt failed:`, err?.message || err);
+    }
+  }
+  throw lastError || new Error('修改失败，请稍后重试');
 }

@@ -2,7 +2,7 @@
 import { Router, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import { optionalAuthenticateToken } from '../middleware/auth';
-import { editImageText } from '../services/imageTextEditService';
+import { editImageText, editImageByInstruction } from '../services/imageTextEditService';
 
 const router = Router();
 
@@ -30,6 +30,28 @@ router.post('/', optionalAuthenticateToken as any, async (req: AuthenticatedRequ
   } catch (err: any) {
     console.warn('[ImageTextEditRoutes] edit failed:', err?.message || err);
     return res.status(422).json({ success: false, error: err?.message || '改字失败' });
+  }
+});
+
+/**
+ * POST /api/image-text-edit/instruction
+ * 按对话里的要求整体修改图片（换背景、调光线、改氛围等），产品保持不变。
+ * body: { imageUrl, instruction }
+ */
+router.post('/instruction', optionalAuthenticateToken as any, async (req: AuthenticatedRequest, res: Response) => {
+  const { imageUrl, instruction } = req.body || {};
+  if (!imageUrl || typeof imageUrl !== 'string') {
+    return res.status(400).json({ success: false, error: '缺少要修改的图片 (imageUrl)' });
+  }
+  if (!instruction || typeof instruction !== 'string' || !instruction.trim()) {
+    return res.status(400).json({ success: false, error: '缺少修改要求 (instruction)' });
+  }
+  try {
+    const result = await editImageByInstruction({ imageUrl, instruction: instruction.trim().slice(0, 500), userId: req.user?.id });
+    return res.json({ success: true, data: result });
+  } catch (err: any) {
+    console.warn('[ImageTextEditRoutes] instruction edit failed:', err?.message || err);
+    return res.status(422).json({ success: false, error: err?.message || '修改失败' });
   }
 });
 

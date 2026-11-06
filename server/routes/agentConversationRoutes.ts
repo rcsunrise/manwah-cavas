@@ -426,9 +426,40 @@ router.get('/conversations', async (req: AuthenticatedRequest, res: Response) =>
     }
     list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
+    // 附上每个会话的消息条数：前端据此隐藏空会话、提供一键清理
+    // 以及默认标题（只有时间）的会话用第一条用户消息作为显示标题，只读、不改库
+    const counts = new Map<string, number>();
+    const firstUserText = new Map<string, string>();
+    const collect = (rows: Array<{ conversation_id: string; role?: string; content?: any; created_at?: string }>) => {
+      const sorted = [...rows].sort((a, b) => Date.parse(a.created_at || '') - Date.parse(b.created_at || ''));
+      for (const row of sorted) {
+        counts.set(row.conversation_id, (counts.get(row.conversation_id) || 0) + 1);
+        if (row.role === 'user' && !firstUserText.has(row.conversation_id)) {
+          const text = typeof row.content === 'object' ? row.content?.text : String(row.content || '');
+          if (text && String(text).trim()) firstUserText.set(row.conversation_id, String(text).trim().replace(/\s+/g, ' ').slice(0, 24));
+        }
+      }
+    };
+    const ids = list.map(c => c.id).filter(isValidUuid);
+    if (ids.length > 0 && !isAgentChatTestMode()) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('agent_messages')
+          .select('conversation_id, role, content, created_at')
+          .in('conversation_id', ids);
+        collect((data || []) as any[]);
+      } catch {}
+    }
+    if (counts.size === 0) collect(readLocalMessages() as any[]);
+    const isDefaultTitle = (t?: string | null) => !t || /^视觉企划对话 - \d{1,2}:\d{2}$/.test(t) || t === '全新企划对话';
+
     return res.json({
       success: true,
-      conversations: list
+      conversations: list.map(c => ({
+        ...c,
+        message_count: counts.get(c.id) || 0,
+        ...(isDefaultTitle(c.title) && firstUserText.get(c.id) ? { display_title: firstUserText.get(c.id) } : {})
+      }))
     });
   } catch (err: any) {
     return res.status(500).json({
@@ -601,6 +632,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - upload_product：上传产品主图（打开文件选择）
 - set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
+- edit_image：按要求修改一张已生成的海报/画面（换背景、调光线色调、改氛围、加减道具、调整留白等），产品本身保持不变，结果作为新版本。params: instruction(必填，具体修改要求，中文 10~120 字), nodeId(目标图片节点 id；用户 @ 引用或选中了图片、或画布状态里有明确目标时填写；不填则改最近一张生成图)
 - edit_image_text：修改图片里已有的文字（如海报标题、卖点文案），只重绘文字区域，产品与画面不变。params: newText(必填，改成的文字), oldText(要被替换的原文；替换整行主标题时可省略), nodeId(目标图片节点 id；用户 @ 引用了图片或画布状态里有明确目标时填写)
 
 三种结构：
@@ -615,6 +647,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 依据下方画布状态判断前置条件：没有产品 DNA 时不能 generate_plan，应 clarify 并给 upload_product；没有企划时不能 replan/render，应 clarify 并给 generate_plan。
 - screenIndex 必须是画布状态里存在的屏号；nodeId 必须是画布状态里列出的图片节点 id。
 - 用户要求改图中文字（“标题改成…”“把××改成××”）时用 edit_image_text 的 plan，不要用 render_screen 重新渲染整张图。
+- 用户对已生成的海报提画面上的调整（背景、光线、色调、氛围、道具、构图留白）时用 edit_image 的 plan，把要求写清楚放进 instruction；只有要换整个策划方向时才用 replan_screen / render_screen 重做。
 - 讨论视频创意、运镜、视频分镜时，给出构思后用 open_video 的 plan，并把完整构思写进 videoBrief（不要只写一句“打开面板”），否则构思不会进入视频生成。
 - 用户要“构思分镜”“拆成视频任务”时，正文列出分镜，同时在 open_video 的 videoShots 里给出同样的镜头清单（镜头数、顺序、时长与正文一致），每个镜头就是一个视频生成任务。
 - 视频模型单镜头只支持 5、6 或 10 秒：每镜时长用 5 或 10（MiniMax 可用 6），总时长按镜头数凑，不要给 3 秒、8 秒这类模型做不了的时长。
@@ -1147,6 +1180,14 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
 
   try {
     await saveMessageRecord(userMsgRecord);
+    // 默认标题只有时间，难以区分：第一条消息发出后用它的开头作为会话标题
+    if (!conv.title || /^视觉企划对话 - \d{1,2}:\d{2}$/.test(conv.title) || conv.title === '全新企划对话') {
+      const firstLine = message.trim().replace(/\s+/g, ' ').slice(0, 24);
+      if (firstLine) {
+        conv.title = firstLine;
+        saveConversationRecord(conv).catch(() => {});
+      }
+    }
   } catch {
     return res.status(500).json({
       success: false,
@@ -1602,6 +1643,36 @@ router.patch('/conversations/:conversationId', async (req: AuthenticatedRequest,
 });
 
 /**
+ * DELETE /api/agent/conversations/:conversationId
+ * 删除会话及其全部消息（只能删自己的）
+ */
+router.delete('/conversations/:conversationId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const conversationId = String(req.params.conversationId || '');
+    const conv = await getConversationById(conversationId);
+    if (!conv) {
+      return res.status(404).json({ success: false, error: { message: 'Conversation not found', code: 'CONVERSATION_NOT_FOUND' } });
+    }
+    if (conv.user_id !== userId && conv.user_id !== 'default_user') {
+      return res.status(403).json({ success: false, error: { message: 'Forbidden access to conversation', code: 'CONVERSATION_FORBIDDEN' } });
+    }
+    if (!isAgentChatTestMode() && isValidUuid(conversationId)) {
+      const { error: msgErr } = await supabaseAdmin.from('agent_messages').delete().eq('conversation_id', conversationId);
+      if (msgErr) throw new Error(msgErr.message);
+      const { error: convErr } = await supabaseAdmin.from('agent_conversations').delete().eq('id', conversationId);
+      if (convErr) throw new Error(convErr.message);
+    }
+    // 本地兜底存储里的副本一并清掉
+    writeLocalMessages(readLocalMessages().filter(m => m.conversation_id !== conversationId));
+    writeLocalConversations(readLocalConversations().filter(c => c.id !== conversationId));
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: { message: err?.message || 'Failed to delete conversation', code: 'UNKNOWN_AGENT_ERROR' } });
+  }
+});
+
+/**
  * Generate friendly read-only agent response helper
  */
 function generateMockAgentResponse(userPrompt: string, ctx?: AgentContextSnapshot): string {
@@ -1627,7 +1698,7 @@ function generateMockAgentResponse(userPrompt: string, ctx?: AgentContextSnapsho
 router.post('/conversations/:conversationId/notes', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user!.id;
   const conversationId = String(req.params.conversationId || '');
-  const { text, videoCard } = req.body || {};
+  const { text, videoCard, imageCard } = req.body || {};
   const conv = await getConversationById(conversationId);
   if (!conv) {
     return res.status(404).json({ success: false, error: { message: 'Conversation not found', code: 'CONVERSATION_NOT_FOUND' } });
@@ -1656,13 +1727,30 @@ router.post('/conversations/:conversationId/notes', async (req: AuthenticatedReq
       durationSeconds: typeof videoCard.durationSeconds === 'number' ? videoCard.durationSeconds : undefined
     };
   }
+  let image: Record<string, unknown> | undefined;
+  if (imageCard && typeof imageCard === 'object') {
+    const url = String(imageCard.imageUrl || '');
+    if (!/^https?:\/\//.test(url) && !url.startsWith('/api/')) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid image url', code: 'INVALID_AGENT_CONTEXT' } });
+    }
+    const pickStr = (v: unknown, max = 300) => (typeof v === 'string' ? v.slice(0, max) : undefined);
+    image = {
+      imageUrl: url.slice(0, 2000),
+      title: pickStr(imageCard.title, 120),
+      nodeId: pickStr(imageCard.nodeId, 200),
+      sceneIndex: typeof imageCard.sceneIndex === 'number' ? imageCard.sceneIndex : undefined,
+      withText: typeof imageCard.withText === 'boolean' ? imageCard.withText : undefined,
+      source: ['clean', 'poster', 'text_edit', 'instruction_edit'].includes(imageCard.source) ? imageCard.source : undefined,
+      detail: pickStr(imageCard.detail, 300)
+    };
+  }
   const now = new Date().toISOString();
   const record: AgentChatMessageRecord = {
     id: crypto.randomUUID(),
     conversation_id: conversationId,
     user_id: userId,
     role: 'assistant',
-    content: { text: text.trim(), kind: 'note', ...(card ? { videoCard: card } : {}) },
+    content: { text: text.trim(), kind: 'note', ...(card ? { videoCard: card } : {}), ...(image ? { imageCard: image } : {}) },
     status: 'completed',
     created_at: now,
     updated_at: now

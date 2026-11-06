@@ -105,8 +105,11 @@ function loadAgentRunsFromDisk() {
   try {
     const files = fs.readdirSync(AGENT_RUNS_DIR);
     for (const file of files) {
-      if (file.endsWith('.json')) {
+      if (!file.endsWith('.json')) continue;
+      // 单个文件损坏（如空文件）只跳过它本身；之前整段 try 包住，一个坏文件会让后面所有企划都加载不到
+      try {
         const raw = fs.readFileSync(path.join(AGENT_RUNS_DIR, file), 'utf-8');
+        if (!raw.trim()) continue;
         const data = JSON.parse(raw);
         if (data?.run?.id) {
           inMemoryAgentRuns.set(data.run.id, data.run);
@@ -116,6 +119,8 @@ function loadAgentRunsFromDisk() {
         } else if (data?.id) {
           inMemoryAgentRuns.set(data.id, data);
         }
+      } catch (fileErr: any) {
+        console.warn(`[AgentRoutes] Skipped unreadable agent run file ${file}:`, fileErr?.message || fileErr);
       }
     }
   } catch (e) {}

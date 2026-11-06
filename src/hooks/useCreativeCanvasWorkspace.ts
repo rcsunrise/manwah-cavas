@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
@@ -49,6 +49,16 @@ function saveCardState(messageId: string, state: CardState) {
   }
 }
 
+/** 空会话显示的欢迎语 */
+function makeWelcomeMessage(): AgentMessage {
+  return {
+    id: `msg-${Date.now()}-welcome`,
+    sender: 'agent',
+    text: '新会话已开启！我是家具视觉生产工作流智能体 Agent G。有什么关于场景企划、DNA 或排版契约的问题可以随时问我。',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+}
+
 function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage[] {
   const mapped: AgentMessage[] = historyMsgs.map(m => {
     const rawText = typeof m.content === 'object' && m.content.text ? m.content.text : String(m.content);
@@ -59,6 +69,7 @@ function mapHistoryMessages(historyMsgs: AgentChatMessageRecord[]): AgentMessage
       model: typeof m.content === 'object' ? m.content.model : undefined,
       requestedModel: typeof m.content === 'object' ? m.content.requestedModel : undefined,
       videoCard: typeof m.content === 'object' && m.content.videoCard?.videoUrl ? m.content.videoCard : undefined,
+      imageCard: typeof m.content === 'object' && m.content.imageCard?.imageUrl ? m.content.imageCard : undefined,
       images: typeof m.content === 'object' && Array.isArray(m.content.images) ? m.content.images : undefined,
       timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: m.status as any,
@@ -247,6 +258,7 @@ export function useCreativeCanvasWorkspace(
   }, [hydrationState, onEdgesChange]);
 
   const activeProjectRef = useRef<CreativeProject | null>(null);
+  const loadedFromSourceRef = useRef(false);
   const uploadedBase64Ref = useRef<string | null>(null);
 
   const handleUploadFileRef = useRef<((file: File) => Promise<void>) | null>(null);
@@ -526,6 +538,24 @@ export function useCreativeCanvasWorkspace(
     if (conv) {
       AgentChatService.appendNote(conv.id, text, { videoCard: card }).catch(err =>
         console.warn('[AgentChat] video note not persisted:', err?.message || err)
+      );
+    }
+  }, [addAgentMessage]);
+
+  // 海报/画面生成或修改完成后把成图回传到对话（画布上保留流程节点，对话里看结果、接着提修改）
+  const postImageResultToChat = useCallback((card: AgentImageCard) => {
+    const label =
+      card.source === 'poster' ? '带字海报已生成'
+      : card.source === 'clean' ? '纯净底图已生成'
+      : card.source === 'text_edit' ? '改字完成'
+      : card.source === 'instruction_edit' ? '画面修改完成'
+      : '画面已生成';
+    const text = `🖼️ ${label}：${card.title || '画面'}${card.detail ? `\n${card.detail}` : ''}`;
+    addAgentMessage(text, { imageCard: card });
+    const conv = currentConversationRef.current;
+    if (conv) {
+      AgentChatService.appendNote(conv.id, text, { imageCard: card }).catch(err =>
+        console.warn('[AgentChat] image note not persisted:', err?.message || err)
       );
     }
   }, [addAgentMessage]);
@@ -1095,14 +1125,45 @@ export function useCreativeCanvasWorkspace(
     setCurrentConversation(conv);
     try {
       const historyMsgs = await AgentChatService.loadMessages(convId);
-      if (historyMsgs && historyMsgs.length > 0) {
-        const mappedMsgs: AgentMessage[] = mapHistoryMessages(historyMsgs);
-        setMessages(mappedMsgs);
-      }
+      // 空会话也要清掉上一个会话的消息，否则切过去看到的还是别的对话
+      setMessages(historyMsgs && historyMsgs.length > 0 ? mapHistoryMessages(historyMsgs) : [makeWelcomeMessage()]);
     } catch (e) {
       console.error('Failed to select conversation:', e);
     }
   }, [conversationsList]);
+
+  // 删除会话（含全部消息）；删的是当前会话时切到最近的另一个，没有就回到欢迎页，发消息时再新建
+  const handleDeleteConversations = useCallback(async (convIds: string[]) => {
+    const ids = convIds.filter(Boolean);
+    if (ids.length === 0) return;
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        await AgentChatService.deleteConversation(id);
+      } catch (e) {
+        console.error('Failed to delete conversation:', e);
+        failed.push(id);
+      }
+    }
+    const removed = new Set(ids.filter(id => !failed.includes(id)));
+    const remaining = conversationsList.filter(c => !removed.has(c.id));
+    setConversationsList(remaining);
+    if (currentConversation && removed.has(currentConversation.id)) {
+      const next = remaining.find(c => (c.message_count ?? 1) > 0) || remaining[0] || null;
+      setCurrentConversation(next);
+      if (next) {
+        try {
+          const historyMsgs = await AgentChatService.loadMessages(next.id);
+          setMessages(historyMsgs && historyMsgs.length > 0 ? mapHistoryMessages(historyMsgs) : [makeWelcomeMessage()]);
+        } catch {
+          setMessages([makeWelcomeMessage()]);
+        }
+      } else {
+        setMessages([makeWelcomeMessage()]);
+      }
+    }
+    if (failed.length > 0) addAgentMessage(`有 ${failed.length} 个会话删除失败，请稍后重试。`);
+  }, [conversationsList, currentConversation, addAgentMessage]);
 
   const handleChangeConversationModel = useCallback((newModel: string) => {
     if (!currentConversation) return;
@@ -1653,11 +1714,29 @@ export function useCreativeCanvasWorkspace(
 
         setIsPlanGenerating(false);
         finishPlanTask('done', `已在画布生成 ${screenCount === 1 ? '1 个分镜方案节点' : `1 个总策划节点和 ${screenCount} 个分镜方案节点`}`, { nodeType: 'nineGridPlanNode' });
+        // 对话里直接展示方案要点，画布只承载流程节点
+        const planObj: any = (run as any)?.plan || {};
+        const screensForChat: any[] = Array.isArray(planObj.screens) ? planObj.screens : [];
+        const planLines = screensForChat.slice(0, 12).map((s: any) =>
+          `${s.screenIndex}. **${s.screenTitle || `第 ${s.screenIndex} 屏`}**${s.coreSellingPoint ? `：${String(s.coreSellingPoint).slice(0, 60)}` : ''}`
+        );
         addAgentMessage(
-          screenCount === 1
-            ? '🎉 单屏视觉企划方案生成成功！已转换为 1 个策划节点和 1 个分镜方案节点并同步显示在画布中。'
-            : `🎉 全案视觉企划方案生成成功！已转换为 1 个总策划节点和 ${screenCount} 个分镜方案节点并同步显示在画布中。`,
-          { suggestions: PLAN_NEXT_STEPS }
+          [
+            `🎉 ${screenCount === 1 ? '单屏' : `${screenCount} 屏`}企划方案已生成${planObj.themeTitle ? `：**${planObj.themeTitle}**` : ''}`,
+            ...(planLines.length ? ['', ...planLines] : []),
+            '',
+            '可以直接生成海报，也可以告诉我要怎么调整（如“第 1 屏更突出灯带”“标题改成××”）。'
+          ].join('\n'),
+          {
+            suggestions: [
+              ...screensForChat.slice(0, 2).map((s: any) => ({
+                label: `生成第 ${s.screenIndex} 屏海报`,
+                actionId: 'render_screen' as const,
+                params: { screenIndex: Number(s.screenIndex) }
+              })),
+              ...PLAN_NEXT_STEPS
+            ].slice(0, 4)
+          }
         );
       } else {
         const errStr = genData.error || genData.message || '服务端生成企划失败';
@@ -1833,17 +1912,97 @@ export function useCreativeCanvasWorkspace(
       hasUserMutationRef.current = true;
 
       const modelLabel = result.model === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1';
-      finishTaskCard(
-        taskId,
-        'done',
-        result.verified
-          ? `「${result.originalLine}」→「${result.expectedLine}」 · ${modelLabel} · 已逐字校验，画面其余部分保持原图`
-          : `⚠️ 逐字校验未通过（识别为「${result.recognizedLine || '无法识别'}」），请放大核对文字 · ${modelLabel}`,
-        { nodeId: newNodeId },
-        { resultImageUrl: result.imageUrl }
-      );
+      const editDetail = result.verified
+        ? `「${result.originalLine}」→「${result.expectedLine}」 · ${modelLabel} · 已逐字校验，画面其余部分保持原图`
+        : `⚠️ 逐字校验未通过（识别为「${result.recognizedLine || '无法识别'}」），请放大核对文字 · ${modelLabel}`;
+      finishTaskCard(taskId, 'done', editDetail, { nodeId: newNodeId });
+      postImageResultToChat({
+        imageUrl: result.imageUrl,
+        title: `${targetTitle} · 改字`,
+        nodeId: newNodeId,
+        sceneIndex: (target.data as any)?.sceneIndex,
+        withText: true,
+        source: 'text_edit',
+        detail: editDetail
+      });
     } catch (err: any) {
       finishTaskCard(taskId, 'failed', err?.message || '改字失败');
+    }
+  };
+
+  // 按对话里的要求修改一张已生成的画面（换背景、调光线等），结果作为新版本节点接在原图后面，并回传到对话
+  const handleEditImage = async (params: { instruction?: string; nodeId?: string }) => {
+    const instruction = params.instruction?.trim();
+    if (!instruction) return;
+    const currentNodes = nodesRef.current;
+    const hasImage = (n: Node | undefined) => typeof (n?.data as any)?.imageUrl === 'string' && Boolean((n?.data as any)?.imageUrl);
+    const target =
+      currentNodes.find(n => n.id === params.nodeId && hasImage(n)) ||
+      currentNodes.find(n => n.id === selectedNodeId && hasImage(n) && n.type === 'generatedImageNode') ||
+      [...currentNodes].reverse().find(n => n.type === 'generatedImageNode' && hasImage(n));
+    if (!target) {
+      addAgentMessage('画布上还没有生成的海报画面可以修改。请先生成底图或带字海报，或 @ 引用一张图片。');
+      return;
+    }
+    const targetTitle = (target.data as any)?.title || (target.data as any)?.screenTitle || '目标画面';
+    const taskId = addAgentMessage('', {
+      taskCard: { title: `修改画面：${instruction.slice(0, 24)}${instruction.length > 24 ? '…' : ''}`, status: 'running', detail: `${targetTitle} · 产品保持不变，约 1 分钟` }
+    });
+    try {
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch('/api/image-text-edit/instruction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ imageUrl: (target.data as any).imageUrl, instruction })
+      });
+      const json = await parseJsonResponse<{ success?: boolean; data?: any; error?: string }>(res);
+      if (!res.ok || !json.success || !json.data) throw new Error(json.error || `修改失败 (HTTP ${res.status})`);
+      const result = json.data;
+      const newNodeId = `image-edit-${Date.now()}`;
+      const sourceWidth = Number((target as any).width || (target.style as any)?.width || 380);
+      setNodes(prev => [
+        ...prev.map(n => ({ ...n, selected: false })),
+        {
+          ...target,
+          id: newNodeId,
+          selected: true,
+          position: { x: target.position.x + sourceWidth + 60, y: target.position.y },
+          data: {
+            ...(target.data as any),
+            imageUrl: result.imageUrl,
+            rawImageUrl: result.imageUrl,
+            title: `${targetTitle} · 修改`,
+            editedFrom: target.id,
+            editInstruction: instruction,
+            model: result.model
+          }
+        }
+      ]);
+      setEdges(prev => [
+        ...prev,
+        {
+          id: `edge-image-edit-${target.id}-${newNodeId}`,
+          source: target.id,
+          target: newNodeId,
+          label: '按要求修改',
+          labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+          animated: false,
+          style: { stroke: '#B28C5A', strokeWidth: 1.5, strokeDasharray: '4 3' }
+        }
+      ]);
+      hasUserMutationRef.current = true;
+      finishTaskCard(taskId, 'done', `已按要求修改 · ${result.model}`, { nodeId: newNodeId });
+      postImageResultToChat({
+        imageUrl: result.imageUrl,
+        title: `${targetTitle} · 修改`,
+        nodeId: newNodeId,
+        sceneIndex: (target.data as any)?.sceneIndex,
+        withText: Boolean((target.data as any)?.withText),
+        source: 'instruction_edit',
+        detail: `修改要求：${instruction}`
+      });
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '修改失败');
     }
   };
 
@@ -2555,8 +2714,16 @@ export function useCreativeCanvasWorkspace(
         });
 
         if (renderTaskId) {
-          finishTaskCard(renderTaskId, 'done', '已加入画布，可在节点上审阅', { nodeId: resultNodeId });
+          finishTaskCard(renderTaskId, 'done', '已加入画布流程，成图见下方', { nodeId: resultNodeId });
         }
+        postImageResultToChat({
+          imageUrl: result.imageUrl,
+          title: `第 ${screenIndex} 屏 · ${screen!.screenTitle}`,
+          nodeId: resultNodeId,
+          sceneIndex: screenIndex,
+          withText: !!withText,
+          source: withText ? 'poster' : 'clean'
+        });
         return true;
       } else {
         throw new Error('渲染服务未响应有效图片');
@@ -3790,6 +3957,9 @@ export function useCreativeCanvasWorkspace(
         }
       }
 
+      // 画布确实从云端或本地加载成功时，之后的任何差异都可直接自动保存；
+      // 加载失败退回默认画布时仍需用户真正操作过才保存，避免用默认画布覆盖云端
+      loadedFromSourceRef.current = serverSuccess;
       if (!serverSuccess && isMounted) {
         // Construct initial nodes from fetched project, assets, DNA & agentRun
         const defaultEnriched = enrichCanvasNodesAndEdges([], []);
@@ -4061,7 +4231,12 @@ export function useCreativeCanvasWorkspace(
 
   // 2. Debounced Auto-Save Draft Effect（停止操作 10 秒后保存，持续操作最多 60 秒保存一次）
   useEffect(() => {
-    if (hydrationState !== 'ready' || isRestoringRef.current || !hasUserMutationRef.current) {
+    // 加载完成后，画布与上次保存的内容只要真的不同就保存：生成企划、视频回写等流程会直接 setNodes，
+    // 不经过 onNodesChange，只靠改动标记会漏存（曾导致企划与视频节点刷新后丢失）
+    if (hydrationState !== 'ready' || isRestoringRef.current) {
+      return;
+    }
+    if (!loadedFromSourceRef.current && !hasUserMutationRef.current) {
       return;
     }
 
@@ -4080,6 +4255,7 @@ export function useCreativeCanvasWorkspace(
       if (serializedPayload === prevSerializedRef.current) {
         return;
       }
+      hasUserMutationRef.current = true;
 
       setSaveStatus('unsynced');
       if (!firstDirtyAtRef.current) firstDirtyAtRef.current = Date.now();
@@ -4755,8 +4931,11 @@ export function useCreativeCanvasWorkspace(
     handleRetryMessage,
     handleCreateNewConversation,
     postVideoResultToChat,
+    postImageResultToChat,
+    handleEditImage,
     uploadChatImage,
     handleSelectConversation,
+    handleDeleteConversations,
     handleChangeConversationModel,
     activeProject,
 

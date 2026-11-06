@@ -68,7 +68,8 @@ const ACTION_IDS: AgentActionId[] = [
   'replan_screen',
   'render_screen',
   'edit_image_text',
-  'set_product_image'
+  'set_product_image',
+  'edit_image'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -80,6 +81,7 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   search_market: '联网检索竞品',
   open_video: '生成视频分镜',
   set_product_image: '设为产品主图并提取 DNA',
+  edit_image: '修改海报画面',
   open_poster: '打开全案海报'
 };
 
@@ -112,6 +114,7 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
   if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) params.nodeId = raw.nodeId.trim().slice(0, 120);
   if (typeof raw.imageUrl === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(raw.imageUrl.trim())) params.imageUrl = raw.imageUrl.trim().slice(0, 2000);
+  if (typeof raw.instruction === 'string' && raw.instruction.trim()) params.instruction = raw.instruction.trim().slice(0, 300);
   if (typeof raw.videoBrief === 'string' && raw.videoBrief.trim()) params.videoBrief = raw.videoBrief.trim().slice(0, 800);
   if (Array.isArray(raw.focusPoints)) {
     const points = raw.focusPoints.map((p: any) => String(p || '').trim()).filter((p: string) => p.length >= 2 && p.length <= 20).slice(0, 6);
@@ -180,6 +183,8 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   }
   if (params?.videoRatio) items.push({ label: '画面比例', value: params.videoRatio });
   if (params?.referenceImageUrl) items.push({ label: '参考图', value: '使用对话里发的图片' });
+  if (params?.instruction) items.push({ label: '修改要求', value: params.instruction });
+  if (actionId === 'edit_image') items.push({ label: '方式', value: '在原图上按要求修改，产品造型与材质保持不变，结果作为新版本节点' });
   if (actionId === 'set_product_image') items.push({ label: '执行后', value: '替换画布上的产品主图，并重新提取造型、材质与色彩 DNA' });
   if (actionId === 'open_video') {
     items.push({
@@ -334,7 +339,7 @@ export function extractAgentActions(text: string): Pick<AgentMessage, 'text' | '
     const actionId: AgentActionId = payload.plan.actionId;
     const params = normalizeParams(payload.plan.params);
     // 单屏操作必须指明是哪一屏；改字必须给出新文字
-    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText) || (actionId === 'set_product_image' && !params?.imageUrl)) {
+    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText) || (actionId === 'set_product_image' && !params?.imageUrl) || (actionId === 'edit_image' && !params?.instruction)) {
       // 缺少关键参数时不出计划卡，正文里模型通常已说明
     } else {
       result.planCard = {

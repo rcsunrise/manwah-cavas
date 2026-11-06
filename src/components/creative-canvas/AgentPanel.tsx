@@ -44,6 +44,7 @@ import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord,
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentMessageActions } from './agent-chat/AgentMessageActions';
+import { ConversationSwitcher } from './agent-chat/ConversationSwitcher';
 import { AgentComposer, MentionableNode } from './agent-chat/AgentComposer';
 import { AgentTaskStrip } from './agent-chat/AgentTaskStrip';
 import { AgentMarkdown, AgentModelTag } from './agent-chat/AgentMessageContent';
@@ -72,6 +73,8 @@ interface AgentPanelProps {
   onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'>) => void;
   /** 修改画布图片中的文字（局部重绘） */
   onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
+  /** 按对话要求修改画面（换背景、调光线等） */
+  onEditImage?: (params: { instruction?: string; nodeId?: string }) => void;
 
   // C2 Props
   agentRun: AgentRun | null;
@@ -149,6 +152,8 @@ interface AgentPanelProps {
   onRetryMessage?: () => void;
   onCreateNewConversation?: () => void;
   onSelectConversation?: (convId: string) => void;
+  /** 删除会话（含全部消息） */
+  onDeleteConversations?: (convIds: string[]) => void | Promise<void>;
   onChangeConversationModel?: (model: string) => void;
 }
 
@@ -415,11 +420,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onRetryMessage,
   onCreateNewConversation,
   onSelectConversation,
+  onDeleteConversations,
   onChangeConversationModel,
   onPostAgentMessage,
   onUpdateAgentMessage,
   onOpenVideoPanel,
-  onEditImageText
+  onEditImageText,
+  onEditImage
 }) => {
   // 智能对话是最常用入口，默认打开；记住用户上次停留的分页
   const [activeTab, setActiveTabState] = useState<AgentPanelTab>(() => {
@@ -767,6 +774,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           }
         });
         return;
+      case 'edit_image': {
+        if (!params?.instruction) {
+          postAgent('请告诉我这张画面要怎么改，例如“背景换成暖色客厅”“光线再亮一些”。');
+          return;
+        }
+        postAgent('确认后开始修改：', {
+          planCard: {
+            title: '修改海报画面',
+            actionId: 'edit_image',
+            params,
+            status: 'pending',
+            items: describePlanParams('edit_image', params)
+          }
+        });
+        return;
+      }
       case 'edit_image_text': {
         if (!params?.newText) {
           postAgent('请告诉我要把文字改成什么。');
@@ -885,6 +908,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'edit_image_text':
         onEditImageText?.(params || {});
+        return;
+      case 'edit_image':
+        onEditImage?.(params || {});
         return;
       default:
         runAgentAction(card.actionId, params);
@@ -1074,19 +1100,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             <option value="gemini-3.7-flash">⚡ Gemini 3.7 Flash</option>
           </select>
 
-          {conversationsList.length > 1 && (
-            <select
-              value={currentConversation?.id || ''}
-              onChange={(e) => onSelectConversation?.(e.target.value)}
-              className="text-[10px] bg-[#FAF8F5] text-stone-700 px-2 py-1 rounded-lg border border-[#E5E0D8] font-mono outline-none max-w-[120px] truncate"
-              title="切换历史会话"
-            >
-              {conversationsList.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.title || `会话 ${c.id.slice(0, 8)}`}
-                </option>
-              ))}
-            </select>
+          {conversationsList.length > 0 && onSelectConversation && (
+            <ConversationSwitcher
+              conversations={conversationsList}
+              currentId={currentConversation?.id}
+              onSelect={onSelectConversation}
+              onDelete={ids => onDeleteConversations?.(ids)}
+            />
           )}
           {onCreateNewConversation && (
             <button
@@ -2658,6 +2678,60 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             <Download className="w-3 h-3" />
                             <span>导出 4:3 无损海报</span>
                           </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {msg.imageCard && (
+                      <div className="mt-2.5 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#FAF8F5]">
+                        <a href={msg.imageCard.imageUrl} target="_blank" rel="noreferrer" title="查看大图" className="block bg-white">
+                          <img src={msg.imageCard.imageUrl} alt={msg.imageCard.title || '成图'} className="w-full max-h-80 object-contain" />
+                        </a>
+                        <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2">
+                          <button
+                            type="button"
+                            disabled={isStreaming}
+                            onClick={() => {
+                              if (msg.imageCard!.nodeId) window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId: msg.imageCard!.nodeId } }));
+                              setComposerFill({ text: '调整这张画面：', mode: 'replace', nonce: Date.now() });
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9C7A4D] disabled:opacity-50 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                            title="选中这张图，在输入框说出要怎么改（换背景、调光线、改氛围等）"
+                          >
+                            调整画面
+                          </button>
+                          {msg.imageCard.withText && (
+                            <button
+                              type="button"
+                              disabled={isStreaming}
+                              onClick={() => {
+                                if (msg.imageCard!.nodeId) window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId: msg.imageCard!.nodeId } }));
+                                setComposerFill({ text: '把这张海报的标题改成：', mode: 'replace', nonce: Date.now() });
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-[#B28C5A]/50 hover:bg-white text-[#8C6F43] text-[10px] font-bold transition-colors cursor-pointer"
+                            >
+                              改文字
+                            </button>
+                          )}
+                          {msg.imageCard.nodeId && (
+                            <button
+                              type="button"
+                              onClick={() => window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId: msg.imageCard!.nodeId } }))}
+                              className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-stone-600 text-[10px] font-bold transition-colors cursor-pointer"
+                              title="在画布的流程链路里定位这张图"
+                            >
+                              在画布定位
+                            </button>
+                          )}
+                          <a
+                            href={msg.imageCard.imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            download
+                            className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-stone-600 text-[10px] font-bold transition-colors"
+                          >
+                            下载
+                          </a>
                         </div>
                       </div>
                     )}

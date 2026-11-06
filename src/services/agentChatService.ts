@@ -226,6 +226,13 @@ export class AgentChatService {
     return json.conversations || [];
   }
 
+  /** 删除会话及其全部消息 */
+  static async deleteConversation(conversationId: string): Promise<void> {
+    const headers = await getAuthHeader();
+    const res = await fetchWithRetry(`/api/agent/conversations/${conversationId}`, { method: 'DELETE', headers });
+    await parseAgentJsonResponse(res);
+  }
+
   /**
    * 把挂在占位画布上的会话移到真实项目（画布从 /new 跳到项目地址时）
    */
@@ -243,7 +250,7 @@ export class AgentChatService {
   /**
    * 写入一条助手侧通知（不调用模型），如视频成片回传
    */
-  static async appendNote(conversationId: string, text: string, extras?: { videoCard?: unknown }): Promise<AgentChatMessageRecord | null> {
+  static async appendNote(conversationId: string, text: string, extras?: { videoCard?: unknown; imageCard?: unknown }): Promise<AgentChatMessageRecord | null> {
     const headers = await getAuthHeader();
     const res = await fetchWithRetry(`/api/agent/conversations/${conversationId}/notes`, {
       method: 'POST',

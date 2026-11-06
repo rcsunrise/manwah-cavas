@@ -36,6 +36,18 @@ export interface LocalAssetSearchCardData {
 }
 
 /** 视频生成完成后回到对话里的成片卡片 */
+/** 海报/画面成图：生成或修改完成后回传到对话 */
+export interface AgentImageCard {
+  imageUrl: string;
+  title?: string;
+  nodeId?: string;
+  sceneIndex?: number;
+  withText?: boolean;
+  /** 本次是怎么来的：生成底图 / 生成带字海报 / 改字 / 按要求修改 */
+  source?: 'clean' | 'poster' | 'text_edit' | 'instruction_edit';
+  detail?: string;
+}
+
 export interface AgentVideoCard {
   jobId: string;
   videoUrl: string;
@@ -76,6 +88,8 @@ export interface AgentMessage {
   suggestions?: AgentSuggestion[];
   /** 视频成片：任务完成后回传到对话 */
   videoCard?: AgentVideoCard;
+  /** 海报/画面成图 */
+  imageCard?: AgentImageCard;
   /** 用户随消息发送的图片 */
   images?: string[];
   /** 实际作答的模型（可能因不可用而与所选模型不同） */
@@ -97,10 +111,13 @@ export type AgentActionId =
   | 'replan_screen'
   | 'render_screen'
   | 'edit_image_text'
-  | 'set_product_image';
+  | 'set_product_image'
+  | 'edit_image';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
+  /** 修改画面：对话里提的修改要求（换背景、调光线等） */
+  instruction?: string;
   /** 设为产品主图：对话里用户发的图片地址 */
   imageUrl?: string;
   screenCount?: number;
@@ -638,6 +655,10 @@ export interface AgentConversationRecord {
   previous_response_id?: string | null;
   created_at: string;
   updated_at: string;
+  /** 列表接口附带：会话里的消息条数 */
+  message_count?: number;
+  /** 列表接口附带：默认标题的会话用第一条消息作显示标题 */
+  display_title?: string;
 }
 
 export interface AgentChatMessageRecord {
