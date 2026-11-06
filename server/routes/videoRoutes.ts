@@ -151,13 +151,15 @@ router.post('/api/gateway/video/upload-reference-image', upload.single('file'), 
  */
 router.post('/api/gateway/video/generate-shot-keyframe', async (req: Request, res: Response) => {
   try {
-    const { canvasId, shotId, prompt, referenceImageUrl, productTitle } = req.body;
+    const { canvasId, shotId, prompt, referenceImageUrl, productTitle, aspectRatio } = req.body;
+    // 首帧必须与视频比例一致，否则图生视频会把首帧原样塞进画面、上下或左右留黑边
+    const keyframeRatio = ['16:9', '9:16', '1:1', '4:3', '3:4'].includes(aspectRatio) ? aspectRatio : '16:9';
     if (!canvasId || !prompt) {
       res.status(400).json({ error: { message: 'canvasId and prompt are required' } });
       return;
     }
     const safeShotId = shotId || `shot-${Date.now()}`;
-    const objectKey = `keyframes/${canvasId}/${safeShotId}.webp`;
+    const objectKey = `keyframes/${canvasId}/${safeShotId}-${keyframeRatio.replace(':', 'x')}.webp`;
 
     const result = await SpaceImageGenerationService.generateAndStore({
       projectId: canvasId,
@@ -166,7 +168,7 @@ router.post('/api/gateway/video/generate-shot-keyframe', async (req: Request, re
       objectKey,
       productName: productTitle || '现代意式真皮家具',
       productReferenceImage: referenceImageUrl,
-      aspectRatio: '16:9'
+      aspectRatio: keyframeRatio
     });
 
     res.json({

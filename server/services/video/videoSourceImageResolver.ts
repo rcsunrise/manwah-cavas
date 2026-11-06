@@ -60,7 +60,9 @@ export class VideoSourceImageResolver {
   public static async resolveFrameForRatio(rawUrlOrData: string, ratio?: string): Promise<string> {
     const targetRatio = parseRatio(ratio);
     try {
-      const { buffer } = await this.extractBufferAndMime(rawUrlOrData.trim());
+      const { buffer: rawBuffer } = await this.extractBufferAndMime(rawUrlOrData.trim());
+      // 原图自带的黑/白边（截图、已加过黑边的图）先裁掉，否则补边会把黑边一起延展出去
+      const buffer = await this.cropLetterbox(rawBuffer);
       const image = sharp(buffer, { failOn: 'none' }).rotate();
       const meta = await image.metadata();
       const width = meta.autoOrient?.width || meta.width;
@@ -71,7 +73,8 @@ export class VideoSourceImageResolver {
       const needsPad = targetRatio !== null && Math.abs(sourceRatio / targetRatio - 1) > RATIO_TOLERANCE;
       const needsShrink = Math.max(width, height) > MAX_FRAME_EDGE;
       const isPublic = /^https?:\/\//.test(rawUrlOrData) && !/localhost|127\.0\.0\.1|0\.0\.0\.0/.test(rawUrlOrData);
-      if (!needsPad && !needsShrink && isPublic) return rawUrlOrData.trim();
+      const wasCropped = buffer !== rawBuffer;
+      if (!needsPad && !needsShrink && isPublic && !wasCropped) return rawUrlOrData.trim();
 
       // 先把原图缩到长边上限内
       const scale = Math.min(1, MAX_FRAME_EDGE / Math.max(width, height));
@@ -91,21 +94,32 @@ export class VideoSourceImageResolver {
           top: Math.floor(padY / 2),
           bottom: Math.ceil(padY / 2)
         };
-        const edgeColor = await this.uniformEdgeColor(foreground, fgWidth, fgHeight, padX > 0);
-        if (edgeColor) {
-          // 棚拍纯色底：直接用边缘底色延展，补出来与原图无缝
-          output = await sharp(foreground)
-            .extend({ ...extend, background: edgeColor })
+        // 先压平透明通道（透明处按白底），否则转 JPEG 时透明区域会变成黑色
+        const flat = await sharp(foreground).flatten({ background: '#ffffff' }).toBuffer();
+        const sideColors = await this.sideEdgeColors(flat, fgWidth, fgHeight, padX > 0);
+        if (sideColors) {
+          // 棚拍底：两侧各用自己那一边的底色延展（上下或左右底色可以不同），补出来与原图无缝
+          const [first, second] = sideColors;
+          const canvas = sharp({
+            create: { width: canvasWidth, height: canvasHeight, channels: 3, background: first }
+          });
+          const secondBlock = padX > 0
+            ? { input: { create: { width: extend.right, height: canvasHeight, channels: 3 as const, background: second } }, left: canvasWidth - extend.right, top: 0 }
+            : { input: { create: { width: canvasWidth, height: extend.bottom, channels: 3 as const, background: second } }, left: 0, top: canvasHeight - extend.bottom };
+          output = await canvas
+            .composite([...((padX > 0 ? extend.right : extend.bottom) > 0 ? [secondBlock] : []), { input: flat, left: extend.left, top: extend.top }])
             .jpeg({ quality: 92 })
             .toBuffer();
         } else {
-          // 场景图：边缘像素拉伸延展后整体虚化作底（镜像会复制出半个产品的虚影），再把清晰原图盖回中间
-          const stretched = await sharp(foreground)
-            .extend({ ...extend, extendWith: 'copy' })
+          // 场景图：原图放大铺满目标画幅并重度虚化作底，再把清晰原图盖回中间
+          // （不用边缘拉伸：当前 sharp 版本不支持 extendWith，会退回黑色补边）
+          const background = await sharp(flat)
+            .resize(canvasWidth, canvasHeight, { fit: 'cover' })
+            .blur(60)
+            .modulate({ brightness: 1.05 })
             .toBuffer();
-          const background = await sharp(stretched).blur(40).toBuffer();
           output = await sharp(background)
-            .composite([{ input: foreground, left: extend.left, top: extend.top }])
+            .composite([{ input: flat, left: extend.left, top: extend.top }])
             .jpeg({ quality: 92 })
             .toBuffer();
         }
@@ -131,6 +145,101 @@ export class VideoSourceImageResolver {
       .jpeg({ quality: 85 })
       .toBuffer();
     return `data:image/jpeg;base64,${small.toString('base64')}`;
+  }
+
+  /**
+   * 检测并裁掉图片四周的纯色条（信箱黑边等）：逐行/逐列看中间 70% 区域是否近乎纯色且接近黑或白，
+   * 角落里的水印不影响判断。条宽不足 2% 不处理；裁不出合理画面时返回原图。
+   */
+  private static async cropLetterbox(buffer: Buffer): Promise<Buffer> {
+    try {
+      const base = sharp(buffer, { failOn: 'none' }).rotate();
+      const meta = await base.metadata();
+      const W = meta.autoOrient?.width || meta.width || 0;
+      const H = meta.autoOrient?.height || meta.height || 0;
+      if (!W || !H) return buffer;
+      const SW = 400;
+      const SH = Math.max(1, Math.round((H * SW) / W));
+      const gray = await sharp(buffer, { failOn: 'none' }).rotate().resize(SW, SH, { fit: 'fill' }).grayscale().raw().toBuffer();
+      const isBarLine = (vals: number[]) => {
+        const mean = vals.reduce((a, v) => a + v, 0) / vals.length;
+        const sd = Math.sqrt(vals.reduce((a, v) => a + (v - mean) ** 2, 0) / vals.length);
+        return sd < 6 && (mean < 28 || mean > 245);
+      };
+      const row = (y: number) => {
+        const out: number[] = [];
+        for (let x = Math.round(SW * 0.15); x < Math.round(SW * 0.85); x++) out.push(gray[y * SW + x]);
+        return out;
+      };
+      const col = (x: number) => {
+        const out: number[] = [];
+        for (let y = Math.round(SH * 0.15); y < Math.round(SH * 0.85); y++) out.push(gray[y * SW + x]);
+        return out;
+      };
+      let top = 0;
+      while (top < SH / 2 && isBarLine(row(top))) top++;
+      let bottom = 0;
+      while (bottom < SH / 2 && isBarLine(row(SH - 1 - bottom))) bottom++;
+      let left = 0;
+      while (left < SW / 2 && isBarLine(col(left))) left++;
+      let right = 0;
+      while (right < SW / 2 && isBarLine(col(SW - 1 - right))) right++;
+      const minBarY = SH * 0.02;
+      const minBarX = SW * 0.02;
+      top = top >= minBarY ? top : 0;
+      bottom = bottom >= minBarY ? bottom : 0;
+      left = left >= minBarX ? left : 0;
+      right = right >= minBarX ? right : 0;
+      if (!top && !bottom && !left && !right) return buffer;
+      // 换算回原尺寸，多裁 1% 去掉条带与画面交界的过渡像素
+      const k = W / SW;
+      const pad = (n: number, len: number) => (n ? Math.min(len, Math.round(n * k + len * 0.01)) : 0);
+      const cropLeft = pad(left, W);
+      const cropTop = pad(top, H);
+      const cropWidth = W - cropLeft - pad(right, W);
+      const cropHeight = H - cropTop - pad(bottom, H);
+      if (cropWidth < W * 0.3 || cropHeight < H * 0.3) return buffer;
+      console.log(`[VideoSourceImageResolver] Cropped letterbox bars ${W}x${H} -> ${cropWidth}x${cropHeight}`);
+      return await sharp(buffer, { failOn: 'none' })
+        .rotate()
+        .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
+        .png()
+        .toBuffer();
+    } catch {
+      return buffer;
+    }
+  }
+
+  /**
+   * 要补边的两条边（上下或左右）各自是否近乎纯色（棚拍底）：是则分别返回两侧底色，否则返回 null。
+   * 每条边去掉两端各 15% 再取样，避开角落里的水印、logo；容差放宽到渐变棚拍底也能通过。
+   */
+  private static async sideEdgeColors(
+    image: Buffer,
+    width: number,
+    height: number,
+    horizontal: boolean
+  ): Promise<[{ r: number; g: number; b: number }, { r: number; g: number; b: number }] | null> {
+    const strip = Math.max(4, Math.round((horizontal ? width : height) * 0.01));
+    const inset = (len: number) => Math.round(len * 0.15);
+    const regions = horizontal
+      ? [
+          { left: 0, top: inset(height), width: strip, height: height - 2 * inset(height) },
+          { left: width - strip, top: inset(height), width: strip, height: height - 2 * inset(height) }
+        ]
+      : [
+          { left: inset(width), top: 0, width: width - 2 * inset(width), height: strip },
+          { left: inset(width), top: height - strip, width: width - 2 * inset(width), height: strip }
+        ];
+    const colors: { r: number; g: number; b: number }[] = [];
+    for (const region of regions) {
+      const stripBuffer = await sharp(image).extract(region).toBuffer();
+      const { channels } = await sharp(stripBuffer).stats();
+      if (channels.slice(0, 3).some(c => c.stdev > 24)) return null;
+      const [r, g, b] = channels.slice(0, 3).map(c => Math.round(c.mean));
+      colors.push({ r, g, b });
+    }
+    return [colors[0], colors[1]];
   }
 
   /**

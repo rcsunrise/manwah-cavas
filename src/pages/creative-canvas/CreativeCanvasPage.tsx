@@ -43,6 +43,7 @@ export default function CreativeCanvasPage() {
     edges,
     setEdges,
     onNodesChange,
+    markCanvasDirty,
     onEdgesChange,
     uploadState,
     errorMessage,
@@ -396,6 +397,8 @@ export default function CreativeCanvasPage() {
 
   const rawNodesRef = React.useRef<any[]>(rawNodes);
   rawNodesRef.current = rawNodes;
+  const markCanvasDirtyRef = React.useRef(markCanvasDirty);
+  markCanvasDirtyRef.current = markCanvasDirty;
   const postVideoResultToChatRef = React.useRef(postVideoResultToChat);
   postVideoResultToChatRef.current = postVideoResultToChat;
   // 本次会话里已回传到对话的视频任务（只回传在页面上从生成中变为完成的任务，刷新加载的历史成片不重复发）
@@ -487,6 +490,8 @@ export default function CreativeCanvasPage() {
         (n: any) => n.id === `node-video-gen-${updatedJob.id}` || n.data?.job?.id === updatedJob.id
       );
       if (!genNode) return;
+      // 成果节点是直接 setNodes 写入的，标记改动让自动保存把它存下来
+      markCanvasDirtyRef.current();
       const prevStatus = genNode.data?.job?.status;
       if (
         updatedJob.status === 'ready' && effectiveUrl &&

@@ -108,6 +108,37 @@ interface PersistedPanelState {
   shotOutline?: VideoShotOutline[] | null;
 }
 
+/** 读取图片宽高比（宽/高），结果按地址缓存；读不到时返回 null */
+const imageAspectCache = new Map<string, number | null>();
+function loadImageAspect(url: string): Promise<number | null> {
+  if (!url) return Promise.resolve(null);
+  if (imageAspectCache.has(url)) return Promise.resolve(imageAspectCache.get(url) ?? null);
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const done = (v: number | null) => {
+      imageAspectCache.set(url, v);
+      resolve(v);
+    };
+    img.onload = () => done(img.naturalWidth > 0 && img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : null);
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
+function ratioToAspect(ratio: string): number {
+  const [w, h] = ratio.split(':').map(Number);
+  return w > 0 && h > 0 ? w / h : 16 / 9;
+}
+
+/** 首帧与视频比例相差超过 25% 时，图生视频会把首帧原样放进画面并留黑边 */
+async function needsRatioKeyframe(imageUrl: string | undefined, ratio: string): Promise<boolean> {
+  if (!imageUrl) return false;
+  const aspect = await loadImageAspect(imageUrl);
+  if (!aspect) return false;
+  return Math.abs(Math.log(aspect / ratioToAspect(ratio))) > Math.log(1.25);
+}
+
 /** 模型支持的时长里离目标最近的一个（同样近取较长的，宁可慢一点也不截断动作） */
 function snapDuration(cap: VideoCapability | undefined, seconds: number): number {
   const options = Array.from(new Set((cap?.variants || []).map(v => v.durationSeconds))).sort((a, b) => a - b);
@@ -457,6 +488,18 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     );
   }, [outlineMatchPending, shotOutline, capabilities, selectedModelKey, defaultModelKey]);
 
+  // 参考图比例与视频比例不一致时提示：生成时会先自动做一张同比例首帧
+  const [refRatioMismatch, setRefRatioMismatch] = useState(false);
+  const firstRefUrl = referenceImages[0]?.url || selectedNode?.imageUrl || '';
+  useEffect(() => {
+    let alive = true;
+    const url = firstRefUrl || (allNodes || []).find(n => n?.type === 'productImageNode')?.data?.imageUrl || '';
+    needsRatioKeyframe(url, videoSettings.ratio).then(v => alive && setRefRatioMismatch(v));
+    return () => {
+      alive = false;
+    };
+  }, [firstRefUrl, allNodes, videoSettings.ratio]);
+
   // 没选参考图也没选中节点时，默认用画布上的产品主图
   const fallbackProductImage = (() => {
     const node = (allNodes || []).find(
@@ -715,24 +758,28 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   handleGeneratePlanRef.current = () => { void handleGeneratePlan(); };
 
   // Generate Static Keyframe image for single shot
+  // 生成镜头首帧：比例跟随视频比例（之前固定 16:9，竖屏视频会出现上下黑边）
+  const generateKeyframeFor = async (shot: { shotId: string; prompt: string }, ratio: string): Promise<string> => {
+    const primaryUrl = referenceImages[0]?.url || selectedNode?.imageUrl || fallbackProductImage?.url;
+    const res = await VideoGenerationService.generateShotKeyframe({
+      canvasId,
+      shotId: shot.shotId,
+      prompt: shot.prompt,
+      referenceImageUrl: primaryUrl,
+      productTitle: productTitle || selectedNode?.title || '',
+      aspectRatio: ratio
+    });
+    setDirectorPlan(prev =>
+      prev ? { ...prev, shots: prev.shots.map(s => (s.shotId === shot.shotId ? { ...s, keyframeImageUrl: res.keyframeUrl } : s)) } : prev
+    );
+    return res.keyframeUrl;
+  };
+
   const handleGenerateKeyframe = async (shot: VideoShotPlan) => {
     setGeneratingKeyframeShotId(shot.shotId);
     try {
-      const primaryUrl = referenceImages[0]?.url || selectedNode?.imageUrl;
-      const res = await VideoGenerationService.generateShotKeyframe({
-        canvasId,
-        shotId: shot.shotId,
-        prompt: shot.prompt,
-        referenceImageUrl: primaryUrl,
-        productTitle: productTitle || selectedNode?.title || ''
-      });
-
-      if (directorPlan) {
-        const updatedShots = directorPlan.shots.map(s =>
-          s.shotId === shot.shotId ? { ...s, keyframeImageUrl: res.keyframeUrl } : s
-        );
-        setDirectorPlan({ ...directorPlan, shots: updatedShots });
-      }
+      const ratio = style === 'outline' ? settingsForShot(currentCapability, videoSettings, shot.durationSeconds).ratio : videoSettings.ratio;
+      await generateKeyframeFor(shot, ratio);
     } catch (err: any) {
       alert(`生成镜头关键帧失败: ${err.message || '未知错误'}`);
     } finally {
@@ -775,10 +822,11 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   ) => {
     if (!selectedNode && referenceImages.length === 0 && !fallbackProductImage) return;
     const finalPrompt = shotPrompt || userPrompt || '产品静止，镜头缓慢平移，光影自然流动';
-    const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl || fallbackProductImage?.url;
     // 按构思分镜时每个镜头按自己的时长生成（就近落到模型支持的规格）
     const settings =
       style === 'outline' && shotDurationSeconds ? settingsForShot(currentCapability, videoSettings, shotDurationSeconds) : videoSettings;
+    // 比例不一致时由服务端把主图背景延展到视频比例（产品像素不变），这里不再重新生成首帧，避免产品造型被改
+    const effectiveImageUrl = keyframeUrl || referenceImages[0]?.url || selectedNode?.imageUrl || fallbackProductImage?.url;
 
     const job = await submitVideo({
       sourceNodeId: selectedNode?.id || 'ref-upload',
@@ -802,8 +850,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const handleSubmitDirectVideoClick = async (shotPrompt?: string, shotId?: string, keyframeUrl?: string, endFrameUrl?: string, shotDurationSeconds?: number) => {
     try {
       await handleSubmitDirectVideo(shotPrompt, shotId, keyframeUrl, endFrameUrl, shotDurationSeconds);
-    } catch {
-      // 错误已由 useCanvasVideo 写入 error 状态并在面板展示
+    } catch (err: any) {
+      // 提交错误已由 useCanvasVideo 写入 error 状态；自动首帧的错误在这里展示
+      if (String(err?.message || '').includes('首帧')) setBatchSubmitError(err.message);
     }
   };
 
@@ -1035,6 +1084,11 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
                   : fallbackProductImage && !selectedNode
                   ? '(未选择，默认用画布产品主图)'
                   : '(0 张已选)'}
+                {refRatioMismatch && (
+                  <span className="ml-1 text-[10px] text-amber-600 font-normal">
+                    · 主图比例与视频 {videoSettings.ratio} 不同，生成时会自动把背景延展到 {videoSettings.ratio}（产品保持原样，原图自带的黑边会先裁掉）
+                  </span>
+                )}
               </span>
             </label>
             <button

@@ -55,6 +55,8 @@ export class VideoGenerationService {
     prompt: string;
     referenceImageUrl?: string;
     productTitle?: string;
+    /** 首帧比例，须与视频比例一致 */
+    aspectRatio?: string;
   }): Promise<{ success: boolean; shotId: string; keyframeUrl: string; model: string }> {
     const res = await fetch('/api/gateway/video/generate-shot-keyframe', {
       method: 'POST',

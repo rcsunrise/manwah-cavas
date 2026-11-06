@@ -4723,8 +4723,13 @@ export function useCreativeCanvasWorkspace(
     setNodes,
     edges,
     setEdges,
-    onNodesChange,
-    onEdgesChange,
+    // 必须返回带改动标记的版本：用原始 onNodesChange 时拖动、新增、连线都不会标记改动，自动保存永远不触发
+    onNodesChange: handleNodesChange,
+    onEdgesChange: handleEdgesChange,
+    /** 绕过 onNodesChange 直接 setNodes 的改动（如视频任务回写成果节点）调用它，以触发自动保存 */
+    markCanvasDirty: () => {
+      if (!isRestoringRef.current) hasUserMutationRef.current = true;
+    },
     uploadState,
     errorMessage,
     messages,
