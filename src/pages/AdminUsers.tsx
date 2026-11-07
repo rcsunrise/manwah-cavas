@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { confirmDialog } from '../utils/confirmDialog';
 import { supabase } from '../lib/supabase';
 import { UserPlus, LogOut, ArrowLeft, PlusCircle, Loader2, X, Lock, Trash2, ShieldAlert, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -225,7 +226,7 @@ const AdjustQuotaModal = ({ user, onClose, onUpdate, systemBalance }: {
 
   const handleAdd = async () => {
     if (amount > 0 && estimatedCost > systemBalance) {
-      const confirmProceed = window.confirm(`警告：分配给员工的额度（预估价值 $${estimatedCost.toFixed(2)}）已超过部门充值的总可用余额（$${systemBalance.toFixed(2)}），请确认是否继续分配？`);
+      const confirmProceed = await confirmDialog(`警告：分配给员工的额度（预估价值 $${estimatedCost.toFixed(2)}）已超过部门充值的总可用余额（$${systemBalance.toFixed(2)}），请确认是否继续分配？`, { title: '额度超出余额', confirmText: '继续分配' });
       if (!confirmProceed) return;
     }
 

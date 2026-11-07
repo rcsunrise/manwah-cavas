@@ -533,7 +533,7 @@ export interface RenderComputeConfig {
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean; // 多模型故障自动轮换开关 (开启时主模型失败自动轮试 Gemini 3.1 ➔ GPT 2.5 ➔ GPT 2)
   renderMode?: 'orchestration' | 'studio_swap'; // 生产模式：'orchestration' (全案机位编排，默认) | 'studio_swap' (极简影棚背景置换/直通图生图)
-  studioSwapRefinePass?: boolean; // 极简换景衍生镜头两步出图：GPT 2.6 Flare 换景保构图 ➔ Nano Banana 2.1 精修清晰度
+  studioSwapRefinePass?: boolean; // 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图 ➔ Nano Banana 2.1 精修清晰度
 }
 
 export type UIThemeMode = 'dark' | 'light';

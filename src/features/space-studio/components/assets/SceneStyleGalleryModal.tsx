@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirmDialog } from '../../../../utils/confirmDialog';
 import { createPortal } from 'react-dom';
 import { 
   X, Search, Sparkles, RefreshCw, Star, Plus, Check, 
@@ -902,8 +903,9 @@ export const SceneStyleGalleryModal: React.FC<SceneStyleGalleryModalProps> = ({
                 {/* 删除该风格素材入口 */}
                 <div className="pt-1 flex justify-end">
                   <button
-                    onClick={(e) => {
-                      if (window.confirm(`确定要从资产库中删除素材 "${activeStyle.name}" 吗？`)) {
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (await confirmDialog(`确定要从资产库中删除素材 "${activeStyle.name}" 吗？`)) {
                         handleDeleteStyle(e, activeStyle.id);
                       }
                     }}

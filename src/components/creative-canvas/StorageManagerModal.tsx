@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { confirmDialog } from '../../utils/confirmDialog';
 import { useNavigate } from 'react-router-dom';
 import {
   X,
@@ -237,7 +238,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
   // Execute Batch Delete
   const handleDeleteSelected = async () => {
     if (totalSelectedCount === 0) return;
-    if (!window.confirm(`确定要删除选中的 ${totalSelectedCount} 项存储数据吗？此操作不可恢复。`)) {
+    if (!await confirmDialog(`确定要删除选中的 ${totalSelectedCount} 项存储数据吗？此操作不可恢复。`)) {
       return;
     }
 
@@ -293,7 +294,7 @@ export const StorageManagerModal: React.FC<StorageManagerModalProps> = ({
 
   // Single item fast delete
   const handleSingleDelete = async (type: 'canvas' | 'storage' | 'revision' | 'local', idOrKey: string, bucket?: string) => {
-    if (!window.confirm('确定要删除此条存储记录吗？')) return;
+    if (!(await confirmDialog('确定要删除此条存储记录吗？'))) return;
     setDeleting(true);
     setFeedbackMessage(null);
     try {

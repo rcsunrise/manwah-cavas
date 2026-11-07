@@ -93,7 +93,7 @@ export interface SpaceGenerateImageInput {
   variantTag?: string;
   functionalPositionState?: 'closed' | 'open';
   autoModelFallback?: boolean;
-  /** 极简换景衍生镜头两步出图：GPT 2.6 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
+  /** 极简换景衍生镜头两步出图：GPT 2.5 Flare 换景保构图，再用 Nano Banana 2.1 精修清晰度与材质 */
   studioSwapRefinePass?: boolean;
   preserveBasePhotoOnly?: boolean;
   /** 人物入座：各角色位的入座简报（来自 compileHumanLayoutPrompt.slotBriefs），存在时使用精简编辑指令 */
@@ -138,7 +138,8 @@ function flattenPresetField(value: unknown): string[] {
  * - 参考图 1 (用户上传素材): 【绝对构图、几何透视与家具实体真值】
  * - 参考图 2 (母版空间图 A00): 【纯硬装材质、光影氛围与窗景样板】
  */
-export const STUDIO_SWAP_COMPOSE_MODEL = 'openai/gpt-image-2.6-flare-c';
+// 两步出图的第一步（换景构图）用 GPT 2.5 Flare；单步出图严格按用户所选模型，不做隐式替换。
+export const STUDIO_SWAP_COMPOSE_MODEL = 'openai/gpt-image-2.5-flare-c';
 export const STUDIO_SWAP_REFINE_MODEL = 'gemini-nano-banana-2.1-preview';
 
 export const STUDIO_SWAP_REFINE_PROMPT = `画面精修重绘：以窗口1为底图，构图、机位、透视、家具的位置角度与形态、房间的墙面吊顶地面与窗帘全部保持不变，不移动、不增减任何物体。参照窗口2（产品实拍图）还原沙发与单椅的真皮纹理、缝线走向、金属头枕支架、茶几与边几的石材和木纹细节以及真实颜色。提升整体清晰度、锐度与材质质感。整体空间室内建筑摄影风格。
@@ -193,6 +194,52 @@ async function requestGatewayImage(params: {
     return Buffer.from(await fetched.arrayBuffer());
   }
   return Buffer.from(img.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''), 'base64');
+}
+
+/**
+ * 把空间母版（A00）裁成一张「硬装材质样板拼图」作为换景镜头的窗口2：
+ * 上方大图为主背景墙（墙板造型、壁柱、壁灯），下方三小图为侧墙细节 / 窗与窗帘 / 地面石材，留白分隔。
+ * 原因：窗口2 给整张母版房间时，模型常直接照搬母版的正面一点透视，再把实拍的 45° 家具贴进去，
+ * 空间与产品不在同一个透视里（A02 实测 2.5/2.6 都会，且同样输入时好时坏）。
+ * 拼图里没有完整的房间与机位可抄，只剩墙板造型、材质与配色，模型只能沿窗口1 的透视重建空间。
+ */
+export async function buildMaterialSwatchBoard(master: { mimeType: string; data: string }): Promise<{ mimeType: string; data: string }> {
+  const src = Buffer.from(master.data, 'base64');
+  const meta = await sharp(src).metadata();
+  const W = meta.width || 0;
+  const H = meta.height || 0;
+  if (!W || !H) return master;
+  // 版式：上方大图 = 主背景墙（墙板造型、壁柱、壁灯，换景后背景墙要与它一致）；下方三小图 = 侧墙细节 / 窗与窗帘 / 地面石材
+  const crop = async ([l, t, w, h]: [number, number, number, number], tw: number, th: number) => {
+    const left = Math.max(0, Math.round(l * W));
+    const top = Math.max(0, Math.round(t * H));
+    const width = Math.max(8, Math.min(W - left, Math.round(w * W)));
+    const height = Math.max(8, Math.min(H - top, Math.round(h * H)));
+    return sharp(src).extract({ left, top, width, height }).resize(tw, th, { fit: 'cover' }).toBuffer();
+  };
+  const GAP = 28;
+  const SMALL_W = 420;
+  const SMALL_H = 315;
+  const BOARD_W = SMALL_W * 3 + GAP * 4;
+  const HERO_W = BOARD_W - GAP * 2;
+  const HERO_H = 560;
+  const [hero, side, windowTile, floor] = await Promise.all([
+    crop([0.24, 0.12, 0.52, 0.5], HERO_W, HERO_H),
+    crop([0.6, 0.25, 0.4, 0.45], SMALL_W, SMALL_H),
+    crop([0.0, 0.1, 0.22, 0.65], SMALL_W, SMALL_H),
+    crop([0.12, 0.72, 0.76, 0.26], SMALL_W, SMALL_H)
+  ]);
+  const smallTop = GAP * 2 + HERO_H;
+  const board = await sharp({
+    create: { width: BOARD_W, height: smallTop + SMALL_H + GAP, channels: 3, background: { r: 245, g: 243, b: 240 } }
+  })
+    .composite([
+      { input: hero, left: GAP, top: GAP },
+      ...[side, windowTile, floor].map((input, i) => ({ input, left: GAP + i * (SMALL_W + GAP), top: smallTop }))
+    ])
+    .jpeg({ quality: 90 })
+    .toBuffer();
+  return { mimeType: 'image/jpeg', data: board.toString('base64') };
 }
 
 export function buildStudioSwapDirective(params: {
@@ -337,7 +384,8 @@ Negative constraints: ${cleanNegativeA00}`;
       primaryRole === 'sofa_2seat' ? '双人位的沙发' :
       primaryRole === 'recliner_1seat' || primaryRole === 'lounge_chair' ? '单椅' :
       '三人位的沙发';
-    const styleClause = hasSceneMasterReference ? '场景风格：参考窗口2，' : '';
+    // 窗口2 是母版空间的硬装材质样板拼图（不是整间房），只借样式与配色；空间结构与机位以窗口1 为准
+    const styleClause = hasSceneMasterReference ? '场景风格：参考窗口2（母版空间的硬装样板拼图：背景墙沿用上方大图的墙板造型、壁柱与壁灯，窗帘与地面石材沿用下方小图，不要改成其他墙面造型；只借用样式和配色，空间结构与拍摄机位以窗口1为准），' : '';
 
     // 唯一补充「以窗口1为底图」：窗口2（空场景母版）与输出同为 4:3 时，模型可能误把窗口2 当底图，整张改成正面构图
     return `画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景，${styleClause}按${toneLabel}调性生成新的调性背景墙。其中家具、所有的地毯、挂画、餐桌配套保持不变。保持窗口1的产品角度不变。保证原图的尺寸比例不变。要求生成的产品组合与空间透视是融合的。整体空间室内建筑摄影风格。${lightingHint ? `\n光线氛围：${lightingHint}` : ''}
@@ -991,8 +1039,7 @@ export class SpaceImageGenerationService {
       else if (targetModel === 'google/gemini-nano-banana-2.1-preview' || targetModel === 'nano-banana-2.1') targetModel = 'gemini-nano-banana-2.1-preview';
       else if (targetModel === 'openai/gpt-image-2.6-flare-c' || targetModel === 'gpt-2.6-flare') targetModel = 'gpt-image-2.6-flare-c';
       else if (targetModel === 'openai/gpt-image-2.6-sunburst-c' || targetModel === 'gpt-2.6-sunburst') targetModel = 'gpt-image-2.6-sunburst-c';
-      // 摄影画册里 GPT 2.5 Flare 已由 2.6 Flare 接替，旧存档选择的 2.5 Flare 一并改用 2.6
-      else if (targetModel === 'openai/gpt-image-2.5-flare-c' || targetModel === 'gpt-2.5-flare' || targetModel === 'gpt-image-2.5-flare-c') targetModel = 'gpt-image-2.6-flare-c';
+      else if (targetModel === 'openai/gpt-image-2.5-flare-c' || targetModel === 'gpt-2.5-flare') targetModel = 'gpt-image-2.5-flare-c';
       else if (targetModel === 'openai/gpt-image-2.5-sunburst-c' || targetModel === 'gpt-2.5-sunburst') targetModel = 'gpt-image-2.5-sunburst-c';
       else if (targetModel === 'openai/gpt-image-2' || targetModel === 'gpt-image-2') targetModel = 'gpt-image-2-c';
       else if (targetModel === 'openai/gpt-image-2-c') targetModel = 'gpt-image-2-c';
@@ -1041,9 +1088,10 @@ export class SpaceImageGenerationService {
         }
 
         if (masterInline && shotCode !== 'A00') {
+          const swatchBoard = await buildMaterialSwatchBoard(masterInline).catch(() => masterInline);
           images.push({
-            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
-            mimeType: masterInline.mimeType,
+            data: `data:${swatchBoard.mimeType};base64,${swatchBoard.data}`,
+            mimeType: swatchBoard.mimeType,
             role: 'style_reference'
           });
         }
@@ -1099,9 +1147,11 @@ export class SpaceImageGenerationService {
         // 在全案编排或极简影棚换景 (studio_swap) 的衍生镜头 (非 A00) 中，只要存在空间母版图 (masterInline)，
         // 即以完整母版图作为空间参考（换景下为 style_reference，编排下为 scene_reference）
         if (masterInline && (!isStudioSwapImageSet || shotCode !== 'A00')) {
+          // 换景时同样只给材质样板拼图；全案编排仍需要完整母版作为同一房间参考
+          const spaceRef = isStudioSwapImageSet ? await buildMaterialSwatchBoard(masterInline).catch(() => masterInline) : masterInline;
           images.push({
-            data: `data:${masterInline.mimeType};base64,${masterInline.data}`,
-            mimeType: masterInline.mimeType,
+            data: `data:${spaceRef.mimeType};base64,${spaceRef.data}`,
+            mimeType: spaceRef.mimeType,
             role: isStudioSwapImageSet ? 'style_reference' : 'scene_reference'
           });
         }
@@ -1696,7 +1746,7 @@ CORE INVARIANTS:
 
       const isAutoFallback = input.autoModelFallback !== false;
       primaryModel = targetModel;
-      // 两步出图：衍生镜头第一步固定用 GPT 2.6 Flare 换景保构图（接替 2.5 Flare）
+      // 两步出图：衍生镜头第一步固定用 GPT 2.5 Flare 换景保构图
       const useRefinePass = Boolean(input.studioSwapRefinePass) && useStudioSwapDirective && shotCode !== 'A00';
       if (useRefinePass) primaryModel = STUDIO_SWAP_COMPOSE_MODEL;
       const candidateModels: string[] = [primaryModel];
@@ -1845,7 +1895,7 @@ CORE INVARIANTS:
             usedModel = `${usedModel} + ${STUDIO_SWAP_REFINE_MODEL} 精修`;
           }
         } catch (refineErr: any) {
-          refineNotice = `精修步骤 (${STUDIO_SWAP_REFINE_MODEL}) 未完成，已保留 GPT 2.6 Flare 换景结果：${refineErr?.message || refineErr}`;
+          refineNotice = `精修步骤 (${STUDIO_SWAP_REFINE_MODEL}) 未完成，已保留 GPT 2.5 Flare 换景结果：${refineErr?.message || refineErr}`;
           console.warn(`[SpaceImageGenerationService] ${shotCode} refine pass failed:`, refineErr?.message || refineErr);
         }
       }

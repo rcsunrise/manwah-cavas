@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { confirmDialog } from '../../utils/confirmDialog';
 import { createPortal } from 'react-dom';
 import {
   Type,
@@ -1074,8 +1075,8 @@ export const NodeTextEditor: React.FC<NodeTextEditorProps> = ({
               <div className="flex items-center gap-1.5">
                 {layers.length > 0 && (
                   <button
-                    onClick={() => {
-                      if (window.confirm('确认清空所有叠加图层？清空后将直接导出底图，彻底杜绝双重文案粘连。')) {
+                    onClick={async () => {
+                      if (await confirmDialog('确认清空所有叠加图层？清空后将直接导出底图，彻底杜绝双重文案粘连。', { confirmText: '清空' })) {
                         setLayers([]);
                         setSelectedLayerId(null);
                       }

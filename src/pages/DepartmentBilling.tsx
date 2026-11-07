@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirmDialog } from '../utils/confirmDialog';
 import { supabase } from '../lib/supabase';
 import { Download, RefreshCw, FileSpreadsheet, Search, Filter, Wallet, TrendingDown, DollarSign } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -339,7 +340,7 @@ export default function DepartmentBilling() {
   };
 
   const handleRefund = async (logId: string, tokens: number, username: string) => {
-    if (!window.confirm(`确定要为 [${username}] 退还此笔生图消耗吗？\n退还点数: ${tokens} 点\n这一操作将永久修改此条日志为0点并同步退回用户的点数消耗中。`)) {
+    if (!await confirmDialog(`确定要为 [${username}] 退还此笔生图消耗吗？\n退还点数: ${tokens} 点\n这一操作将永久修改此条日志为0点并同步退回用户的点数消耗中。`, { title: '退还点数', confirmText: '确认退还' })) {
       return;
     }
 

@@ -1,5 +1,6 @@
 // src/features/space-studio/components/SpaceStudioCanvas.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { confirmDialog } from '../../../utils/confirmDialog';
 import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -211,6 +212,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onSetSceneReference
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 删除版本用页面内二次确认（嵌入式浏览器里 window.confirm 不弹框、直接返回 false）
+  const [pendingDeleteRevisionId, setPendingDeleteRevisionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingDeleteRevisionId) return;
+    const t = setTimeout(() => setPendingDeleteRevisionId(null), 4000);
+    return () => clearTimeout(t);
+  }, [pendingDeleteRevisionId]);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [isResDropdownOpen, setIsResDropdownOpen] = useState(false);
@@ -1207,12 +1215,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               }`}>
                 {currentImageUrl && onClearCurrentShotImage && (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       setIsMoreMenuOpen(false);
                       const msg = activeShot.revisions.length > 1
                         ? `确定清空镜头 ${activeShot.templateCode} 的全部 ${activeShot.revisions.length} 个生成版本吗？`
                         : `确定清除镜头 ${activeShot.templateCode} 的生成画面吗？`;
-                      if (window.confirm(msg)) {
+                      if (await confirmDialog(msg, { confirmText: '清空' })) {
                         onClearCurrentShotImage();
                       }
                     }}
@@ -1871,18 +1879,22 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
               {/* 方案卡片面板主体 */}
               <div className="flex-1 rounded-2xl bg-[#14161f]/95 border border-white/10 backdrop-blur-md shadow-2xl flex flex-col p-2.5 gap-2 overflow-hidden min-h-0">
                 {/* 标题栏与操作条 */}
-                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5 shrink-0">
-                  <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
+                {/* 左侧标题可收缩（说明文字截断并可悬停查看全文），右侧动作条固定单行，窄屏时不再被挤出面板 */}
+                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-1.5 shrink-0 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5 whitespace-nowrap shrink-0">
                       <Sparkle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>镜头生成记录与方案 (共 {unifiedCards.length} 版)</span>
+                      <span>生成记录 ({unifiedCards.length} 版)</span>
                     </span>
-                    <span className="text-[10px] text-neutral-400 font-mono whitespace-nowrap shrink-0">
-                      (当前展示: {currentRevisionTitle}{currentRevisionGenMeta ? ` · ${currentRevisionGenMeta}` : ''})
+                    <span
+                      className="text-[10px] text-neutral-400 font-mono truncate min-w-0"
+                      title={`当前展示: ${currentRevisionTitle}${currentRevisionGenMeta ? ` · ${currentRevisionGenMeta}` : ''}`}
+                    >
+                      {currentRevisionTitle}{currentRevisionGenMeta ? ` · ${currentRevisionGenMeta}` : ''}
                     </span>
 
                     {/* 预设尺寸快速切换 */}
-                    <div className="hidden sm:flex items-center gap-1 ml-2 text-[9px] font-mono text-neutral-400 whitespace-nowrap shrink-0">
+                    <div className="hidden 2xl:flex items-center gap-1 ml-1 text-[9px] font-mono text-neutral-400 whitespace-nowrap shrink-0">
                       <button
                         onClick={() => { setBatchDrawerHeight(140); setIsBatchDrawerCollapsed(false); }}
                         className={`px-1.5 py-0.5 rounded hover:text-white cursor-pointer whitespace-nowrap shrink-0 ${batchDrawerHeight < 170 ? 'text-amber-400 font-bold bg-white/10' : ''}`}
@@ -1910,7 +1922,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                   </div>
 
                   {/* 右侧动作条 */}
-                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  <div className="flex items-center gap-1 flex-nowrap justify-end shrink-0">
                     <button
                       onClick={onRegenerateBatch}
                       className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
@@ -1926,7 +1938,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       title="锁空间与家具不变，重新生成人物构图与细节"
                     >
                       <User className="w-3 h-3 text-purple-400 shrink-0" />
-                      <span>保持空间重生人物</span>
+                      <span className="hidden 2xl:inline">保持空间重生人物</span>
+                      <span className="2xl:hidden">重生人物</span>
                     </button>
 
                     <button
@@ -1935,7 +1948,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       title="轮换已导入角色并重新生成"
                     >
                       <RefreshCw className="w-3 h-3 text-emerald-400 shrink-0" />
-                      <span>替换角色重生</span>
+                      <span className="hidden 2xl:inline">替换角色重生</span>
+                      <span className="2xl:hidden">换角色</span>
                     </button>
 
                     {activeCandidate && (
@@ -1944,7 +1958,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                         className="px-2.5 py-1 rounded-lg bg-amber-500 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-bold text-[10px] flex items-center gap-1 shadow-md transition cursor-pointer whitespace-nowrap shrink-0"
                       >
                         <Check className="w-3 h-3 stroke-[3] shrink-0" />
-                        <span>设为当前镜头结果</span>
+                        <span className="hidden 2xl:inline">设为当前镜头结果</span>
+                        <span className="2xl:hidden">设为当前</span>
                       </button>
                     )}
 
@@ -2030,14 +2045,27 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`确定删除历史版本【${card.badgeText}】吗？`)) {
+                                if (pendingDeleteRevisionId === card.id) {
+                                  setPendingDeleteRevisionId(null);
                                   onDeleteRevision?.(activeShot.id, card.id);
+                                } else {
+                                  setPendingDeleteRevisionId(card.id);
                                 }
                               }}
-                              className="w-5 h-5 rounded-full bg-black/60 hover:bg-red-600/90 text-white/70 hover:text-white flex items-center justify-center transition cursor-pointer"
-                              title="删除此版本"
+                              className={
+                                pendingDeleteRevisionId === card.id
+                                  ? 'h-5 px-2 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap'
+                                  : 'w-5 h-5 rounded-full bg-black/60 hover:bg-red-600/90 text-white/70 hover:text-white flex items-center justify-center transition cursor-pointer'
+                              }
+                              title={pendingDeleteRevisionId === card.id ? `再点一次删除【${card.badgeText}】` : '删除此版本'}
                             >
-                              <X className="w-3 h-3" />
+                              {pendingDeleteRevisionId === card.id ? (
+                                <>
+                                  <Trash2 className="w-3 h-3" /> 确认删除
+                                </>
+                              ) : (
+                                <X className="w-3 h-3" />
+                              )}
                             </button>
                           )}
 

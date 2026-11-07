@@ -3,6 +3,7 @@ import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
 import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
+import { confirmDialog } from '../utils/confirmDialog';
 import { AgentChatService } from '../services/agentChatService';
 import { mapExistingNineGridResultToCanvasNodes } from '../adapters/creativeCanvasNineGridAdapter';
 import { supabase } from '../lib/supabase';
@@ -2809,7 +2810,7 @@ export function useCreativeCanvasWorkspace(
     addAgentMessage(selectedOnly ? '已将选中的节点首尾无缝拼接垂直排列。' : '已将全案 9 屏海报按首尾相接拼接为 2100×14800 长图视觉垂直排列。');
   }, [setNodes, addAgentMessage]);
 
-  const handleTriggerBatchMissingModal = useCallback((withTextParam?: boolean) => {
+  const handleTriggerBatchMissingModal = useCallback(async (withTextParam?: boolean) => {
     if (typeof withTextParam === 'boolean') {
       setBatchWithText(withTextParam);
     }
@@ -2846,7 +2847,7 @@ export function useCreativeCanvasWorkspace(
 
     if (missingSceneNumbers.length === 0) {
       // If user still clicks, allow forced full regeneration of all screens
-      const confirmReall = window.confirm(`当前 ${screens.length} 屏均已存在画面，是否全部重新全量生成画面？`);
+      const confirmReall = await confirmDialog(`当前 ${screens.length} 屏均已存在画面，是否全部重新全量生成画面？`, { title: '全部重新生成', confirmText: '全部重新生成', danger: false });
       if (confirmReall) {
         const allNums = screens.map((_, i) => i + 1);
         setBatchConfirmInfo({

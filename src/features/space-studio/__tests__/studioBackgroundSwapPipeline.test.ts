@@ -474,7 +474,8 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.images[1].role).toBe('style_reference');
 
     // 2. Prompt must lock background continuity to Reference Image 2 while locking furniture & camera to Reference Image 1
-    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2（母版空间的硬装样板拼图');
+    expect(capturedBody.prompt).toContain('空间结构与拍摄机位以窗口1为准），按三人位的沙发调性生成新的调性背景墙');
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
     expect(capturedBody.prompt).not.toContain('45mm lens at 115cm height');
     expect(capturedBody.prompt).toContain('要求生成的产品组合与空间透视是融合的');
@@ -528,7 +529,8 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     // 极简换景模式下：统一遵循直接非对称映射契约，镜头严格跟随参考图 1，无固定相机参数污染
     expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
-    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2（母版空间的硬装样板拼图');
+    expect(capturedBody.prompt).toContain('空间结构与拍摄机位以窗口1为准），按三人位的沙发调性生成新的调性背景墙');
     expect(capturedBody.prompt).not.toContain('50mm lens at 95cm height');
   });
 
@@ -630,7 +632,8 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody).toBeDefined();
     expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
-    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2（母版空间的硬装样板拼图');
+    expect(capturedBody.prompt).toContain('空间结构与拍摄机位以窗口1为准），按三人位的沙发调性生成新的调性背景墙');
     expect(capturedBody.prompt).not.toContain('60mm lens at 90cm height');
   });
 
@@ -681,7 +684,8 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody).toBeDefined();
     expect(capturedBody.prompt).toContain('商企-画面场景更换背景');
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
-    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2（母版空间的硬装样板拼图');
+    expect(capturedBody.prompt).toContain('空间结构与拍摄机位以窗口1为准），按三人位的沙发调性生成新的调性背景墙');
     expect(capturedBody.prompt).not.toContain('55mm lens at 95cm height');
   });
 
@@ -758,11 +762,11 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.images).toHaveLength(2);
     // 窗口1：产品场景实拍图 (primary_product)，与工作流页面一致
     expect(capturedBody.images[0].role).toBe('primary_product');
-    // 窗口2：完整空间母版原图，不切片、不遮挡
+    // 窗口2：母版裁成的 硬装样板拼图（上方主背景墙大图 + 下方三张细节小图）（不再给整张房间，避免模型照搬母版机位）
     expect(capturedBody.images[1].role).toBe('style_reference');
     const masterMeta = await sharp(Buffer.from(capturedBody.images[1].data.split(',')[1], 'base64')).metadata();
-    expect(masterMeta.width).toBe(400);
-    expect(masterMeta.height).toBe(300);
+    expect(masterMeta.width).toBe(420 * 3 + 28 * 4);
+    expect(masterMeta.height).toBe(28 * 2 + 560 + 315 + 28);
     // 简短换景指令：不写死背景材质，不堆砌负面词，非 A02 镜头不出现 45° 字样
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
     expect(capturedBody.prompt).not.toContain('dark marble');
@@ -804,11 +808,11 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     return { gatewayBodies, result };
   };
 
-  it('two-step pass: GPT 2.6 Flare composes, then Nano Banana 2.1 refines on top of the composed image', async () => {
+  it('two-step pass: GPT 2.5 Flare composes, then Nano Banana 2.1 refines on top of the composed image', async () => {
     const { gatewayBodies, result } = await runRefineScenario(false);
     expect(gatewayBodies).toHaveLength(2);
-    // 第一步：无论右侧选了哪个模型，衍生镜头都用 GPT 2.6 Flare 换景
-    expect(gatewayBodies[0].model).toBe('openai/gpt-image-2.6-flare-c');
+    // 第一步：无论右侧选了哪个模型，衍生镜头都用 GPT 2.5 Flare 换景
+    expect(gatewayBodies[0].model).toBe('openai/gpt-image-2.5-flare-c');
     expect(gatewayBodies[0].prompt).toContain('保持窗口1的产品角度不变');
     // 第二步：Nano Banana 2.1 以第一步结果为底图（窗口1）、实拍图为材质参考（窗口2）精修
     expect(gatewayBodies[1].model).toBe('gemini-nano-banana-2.1-preview');
@@ -825,7 +829,7 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     const { gatewayBodies, result } = await runRefineScenario(true);
     expect(gatewayBodies).toHaveLength(2);
     expect(result.model).not.toContain('精修');
-    expect(result.warningNotice).toContain('已保留 GPT 2.6 Flare 换景结果');
+    expect(result.warningNotice).toContain('已保留 GPT 2.5 Flare 换景结果');
   });
 
   it('aligns derived shot A02 in studio_swap mode directly with ManwahStudio full scene master reference and clean prompt', async () => {
@@ -876,7 +880,8 @@ describe('Studio Background Swap Pipeline (极简影棚背景置换直通模式)
     expect(capturedBody.images[1].role).toBe('style_reference');
     // Prompt follows streamlined ManwahStudio commercial replacement directive
     expect(capturedBody.prompt).toContain('画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景');
-    expect(capturedBody.prompt).toContain('场景风格：参考窗口2，按三人位的沙发调性生成新的调性背景墙');
+    expect(capturedBody.prompt).toContain('场景风格：参考窗口2（母版空间的硬装样板拼图');
+    expect(capturedBody.prompt).toContain('空间结构与拍摄机位以窗口1为准），按三人位的沙发调性生成新的调性背景墙');
     expect(capturedBody.prompt).toContain('保证原图的尺寸比例不变。');
     expect(capturedBody.prompt).toContain('保持窗口1的产品角度不变');
     expect(capturedBody.prompt).toContain('要求生成的产品组合与空间透视是融合的');

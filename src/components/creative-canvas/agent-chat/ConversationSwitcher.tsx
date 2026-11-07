@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { confirmDialog } from '../../../utils/confirmDialog';
 import { ChevronDown, Trash2, MessageSquare } from 'lucide-react';
 import { AgentConversationRecord } from '../../../types/creativeCanvas';
 
@@ -91,10 +92,10 @@ export const ConversationSwitcher: React.FC<ConversationSwitcherProps> = ({ conv
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={e => {
+                    onClick={async e => {
                       e.stopPropagation();
                       const n = c.message_count;
-                      if (window.confirm(`删除会话「${titleOf(c)}」${typeof n === 'number' ? `及其 ${n} 条消息` : ''}？删除后无法恢复。`)) {
+                      if (await confirmDialog(`删除会话「${titleOf(c)}」${typeof n === 'number' ? `及其 ${n} 条消息` : ''}？删除后无法恢复。`)) {
                         void remove([c.id]);
                       }
                     }}
@@ -113,8 +114,8 @@ export const ConversationSwitcher: React.FC<ConversationSwitcherProps> = ({ conv
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => {
-                  if (window.confirm(`清理 ${emptyIds.length} 个没有任何消息的空会话？`)) void remove(emptyIds);
+                onClick={async () => {
+                  if (await confirmDialog(`清理 ${emptyIds.length} 个没有任何消息的空会话？`, { confirmText: '清理' })) void remove(emptyIds);
                 }}
                 className="text-[10px] text-stone-500 hover:text-rose-600 disabled:opacity-40 cursor-pointer"
               >

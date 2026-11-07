@@ -131,6 +131,13 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetUploadShotIdRef = useRef<string | null>(null);
   const [dragOverShotId, setDragOverShotId] = useState<string | null>(null);
+  // 删除版本用页面内二次确认（嵌入式浏览器里 window.confirm 不弹框、直接返回 false）
+  const [pendingDeleteRevisionId, setPendingDeleteRevisionId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingDeleteRevisionId) return;
+    const t = setTimeout(() => setPendingDeleteRevisionId(null), 4000);
+    return () => clearTimeout(t);
+  }, [pendingDeleteRevisionId]);
 
   const activeShot = shots[activeShotIndex] || shots[0];
 
@@ -672,14 +679,22 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        if (window.confirm(`确定删除版本【${rev.label || `v${rev.revisionNumber}`}】吗？\n\n删除后其他版本完好保留。`)) {
+                                        if (pendingDeleteRevisionId === rev.id) {
+                                          setPendingDeleteRevisionId(null);
                                           onDeleteRevision(shot.id, rev.id);
+                                        } else {
+                                          setPendingDeleteRevisionId(rev.id);
                                         }
                                       }}
-                                      className="p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400 opacity-0 group-hover/rev:opacity-100 transition cursor-pointer"
-                                      title="删除此版本"
+                                      className={
+                                        pendingDeleteRevisionId === rev.id
+                                          ? 'px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] font-bold flex items-center gap-0.5 cursor-pointer whitespace-nowrap'
+                                          : 'p-1 rounded hover:bg-red-500/20 text-neutral-400 hover:text-red-400 opacity-0 group-hover/rev:opacity-100 transition cursor-pointer'
+                                      }
+                                      title={pendingDeleteRevisionId === rev.id ? '再点一次删除（其他版本保留）' : '删除此版本'}
                                     >
                                       <Trash2 className="w-2.5 h-2.5" />
+                                      {pendingDeleteRevisionId === rev.id && '确认删除'}
                                     </button>
                                   )}
                                 </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { confirmDialog } from '../../../../utils/confirmDialog';
 import { 
   X, Search, User, Sparkles, Star, Plus, Check, 
   Trash2, Upload, Eye, Sliders, RefreshCw, AlertCircle, Shirt,
@@ -159,11 +160,11 @@ export const ModelAssetModal: React.FC<ModelAssetModalProps> = ({
     loadModels();
   };
 
-  const handleDeleteModel = (e: React.MouseEvent, id: string) => {
+  const handleDeleteModel = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     const target = models.find(m => m.id === id);
     const targetName = target?.nameZh || target?.name || '此模特';
-    if (window.confirm(`确定要从资产库中删除模特 "${targetName}" 吗？此操作将立即从人物资产库中移除。`)) {
+    if (await confirmDialog(`确定要从资产库中删除模特 "${targetName}" 吗？此操作将立即从人物资产库中移除。`)) {
       spaceAssetLibraryService.deleteModel(id);
       loadModels();
       if (activeModel?.id === id) {
