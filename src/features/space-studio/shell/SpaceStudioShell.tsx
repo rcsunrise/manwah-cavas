@@ -82,7 +82,7 @@ import { PlacementEngine } from '../engine/placementEngine';
 import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
-import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode, resolveShotAspectRatio } from '../data/shotTemplates';
+import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode, resolveShotAspectRatio, getNextCustomShotCode, getShotDisplayCode } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
 import { buildRenderCandidatesPayload, STUDIO_SWAP_ANGLE_GUARD_PREFIX } from '../engine/renderPayloadBuilder';
@@ -324,14 +324,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const updated = prevShots.map((s) => {
         const tpl = getShotTemplateByCode(s.templateCode);
         if (!tpl) return s;
-        const needsNameUpdate = Boolean(tpl.name && s.name !== tpl.name);
+        // 手动添加的机位保留用户起的名字
+        const needsNameUpdate = Boolean(!s.isCustomShot && tpl.name && s.name !== tpl.name);
         const standardAspect = resolveShotAspectRatio(s);
         const needsAspectUpdate = s.aspectRatio !== standardAspect;
         if (needsNameUpdate || needsAspectUpdate) {
           changed = true;
           return {
             ...s,
-            name: tpl.name,
+            name: s.isCustomShot ? s.name : tpl.name,
             aspectRatio: standardAspect || s.aspectRatio
           };
         }
@@ -2484,42 +2485,6 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     }
   };
 
-  // 增加定制新镜头 (A09+)
-  const handleAddCustomShot = () => {
-    const nextIndex = shots.length;
-    const nextCode = nextIndex < 10 ? `A0${nextIndex}` : `A${nextIndex}`;
-    const newShot: ShotInstance = {
-      id: `shot-${nextCode.toLowerCase()}-${Date.now()}`,
-      templateCode: nextCode,
-      name: `定制空间视角 (${nextCode})`,
-      intent: {
-        intentCode: 'SI-01',
-        name: '高定视角聚焦 (Custom Focus)',
-        productDominancePct: 55,
-        backgroundSuppression: 'medium',
-        maxOcclusionPct: 10,
-        description: '高定室内镜头，强调光影与家具空间层次'
-      },
-      camera: {
-        lensMm: 35,
-        heightCm: 130,
-        yawDeg: 15,
-        pitchDeg: -2,
-        rollDeg: 0,
-        target: { type: 'product', id: 'primary_sofa' },
-        framing: 'product',
-        mustInclude: ['primary_sofa', 'architectural_light'],
-        mustExclude: ['clutter']
-      },
-      status: 'draft',
-      revisions: [],
-      hasHumanPass: false
-    };
-
-    setShots((prev) => [...prev, newShot]);
-    setActiveShotId(newShot.id);
-  };
-
   // 📷 单独为特定镜头上传实拍摄影照片（支持本地文件选择与剪贴板粘贴）
   const handleUploadShotPhoto = useCallback(
     async (targetShotId: string, fileOrDataUrl: File | string, fileName?: string) => {
@@ -3397,6 +3362,63 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setTimeout(() => setFeedbackNotice(null), 3000);
   }, []);
 
+  // 手动添加机位：复制所选预设机位的相机参数与出图规则，编号顺延（A10、A11…），排在镜头列表末尾
+  const handleAddCustomShot = useCallback((params: { name: string; baseTemplateCode: string; aspectRatio?: ImageAspectRatio }) => {
+    const tpl = getShotTemplateByCode(params.baseTemplateCode);
+    if (!tpl) return;
+    const code = getNextCustomShotCode(shots);
+    const id = `shot-custom-${code.toLowerCase()}-${Date.now().toString(36)}`;
+    const ratio = params.aspectRatio || (tpl.recommendedAspectRatio as ImageAspectRatio) || '4:3';
+    const newShot: ShotInstance = {
+      id,
+      templateCode: tpl.code,
+      displayCode: code,
+      isCustomShot: true,
+      name: params.name.trim() || `${tpl.name}（自定义）`,
+      aspectRatio: ratio,
+      aspectRatioUserSet: Boolean(params.aspectRatio),
+      camera: {
+        ...tpl.defaultCamera,
+        target: { ...tpl.defaultCamera.target },
+        mustInclude: [...(tpl.defaultCamera.mustInclude || [])],
+        mustExclude: [...(tpl.defaultCamera.mustExclude || [])]
+      },
+      intent: { ...tpl.intent },
+      status: 'draft',
+      revisions: [],
+      hasHumanPass: false
+    };
+    setShots((prev) => [...prev, newShot]);
+    setActiveShotId(id);
+    setAspectRatio(ratio);
+    setFeedbackNotice({
+      type: 'success',
+      text: `已添加机位 ${code}「${newShot.name}」（沿用 ${tpl.code} 的机位参数与出图规则），可上传实拍或直接生成。`
+    });
+    setTimeout(() => setFeedbackNotice(null), 3500);
+  }, [shots]);
+
+  // 删除手动添加的机位（预设机位不可删除）
+  const handleDeleteCustomShot = useCallback((shotId: string) => {
+    setShots((prev) => {
+      const target = prev.find((s) => s.id === shotId);
+      if (!target?.isCustomShot) return prev;
+      const next = prev.filter((s) => s.id !== shotId);
+      setActiveShotId((cur) => (cur === shotId ? (next[next.length - 1]?.id || 'shot-a00') : cur));
+      return next;
+    });
+    setCandidateBatches((prev) => {
+      const copy = { ...prev };
+      delete copy[shotId];
+      return copy;
+    });
+    setSelectedCandidateIds((prev) => {
+      const copy = { ...prev };
+      delete copy[shotId];
+      return copy;
+    });
+  }, []);
+
   // 删除指定的镜头历史生成版本（允许删除任意不理想版本，自动无缝切换至有效版本）
   const handleDeleteRevision = useCallback((shotId: string, revisionId: string) => {
     let deletedLabel = '';
@@ -4038,6 +4060,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         onCancelRendering={handleCancelRendering}
         onUploadShotPhoto={handleUploadShotPhoto}
         onPasteShotPhoto={handlePasteShotPhoto}
+        onAddCustomShot={handleAddCustomShot}
+        onDeleteCustomShot={handleDeleteCustomShot}
         shotHumanLayouts={shotHumanLayouts}
         onSelectShot={(idx) => {
           const target = shots[idx];

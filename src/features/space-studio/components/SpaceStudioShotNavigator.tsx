@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import {
   Camera,
@@ -22,11 +23,12 @@ import {
   Home,
   Upload,
   Clipboard,
+  Plus,
   Image as ImageIcon
 } from 'lucide-react';
 import { ShotInstance, SceneMaster, ImageAspectRatio, IMAGE_ASPECT_SPECS } from '../../../types/spaceStudio';
 import { HumanLayoutConfig } from '../../../types/spaceAssetLibrary';
-import { getShotTemplateByCode } from '../data/shotTemplates';
+import { getShotTemplateByCode, getShotDisplayCode, getNextCustomShotCode, STANDARD_SHOT_TEMPLATES } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate } from '../data/choreographyPresets';
 
 interface SpaceStudioShotNavigatorProps {
@@ -41,6 +43,9 @@ interface SpaceStudioShotNavigatorProps {
   onCancelRendering?: (shotId?: string) => void;
   onUploadShotPhoto?: (shotId: string, file: File) => void;
   onPasteShotPhoto?: (shotId: string) => void;
+  /** 手动添加机位：沿用所选预设机位的参数与出图规则 */
+  onAddCustomShot?: (params: { name: string; baseTemplateCode: string; aspectRatio?: ImageAspectRatio }) => void;
+  onDeleteCustomShot?: (shotId: string) => void;
   shotHumanLayouts?: Record<string, HumanLayoutConfig>;
   theme?: 'dark' | 'light';
 }
@@ -117,6 +122,8 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   onCancelRendering,
   onUploadShotPhoto,
   onPasteShotPhoto,
+  onAddCustomShot,
+  onDeleteCustomShot,
   shotHumanLayouts = {},
   theme = 'dark'
 }) => {
@@ -131,6 +138,29 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
   const fileInputRef = useRef<HTMLInputElement>(null);
   const targetUploadShotIdRef = useRef<string | null>(null);
   const [dragOverShotId, setDragOverShotId] = useState<string | null>(null);
+  // 添加机位弹框
+  const [isAddShotOpen, setIsAddShotOpen] = useState(false);
+  const [newShotName, setNewShotName] = useState('');
+  const [newShotBase, setNewShotBase] = useState<string>(STANDARD_SHOT_TEMPLATES[0]?.code || 'A01');
+  const [newShotRatio, setNewShotRatio] = useState<'' | ImageAspectRatio>('');
+  const [pendingDeleteShotId, setPendingDeleteShotId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pendingDeleteShotId) return;
+    const t = setTimeout(() => setPendingDeleteShotId(null), 4000);
+    return () => clearTimeout(t);
+  }, [pendingDeleteShotId]);
+  const submitAddShot = () => {
+    if (!onAddCustomShot) return;
+    onAddCustomShot({ name: newShotName, baseTemplateCode: newShotBase, aspectRatio: newShotRatio || undefined });
+    setIsAddShotOpen(false);
+    setNewShotName('');
+    setNewShotRatio('');
+    // 新机位排在末尾，滚动到最右侧
+    setTimeout(() => {
+      const el = stripScrollRef.current;
+      if (el) el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' });
+    }, 60);
+  };
   // 删除版本用页面内二次确认（嵌入式浏览器里 window.confirm 不弹框、直接返回 false）
   const [pendingDeleteRevisionId, setPendingDeleteRevisionId] = useState<string | null>(null);
   useEffect(() => {
@@ -486,7 +516,7 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                 }
 
                 const template = getShotTemplateByCode(shot.templateCode);
-                const calibratedName = template?.name || shot.name;
+                const calibratedName = shot.isCustomShot ? shot.name : template?.name || shot.name;
                 const shotRatio: ImageAspectRatio =
                   shot.aspectRatio || (template?.recommendedAspectRatio as ImageAspectRatio) || '4:3';
 
@@ -723,8 +753,32 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                         isLight ? 'bg-white/90 text-stone-700 border border-stone-200' : 'bg-stone-950/80 text-stone-300'
                       }`}
                     >
-                      {shot.templateCode || `0${idx + 1}`}
+                      {getShotDisplayCode(shot) || `0${idx + 1}`}
                     </div>
+
+                    {/* 手动添加的机位：可删除（点两下确认） */}
+                    {shot.isCustomShot && onDeleteCustomShot && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (pendingDeleteShotId === shot.id) {
+                            setPendingDeleteShotId(null);
+                            onDeleteCustomShot(shot.id);
+                          } else {
+                            setPendingDeleteShotId(shot.id);
+                          }
+                        }}
+                        className={
+                          pendingDeleteShotId === shot.id
+                            ? 'absolute top-5 left-1 z-30 px-1 py-0.5 rounded bg-red-600 text-white text-[8px] font-bold whitespace-nowrap shadow cursor-pointer'
+                            : 'absolute top-5 left-1 z-30 w-4 h-4 rounded-full bg-black/60 hover:bg-red-600 text-white/80 flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition cursor-pointer'
+                        }
+                        title={pendingDeleteShotId === shot.id ? `再点一次删除机位 ${getShotDisplayCode(shot)}` : '删除这个手动添加的机位'}
+                      >
+                        {pendingDeleteShotId === shot.id ? '确认删除' : <X className="w-2.5 h-2.5" />}
+                      </button>
+                    )}
 
                     {/* Top Right Badges: +模特 and 画面规划长宽比例微标 */}
                     <div className="absolute top-1 right-1 flex items-center gap-1 z-10 pointer-events-none">
@@ -800,6 +854,23 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                 </motion.div>
               );
             })}
+
+              {/* 手动添加机位 */}
+              {onAddCustomShot && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddShotOpen(true)}
+                  className={`shrink-0 ${cardWidth} self-stretch min-h-[80px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition cursor-pointer ${
+                    isLight
+                      ? 'border-stone-300 text-stone-500 hover:border-amber-500 hover:text-amber-600 hover:bg-amber-50'
+                      : 'border-stone-700 text-stone-400 hover:border-amber-500 hover:text-amber-400 hover:bg-amber-500/10'
+                  }`}
+                  title="预设机位不够时，手动添加一个新机位（沿用所选预设的机位参数）"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>添加机位</span>
+                </button>
+              )}
             </div>
 
             {/* 右平滑翻页微调按钮 */}
@@ -847,6 +918,89 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
           </div>
         )}
       </div>
+
+      {isAddShotOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setIsAddShotOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-shot-title"
+            className="w-full max-w-md rounded-2xl bg-white text-stone-800 shadow-2xl ring-1 ring-black/10 p-5"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setIsAddShotOpen(false);
+            }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h2 id="add-shot-title" className="text-sm font-bold">添加机位 {getNextCustomShotCode(shots)}</h2>
+              <button type="button" onClick={() => setIsAddShotOpen(false)} className="p-1 rounded hover:bg-stone-100 text-stone-400 cursor-pointer" aria-label="关闭">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-stone-500 mb-4 leading-relaxed">
+              新机位沿用所选预设的焦段、高度、角度和出图规则，排在镜头列表末尾。可以上传这个机位的实拍图换景，也可以直接生成。
+            </p>
+            <label className="block text-[11px] font-bold text-stone-600 mb-1" htmlFor="add-shot-name">机位名称</label>
+            <input
+              id="add-shot-name"
+              autoFocus
+              value={newShotName}
+              onChange={(e) => setNewShotName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitAddShot();
+              }}
+              placeholder="例如：沙发扶手皮纹特写"
+              className="w-full mb-3 px-3 py-2 rounded-lg border border-stone-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            <label className="block text-[11px] font-bold text-stone-600 mb-1" htmlFor="add-shot-base">参照预设机位</label>
+            <select
+              id="add-shot-base"
+              value={newShotBase}
+              onChange={(e) => setNewShotBase(e.target.value)}
+              className="w-full mb-3 px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            >
+              {STANDARD_SHOT_TEMPLATES.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.code} · {t.name.replace(/\s*\([^)]*\)/g, '').trim()} · {t.defaultCamera.lensMm}mm · {t.recommendedAspectRatio || '4:3'}
+                </option>
+              ))}
+            </select>
+            <label className="block text-[11px] font-bold text-stone-600 mb-1" htmlFor="add-shot-ratio">画幅</label>
+            <select
+              id="add-shot-ratio"
+              value={newShotRatio}
+              onChange={(e) => setNewShotRatio(e.target.value as '' | ImageAspectRatio)}
+              className="w-full mb-5 px-3 py-2 rounded-lg border border-stone-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+            >
+              <option value="">跟随参照机位</option>
+              {(['4:3', '3:4', '16:9', '9:16', '1:1', '3:2', '2:3'] as ImageAspectRatio[]).map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddShotOpen(false)}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={submitAddShot}
+                className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition cursor-pointer"
+              >
+                添加机位
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

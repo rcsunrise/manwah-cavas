@@ -449,6 +449,21 @@ export function getShotTemplateByCode(code: string): ShotTemplate | undefined {
   return STANDARD_SHOT_TEMPLATES.find((t) => t.code.toUpperCase() === code.toUpperCase());
 }
 
+/** 界面显示用的镜头编号：手动添加的机位显示自己的编号（A10…），其余显示模板编号 */
+export function getShotDisplayCode(shot: { templateCode: string; displayCode?: string }): string {
+  return shot.displayCode || shot.templateCode;
+}
+
+/** 手动添加机位的下一个编号：取现有镜头（含已添加机位）最大编号 +1，至少从 A10 开始 */
+export function getNextCustomShotCode(shots: Array<{ templateCode: string; displayCode?: string }>): string {
+  let max = 9;
+  for (const s of shots) {
+    const m = /^A(\d+)$/i.exec(getShotDisplayCode(s));
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `A${String(max + 1).padStart(2, '0')}`;
+}
+
 /**
  * 镜头应使用的画幅：用户手动选过的画幅优先，否则取模板推荐画幅（用于纠正旧快照中的画幅错位）
  */

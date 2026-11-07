@@ -1,5 +1,6 @@
 // src/features/space-studio/components/SpaceStudioRightPanel.tsx
 import React, { useState, useEffect } from 'react';
+import { getShotDisplayCode } from '../data/shotTemplates';
 import { motion } from 'motion/react';
 import {
   Sparkles,
@@ -517,7 +518,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
           <span className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap ${
             isLight ? 'bg-amber-100/90 text-amber-900 border-amber-300' : 'bg-black/40 text-amber-400 border-amber-500/20'
           }`}>
-            {String(activeShotIndex + 1).padStart(2, '0')} / {String(totalShots).padStart(2, '0')} 镜 ({activeShot.templateCode})
+            {String(activeShotIndex + 1).padStart(2, '0')} / {String(totalShots).padStart(2, '0')} 镜 ({getShotDisplayCode(activeShot)})
           </span>
           {onToggleCollapse && (
             <button
@@ -973,7 +974,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   {isProductDropdownOpen && (
                     <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-[#1a1c28] rounded-xl shadow-2xl border border-stone-200 dark:border-white/15 p-1.5 z-50 space-y-1">
                       <div className="px-2 py-1 text-[10px] text-stone-500 dark:text-neutral-400 font-bold border-b border-stone-100 dark:border-white/5">
-                        选择当前镜头 ({activeShot.templateCode}) 绑定的产品素材
+                        选择当前镜头 ({getShotDisplayCode(activeShot)}) 绑定的产品素材
                       </div>
                       {products.map((p) => {
                         const isCurrent = (boundProduct?.id === p.id);
@@ -1190,10 +1191,10 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 )}
                 <span className="text-xs">
                   {isGeneratingCurrent
-                    ? `正在渲染 ${activeShot.templateCode} 基础机位...`
+                    ? `正在渲染 ${getShotDisplayCode(activeShot)} 基础机位...`
                     : activeShot.templateCode === 'A00'
                     ? (sceneMaster?.isLocked ? '重新生成 A00 空间母版' : '生成并锁定 A00 空间母版')
-                    : ((cfg as any).candidateCount > 1 ? `生成 ${activeShot.templateCode} 基础机位 (${(cfg as any).candidateCount} 候选)` : `生成 ${activeShot.templateCode} 基础机位 (单张精修)`)}
+                    : ((cfg as any).candidateCount > 1 ? `生成 ${getShotDisplayCode(activeShot)} 基础机位 (${(cfg as any).candidateCount} 候选)` : `生成 ${getShotDisplayCode(activeShot)} 基础机位 (单张精修)`)}
                 </span>
               </button>
 
@@ -2000,7 +2001,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                     <RefreshCw className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
                     <span className="text-xs tracking-wider text-white font-bold">
                       {((cfg as any).candidateCount || 1) > 1
-                        ? `正在为 ${activeShot.templateCode} 生成 ${((cfg as any).candidateCount || 4)} 张人物版候选... (${generationProgress}%)`
+                        ? `正在为 ${getShotDisplayCode(activeShot)} 生成 ${((cfg as any).candidateCount || 4)} 张人物版候选... (${generationProgress}%)`
                         : `正在为 ${activeShot.templateCode} 生成精修人物版方案... (${generationProgress}%)`}
                     </span>
                   </>

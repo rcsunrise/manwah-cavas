@@ -669,6 +669,9 @@ export interface ShotInstance {
   isUserUploadedPhoto?: boolean; // 标记当前镜头是否为用户自定义实拍上传图
   decoupleOldMaster?: boolean; // 是否解除旧A00/A01母版绑定，以全新素材为准重绘
   sceneReferenceRevisionId?: string; // 仅 A00：用户指定作为后续镜头空间参考的版本（如清除家具后的空场景）
+  /** 用户手动添加的机位：templateCode 沿用所选预设机位（出图逻辑、画幅、透视规则一致），displayCode 为界面编号（A10、A11…） */
+  isCustomShot?: boolean;
+  displayCode?: string;
 }
 
 // 8. HUMAN MODEL & PASS (HUMAN)

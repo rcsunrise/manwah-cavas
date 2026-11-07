@@ -1,5 +1,6 @@
 // src/features/space-studio/components/SpaceStudioCanvas.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { getShotDisplayCode } from '../data/shotTemplates';
 import { confirmDialog } from '../../../utils/confirmDialog';
 import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
@@ -803,7 +804,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             fallbackDirectDownload(format);
             return;
           }
-          const fileName = `MANWAH_${activeShot.templateCode}_${resolution || '2K'}_${targetW}x${targetH}.${format}`;
+          const fileName = `MANWAH_${getShotDisplayCode(activeShot)}_${resolution || '2K'}_${targetW}x${targetH}.${format}`;
           safeDownloadBlob(blob, fileName);
           setIsDownloading(false);
         },
@@ -818,7 +819,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
   const fallbackDirectDownload = async (format: 'jpg' | 'png') => {
     if (!currentImageUrl) return;
-    const fileName = `MANWAH_${activeShot.templateCode}_${aspectRatio.replace(':', 'x')}.${format}`;
+    const fileName = `MANWAH_${getShotDisplayCode(activeShot)}_${aspectRatio.replace(':', 'x')}.${format}`;
     try {
       const response = await fetch(currentImageUrl);
       const blob = await response.blob();
@@ -858,7 +859,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs whitespace-nowrap shrink-0 ${
             isLight ? 'bg-stone-50 border-stone-200 text-stone-900 shadow-2xs font-medium' : 'bg-black/40 border-white/10 text-white'
           }`}>
-            <span className={`font-mono font-bold ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>{activeShot.templateCode}</span>
+            <span className={`font-mono font-bold ${isLight ? 'text-amber-800' : 'text-amber-400'}`}>{getShotDisplayCode(activeShot)}</span>
             <span className={isLight ? 'text-stone-300' : 'text-neutral-500'}>·</span>
             <span className="font-semibold max-w-[100px] sm:max-w-[160px] md:max-w-[220px] truncate" title={activeShot.name}>{activeShot.name}</span>
           </div>
@@ -1218,8 +1219,8 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     onClick={async () => {
                       setIsMoreMenuOpen(false);
                       const msg = activeShot.revisions.length > 1
-                        ? `确定清空镜头 ${activeShot.templateCode} 的全部 ${activeShot.revisions.length} 个生成版本吗？`
-                        : `确定清除镜头 ${activeShot.templateCode} 的生成画面吗？`;
+                        ? `确定清空镜头 ${getShotDisplayCode(activeShot)} 的全部 ${activeShot.revisions.length} 个生成版本吗？`
+                        : `确定清除镜头 ${getShotDisplayCode(activeShot)} 的生成画面吗？`;
                       if (await confirmDialog(msg, { confirmText: '清空' })) {
                         onClearCurrentShotImage();
                       }
@@ -1754,7 +1755,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     <Camera className="w-6 h-6" />
                   </div>
                   <h4 className={`text-xs font-bold ${isLight ? 'text-stone-900' : 'text-white'}`}>
-                    {activeShot.templateCode} · {activeShot.name}
+                    {getShotDisplayCode(activeShot)} · {activeShot.name}
                   </h4>
                   <p className={`text-[11px] leading-relaxed ${isLight ? 'text-stone-500' : 'text-neutral-400'}`}>
                     {(() => {
@@ -1787,7 +1788,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     <span>
                       {activeShot.templateCode === 'A00'
                         ? (sceneMaster?.isLocked ? '重新生成并锁定 A00 母版' : '生成并锁定 A00 空间母版')
-                        : `生成 ${activeShot.templateCode} 镜头方案`}
+                        : `生成 ${getShotDisplayCode(activeShot)} 镜头方案`}
                     </span>
                   </button>
                 </div>
