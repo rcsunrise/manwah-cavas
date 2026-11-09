@@ -1,6 +1,7 @@
 // src/features/space-studio/components/SpaceStudioCanvas.tsx
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { getShotDisplayCode } from '../data/shotTemplates';
+import { buildShotExportFileName } from '../engine/exportFileName';
 import { confirmDialog } from '../../../utils/confirmDialog';
 import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
@@ -738,12 +739,14 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
     try {
       // 1. 若当前图具备服务端存储 Key，优先直连服务端 Lanczos3 超采样导出接口（保证 3MB~12MB 纯正画质与规范文件名）
-      if (primaryKey) {
+      // 选中了某张候选时导出那一张；候选没有存储 Key 时走下方前端导出，避免下载成当前版本的图
+      const exportKey = isExplicitCandidateSelected ? activeCandidate?.objectKey : primaryKey;
+      if (exportKey) {
         const exportUrl = `/api/space/storage/export-image?key=${encodeURIComponent(
-          primaryKey
+          exportKey
         )}&format=${format}&resolution=${encodeURIComponent(
           resolution || '4K'
-        )}&shotCode=${encodeURIComponent(activeShot.templateCode)}`;
+        )}&shotCode=${encodeURIComponent(activeShot.templateCode)}&fileName=${encodeURIComponent(buildExportFileName(format))}`;
 
         const a = document.createElement('a');
         a.style.display = 'none';
@@ -804,7 +807,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
             fallbackDirectDownload(format);
             return;
           }
-          const fileName = `MANWAH_${getShotDisplayCode(activeShot)}_${resolution || '2K'}_${targetW}x${targetH}.${format}`;
+          const fileName = buildExportFileName(format);
           safeDownloadBlob(blob, fileName);
           setIsDownloading(false);
         },
@@ -817,9 +820,25 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     }
   };
 
+  // 导出命名：带户型、美学、版本和生成时间；同一批多张候选再加方案序号
+  function buildExportFileName(format: 'jpg' | 'png'): string {
+    const candidates = candidateBatch?.candidates || [];
+    const candidateIndex = isExplicitCandidateSelected ? candidates.findIndex((c) => c.id === selectedCandidateId) : -1;
+    return buildShotExportFileName({
+      spaceName: currentRevision?.exportLabels?.space || spacePreset?.name,
+      styleName: currentRevision?.exportLabels?.style || stylePreset?.name || styleName,
+      shotCode: getShotDisplayCode(activeShot),
+      revisionNumber: currentRevision?.revisionNumber,
+      candidateNumber: candidates.length > 1 && candidateIndex >= 0 ? candidateIndex + 1 : undefined,
+      createdAt: currentRevision?.createdAt,
+      resolution: resolution || '2K',
+      format
+    });
+  }
+
   const fallbackDirectDownload = async (format: 'jpg' | 'png') => {
     if (!currentImageUrl) return;
-    const fileName = `MANWAH_${getShotDisplayCode(activeShot)}_${aspectRatio.replace(':', 'x')}.${format}`;
+    const fileName = buildExportFileName(format);
     try {
       const response = await fetch(currentImageUrl);
       const blob = await response.blob();

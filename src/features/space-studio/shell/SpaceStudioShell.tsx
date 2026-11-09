@@ -82,6 +82,7 @@ import { PlacementEngine } from '../engine/placementEngine';
 import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
+import { cleanPresetName, RevisionExportLabels } from '../engine/exportFileName';
 import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode, resolveShotAspectRatio, getNextCustomShotCode, getShotDisplayCode } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
@@ -1117,6 +1118,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     a00PlateSourceRev && a00ShotForPlate?.revisions.some((r) => r.isEmptyPlate && r.parentRevisionId === a00PlateSourceRev.id)
   );
 
+  // 版本生成时记录户型与美学，导出旧版本时文件名不会被后来切换的美学带偏
+  const currentExportLabels = (): RevisionExportLabels => ({
+    space: cleanPresetName(selectedSpace.name),
+    style: cleanPresetName(selectedStyle.name)
+  });
+  const inheritExportLabels = (revisions: ShotRevision[], parentId?: string): RevisionExportLabels =>
+    revisions.find((r) => r.id === parentId)?.exportLabels || currentExportLabels();
+
   const handleGenerateEmptyPlate = async (sourceRev: ShotRevision | undefined = a00PlateSourceRev) => {
     const sourceImage = sourceRev?.imageUrl || sourceRev?.objectKey;
     if (!sourceRev || !a00ShotForPlate || !sourceImage) return;
@@ -1153,6 +1162,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             label: `空场景 v${nextRevNum}`,
             metaSummary: '清除家具 · 可设为后续镜头场景参考',
             parentRevisionId: sourceRev.id,
+            exportLabels: sourceRev.exportLabels || currentExportLabels(),
             objectKey: data.data.objectKey,
             imageUrl: data.data.imageUrl,
             thumbnailUrl: data.data.imageUrl,
@@ -1997,6 +2007,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           revisionNumber: nextRevNum,
           revisionType: isHuman ? 'human' : 'scene',
           label: isHuman ? `v${nextRevNum} · 人物入座方案` : `纯空间 (v${nextRevNum})`,
+          exportLabels: inheritExportLabels(s.revisions, s.currentRevisionId),
           objectKey: candidate.objectKey || `shots/${candidate.id}.webp`,
           imageUrl: candidate.imageUrl,
           thumbnailUrl: candidate.imageUrl,
@@ -2196,6 +2207,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         label: `纯空间 (v${nextRevNum})`,
         metaSummary: '空间架构与家具基准 · 纯场景母版图',
         parentRevisionId: parentRevId,
+        exportLabels: currentExportLabels(),
         objectKey: initialCandidate.objectKey || `shots/${initialCandidate.id}.webp`,
         imageUrl: initialCandidate.imageUrl,
         thumbnailUrl: initialCandidate.imageUrl,
@@ -2540,6 +2552,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         status: 'approved',
         revisionType: 'scene',
         label: '实拍摄影图',
+        exportLabels: currentExportLabels(),
         metaSummary: `摄影实拍镜头导入 (${targetShot.templateCode})`,
         provenance: 'PROVIDED',
         productionTruth: true,
@@ -2593,7 +2606,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         `已成功导入【${targetShot.templateCode} ${targetShot.name}】拍摄镜头照片！底图已就绪，可直接在右侧编排模特并生成入座。`
       );
     },
-    [shots, activeShot, activeShotId, projectId]
+    [shots, activeShot, activeShotId, projectId, selectedSpace, selectedStyle]
   );
 
   const handlePasteShotPhoto = useCallback(
@@ -2790,6 +2803,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         ...candidateGenerationMeta(initialCandidate),
         status: 'approved',
         revisionType: 'human',
+        exportLabels: inheritExportLabels(existingRevs, parentRevId),
         label: isBaseUploaded
           ? `v${nextRevNum} · 实拍底图${humanLayout.characterCount}人模特方案`
           : `v${nextRevNum} · ${humanLayout.characterCount}人模特入座方案`,
@@ -2945,6 +2959,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         revisionNumber: nextRevNum,
         revisionType: 'scene',
         label: data.data.label || `扩图 (${params.scale}x) v${nextRevNum}`,
+        exportLabels: inheritExportLabels(targetShot.revisions, targetShot.currentRevisionId),
         metaSummary: data.data.metaSummary || `视野向四周延展 ${params.scale}x · 保留主沙发与摆位`,
         parentRevisionId: targetShot.currentRevisionId,
         objectKey: data.data.objectKey,
@@ -3128,6 +3143,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         revisionNumber: nextRevNum,
         revisionType: 'scene',
         label: data.data.label || `精修 v${nextRevNum}`,
+        exportLabels: inheritExportLabels(targetShot.revisions, targetShot.currentRevisionId),
         metaSummary: data.data.metaSummary || `局部重绘微调 · 保留未涂抹区域`,
         parentRevisionId: targetShot.currentRevisionId,
         objectKey: data.data.objectKey,
@@ -3599,6 +3615,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             imageUrl: masterImageUrl,
             thumbnailUrl: masterImageUrl,
             promptSnapshotId: newMaster.promptSnapshotId,
+            exportLabels: { space: cleanPresetName(selectedSpace.name), style: cleanPresetName(style.name) },
             status: 'approved',
             provenance: 'MANUAL_CONFIRMED',
             productionTruth: true,
