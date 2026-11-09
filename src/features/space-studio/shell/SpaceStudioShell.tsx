@@ -3746,6 +3746,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       <div className="flex-1 flex overflow-hidden relative">
         {/* 1. Left Drawer with Icon Dock + Collapsible Sub-panel */}
         <SpaceStudioLeftDrawer
+          projectId={projectId}
           spaces={[...aiSpaces, ...SPACE_PROTOTYPES]}
           selectedSpace={selectedSpace}
           onSelectSpace={handleSelectSpace}

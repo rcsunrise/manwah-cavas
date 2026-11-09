@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, ExternalLink, Globe, ImagePlus, Loader2, Palette, Send, Sparkles, X } from 'lucide-react';
+import { Bot, ExternalLink, Globe, ImagePlus, Loader2, Minus, Palette, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { ProductAsset, SpacePreset, StylePreset } from '../../../types/spaceStudio';
 import { AgentLayoutResult, AgentStyleResult } from '../data/customPresetLibrary';
 import { DEFAULT_LAYOUT_AGENT_MODEL, LAYOUT_AGENT_MODELS } from '../../../shared/layoutAgentModels';
+import { confirmDialog } from '../../../utils/confirmDialog';
 
 interface AgentSource {
   title: string;
@@ -29,8 +30,12 @@ interface AgentMessage {
 }
 
 interface Props {
+  projectId: string;
+  spaces: SpacePreset[];
   open: boolean;
   onClose: () => void;
+  onMinimize: () => void;
+  onBusyChange: (busy: boolean) => void;
   styles: StylePreset[];
   selectedStyle: StylePreset;
   primaryProduct?: ProductAsset;
@@ -54,6 +59,65 @@ function loadSavedModel(): string {
 }
 const WINDOW_WIDTH = 400;
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+// 对话记录按工程保存在本机；图片只存小缩略图，避免占满浏览器存储
+const MAX_SAVED_MESSAGES = 60;
+const chatStorageKey = (projectId: string) => `manwah_space_layout_agent_chat_${projectId}`;
+
+interface SavedChat {
+  messages: AgentMessage[];
+  usedLayoutKeys: Record<string, string>;
+  savedStyleKeys: Record<string, StylePreset>;
+}
+
+function loadSavedChat(projectId: string): SavedChat {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(chatStorageKey(projectId)) || 'null');
+    if (parsed && Array.isArray(parsed.messages)) {
+      return { messages: parsed.messages, usedLayoutKeys: parsed.usedLayoutKeys || {}, savedStyleKeys: parsed.savedStyleKeys || {} };
+    }
+  } catch {
+    // 记录损坏时从空对话开始
+  }
+  return { messages: [], usedLayoutKeys: {}, savedStyleKeys: {} };
+}
+
+function persistChat(projectId: string, chat: SavedChat): void {
+  const key = chatStorageKey(projectId);
+  try {
+    if (chat.messages.length === 0) {
+      localStorage.removeItem(key);
+      return;
+    }
+    const messages = chat.messages.filter((m) => !m.isError).slice(-MAX_SAVED_MESSAGES);
+    try {
+      localStorage.setItem(key, JSON.stringify({ ...chat, messages }));
+    } catch {
+      // 存储空间不足时放弃缩略图，保住文字和方案
+      localStorage.setItem(key, JSON.stringify({ ...chat, messages: messages.map(({ images: _images, ...rest }) => rest) }));
+    }
+  } catch (err) {
+    console.warn('[SpaceLayoutAgent] 对话保存失败', err);
+  }
+}
+
+function makeThumbnail(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 200 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 function fileToCompressedDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -92,8 +156,12 @@ async function postJson(path: string, body: unknown): Promise<any> {
 }
 
 export const SpaceLayoutAgentWindow: React.FC<Props> = ({
+  projectId,
+  spaces,
   open,
   onClose,
+  onMinimize,
+  onBusyChange,
   styles,
   selectedStyle,
   primaryProduct,
@@ -102,13 +170,14 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
   onApplyStyle,
   onSaveNewStyle
 }) => {
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [savedChat] = useState(() => loadSavedChat(projectId));
+  const [messages, setMessages] = useState<AgentMessage[]>(savedChat.messages);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [busyText, setBusyText] = useState('');
   const [model, setModel] = useState<string>(loadSavedModel);
-  const [usedLayoutKeys, setUsedLayoutKeys] = useState<Record<string, string>>({});
-  const [savedStyleKeys, setSavedStyleKeys] = useState<Record<string, StylePreset>>({});
+  const [usedLayoutKeys, setUsedLayoutKeys] = useState<Record<string, string>>(savedChat.usedLayoutKeys);
+  const [savedStyleKeys, setSavedStyleKeys] = useState<Record<string, StylePreset>>(savedChat.savedStyleKeys);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -116,7 +185,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, busyText]);
+  }, [messages, busyText, open]);
 
   useEffect(() => {
     if (open && !position) {
@@ -125,7 +194,15 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
     }
   }, [open, position]);
 
+  useEffect(() => {
+    persistChat(projectId, { messages, usedLayoutKeys, savedStyleKeys });
+  }, [projectId, messages, usedLayoutKeys, savedStyleKeys]);
+
   const busy = Boolean(busyText);
+
+  useEffect(() => {
+    onBusyChange(busy);
+  }, [busy, onBusyChange]);
 
   const addFiles = async (files: File[]) => {
     const imageFiles = files.filter((f) => f.type.startsWith('image/')).slice(0, MAX_IMAGES - attachments.length);
@@ -141,7 +218,8 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
   const send = async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || busy) return;
-    const userMessage: AgentMessage = { id: newId(), role: 'user', text: text || '请根据参考图生成户型', images: attachments };
+    const thumbnails = await Promise.all(attachments.map(makeThumbnail));
+    const userMessage: AgentMessage = { id: newId(), role: 'user', text: text || '请根据参考图生成户型', images: thumbnails };
     const history = [...messages.filter((m) => !m.isError), userMessage].map((m) => ({
       role: m.role,
       text: m.layouts?.length ? `${m.text}（方案：${m.layouts.map((l) => l.name).join('、')}）` : m.text
@@ -261,10 +339,10 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
       }}
     >
       <div onMouseDown={startDrag} className={`flex items-center justify-between gap-2 px-3.5 py-2.5 border-b cursor-move select-none ${isLight ? 'border-stone-100' : 'border-white/10'}`}>
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
           <Bot className="w-4 h-4 text-amber-500 shrink-0" />
-          <span className="text-xs font-bold truncate">AI 户型智能体</span>
-          <span className={`text-[10px] flex items-center gap-0.5 ${muted}`}><Globe className="w-3 h-3" /> 联网</span>
+          <span className="text-xs font-bold whitespace-nowrap">AI 户型智能体</span>
+          <span title="联网搜索已开启" className={`shrink-0 ${muted}`}><Globe className="w-3 h-3" /></span>
         </div>
         <select
           aria-label="智能体模型"
@@ -280,7 +358,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
               // 仅影响下次打开时的默认选择
             }
           }}
-          className={`ml-auto max-w-[170px] rounded-lg border px-1.5 py-1 text-[11px] cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+          className={`ml-auto w-[136px] shrink-0 rounded-lg border px-1.5 py-1 text-[11px] cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
             isLight ? 'border-stone-200 bg-white text-stone-700' : 'border-stone-700 bg-stone-900 text-stone-200'
           }`}
         >
@@ -288,12 +366,34 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
             <option key={m.id} value={m.id}>{m.label} · {m.hint}</option>
           ))}
         </select>
+        <button type="button" onClick={onMinimize} aria-label="收起到左侧" title="收起到左侧，任务继续进行" className={`p-1 rounded cursor-pointer ${isLight ? 'hover:bg-stone-100' : 'hover:bg-white/10'}`}>
+          <Minus className="w-4 h-4" />
+        </button>
         <button type="button" onClick={onClose} aria-label="关闭" className={`p-1 rounded cursor-pointer ${isLight ? 'hover:bg-stone-100' : 'hover:bg-white/10'}`}>
           <X className="w-4 h-4" />
         </button>
       </div>
 
       <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-3 select-text">
+        {messages.length > 0 && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (await confirmDialog('清空这个工程的智能体对话记录？已保存的户型和美学不受影响。', { confirmText: '清空' })) {
+                  setMessages([]);
+                  setUsedLayoutKeys({});
+                  setSavedStyleKeys({});
+                }
+              }}
+              className={`flex items-center gap-1 text-[10px] cursor-pointer hover:text-rose-600 disabled:opacity-40 ${muted}`}
+            >
+              <Trash2 className="w-3 h-3" /> 清空记录
+            </button>
+          </div>
+        )}
+
         {messages.length === 0 && (
           <div className={`text-[12px] leading-relaxed ${muted}`}>
             描述你要的户型，比如"上海 200 平四房，客厅 6 米开间、南向阳台"，也可以上传户型图或空间照片。选定户型后，我会推荐合适的美学，并新建适合它的风格。
@@ -325,7 +425,8 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
 
             {m.layouts?.map((layout, i) => {
               const key = `${m.id}-${i}`;
-              const usedCode = usedLayoutKeys[key];
+              // 户型被删除后恢复“使用”按钮
+              const usedCode = spaces.some((s) => s.code === usedLayoutKeys[key]) ? usedLayoutKeys[key] : undefined;
               return (
                 <div key={key} className={`mt-2 p-2.5 rounded-xl border ${card}`}>
                   <div className="flex items-center justify-between gap-2">
@@ -366,7 +467,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
 
                 {m.styleResult.newStyles.map((style, i) => {
                   const key = `${m.id}-new-${i}`;
-                  const saved = savedStyleKeys[key];
+                  const saved = savedStyleKeys[key] && styles.some((s) => s.id === savedStyleKeys[key].id) ? savedStyleKeys[key] : undefined;
                   const applied = saved && selectedStyle.id === saved.id;
                   return (
                     <div key={key} className={`p-2.5 rounded-xl border border-amber-500/50 ${card}`}>

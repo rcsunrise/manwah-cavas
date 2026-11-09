@@ -1,5 +1,5 @@
 // src/features/space-studio/components/SpaceStudioLeftDrawer.tsx
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutTemplate,
@@ -10,6 +10,8 @@ import {
   ChevronDown,
   Check,
   Sparkles,
+  Bot,
+  Loader2,
   Layers,
   Building,
   RefreshCw,
@@ -43,6 +45,7 @@ import { AgentLayoutResult, AgentStyleResult } from '../data/customPresetLibrary
 import { confirmDialog } from '../../../utils/confirmDialog';
 
 interface SpaceStudioLeftDrawerProps {
+  projectId?: string;
   spaces: SpacePreset[];
   selectedSpace: SpacePreset;
   onSelectSpace: (space: SpacePreset) => void;
@@ -81,6 +84,7 @@ interface SpaceStudioLeftDrawerProps {
 type TabKey = 'space' | 'product' | 'style' | 'camera';
 
 export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
+  projectId = 'default',
   spaces,
   selectedSpace,
   onSelectSpace,
@@ -112,6 +116,21 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(true);
   const [isLayoutAgentOpen, setIsLayoutAgentOpen] = useState<boolean>(false);
+  const [isLayoutAgentMinimized, setIsLayoutAgentMinimized] = useState<boolean>(false);
+  const [isLayoutAgentBusy, setIsLayoutAgentBusy] = useState<boolean>(false);
+  const [hasLayoutAgentUpdate, setHasLayoutAgentUpdate] = useState<boolean>(false);
+  const wasLayoutAgentBusyRef = useRef(false);
+  const handleLayoutAgentBusyChange = useCallback((busy: boolean) => setIsLayoutAgentBusy(busy), []);
+  // 收起期间任务完成，在左侧图标上提示
+  useEffect(() => {
+    if (wasLayoutAgentBusyRef.current && !isLayoutAgentBusy && isLayoutAgentMinimized) setHasLayoutAgentUpdate(true);
+    wasLayoutAgentBusyRef.current = isLayoutAgentBusy;
+  }, [isLayoutAgentBusy, isLayoutAgentMinimized]);
+  const restoreLayoutAgent = () => {
+    setIsLayoutAgentOpen(true);
+    setIsLayoutAgentMinimized(false);
+    setHasLayoutAgentUpdate(false);
+  };
   const [activeTab, setActiveTab] = useState<TabKey>('product');
   const [newTagInput, setNewTagInput] = useState<string>('');
   const [showTagInput, setShowTagInput] = useState<boolean>(false);
@@ -399,6 +418,22 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
           );
         })}
 
+        {isLayoutAgentMinimized && (
+          <button
+            type="button"
+            onClick={restoreLayoutAgent}
+            aria-label={isLayoutAgentBusy ? 'AI 户型智能体，处理中，点击展开' : hasLayoutAgentUpdate ? 'AI 户型智能体，有新结果，点击展开' : 'AI 户型智能体，点击展开'}
+            title={isLayoutAgentBusy ? 'AI 户型智能体处理中，点击展开' : hasLayoutAgentUpdate ? 'AI 户型智能体有新结果，点击展开' : '展开 AI 户型智能体'}
+            className={`relative w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 border transition-colors cursor-pointer ${
+              isLight ? 'border-amber-400/60 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-amber-500/40 bg-amber-950/30 text-amber-400 hover:bg-amber-900/40'
+            }`}
+          >
+            {isLayoutAgentBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+            <span className="text-[9px] scale-90">AI户型</span>
+            {hasLayoutAgentUpdate && !isLayoutAgentBusy && <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-rose-500" />}
+          </button>
+        )}
+
         {/* Theme toggle icon button at bottom of dock */}
         {onToggleTheme && (
           <div className="mt-auto pt-2 border-t border-stone-700/30 flex flex-col items-center">
@@ -482,7 +517,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
               <div className="space-y-2.5">
                 <button
                   type="button"
-                  onClick={() => setIsLayoutAgentOpen(true)}
+                  onClick={restoreLayoutAgent}
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold shadow-sm transition cursor-pointer"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-200" />
@@ -1842,8 +1877,20 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
       </AnimatePresence>
 
       <SpaceLayoutAgentWindow
+        key={projectId}
+        projectId={projectId}
+        spaces={spaces}
         open={isLayoutAgentOpen}
-        onClose={() => setIsLayoutAgentOpen(false)}
+        onClose={() => {
+          setIsLayoutAgentOpen(false);
+          setIsLayoutAgentMinimized(false);
+          setHasLayoutAgentUpdate(false);
+        }}
+        onMinimize={() => {
+          setIsLayoutAgentOpen(false);
+          setIsLayoutAgentMinimized(true);
+        }}
+        onBusyChange={handleLayoutAgentBusyChange}
         styles={styles}
         selectedStyle={selectedStyle}
         primaryProduct={primaryProduct}
