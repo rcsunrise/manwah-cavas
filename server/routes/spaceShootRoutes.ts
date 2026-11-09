@@ -5,9 +5,10 @@ import { z } from 'zod';
 import { GcsAssetStorage } from '../services/storage/gcsAssetStorage';
 import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys';
 import { SpaceMultimodalRefereeService } from '../services/spaceMultimodalRefereeService';
-import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
+import { SpaceImageGenerationService, describeLocalRenderTimeout } from '../services/spaceImageGenerationService';
 
 import sharp from 'sharp';
+import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
 import { dehazeGrade, RENDER_CLARITY_CLAUSE } from '../services/spaceImageGrading';
 
 const router = Router();
@@ -369,6 +370,7 @@ router.post('/render-candidates', async (req: Request, res: Response) => {
             currentShotReferenceImage: baseShotRef,
             roomName: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : effectiveRoomName,
             styleName: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : effectiveStyleName,
+            ownerViewLabel: (req.body as any).spacePreset?.ownerContext?.viewLabel,
             spacePreset: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : (req.body as any).spacePreset,
             stylePreset: (isStudioSwapBase && shotCode !== 'A00' && Boolean(effectiveSceneMasterRef)) ? undefined : (req.body as any).stylePreset,
             cameraSettings: effectiveCamera,
@@ -1039,6 +1041,38 @@ ${RENDER_CLARITY_CLAUSE}
 
 [CRITICAL NEGATIVE INSTRUCTION]: no sofa, no chair, no armchair, no coffee table, no side table, no rug, no carpet, no floor lamp, no plants, no people, no text, no watermark, no labels, no changes to walls, ceiling, floor, windows or camera angle.`;
 
+// 略长于网关单次 300 秒的上限，让网关自己的错误信息先返回
+const EMPTY_PLATE_ATTEMPT_TIMEOUT_MS = 330000;
+const EMPTY_PLATE_MAX_BACKUP_MODELS = 2;
+
+/** 空场景只作为后续镜头的空间参考，4K 只会更慢，封顶 2K */
+export function capEmptyPlateResolution(resolution: unknown): string {
+  const value = String(resolution || '2K').toUpperCase();
+  return value === '4K' ? '2K' : value;
+}
+
+/** 与出图相同的开关：只有未关闭「多模型故障自动轮换」时才尝试备用模型 */
+export function getEmptyPlateModelChain(preferredModel: string, autoModelFallback?: boolean): string[] {
+  if (autoModelFallback === false) return [preferredModel];
+  const backups = SPACE_AUTO_FALLBACK_MODELS.map((m) => m.id).filter((id) => id !== preferredModel);
+  return [preferredModel, ...backups.slice(0, EMPTY_PLATE_MAX_BACKUP_MODELS)];
+}
+
+/** 按顺序尝试模型，返回第一个成功的结果；全部失败时错误里列出每个模型的原因 */
+export async function runEmptyPlateModelChain<T>(models: string[], attempt: (model: string) => Promise<T>): Promise<T> {
+  const errors: string[] = [];
+  for (const model of models) {
+    try {
+      return await attempt(model);
+    } catch (err: any) {
+      const reason = err?.name === 'TimeoutError' ? describeLocalRenderTimeout(EMPTY_PLATE_ATTEMPT_TIMEOUT_MS) : err?.message || '未知错误';
+      console.warn(`[spaceShootRoutes] Empty-plate attempt failed on ${model}: ${reason}`);
+      errors.push(`[${model}] ${reason}`);
+    }
+  }
+  throw new Error(`空场景生成失败：${errors.join('；')}`);
+}
+
 router.post('/empty-plate', async (req: Request, res: Response) => {
   const routeStartedAt = Date.now();
   try {
@@ -1049,7 +1083,8 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
       sourceImage,
       preferredModel = 'gemini-nano-banana-2.1-preview',
       aspectRatio = '4:3',
-      resolution = '2K'
+      resolution = '2K',
+      autoModelFallback
     } = req.body || {};
 
     if (!sourceImage || typeof sourceImage !== 'string') {
@@ -1073,60 +1108,67 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
       (req.body as any)?.deptId;
 
     const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
-    const gatewayRes = await fetch(gatewayUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-uuid': effectiveUserId,
-        ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
-      },
-      body: JSON.stringify({
-        prompt: EMPTY_PLATE_PROMPT,
-        model: preferredModel,
-        aspectRatio,
-        resolution,
-        images: [{ data: sourceDataUrl, role: 'composition_reference' }],
-        generationIntent: 'image_edit',
-        userUuid: effectiveUserId,
-        userId: effectiveUserId,
-        deptId: effectiveDeptId
-      }),
-      signal: AbortSignal.timeout(180000)
-    });
+    const plateResolution = capEmptyPlateResolution(resolution);
+    const requestPlate = async (model: string): Promise<{ buffer: Buffer; model: string }> => {
+      const gatewayRes = await fetch(gatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-uuid': effectiveUserId,
+          ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
+        },
+        body: JSON.stringify({
+          prompt: EMPTY_PLATE_PROMPT,
+          model,
+          aspectRatio,
+          resolution: plateResolution,
+          images: [{ data: sourceDataUrl, role: 'composition_reference' }],
+          generationIntent: 'image_edit',
+          userUuid: effectiveUserId,
+          userId: effectiveUserId,
+          deptId: effectiveDeptId
+        }),
+        signal: AbortSignal.timeout(EMPTY_PLATE_ATTEMPT_TIMEOUT_MS)
+      });
 
-    const gatewayData = await gatewayRes.json();
-    if (!gatewayRes.ok || gatewayData.error || gatewayData.success === false) {
-      const errorMsg =
-        gatewayData.error?.message ||
-        (typeof gatewayData.error === 'string' ? gatewayData.error : '') ||
-        gatewayData.message ||
-        '空场景生成失败';
-      throw new Error(errorMsg);
-    }
-
-    const candidatePart = gatewayData.candidates?.[0]?.content?.parts?.find(
-      (p: any) => p?.inlineData?.data || p?.inline_data?.data
-    );
-    const imgUrlOrBase64: string | undefined =
-      gatewayData.imageUrl ||
-      gatewayData.data?.[0]?.url ||
-      gatewayData.data?.[0]?.b64_json ||
-      gatewayData.images?.[0]?.data ||
-      candidatePart?.inlineData?.data ||
-      candidatePart?.inline_data?.data;
-
-    let imgBuffer: Buffer | null = null;
-    if (typeof imgUrlOrBase64 === 'string') {
-      if (imgUrlOrBase64.startsWith('http')) {
-        const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(60000) });
-        if (fetched.ok) imgBuffer = Buffer.from(await fetched.arrayBuffer());
-      } else if (imgUrlOrBase64.length > 100) {
-        imgBuffer = Buffer.from(imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''), 'base64');
+      const gatewayData = await gatewayRes.json();
+      if (!gatewayRes.ok || gatewayData.error || gatewayData.success === false) {
+        const errorMsg =
+          gatewayData.error?.message ||
+          (typeof gatewayData.error === 'string' ? gatewayData.error : '') ||
+          gatewayData.message ||
+          '空场景生成失败';
+        throw new Error(errorMsg);
       }
-    }
-    if (!imgBuffer || imgBuffer.length === 0) {
-      throw new Error('空场景生成网关未返回有效图像数据');
-    }
+
+      const candidatePart = gatewayData.candidates?.[0]?.content?.parts?.find(
+        (p: any) => p?.inlineData?.data || p?.inline_data?.data
+      );
+      const imgUrlOrBase64: string | undefined =
+        gatewayData.imageUrl ||
+        gatewayData.data?.[0]?.url ||
+        gatewayData.data?.[0]?.b64_json ||
+        gatewayData.images?.[0]?.data ||
+        candidatePart?.inlineData?.data ||
+        candidatePart?.inline_data?.data;
+
+      let imgBuffer: Buffer | null = null;
+      if (typeof imgUrlOrBase64 === 'string') {
+        if (imgUrlOrBase64.startsWith('http')) {
+          const fetched = await fetch(imgUrlOrBase64, { signal: AbortSignal.timeout(60000) });
+          if (fetched.ok) imgBuffer = Buffer.from(await fetched.arrayBuffer());
+        } else if (imgUrlOrBase64.length > 100) {
+          imgBuffer = Buffer.from(imgUrlOrBase64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, ''), 'base64');
+        }
+      }
+      if (!imgBuffer || imgBuffer.length === 0) {
+        throw new Error('空场景生成网关未返回有效图像数据');
+      }
+      return { buffer: imgBuffer, model: gatewayData.model || model };
+    };
+
+    const plateResult = await runEmptyPlateModelChain(getEmptyPlateModelChain(preferredModel, autoModelFallback), requestPlate);
+    let imgBuffer = plateResult.buffer;
 
     // 空场景是补画家具遮挡区域的二次生成，最容易发灰变软，且会被后续镜头锁定为背景：保存前去雾定级
     try {
@@ -1154,7 +1196,7 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
         objectKey,
         imageUrl: `/api/space/storage/local-file?key=${encodeURIComponent(objectKey)}`,
         sourceRevisionId,
-        model: gatewayData.model || preferredModel,
+        model: plateResult.model,
         durationMs: Date.now() - routeStartedAt
       }
     });

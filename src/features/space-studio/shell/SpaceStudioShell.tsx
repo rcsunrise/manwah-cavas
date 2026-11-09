@@ -1,3 +1,6 @@
+import { getOwnerPersona } from '../data/ownerPersonas';
+import { applyOwnerToSpace } from '../engine/ownerContext';
+import { AgentEnsembleAdviceItem, applyEnsembleAdvice, isInEnsemble } from '../data/ensembleAgentBridge';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   SpaceProject,
@@ -187,13 +190,22 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     return fromSnapshot && !library.some((s) => s.id === fromSnapshot.id) ? [fromSnapshot, ...library] : library;
   });
 
-  const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(() => {
+  const [baseSelectedSpace, setSelectedSpace] = useState<SpacePreset>(() => {
     if (initialSnapshot?.selectedSpaceId) {
       const found = [...aiSpaces, ...SPACE_PROTOTYPES].find(s => s.id === initialSnapshot.selectedSpaceId);
       if (found) return found;
     }
     return SPACE_PROTOTYPES[0];
   });
+
+  // 业主身份决定窗外景和空间规划；未选时 selectedSpace 就是原户型
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(initialSnapshot?.selectedOwnerId ?? null);
+  const [selectedOwnerViewId, setSelectedOwnerViewId] = useState<string | null>(initialSnapshot?.selectedOwnerViewId ?? null);
+  const selectedOwner = getOwnerPersona(selectedOwnerId);
+  const selectedSpace = useMemo(
+    () => applyOwnerToSpace(baseSelectedSpace, selectedOwner, selectedOwnerViewId),
+    [baseSelectedSpace, selectedOwner, selectedOwnerViewId]
+  );
 
   const [selectedStyle, setSelectedStyle] = useState<StylePreset>(() => {
     if (initialSnapshot?.selectedStyleId) {
@@ -734,6 +746,19 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       return updated;
     });
   };
+
+  // 把智能体给出的套组建议应用到产品库
+  const handleApplyEnsembleAdvice = (items: AgentEnsembleAdviceItem[]) => {
+    const updated = applyEnsembleAdvice(products, items);
+    setProducts(updated);
+    try {
+      setBlueprint(PlacementEngine.generateStandardBlueprint({ spacePreset: selectedSpace, products: updated.filter(isInEnsemble) }));
+    } catch (e: unknown) {
+      console.warn('Blueprint update on agent ensemble advice error:', e);
+    }
+    setFeedbackNotice({ type: 'info', text: `场景套组已更新，现有 ${updated.filter(isInEnsemble).length} 款产品` });
+  };
+
   const [sceneMaster, setSceneMaster] = useState<SceneMaster | null>(() => {
     return initialSnapshot?.sceneMaster || null;
   });
@@ -1168,7 +1193,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           sourceImage,
           preferredModel: computeConfig.model,
           aspectRatio: a00ShotForPlate.aspectRatio || computeConfig.aspectRatio || '4:3',
-          resolution: computeConfig.resolution || '2K'
+          resolution: computeConfig.resolution || '2K',
+          autoModelFallback: computeConfig.autoModelFallback
         })
       });
       const data = await parseJsonResponse<any>(res);
@@ -1624,7 +1650,9 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       activeShotId,
       selectedSpaceId: selectedSpace?.id,
       selectedStyleId: selectedStyle?.id,
-      selectedAiSpace: selectedSpace?.isAiGenerated ? selectedSpace : undefined,
+      selectedAiSpace: baseSelectedSpace?.isAiGenerated ? baseSelectedSpace : undefined,
+      selectedOwnerId,
+      selectedOwnerViewId,
       selectedAiStyle: selectedStyle?.isAiGenerated ? selectedStyle : undefined,
       blueprint,
       shotHumanLayouts: {
@@ -1866,6 +1894,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       activeShotId: 'shot-a00',
       selectedSpaceId: targetSpace?.id,
       selectedStyleId: targetStyle?.id,
+      selectedOwnerId,
+      selectedOwnerViewId,
       blueprint: targetBlueprint,
       summary: {
         productName,
@@ -3756,6 +3786,13 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           spaces={[...aiSpaces, ...SPACE_PROTOTYPES]}
           selectedSpace={selectedSpace}
           onSelectSpace={handleSelectSpace}
+          selectedOwnerId={selectedOwnerId}
+          selectedOwnerViewId={selectedOwnerViewId}
+          onChangeOwner={(ownerId) => {
+            setSelectedOwnerId(ownerId);
+            setSelectedOwnerViewId(null);
+          }}
+          onChangeOwnerView={setSelectedOwnerViewId}
           onUseAiLayout={handleUseAiLayout}
           onSaveAiStyle={handleSaveAiStyle}
           onDeleteAiSpace={handleDeleteAiSpace}
@@ -3773,6 +3810,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onSetPrimaryProduct={handleSetPrimaryProduct}
           onToggleEnsembleInclude={handleToggleEnsembleInclude}
           onBatchToggleEnsemble={handleBatchToggleEnsemble}
+          onApplyEnsembleAdvice={handleApplyEnsembleAdvice}
           theme={theme}
           onToggleTheme={handleToggleTheme}
           shots={shots}

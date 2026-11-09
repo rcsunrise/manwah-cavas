@@ -27,6 +27,30 @@ import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys'
 import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
 import { cropCharacterIdentity } from './characterIdentityCropService';
 import { resolveSceneArchetype } from './spaceArchetypeResolver';
+import { buildOwnerPromptBlock } from '../../src/features/space-studio/engine/ownerContext';
+
+// 网关单次等待上游 300 秒，这里略长一点，让网关自己的错误信息先返回
+const RENDER_ATTEMPT_TIMEOUT_MS = 330000;
+
+/** 这是我们自己停止等待，上游可能已经出图，不能写成“上游超时” */
+export function describeLocalRenderTimeout(timeoutMs: number): string {
+  return `等待出图结果超过 ${Math.round(timeoutMs / 1000)} 秒，已停止等待（上游不一定失败）`;
+}
+
+/** 按网关给出的错误类别说明原因，让限流、通道故障和其他错误能区分开 */
+export function describeGatewayFailure(detail: unknown): string {
+  const info = (detail && typeof detail === 'object' ? detail : { message: detail }) as {
+    category?: string;
+    message?: unknown;
+    upstreamStatus?: number;
+  };
+  const message = info.message ? String(info.message) : '上游接口未返回有效图像数据';
+  if (info.category === 'rate_limited') return `上游限流或额度不足（HTTP 429）：${message}`;
+  if (info.category === 'upstream_unavailable') {
+    return `上游通道暂不可用${info.upstreamStatus ? `（HTTP ${info.upstreamStatus}）` : ''}：${message}`;
+  }
+  return message;
+}
 
 export interface SpaceProductIdentityInput {
   id?: string;
@@ -67,6 +91,8 @@ export interface SpaceGenerateImageInput {
   roomName?: string;
   styleName?: string;
   spacePreset?: any;
+  /** 衍生镜头不带户型预设，单独传业主窗景名称，避免窗外景跑偏 */
+  ownerViewLabel?: string;
   stylePreset?: any;
   cameraSettings?: {
     lensMm: number;
@@ -247,6 +273,8 @@ export function buildStudioSwapDirective(params: {
   roomName?: string;
   styleName?: string;
   spacePreset?: any;
+  /** 衍生镜头不带户型预设，单独传业主窗景名称，避免窗外景跑偏 */
+  ownerViewLabel?: string;
   stylePreset?: any;
   context?: SpaceGenerateImageInput['studioSwapContext'];
   lightingHint?: string;
@@ -262,6 +290,7 @@ export function buildStudioSwapDirective(params: {
     roomName,
     styleName,
     spacePreset,
+    ownerViewLabel,
     stylePreset,
     context,
     lightingHint,
@@ -337,6 +366,7 @@ export function buildStudioSwapDirective(params: {
       styleNegativesA00.push('traditional ornate classical carving', 'rustic country wood', 'cheap plastic laminate');
     }
 
+    const ownerContext = spacePreset?.ownerContext;
     let topologySpecificClause = '';
     const topologyNegativesA00: string[] = [];
     if (isSunken) {
@@ -345,9 +375,9 @@ export function buildStudioSwapDirective(params: {
     } else if (isDuplex) {
       topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: 6.2M DOUBLE-HEIGHT DUPLEX HALL (N-R03)]\n- Monumental 6.2m double-height soaring ceiling volume with two-story continuous feature wall and courtyard glass vista.`;
       topologyNegativesA00.push('low ceiling', 'cramped flat ceiling');
-    } else if (isPavilion) {
+    } else if (isPavilion && !ownerContext) {
       topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: LANDSCAPE VILLA PAVILION (N-R05)]\n- Full-span panoramic glass wall looking out to serene water mirror reflection pool and pine courtyard.`;
-    } else if (isPenthouse) {
+    } else if (isPenthouse && !ownerContext) {
       topologySpecificClause = `\n[MANDATORY ARCHITECTURAL TOPOLOGY: SKYLINE PENTHOUSE SALON (N-R06)]\n- Majestic high-altitude floor-to-ceiling panoramic glass curtain wall overlooking metropolis skyscraper skyline at golden hour.`;
     }
 
@@ -361,7 +391,8 @@ export function buildStudioSwapDirective(params: {
       ...(context?.spaceNegatives || []),
       ...(context?.styleNegatives || []),
       ...topologyNegativesA00,
-      ...styleNegativesA00
+      ...styleNegativesA00,
+      ...(ownerContext?.negativeRules || [])
     );
 
     return `[CRITICAL MANDATE: STUDIO PRODUCT BACKGROUND SWAP - DIRECT ASYMMETRIC VISUAL MAPPING (SCENE MASTER A00)]
@@ -371,7 +402,7 @@ export function buildStudioSwapDirective(params: {
 3. 场景硬装与背景墙生成：按三人位的沙发调性与所选【${effectiveStyleTitle}】美学风格生成新的调性背景墙、天花吊顶灯槽与全景落地窗自然采光。其中家具、所有的地毯、挂画、餐桌配套、拍摄角度保持不变。保证原图的尺寸比例不变。整体空间室内建筑摄影风格。
 ${spaceFragments.length > 0 ? `\n[ARCHITECTURAL LAYOUT DNA (户型拓扑特征)]:\n- ${spaceFragments.join('\n- ')}` : ''}
 ${styleFragments.length > 0 ? `\n[INTERIOR STYLE & MATERIAL DNA (美学风格与色板材质)]:\n- ${styleFragments.join('\n- ')}` : ''}${styleSpecificClause}${topologySpecificClause}
-
+${ownerContext ? `\n${buildOwnerPromptBlock(ownerContext)}\n` : ''}
 [REFERENCE IMAGE 1 GROUND TRUTH LOCK]:
 - IMMUTABLE CAMERA MATRIX: The camera shooting position, lens perspective, elevation height, downward tilt angle, field of view (FOV), horizon line, and 3D vanishing points MUST 100% STRICTLY AND EXACTLY FOLLOW REFERENCE IMAGE 1!
 - IMMUTABLE PHYSICAL FURNITURE: Every single furniture entity (main sofa, single accent armchair, coffee tables, side tables), their relative spatial layout, proportions, angles, genuine leather colors, textures, stitch seams, and physical postures are ABSOLUTE GROUND TRUTH.${lightingHint ? `\n- LIGHTING MOOD: ${lightingHint}` : ''}
@@ -394,7 +425,7 @@ Negative constraints: ${cleanNegativeA00}`;
     const styleClause = hasSceneMasterReference ? '场景风格：参考窗口2（母版空间的硬装样板拼图：背景墙沿用上方大图的墙板造型、壁柱与壁灯，窗帘与地面石材沿用下方小图，不要改成其他墙面造型；只借用样式和配色，空间结构与拍摄机位以窗口1为准），' : '';
 
     // 唯一补充「以窗口1为底图」：窗口2（空场景母版）与输出同为 4:3 时，模型可能误把窗口2 当底图，整张改成正面构图
-    return `画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景，${styleClause}按${toneLabel}调性生成新的调性背景墙。其中家具、所有的地毯、挂画、餐桌配套保持不变。保持窗口1的产品角度不变。保证原图的尺寸比例不变。要求生成的产品组合与空间透视是融合的。整体空间室内建筑摄影风格。${lightingHint ? `\n光线氛围：${lightingHint}` : ''}
+    return `画面重绘，以窗口1为底图，商企-画面场景更换背景，按产品的调性生成新的空间背景，${styleClause}按${toneLabel}调性生成新的调性背景墙。其中家具、所有的地毯、挂画、餐桌配套保持不变。保持窗口1的产品角度不变。保证原图的尺寸比例不变。要求生成的产品组合与空间透视是融合的。${ownerViewLabel ? `窗外景为${ownerViewLabel}，与母版保持一致。` : ''}整体空间室内建筑摄影风格。${lightingHint ? `\n光线氛围：${lightingHint}` : ''}
 
 [CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
   }
@@ -422,7 +453,7 @@ Negative constraints: ${cleanNegativeA00}`;
   * Extract the recessed ceiling cove architectural tiers with warm concealed linear LED light strips from Reference Image 2;
   * Extract the luxury dark marble / stone feature wall panels with metallic bronze trim from Reference Image 2;
   * Extract the polished dark marble flooring with organic white veins and ambient surface reflections from Reference Image 2;
-  * Extract the panoramic floor-to-ceiling glass window system with outdoor city skyline vista and warm golden-hour daylight from Reference Image 2;
+  * Extract the panoramic floor-to-ceiling glass window system with the exact outdoor view and daylight shown in Reference Image 2;
   * Extract the soft 3000K warm interior ambient illumination and natural window daylight direction from Reference Image 2.
 - 3D CONFORMAL SPATIAL ENVELOPE & TWO-POINT CORNER PERSPECTIVE FUSION (空间对角转角融合 - CRITICAL):
   * PROHIBIT 1-POINT FRONTAL BOX: STRICTLY FORBID rendering a flat horizontal wall perpendicular to the camera! STRICTLY FORBID a horizontal flat ceiling cove! STRICTLY FORBID central hanging chandelier!
@@ -1215,6 +1246,7 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
           roomName: input.roomName,
           styleName: input.styleName,
           spacePreset: input.spacePreset,
+          ownerViewLabel: input.ownerViewLabel,
           stylePreset: input.stylePreset,
           context: input.studioSwapContext,
           lightingHint: input.studioSwapLightingHint,
@@ -1623,6 +1655,7 @@ CORE INVARIANTS:
         const isFrench = archetype.style === 'french';
         const isItalian = archetype.style === 'italian';
 
+        const ownerA00 = input.spacePreset?.ownerContext;
         let topologyMandateA00 = '';
         const topologyNegativesA00: string[] = [];
 
@@ -1645,11 +1678,11 @@ CORE INVARIANTS:
 1. SOARING 6.2M DOUBLE HEIGHT: Dramatic double-height vertical volume with a two-story continuous feature wall.
 2. CHANDELIER & SCULPTURAL STAIRS: High-altitude modern sculptural pendant chandelier hanging in the void, with background revealing interior glass zen garden and floating curved stairs.`;
           topologyNegativesA00.push('low ceiling', 'standard 3m ceiling', 'flat standard apartment', 'missing double height ceiling void');
-        } else if (isPavilion) {
+        } else if (isPavilion && !ownerA00) {
           topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: ORIENTAL ZEN WATER GARDEN VILLA PAVILION]
 1. WATER MIRROR & PINE VIEW: Full-span uninterrupted panoramic glass wall looking out directly to an outdoor serene water mirror reflection pool with a sculptural Japanese pine bonsai tree and limestone boulders.`;
           topologyNegativesA00.push('urban skyscraper view', 'street level view', 'blocked garden view');
-        } else if (isPenthouse) {
+        } else if (isPenthouse && !ownerA00) {
           topologyMandateA00 = `[MANDATORY ARCHITECTURAL TOPOLOGY: HIGH-ALTITUDE SKYLINE PENTHOUSE SALON]
 1. METROPOLIS SKYLINE: Majestic 4.2m ceiling with soaring floor-to-ceiling panoramic glass curtain wall overlooking high-altitude metropolis skyscraper skyline and sunset golden hour clouds.`;
           topologyNegativesA00.push('ground floor view', 'street level view', 'garden outside window');
@@ -1707,6 +1740,7 @@ CORE INVARIANTS:
           : `- REFERENCE IMAGE 1: Authentic ground truth product asset for ${effectiveProductName} (color: ${effectiveColor}, material: ${effectiveMaterial}). Faithfully reproduce its exact silhouette, armrest contour, cushion tufting, and leather texture.`;
 
         directivePrompt = `[MANWAH SCENE MASTER GROUND TRUTH: A00]
+${ownerA00 ? `${buildOwnerPromptBlock(ownerA00)}\n` : ''}
 ${topologyMandateA00 ? `${topologyMandateA00}\n` : ''}
 ${styleMandateA00 ? `${styleMandateA00}\n` : ''}
 VISUAL ASSET ANCHOR:
@@ -1740,7 +1774,7 @@ CORE INVARIANTS:
           'text, watermark, font, words, letters, chinese characters, labels, annotations, captions, overlay, subtitles, banner, logo, generic sofa, wrong color, cheap furniture, cartoon, people, human, faces'
         );
 
-        directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraintsA00}`;
+        directivePrompt += `\n\nNegative constraints: ${cleanNegativeConstraintsA00}${ownerA00 ? `, ${ownerA00.negativeRules.join(', ')}` : ''}`;
       }
 
       const mappedAspectRatio =
@@ -1786,7 +1820,8 @@ CORE INVARIANTS:
           `[SpaceImageGenerationService] Dispatching ${shotCode} to unified gateway (尝试 ${mIdx + 1}/${candidateModels.length}): model=${currentModelToAttempt}, res=${currentResolution}, ratio=${mappedAspectRatio}, refs=${images.length}`
         );
 
-        const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : 180000;
+        const timeoutMs = process.env.NODE_ENV === 'test' ? 1200 : RENDER_ATTEMPT_TIMEOUT_MS;
+        const dispatchStartedAt = Date.now();
         const effectiveUserId = input.userId || 'system';
         const effectiveDeptId = input.deptId;
 
@@ -1830,6 +1865,7 @@ CORE INVARIANTS:
           });
 
           const gatewayData = await gatewayRes.json();
+          console.log(`[SpaceImageGenerationService] Gateway responded for ${shotCode} (${currentModelToAttempt}) after ${((Date.now() - dispatchStartedAt) / 1000).toFixed(1)}s`);
 
           if (gatewayRes.ok && !gatewayData.error && gatewayData.success !== false) {
             const candidatePartWithImage = gatewayData.candidates?.[0]?.content?.parts?.find(
@@ -1870,12 +1906,12 @@ CORE INVARIANTS:
             const errDetail = typeof gatewayData?.error === 'object'
               ? (gatewayData.error?.message || JSON.stringify(gatewayData.error))
               : (gatewayData?.error || gatewayData?.message || '上游接口未返回有效图像数据');
-            attemptErrors.push({ model: currentModelToAttempt, error: String(errDetail) });
+            attemptErrors.push({ model: currentModelToAttempt, error: describeGatewayFailure(gatewayData?.error ?? errDetail) });
             console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} gateway error:`, errDetail);
           }
         } catch (apiErr: any) {
           const isTimeout = apiErr?.name === 'AbortError' || apiErr?.name === 'TimeoutError';
-          const errMsg = isTimeout ? '上游请求网络超时' : (apiErr?.message || '云端网络请求异常');
+          const errMsg = isTimeout ? describeLocalRenderTimeout(timeoutMs) : (apiErr?.message || '云端网络请求异常');
           attemptErrors.push({ model: currentModelToAttempt, error: errMsg });
           console.warn(`[SpaceImageGenerationService] Model ${currentModelToAttempt} deferred: ${errMsg}`);
         }

@@ -188,6 +188,20 @@ export interface SpaceZone {
   coveragePercentage: number;
 }
 
+/** 由业主身份和窗景解析出的出图指令，随户型一起传给提示词 */
+export interface OwnerContext {
+  ownerId: string;
+  ownerName: string;
+  viewId: string;
+  viewLabel: string;
+  windowViewDirective: string;
+  identityDirective: string;
+  livingPlanDirective: string;
+  finishDirective: string;
+  lifeTracesDirective: string;
+  negativeRules: string[];
+}
+
 export interface SpacePreset {
   id: string;
   code: string; // e.g. N-R01 ~ N-R06
@@ -209,6 +223,10 @@ export interface SpacePreset {
     negativeConstraints: string[];
   };
   isAiGenerated?: boolean;
+  /** 住宅所处楼层高度，决定窗外能看到什么；AI 户型由智能体给出 */
+  elevation?: 'high' | 'low';
+  /** 选中业主身份时才有；未选业主时不存在，出图走原逻辑 */
+  ownerContext?: OwnerContext;
 }
 
 // 3. STYLE LIBRARY (BUILD)

@@ -1,4 +1,8 @@
 // src/features/space-studio/components/SpaceStudioLeftDrawer.tsx
+import { SpaceOwnerPanel } from './SpaceOwnerPanel';
+import { getOwnerPersona } from '../data/ownerPersonas';
+import { getOwnerStyleBoost } from '../engine/ownerContext';
+import { AgentEnsembleAdviceItem, PRODUCT_IMAGE_DRAG_TYPE, getProductImageSources } from '../data/ensembleAgentBridge';
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -49,6 +53,10 @@ interface SpaceStudioLeftDrawerProps {
   spaces: SpacePreset[];
   selectedSpace: SpacePreset;
   onSelectSpace: (space: SpacePreset) => void;
+  selectedOwnerId: string | null;
+  selectedOwnerViewId: string | null;
+  onChangeOwner: (ownerId: string | null) => void;
+  onChangeOwnerView: (viewId: string | null) => void;
   onUseAiLayout: (layout: AgentLayoutResult) => SpacePreset;
   onSaveAiStyle: (style: AgentStyleResult) => StylePreset;
   onDeleteAiSpace: (spaceId: string) => void;
@@ -68,6 +76,7 @@ interface SpaceStudioLeftDrawerProps {
   onSetPrimaryProduct?: (productId: string) => void;
   onToggleEnsembleInclude?: (productId: string) => void;
   onBatchToggleEnsemble?: (allIncluded: boolean) => void;
+  onApplyEnsembleAdvice: (items: AgentEnsembleAdviceItem[]) => void;
 
   shots: ShotInstance[];
   activeShotIndex: number;
@@ -88,6 +97,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   spaces,
   selectedSpace,
   onSelectSpace,
+  selectedOwnerId,
+  selectedOwnerViewId,
+  onChangeOwner,
+  onChangeOwnerView,
   onUseAiLayout,
   onSaveAiStyle,
   onDeleteAiSpace,
@@ -105,6 +118,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   onSetPrimaryProduct,
   onToggleEnsembleInclude,
   onBatchToggleEnsemble,
+  onApplyEnsembleAdvice,
   shots,
   activeShotIndex,
   onSelectShot,
@@ -118,6 +132,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   const [isLayoutAgentOpen, setIsLayoutAgentOpen] = useState<boolean>(false);
   const [isLayoutAgentMinimized, setIsLayoutAgentMinimized] = useState<boolean>(false);
   const [isLayoutAgentBusy, setIsLayoutAgentBusy] = useState<boolean>(false);
+  const [ensembleSendNonce, setEnsembleSendNonce] = useState<number>(0);
   const [hasLayoutAgentUpdate, setHasLayoutAgentUpdate] = useState<boolean>(false);
   const wasLayoutAgentBusyRef = useRef(false);
   const handleLayoutAgentBusyChange = useCallback((busy: boolean) => setIsLayoutAgentBusy(busy), []);
@@ -515,6 +530,14 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                 {/* TAB 1: 空间户型 */}
                 {activeTab === 'space' && (
               <div className="space-y-2.5">
+                <SpaceOwnerPanel
+                  space={selectedSpace}
+                  ownerId={selectedOwnerId}
+                  viewId={selectedOwnerViewId}
+                  isLight={isLight}
+                  onChangeOwner={onChangeOwner}
+                  onChangeView={onChangeOwnerView}
+                />
                 <button
                   type="button"
                   onClick={restoreLayoutAgent}
@@ -748,6 +771,21 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                           <div className="text-[10px] mt-0.5 opacity-85">{validationDesc}</div>
                         </div>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          restoreLayoutAgent();
+                          setEnsembleSendNonce((n) => n + 1);
+                        }}
+                        title="把套组的产品资料和产品图发给 AI 户型智能体，也可以直接把产品图拖进智能体窗口"
+                        className={`w-full py-1.5 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          isLight ? 'border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-50' : 'border-amber-500/40 text-amber-300 hover:bg-amber-900/30'
+                        }`}
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                        发送到 AI 智能体
+                      </button>
                     </div>
                   );
                 })()}
@@ -856,7 +894,12 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                               ? 'bg-white border-stone-200 hover:border-amber-400 hover:shadow-xs'
                               : 'bg-stone-900/90 border-stone-800 hover:border-amber-500/60 hover:shadow-xs'
                           }`}
-                          title="点击放大查看高保真大图与细节"
+                          title="点击放大查看高保真大图与细节，可拖到 AI 智能体窗口作为参考图"
+                          draggable={getProductImageSources(primaryProduct).length > 0}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'copy';
+                            e.dataTransfer.setData(PRODUCT_IMAGE_DRAG_TYPE, JSON.stringify(getProductImageSources(primaryProduct)));
+                          }}
                         >
                           <img
                             src={mainImgSrc}
@@ -1344,7 +1387,12 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                       className={`w-12 h-12 rounded-lg border overflow-hidden shrink-0 flex items-center justify-center relative group cursor-zoom-in transition-all ${
                                         isLight ? 'bg-white border-stone-200 hover:border-amber-400' : 'bg-stone-900 border-stone-800 hover:border-amber-500'
                                       }`}
-                                      title="点击放大查看产品大图细节"
+                                      title="点击放大查看产品大图细节，可拖到 AI 智能体窗口作为参考图"
+                                      draggable={getProductImageSources(p).length > 0}
+                                      onDragStart={(e) => {
+                                        e.dataTransfer.effectAllowed = 'copy';
+                                        e.dataTransfer.setData(PRODUCT_IMAGE_DRAG_TYPE, JSON.stringify(getProductImageSources(p)));
+                                      }}
                                     >
                                       {thumbSrc ? (
                                         <>
@@ -1471,7 +1519,16 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
 
             {/* TAB 3: 美学硬装 */}
             {activeTab === 'style' && (() => {
-              const topRecommendations = primaryProduct ? recommendStylesForProduct(primaryProduct, styles, 3) : [];
+              const selectedOwner = getOwnerPersona(selectedOwnerId);
+              // 选了业主时，产品匹配分再叠加业主偏好，重新排序
+              const topRecommendations = !primaryProduct
+                ? []
+                : selectedOwner
+                ? recommendStylesForProduct(primaryProduct, styles, styles.length)
+                    .map((rec) => ({ ...rec, score: Math.min(99, rec.score + getOwnerStyleBoost(rec.style, selectedOwner)) }))
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 3)
+                : recommendStylesForProduct(primaryProduct, styles, 3);
               const recMap = new Map(topRecommendations.map((r, rank) => [r.style.id, { rank: rank + 1, score: r.score, traits: r.matchedTraits }]));
 
               const filteredStyles = styles.filter((st) => {
@@ -1498,7 +1555,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                           </span>
                         </div>
                         <span className="text-[9px] font-mono text-stone-500">
-                          基于「{primaryProduct.name}」
+                          基于{selectedOwner ? `业主「${selectedOwner.name}」与产品` : `「${primaryProduct.name}」`}
                         </span>
                       </div>
 
@@ -1891,6 +1948,11 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
           setIsLayoutAgentMinimized(true);
         }}
         onBusyChange={handleLayoutAgentBusyChange}
+        products={products}
+        selectedOwner={getOwnerPersona(selectedOwnerId)}
+        onSelectOwner={onChangeOwner}
+        ensembleSendNonce={ensembleSendNonce}
+        onApplyEnsembleAdvice={onApplyEnsembleAdvice}
         styles={styles}
         selectedStyle={selectedStyle}
         primaryProduct={primaryProduct}

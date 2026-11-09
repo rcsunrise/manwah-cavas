@@ -6,6 +6,7 @@
 // 3. 将美学风格（如 US-01 现代美式护墙线框、EU-01 法式雕花线条、IT-01 意式奢石洞石等）深度渗透入天花、墙面与地面硬装。
 
 import { SpacePreset, StylePreset } from '../../../types/spaceStudio';
+import { applyOwnerToTopology } from './ownerContext';
 
 export interface SpaceTopologyCompilation {
   topologyDirective: string;
@@ -27,6 +28,11 @@ export interface StyleArchitecturalCompilation {
  * 编译空间户型拓扑指令 (严格契合 N-R01 ~ N-R06 的真实建筑空间第一性原理)
  */
 export function compileSpaceTopology(spacePreset: SpacePreset): SpaceTopologyCompilation {
+  const base = compileBaseSpaceTopology(spacePreset);
+  return spacePreset.ownerContext ? applyOwnerToTopology(base, spacePreset.ownerContext) : base;
+}
+
+function compileBaseSpaceTopology(spacePreset: SpacePreset): SpaceTopologyCompilation {
   // AI 户型智能体生成的户型带自己的结构指令，不走下面的内置原型匹配
   if (spacePreset.topology) return spacePreset.topology;
 

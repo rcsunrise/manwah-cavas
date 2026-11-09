@@ -1,10 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, ExternalLink, Globe, ImagePlus, Loader2, Minus, Palette, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { Bot, Check, ExternalLink, Globe, ImagePlus, Layers, Loader2, Minus, Palette, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { ProductAsset, SpacePreset, StylePreset } from '../../../types/spaceStudio';
 import { AgentLayoutResult, AgentStyleResult } from '../data/customPresetLibrary';
 import { DEFAULT_LAYOUT_AGENT_MODEL, LAYOUT_AGENT_MODELS } from '../../../shared/layoutAgentModels';
 import { confirmDialog } from '../../../utils/confirmDialog';
+import {
+  AgentEnsembleAdvice,
+  AgentEnsembleAdviceItem,
+  PRODUCT_IMAGE_DRAG_TYPE,
+  buildAgentEnsemble,
+  getEnsembleImageSources,
+  getValidAdviceItems,
+  isEnsembleAdviceApplied,
+  isInEnsemble
+} from '../data/ensembleAgentBridge';
+import { isInitialDemoProduct } from '../data/productAssets';
+import { OWNER_PERSONAS, OwnerPersona, getOutdoorView, getOwnerPersona } from '../data/ownerPersonas';
 
 interface AgentSource {
   title: string;
@@ -25,6 +37,9 @@ interface AgentMessage {
   images?: string[];
   layouts?: AgentLayoutResult[];
   styleResult?: StyleResult;
+  ensembleLabel?: string;
+  ensembleAdvice?: AgentEnsembleAdvice;
+  ownerSuggestion?: { id: string; reason: string };
   sources?: AgentSource[];
   isError?: boolean;
 }
@@ -36,6 +51,11 @@ interface Props {
   onClose: () => void;
   onMinimize: () => void;
   onBusyChange: (busy: boolean) => void;
+  products: ProductAsset[];
+  selectedOwner: OwnerPersona | null;
+  onSelectOwner: (ownerId: string | null) => void;
+  ensembleSendNonce: number;
+  onApplyEnsembleAdvice: (items: AgentEnsembleAdviceItem[]) => void;
   styles: StylePreset[];
   selectedStyle: StylePreset;
   primaryProduct?: ProductAsset;
@@ -119,7 +139,7 @@ function makeThumbnail(dataUrl: string): Promise<string> {
   });
 }
 
-function fileToCompressedDataUrl(file: File): Promise<string> {
+function fileToCompressedDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -144,6 +164,34 @@ function fileToCompressedDataUrl(file: File): Promise<string> {
   });
 }
 
+/** 依次尝试候选地址，取第一张能读取的产品图 */
+async function productImageToDataUrl(sources: string[]): Promise<string> {
+  for (const src of sources) {
+    try {
+      const res = await fetch(src);
+      const blob = await res.blob();
+      if (res.ok && blob.type.startsWith('image/')) return await fileToCompressedDataUrl(blob);
+    } catch {
+      // 云端地址可能跨域，继续尝试下一个
+    }
+  }
+  throw new Error('产品图读取失败，请换一张或手动上传');
+}
+
+const ownerForAgent = (owner: OwnerPersona | null) =>
+  owner
+    ? {
+        id: owner.id,
+        name: owner.name,
+        summary: owner.summary,
+        location: owner.location,
+        preferredViews: owner.views.map((id) => getOutdoorView(id)?.label || id),
+        identity: owner.identityDirective,
+        livingPlan: owner.livingPlanDirective
+      }
+    : undefined;
+const AGENT_OWNER_OPTIONS = OWNER_PERSONAS.map(({ id, name, summary }) => ({ id, name, summary }));
+
 async function postJson(path: string, body: unknown): Promise<any> {
   const res = await fetch(path, {
     method: 'POST',
@@ -162,6 +210,11 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
   onClose,
   onMinimize,
   onBusyChange,
+  products,
+  selectedOwner,
+  onSelectOwner,
+  ensembleSendNonce,
+  onApplyEnsembleAdvice,
   styles,
   selectedStyle,
   primaryProduct,
@@ -174,6 +227,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
   const [messages, setMessages] = useState<AgentMessage[]>(savedChat.messages);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [ensembleAttached, setEnsembleAttached] = useState(false);
   const [busyText, setBusyText] = useState('');
   const [model, setModel] = useState<string>(loadSavedModel);
   const [usedLayoutKeys, setUsedLayoutKeys] = useState<Record<string, string>>(savedChat.usedLayoutKeys);
@@ -215,14 +269,43 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
     }
   };
 
+  const addProductImages = async (sourceList: string[][]) => {
+    try {
+      const urls = await Promise.all(sourceList.map(productImageToDataUrl));
+      setAttachments((prev) => [...new Set([...prev, ...urls])].slice(0, MAX_IMAGES));
+    } catch (err: any) {
+      setMessages((prev) => [...prev, { id: newId(), role: 'assistant', text: err?.message || '产品图读取失败', isError: true }]);
+    }
+  };
+
+  const attachEnsemble = () => {
+    setEnsembleAttached(true);
+    void addProductImages(getEnsembleImageSources(products).slice(0, MAX_IMAGES));
+  };
+
+  // 左侧“发送到 AI 智能体”按钮每点一次，nonce 加一
+  const handledSendNonce = useRef(ensembleSendNonce);
+  useEffect(() => {
+    if (ensembleSendNonce === handledSendNonce.current) return;
+    handledSendNonce.current = ensembleSendNonce;
+    attachEnsemble();
+  });
+
   const send = async () => {
     const text = input.trim();
-    if ((!text && attachments.length === 0) || busy) return;
+    if ((!text && attachments.length === 0 && !ensembleAttached) || busy) return;
     const thumbnails = await Promise.all(attachments.map(makeThumbnail));
-    const userMessage: AgentMessage = { id: newId(), role: 'user', text: text || '请根据参考图生成户型', images: thumbnails };
+    const includedProducts = products.filter(isInEnsemble);
+    const userMessage: AgentMessage = {
+      id: newId(),
+      role: 'user',
+      text: text || (ensembleAttached ? '请根据当前场景套组推荐合适的户型' : '请根据参考图生成户型'),
+      images: thumbnails,
+      ensembleLabel: ensembleAttached ? `场景套组 ${includedProducts.length} 款：${includedProducts.map((p) => p.name).join('、')}` : undefined
+    };
     const history = [...messages.filter((m) => !m.isError), userMessage].map((m) => ({
       role: m.role,
-      text: m.layouts?.length ? `${m.text}（方案：${m.layouts.map((l) => l.name).join('、')}）` : m.text
+      text: `${m.text}${m.layouts?.length ? `（方案：${m.layouts.map((l) => l.name).join('、')}）` : ''}${m.ensembleAdvice?.summary ? `（套组建议：${m.ensembleAdvice.summary}）` : ''}`
     })).slice(-30);
     const images = attachments;
     setMessages((prev) => [...prev, userMessage]);
@@ -230,7 +313,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
     setAttachments([]);
     setBusyText('正在联网查找户型…');
     try {
-      const data = await postJson('/api/space/build/layout-agent/search', { messages: history, images, model });
+      const data = await postJson('/api/space/build/layout-agent/search', { messages: history, images, model, ensemble: ensembleAttached ? buildAgentEnsemble(products) : undefined, owner: ownerForAgent(selectedOwner), ownerOptions: AGENT_OWNER_OPTIONS });
       setMessages((prev) => [
         ...prev,
         {
@@ -238,6 +321,8 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
           role: 'assistant',
           text: data.reply || (data.layouts?.length ? '找到以下户型方案：' : '这次没有得到可用的户型方案，换个描述再试试。'),
           layouts: data.layouts,
+          ensembleAdvice: data.ensembleAdvice,
+          ownerSuggestion: data.ownerSuggestion,
           sources: data.sources
         }
       ]);
@@ -270,6 +355,8 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
           lifestyleTags: s.lifestyleTags
         })),
         product: primaryProduct ? { name: primaryProduct.name, colors: primaryProduct.colors, materials: primaryProduct.materials } : undefined,
+        ensemble: buildAgentEnsemble(products),
+        owner: ownerForAgent(selectedOwner),
         model
       });
       setMessages((prev) => [...prev, { id: newId(), role: 'assistant', text: data.reply || `已为 ${space.code} 推荐以下美学：`, styleResult: data, sources: data.sources }]);
@@ -335,7 +422,12 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        void addFiles(Array.from(e.dataTransfer.files));
+        const productImage = e.dataTransfer.getData(PRODUCT_IMAGE_DRAG_TYPE);
+        if (productImage) {
+          void addProductImages([JSON.parse(productImage)]);
+        } else {
+          void addFiles(Array.from(e.dataTransfer.files));
+        }
       }}
     >
       <div onMouseDown={startDrag} className={`flex items-center justify-between gap-2 px-3.5 py-2.5 border-b cursor-move select-none ${isLight ? 'border-stone-100' : 'border-white/10'}`}>
@@ -396,7 +488,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
 
         {messages.length === 0 && (
           <div className={`text-[12px] leading-relaxed ${muted}`}>
-            描述你要的户型，比如"上海 200 平四房，客厅 6 米开间、南向阳台"，也可以上传户型图或空间照片。选定户型后，我会推荐合适的美学，并新建适合它的风格。
+            先说说谁住在这里，比如"上海的企业家家庭，200 平四房，看江景"，也可以上传户型图或空间照片。我会按业主身份找户型，选定后再推荐合适的美学，并新建适合的风格。
           </div>
         )}
 
@@ -422,6 +514,57 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
             >
               {m.text}
             </div>
+
+            {m.ensembleLabel && (
+              <div className={`mt-1 max-w-full flex items-center gap-1 text-[10px] ${muted}`}>
+                <Layers className="w-3 h-3 shrink-0" />
+                <span className="truncate">{m.ensembleLabel}</span>
+              </div>
+            )}
+
+            {m.ownerSuggestion && getOwnerPersona(m.ownerSuggestion.id) && (
+              <div className={`mt-2 p-2.5 rounded-xl border border-amber-500/50 ${card}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-bold min-w-0 truncate">建议业主：{getOwnerPersona(m.ownerSuggestion.id)!.name}</div>
+                  <button
+                    type="button"
+                    disabled={selectedOwner?.id === m.ownerSuggestion.id}
+                    onClick={() => onSelectOwner(m.ownerSuggestion!.id)}
+                    className={primaryBtn}
+                  >
+                    {selectedOwner?.id === m.ownerSuggestion.id ? '已应用' : '应用此业主'}
+                  </button>
+                </div>
+                {m.ownerSuggestion.reason && <div className={`mt-1 text-[11px] leading-relaxed ${muted}`}>{m.ownerSuggestion.reason}</div>}
+              </div>
+            )}
+
+            {m.ensembleAdvice && getValidAdviceItems(products, m.ensembleAdvice).length > 0 && (() => {
+              const advice = m.ensembleAdvice;
+              const applied = isEnsembleAdviceApplied(products, advice);
+              return (
+                <div className={`mt-2 p-2.5 rounded-xl border border-amber-500/50 ${card}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-bold min-w-0 truncate flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-amber-500 shrink-0" /> 场景套组建议
+                    </div>
+                    <button type="button" disabled={applied} onClick={() => onApplyEnsembleAdvice(advice.items)} className={primaryBtn}>
+                      {applied ? '已应用' : '应用到场景套组'}
+                    </button>
+                  </div>
+                  {advice.summary && <div className={`mt-1 text-[11px] leading-relaxed ${muted}`}>{advice.summary}</div>}
+                  <div className="mt-1.5 space-y-1">
+                    {getValidAdviceItems(products, advice).map(({ product, include, reason }) => (
+                      <div key={product.id} className="text-[11px] leading-relaxed">
+                        <span className={`font-bold ${include ? 'text-emerald-600' : 'text-rose-600'}`}>{include ? '放入' : '不放入'}</span>
+                        <span className="ml-1 font-bold">{product.name}</span>
+                        {reason && <span className={`ml-1 ${muted}`}>{reason}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {m.layouts?.map((layout, i) => {
               const key = `${m.id}-${i}`;
@@ -518,6 +661,21 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
       </div>
 
       <div className={`border-t p-2.5 ${isLight ? 'border-stone-100' : 'border-white/10'}`}>
+        <div className={`mb-1.5 px-1 text-[10px] ${muted}`}>
+          业主身份：{selectedOwner ? selectedOwner.name : '未设定，智能体会根据你的描述判断'}
+        </div>
+        {ensembleAttached && (
+          <div className="flex items-center gap-1.5 mb-2 px-2 py-1 rounded-lg bg-amber-500/10 text-[11px] text-amber-700">
+            <Check className="w-3 h-3 shrink-0" />
+            <span className="truncate flex-1">
+              已带上场景套组 {products.filter(isInEnsemble).length} 款
+              {products.filter(isInEnsemble).some((p) => isInitialDemoProduct(p)) ? '（示例产品只发文字资料）' : ''}
+            </span>
+            <button type="button" aria-label="不带场景套组" onClick={() => setEnsembleAttached(false)} className="cursor-pointer">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="flex gap-1.5 mb-2">
             {attachments.map((src, i) => (
@@ -549,6 +707,23 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
           />
           <button
             type="button"
+            title="带上当前场景产品套组（产品资料和产品图）"
+            aria-label="带上当前场景产品套组"
+            aria-pressed={ensembleAttached}
+            disabled={products.length === 0}
+            onClick={attachEnsemble}
+            className={`p-2 rounded-lg border transition cursor-pointer disabled:opacity-40 ${
+              ensembleAttached
+                ? 'border-amber-400 bg-amber-500/15 text-amber-600'
+                : isLight
+                ? 'border-stone-200 hover:bg-stone-100 text-stone-600'
+                : 'border-stone-700 hover:bg-stone-800 text-stone-300'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
             title={`上传参考图（最多 ${MAX_IMAGES} 张，可粘贴或拖入）`}
             aria-label="上传参考图"
             disabled={attachments.length >= MAX_IMAGES}
@@ -574,7 +749,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
                 void send();
               }
             }}
-            placeholder="描述户型需求，Enter 发送"
+            placeholder={ensembleAttached ? '可补充需求，或直接发送' : '描述户型需求，Enter 发送'}
             className={`flex-1 min-w-0 resize-none rounded-lg border px-2.5 py-1.5 text-xs select-text focus:outline-none focus:ring-2 focus:ring-amber-400 ${
               isLight ? 'border-stone-200 bg-white' : 'border-stone-700 bg-stone-950/60'
             }`}
@@ -582,7 +757,7 @@ export const SpaceLayoutAgentWindow: React.FC<Props> = ({
           <button
             type="button"
             aria-label="发送"
-            disabled={busy || (!input.trim() && attachments.length === 0)}
+            disabled={busy || (!input.trim() && attachments.length === 0 && !ensembleAttached)}
             onClick={() => void send()}
             className="p-2 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-stone-950 transition cursor-pointer"
           >

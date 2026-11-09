@@ -63,7 +63,8 @@ const LayoutSchema = z.object({
   signatureFeatures: strList,
   promptFragments: strList,
   topology: TopologySchema,
-  basis: str()
+  basis: str(),
+  elevation: z.preprocess((v) => (v === 'high' || v === 'low' ? v : undefined), z.enum(['high', 'low']).optional())
 });
 
 const StyleSchema = z.object({
@@ -91,12 +92,81 @@ export interface AgentSource {
   url: string;
 }
 
+const EnsembleProductSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string(),
+  isPrimary: z.boolean(),
+  included: z.boolean(),
+  dimensions: z.object({ width: z.number(), depth: z.number(), height: z.number() }).nullish(),
+  colors: z.array(z.string()).nullish(),
+  materials: z.array(z.string()).nullish()
+});
+const EnsembleField = z.array(EnsembleProductSchema).max(40).optional();
+type EnsembleProduct = z.infer<typeof EnsembleProductSchema>;
+
+const OwnerField = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    summary: z.string().optional(),
+    location: z.string().optional(),
+    preferredViews: z.array(z.string()).optional(),
+    identity: z.string().optional(),
+    livingPlan: z.string().optional()
+  })
+  .optional();
+const OwnerOptionsField = z.array(z.object({ id: z.string(), name: z.string(), summary: z.string().optional() })).max(12).optional();
+
+export interface OwnerSuggestion {
+  id: string;
+  reason: string;
+}
+
+/** 只接受业主库里真实存在的类型 */
+export function normalizeOwnerSuggestion(raw: unknown, options: Array<{ id: string }> = []): OwnerSuggestion | undefined {
+  const value = raw as { id?: unknown; reason?: unknown } | null | undefined;
+  const id = String(value?.id || '');
+  return options.some((option) => option.id === id) ? { id, reason: String(value?.reason || '') } : undefined;
+}
+
+export interface EnsembleAdvice {
+  summary: string;
+  items: Array<{ productId: string; include: boolean; reason: string }>;
+}
+
+/** 只保留产品库里真实存在的产品；主品不能被移出 */
+export function normalizeEnsembleAdvice(raw: unknown, ensemble: EnsembleProduct[] = []): EnsembleAdvice | undefined {
+  const value = raw as { summary?: unknown; items?: unknown } | null | undefined;
+  if (!value || !Array.isArray(value.items)) return undefined;
+  const byId = new Map(ensemble.map((p) => [p.id, p]));
+  const seen = new Set<string>();
+  const items: EnsembleAdvice['items'] = [];
+  for (const item of value.items as Array<Record<string, unknown>>) {
+    const productId = String(item?.productId || '');
+    const product = byId.get(productId);
+    if (!product || seen.has(productId)) continue;
+    seen.add(productId);
+    items.push({ productId, include: product.isPrimary || item.include === true, reason: String(item.reason || '') });
+  }
+  return items.length > 0 ? { summary: String(value.summary || ''), items } : undefined;
+}
+
+function describeEnsemble(ensemble: EnsembleProduct[]): string {
+  const inSuite = ensemble.filter((p) => p.included);
+  const outside = ensemble.filter((p) => !p.included);
+  return `当前场景产品套组（尺寸单位 mm）：${JSON.stringify(inSuite)}${outside.length > 0 ? `\n产品库里未放入套组的产品：${JSON.stringify(outside)}` : ''}`;
+}
+
 export const LayoutSearchRequestSchema = z.object({
   messages: z
     .array(z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(8000) }))
     .min(1)
     .max(30),
   images: z.array(z.string().min(1)).max(MAX_IMAGES).optional(),
+  ensemble: EnsembleField,
+  owner: OwnerField,
+  ownerOptions: OwnerOptionsField,
   model: modelField
 });
 
@@ -126,6 +196,8 @@ export const StyleRecommendRequestSchema = z.object({
       materials: z.array(z.string()).optional()
     })
     .optional(),
+  ensemble: EnsembleField,
+  owner: OwnerField,
   note: z.string().max(2000).optional(),
   model: modelField
 });
@@ -292,44 +364,66 @@ const TOPOLOGY_GUIDE = `"topology": {
 export async function searchLayouts(
   userId: string,
   input: z.infer<typeof LayoutSearchRequestSchema>
-): Promise<{ reply: string; layouts: AgentLayout[]; sources: AgentSource[] }> {
+): Promise<{ reply: string; layouts: AgentLayout[]; sources: AgentSource[]; ensembleAdvice?: EnsembleAdvice; ownerSuggestion?: OwnerSuggestion }> {
   const images = await Promise.all((input.images || []).map(normalizeImage));
   const history = input.messages.map((m) => `${m.role === 'user' ? '用户' : '智能体'}：${m.text}`).join('\n');
+  const ensemble = input.ensemble || [];
+  const canAdviseEnsemble = ensemble.length > 1;
+  const canSuggestOwner = !input.owner && Boolean(input.ownerOptions?.length);
+  const ownerBlock = input.owner
+    ? `业主身份：${JSON.stringify(input.owner)}\n这是这位业主真实居住的家。按这类业主实际会购买的城市区位、楼盘和户型来找，楼层、窗外景和空间规划都要符合业主身份，不要做成会所或样板间。\n`
+    : canSuggestOwner
+    ? `可选业主类型：${JSON.stringify(input.ownerOptions)}\n用户没有指定业主。如果能从描述判断最接近的一类，写进 ownerSuggestion；判断不出来就省略这个字段。\n`
+    : '';
   const prompt = `你是高端家具摄影画册的室内建筑顾问。需要根据用户需求，给画册找到真实可信的客厅户型原型，用于 AI 出图。
 
 对话记录：
 ${history}
-${images.length > 0 ? `\n用户上传了 ${images.length} 张参考图（户型图或空间照片）。先读懂其中的开间、进深、窗位、墙体、分区和层高，方案必须忠于参考图。\n` : ''}
+${images.length > 0 ? `\n用户提供了 ${images.length} 张参考图（户型图、空间照片或场景套组的产品图）。如果图里有空间结构，先读懂其中的开间、进深、窗位、墙体、分区和层高，方案必须忠于参考图；如果只是家具产品，用它判断产品的体量和气质，不要把产品背景当成户型。\n` : ''}
+${ensemble.length > 0 ? `${describeEnsemble(ensemble)}\n` : ''}
+${ownerBlock}
 要求：
 1. 必须先调用联网搜索，查询相关地区或楼盘类型的真实户型信息（开间、层高、常见格局），不要编造具体楼盘数据。
 2. 给出 2~3 个差异明显的户型方案。如果用户只想改已有方案，就给 1 个修改后的方案。
 3. 户型只描述建筑结构，不写具体装修风格和颜色，风格之后单独选择。
-4. 每个方案都要适合摆放一组大型沙发并拍摄客厅画册。
-
+4. 每个方案都要适合摆放一组大型沙发并拍摄客厅画册。${ensemble.length > 0 ? '方案要放得下当前套组，并留出通行动线。如果用户只想调整套组，layouts 可以是空数组。' : ''}
+${canAdviseEnsemble ? '5. 按户型和用户需求，判断产品库里每件产品该不该放入场景套组，写进 ensembleAdvice。只能使用上面列出的产品 id，不能虚构产品，主品必须放入。\n' : ''}
 只输出一个 JSON 对象，不要其他文字：
 {
-  "reply": "中文，2~3 句话说明你的判断和这几个方案的区别",
+  "reply": "中文，2~3 句话说明你的判断和这几个方案的区别",${canSuggestOwner ? `
+  "ownerSuggestion": { "id": "业主类型 id", "reason": "中文，一句话说明判断依据" },` : ''}
   "layouts": [{
     "name": "中文户型名，8~12 字",
     "nameEn": "English name",
     "propertyType": "penthouse | villa | duplex | flat",
     "layoutType": "horizontal | vertical | split_level | sunken | double_living",
     "ceilingHeight": 3.2,
+    "elevation": "high 或 low：高层住宅写 high，低层住宅或别墅写 low",
     "zones": [{ "name": "中文功能区", "primaryAxis": "x 或 y", "coveragePercentage": 60 }],
     "signatureFeatures": ["中文，3~4 条这个户型的标志性特征"],
     "promptFragments": ["英文，4~5 条描述该空间结构的出图短句"],
     ${TOPOLOGY_GUIDE},
     "basis": "中文，一句话说明依据（来自参考图或哪类真实户型）"
-  }]
+  }]${canAdviseEnsemble ? `,
+  "ensembleAdvice": {
+    "summary": "中文，一句话说明套组怎么调整",
+    "items": [{ "productId": "产品 id", "include": true, "reason": "中文，一句话" }]
+  }` : ''}
 }`;
 
-  const research = `请联网搜索并用要点总结下面需求涉及的真实户型信息：开间、进深、层高、常见客厅格局，注明楼盘或资料来源，查不到的如实说明。${images.length > 0 ? '同时读懂参考图里的空间结构。' : ''}\n\n${history}`;
+  const research = `请联网搜索并用要点总结下面需求涉及的真实户型信息：开间、进深、层高、常见客厅格局，注明楼盘或资料来源，查不到的如实说明。${images.length > 0 ? '同时读懂参考图里的空间结构。' : ''}${ensemble.length > 0 ? `\n\n${describeEnsemble(ensemble)}` : ''}${input.owner ? `\n\n业主身份：${JSON.stringify(input.owner)}。重点查这类业主实际购买的楼盘区位和户型。` : ''}\n\n${history}`;
   const { json, sources } = await runAgentJson(userId, input.model, prompt, research, images);
   const parsed = z
-    .object({ reply: str(), layouts: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(LayoutSchema)) })
+    .object({ reply: str(), layouts: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(LayoutSchema)), ensembleAdvice: z.unknown().optional(), ownerSuggestion: z.unknown().optional() })
     .parse(json);
   const layouts = parsed.layouts.filter((l) => l.name && l.promptFragments.length > 0 && l.topology.topologyDirective).slice(0, 3);
-  return { reply: parsed.reply, layouts, sources };
+  return {
+    reply: parsed.reply,
+    layouts,
+    sources,
+    ensembleAdvice: canAdviseEnsemble ? normalizeEnsembleAdvice(parsed.ensembleAdvice, ensemble) : undefined,
+    ownerSuggestion: canSuggestOwner ? normalizeOwnerSuggestion(parsed.ownerSuggestion, input.ownerOptions) : undefined
+  };
 }
 
 export async function recommendStylesForLayout(
@@ -345,6 +439,8 @@ export async function recommendStylesForLayout(
 
 户型：${JSON.stringify(input.layout)}
 ${input.product ? `主打产品：${JSON.stringify(input.product)}` : ''}
+${input.ensemble?.length ? describeEnsemble(input.ensemble) : ''}
+${input.owner ? `业主身份：${JSON.stringify(input.owner)}` : ''}
 ${input.note ? `用户补充：${input.note}` : ''}
 
 现有美学库：
@@ -353,6 +449,7 @@ ${JSON.stringify(input.existingStyles)}
 要求：
 1. 从现有美学库挑选最适合的 3 个，score 为 0~100，reason 说明为什么适合这个户型和产品。
 2. 再新建 2 个现有库里没有的美学风格，要和这个户型的结构、层高、采光相匹配，也要能衬托主打产品。
+${input.owner ? '3. 这是这位业主真实居住的家，不是会所或样板间。推荐和新建的风格都要符合业主身份，reason 要说明为什么适合这位业主。' : ''}
 
 只输出一个 JSON 对象，不要其他文字：
 {

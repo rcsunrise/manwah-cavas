@@ -15,6 +15,7 @@ export interface AgentLayoutResult {
   promptFragments: string[];
   topology: NonNullable<SpacePreset['topology']>;
   basis: string;
+  elevation?: SpacePreset['elevation'];
 }
 
 export interface AgentStyleResult {
@@ -85,6 +86,7 @@ export function buildAiSpace(layout: AgentLayoutResult, existing: SpacePreset[],
     referenceObjectKeys: [],
     promptFragments: layout.promptFragments,
     topology: layout.topology,
+    elevation: layout.elevation,
     isAiGenerated: true
   };
 }

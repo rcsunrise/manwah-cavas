@@ -43,6 +43,7 @@ import {
   type ImageIntent
 } from './server/ai/modelRegistry';
 import { getImageProviderAdapter, normalizeGoogleGenAiBaseUrl } from './server/ai/imageProviderAdapter';
+import { fetchUpstreamText } from './server/ai/upstreamRequest';
 import {
   normalizeProviderError,
   providerErrorFromStatus,
@@ -1086,6 +1087,12 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
          res.setHeader("X-Proxy-Provider", "google");
       }
 
+      // 调用方（出图服务或浏览器）放弃等待后，取消上游请求并停止重试，避免继续生成和扣费
+      const callerGone = new AbortController();
+      res.on('close', () => {
+        if (!res.writableEnded) callerGone.abort();
+      });
+
       const doFetch = async (currentBaseUrl: string, currentApiKey: string, currentProvider: string) => {
         const registeredModel = resolveImageModel(model, intent);
         assertProviderModelCompatibility(registeredModel, currentProvider, intent);
@@ -1281,38 +1288,11 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
 
           fileLog(`[OpenAI Proxy Debug] targetUrl: ${targetUrl}, isMultipart: ${isMultipart}`);
 
-          const controller = new AbortController();
-          const timeoutMs = 300000;
-          const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-          let resObj;
-          try {
-            resObj = await fetch(targetUrl, {
-              method: "POST",
-              headers: fetchHeaders,
-              body: isMultipart ? formData : JSON.stringify(reqPayload),
-              signal: controller.signal
-            });
-          } catch (fetchErr: any) {
-            clearTimeout(timeoutId);
-            if (fetchErr.name === 'AbortError') {
-               throw new ProviderError(
-                 `上游请求在 ${Math.round(timeoutMs / 1000)} 秒后超时。`,
-                 'timeout',
-                 504,
-                 true,
-                 currentProvider,
-                 finalModel
-               );
-            }
-            throw fetchErr;
-          }
-          
-          clearTimeout(timeoutId);
-
-          fileLog(`[OpenAI Proxy Debug] upstream status: ${resObj.status}`);
-
-          const text = await resObj.text();
+          const { response: resObj, text } = await fetchUpstreamText(
+            targetUrl,
+            { method: "POST", headers: fetchHeaders, body: isMultipart ? formData : JSON.stringify(reqPayload) },
+            { timeoutMs: 300000, callerSignal: callerGone.signal, provider: currentProvider, model: finalModel, log: fileLog }
+          );
           if (!resObj.ok) {
             fileLog(`[OpenAI Proxy Debug] upstream ERROR! status: ${resObj.status}, response body: ${text}`);
           }
@@ -1563,6 +1543,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         
         const generateEndTime = Date.now();
         const durationSec = ((generateEndTime - generateStartTime) / 1000).toFixed(1);
+        fileLog(`[Gateway timing] ${actualModelUsed}: upstream work finished after ${durationSec}s, starting billing and response`);
 
         if (!res.headersSent) {
           res.setHeader("X-Proxy-Provider", usedProvider);
