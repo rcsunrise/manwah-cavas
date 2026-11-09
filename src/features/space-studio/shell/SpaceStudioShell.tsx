@@ -83,6 +83,16 @@ import { SceneMasterPromptCompiler } from '../engine/sceneMasterPromptCompiler';
 import { ShootPhasePanel } from '../components/ShootPhasePanel';
 import { ShootPhaseWorkspace } from '../components/ShootPhaseWorkspace';
 import { cleanPresetName, RevisionExportLabels } from '../engine/exportFileName';
+import {
+  AgentLayoutResult,
+  AgentStyleResult,
+  buildAiSpace,
+  buildAiStyle,
+  loadAiSpaces,
+  loadAiStyles,
+  saveAiSpaces,
+  saveAiStyles
+} from '../data/customPresetLibrary';
 import { STANDARD_SHOT_TEMPLATES, SCENE_MASTER_TEMPLATE, getShotTemplateByCode, resolveShotAspectRatio, getNextCustomShotCode, getShotDisplayCode } from '../data/shotTemplates';
 import { getRecommendedStudioTemplate, mapStudioSlotsToAssignments } from '../data/choreographyPresets';
 import { ShootCompiler } from '../engine/shootCompiler';
@@ -165,9 +175,21 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     return INITIAL_MANWAH_PRODUCTS;
   });
 
+  // AI 户型智能体生成的户型/美学：本机资产库 + 工程快照里选中的那一个
+  const [aiSpaces, setAiSpaces] = useState<SpacePreset[]>(() => {
+    const library = loadAiSpaces();
+    const fromSnapshot = initialSnapshot?.selectedAiSpace;
+    return fromSnapshot && !library.some((s) => s.id === fromSnapshot.id) ? [fromSnapshot, ...library] : library;
+  });
+  const [aiStyles, setAiStyles] = useState<StylePreset[]>(() => {
+    const library = loadAiStyles();
+    const fromSnapshot = initialSnapshot?.selectedAiStyle;
+    return fromSnapshot && !library.some((s) => s.id === fromSnapshot.id) ? [fromSnapshot, ...library] : library;
+  });
+
   const [selectedSpace, setSelectedSpace] = useState<SpacePreset>(() => {
     if (initialSnapshot?.selectedSpaceId) {
-      const found = SPACE_PROTOTYPES.find(s => s.id === initialSnapshot.selectedSpaceId);
+      const found = [...aiSpaces, ...SPACE_PROTOTYPES].find(s => s.id === initialSnapshot.selectedSpaceId);
       if (found) return found;
     }
     return SPACE_PROTOTYPES[0];
@@ -175,7 +197,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
 
   const [selectedStyle, setSelectedStyle] = useState<StylePreset>(() => {
     if (initialSnapshot?.selectedStyleId) {
-      const found = STYLE_PRESETS.find(s => s.id === initialSnapshot.selectedStyleId);
+      const found = [...aiStyles, ...STYLE_PRESETS].find(s => s.id === initialSnapshot.selectedStyleId);
       if (found) return found;
     }
     return STYLE_PRESETS[0];
@@ -1602,6 +1624,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       activeShotId,
       selectedSpaceId: selectedSpace?.id,
       selectedStyleId: selectedStyle?.id,
+      selectedAiSpace: selectedSpace?.isAiGenerated ? selectedSpace : undefined,
+      selectedAiStyle: selectedStyle?.isAiGenerated ? selectedStyle : undefined,
       blueprint,
       shotHumanLayouts: {
         ...shotHumanLayouts,
@@ -3545,6 +3569,39 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   };
 
   // 切换蓝图锁定
+  // AI 户型智能体：新户型入库并选中
+  const handleUseAiLayout = (layout: AgentLayoutResult): SpacePreset => {
+    const space = buildAiSpace(layout, aiSpaces, Date.now().toString(36));
+    const next = [space, ...aiSpaces];
+    setAiSpaces(next);
+    saveAiSpaces(next);
+    handleSelectSpace(space);
+    return space;
+  };
+
+  const handleSaveAiStyle = (result: AgentStyleResult): StylePreset => {
+    const style = buildAiStyle(result, aiStyles, Date.now().toString(36));
+    const next = [style, ...aiStyles];
+    setAiStyles(next);
+    saveAiStyles(next);
+    setSelectedStyle(style);
+    return style;
+  };
+
+  const handleDeleteAiSpace = (spaceId: string) => {
+    const next = aiSpaces.filter((s) => s.id !== spaceId);
+    setAiSpaces(next);
+    saveAiSpaces(next);
+    if (selectedSpace.id === spaceId) handleSelectSpace(SPACE_PROTOTYPES[0]);
+  };
+
+  const handleDeleteAiStyle = (styleId: string) => {
+    const next = aiStyles.filter((s) => s.id !== styleId);
+    setAiStyles(next);
+    saveAiStyles(next);
+    if (selectedStyle.id === styleId) setSelectedStyle(STYLE_PRESETS[0]);
+  };
+
   const handleToggleLockBlueprint = () => {
     setBlueprint((prev) => ({
       ...prev,
@@ -3689,10 +3746,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       <div className="flex-1 flex overflow-hidden relative">
         {/* 1. Left Drawer with Icon Dock + Collapsible Sub-panel */}
         <SpaceStudioLeftDrawer
-          spaces={SPACE_PROTOTYPES}
+          spaces={[...aiSpaces, ...SPACE_PROTOTYPES]}
           selectedSpace={selectedSpace}
           onSelectSpace={handleSelectSpace}
-          styles={STYLE_PRESETS}
+          onUseAiLayout={handleUseAiLayout}
+          onSaveAiStyle={handleSaveAiStyle}
+          onDeleteAiSpace={handleDeleteAiSpace}
+          onDeleteAiStyle={handleDeleteAiStyle}
+          styles={[...aiStyles, ...STYLE_PRESETS]}
           selectedStyle={selectedStyle}
           onSelectStyle={setSelectedStyle}
           products={products}

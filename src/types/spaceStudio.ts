@@ -199,6 +199,16 @@ export interface SpacePreset {
   signatureFeatures: string[];
   referenceObjectKeys: string[];
   promptFragments: string[];
+  /** AI 户型智能体生成的建筑结构指令，出图时优先于内置的 6 大原型指令 */
+  topology?: {
+    topologyDirective: string;
+    architecturalFocalWall: string;
+    flooringTopology: string;
+    ceilingStructure: string;
+    windowAndOutdoorView: string;
+    negativeConstraints: string[];
+  };
+  isAiGenerated?: boolean;
 }
 
 // 3. STYLE LIBRARY (BUILD)
@@ -219,6 +229,14 @@ export interface StylePreset {
   negativeRules: string[];
   referenceImages?: string[];
   thumbnailUrl?: string;
+  /** AI 户型智能体生成的硬装指令，出图时优先于内置美学指令 */
+  architecture?: {
+    styleWallMoldingDirective: string;
+    styleMaterialPalette: string;
+    styleAtmosphericLighting: string;
+    styleNegativeRules: string[];
+  };
+  isAiGenerated?: boolean;
 }
 
 // 4. PLACEMENT BLUEPRINT (BUILD)

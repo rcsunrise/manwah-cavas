@@ -27,6 +27,9 @@ export interface StyleArchitecturalCompilation {
  * 编译空间户型拓扑指令 (严格契合 N-R01 ~ N-R06 的真实建筑空间第一性原理)
  */
 export function compileSpaceTopology(spacePreset: SpacePreset): SpaceTopologyCompilation {
+  // AI 户型智能体生成的户型带自己的结构指令，不走下面的内置原型匹配
+  if (spacePreset.topology) return spacePreset.topology;
+
   const code = (spacePreset.code || '').toUpperCase();
 
   // 1. N-R04 下沉式围合私享厅 (Sunken Conversation Villa)
@@ -170,6 +173,8 @@ export function compileSpaceTopology(spacePreset: SpacePreset): SpaceTopologyCom
  * 编译美学风格硬装塑造指令 (将美式、法式、意式等标志性硬装立面深入天花与墙面)
  */
 export function compileStyleArchitecturalFinishes(stylePreset: StylePreset): StyleArchitecturalCompilation {
+  if (stylePreset.architecture) return stylePreset.architecture;
+
   const code = (stylePreset.code || '').toUpperCase();
 
   // 1. US-01 现代美式都会宅 (Modern American Metropolitan)

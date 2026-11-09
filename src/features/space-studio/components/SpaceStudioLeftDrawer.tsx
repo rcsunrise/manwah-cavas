@@ -38,11 +38,18 @@ import {
 } from 'lucide-react';
 import { SpacePreset, StylePreset, ProductAsset, ShotInstance } from '../../../types/spaceStudio';
 import { recommendStylesForProduct } from '../engine/styleRecommendationEngine';
+import { SpaceLayoutAgentWindow } from './SpaceLayoutAgentWindow';
+import { AgentLayoutResult, AgentStyleResult } from '../data/customPresetLibrary';
+import { confirmDialog } from '../../../utils/confirmDialog';
 
 interface SpaceStudioLeftDrawerProps {
   spaces: SpacePreset[];
   selectedSpace: SpacePreset;
   onSelectSpace: (space: SpacePreset) => void;
+  onUseAiLayout: (layout: AgentLayoutResult) => SpacePreset;
+  onSaveAiStyle: (style: AgentStyleResult) => StylePreset;
+  onDeleteAiSpace: (spaceId: string) => void;
+  onDeleteAiStyle: (styleId: string) => void;
 
   styles: StylePreset[];
   selectedStyle: StylePreset;
@@ -77,6 +84,10 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   spaces,
   selectedSpace,
   onSelectSpace,
+  onUseAiLayout,
+  onSaveAiStyle,
+  onDeleteAiSpace,
+  onDeleteAiStyle,
   styles,
   selectedStyle,
   onSelectStyle,
@@ -100,6 +111,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   onToggleCollapse
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(true);
+  const [isLayoutAgentOpen, setIsLayoutAgentOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<TabKey>('product');
   const [newTagInput, setNewTagInput] = useState<string>('');
   const [showTagInput, setShowTagInput] = useState<boolean>(false);
@@ -468,8 +480,16 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                 {/* TAB 1: 空间户型 */}
                 {activeTab === 'space' && (
               <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsLayoutAgentOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+                  AI 户型智能体 · 联网找户型
+                </button>
                 <div className={`text-[11px] font-medium px-1 flex items-center justify-between ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
-                  <span>精选 6 大室内空间原型</span>
+                  <span>{spaces.some((s) => s.isAiGenerated) ? `AI 户型 ${spaces.filter((s) => s.isAiGenerated).length} 个 · 精选 6 大原型` : '精选 6 大室内空间原型'}</span>
                   <span className={`text-[10px] font-mono ${isLight ? 'text-amber-700' : 'text-amber-400/80'}`}>
                     当前: {selectedSpace.code}
                   </span>
@@ -512,7 +532,23 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                             {sp.name.split(' (')[0]}
                           </span>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isSelected && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
+                          {sp.isAiGenerated && (
+                            <button
+                              type="button"
+                              aria-label={`删除 AI 户型 ${sp.code}`}
+                              title="删除这个 AI 户型"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (await confirmDialog(`删除 AI 户型「${sp.name.split(' (')[0]}」？已生成的图片不受影响。`)) onDeleteAiSpace(sp.id);
+                              }}
+                              className="p-0.5 rounded text-stone-400 hover:text-rose-600 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <div className={`text-[11px] line-clamp-2 leading-relaxed pl-1 ${isLight ? 'text-stone-500' : 'text-stone-400'}`}>
@@ -1519,6 +1555,20 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                                 }`}>
                                   {st.code}
                                 </span>
+                                {st.isAiGenerated && (
+                                  <button
+                                    type="button"
+                                    aria-label={`删除 AI 美学 ${st.code}`}
+                                    title="删除这个 AI 美学"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (await confirmDialog(`删除 AI 美学「${st.name.split(' (')[0]}」？已生成的图片不受影响。`)) onDeleteAiStyle(st.id);
+                                    }}
+                                    className="text-stone-400 hover:text-rose-600 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
                                 <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 font-medium">
                                   {st.category}
                                 </span>
@@ -1790,6 +1840,18 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <SpaceLayoutAgentWindow
+        open={isLayoutAgentOpen}
+        onClose={() => setIsLayoutAgentOpen(false)}
+        styles={styles}
+        selectedStyle={selectedStyle}
+        primaryProduct={primaryProduct}
+        isLight={isLight}
+        onUseLayout={onUseAiLayout}
+        onApplyStyle={onSelectStyle}
+        onSaveNewStyle={onSaveAiStyle}
+      />
     </div>
   );
 };

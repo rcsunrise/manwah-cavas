@@ -28,6 +28,9 @@ export interface SpaceStudioProjectSnapshot {
   activeShotId: string;
   selectedSpaceId?: string;
   selectedStyleId?: string;
+  /** 选中的是 AI 生成户型/美学时保存完整内容，换设备恢复工程也能还原 */
+  selectedAiSpace?: import('../types/spaceStudio').SpacePreset;
+  selectedAiStyle?: import('../types/spaceStudio').StylePreset;
   blueprint?: PlacementBlueprint;
   shotHumanLayouts?: Record<string, HumanLayoutConfig>;
   summary: {

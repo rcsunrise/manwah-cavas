@@ -12,9 +12,41 @@ import {
 import sharp from 'sharp';
 import { createServerGenAI } from '../utils/aiClient';
 import { resolveApiConfig, isProviderKeyValid } from '../ai/providerConfig';
+import {
+  LayoutSearchRequestSchema,
+  StyleRecommendRequestSchema,
+  recommendStylesForLayout,
+  searchLayouts
+} from '../services/spaceLayoutAgentService';
 
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
+
+/** POST /api/space/build/layout-agent/search — AI 户型智能体：联网 + 参考图生成户型方案 */
+router.post('/layout-agent/search', async (req: Request, res: Response) => {
+  const parsed = LayoutSearchRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: '请求参数无效' });
+  try {
+    const data = await searchLayouts((req as any).user?.id || 'system', parsed.data);
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    console.error('[layout-agent/search] failed:', err);
+    return res.status(500).json({ success: false, error: err?.message || '户型查找失败' });
+  }
+});
+
+/** POST /api/space/build/layout-agent/recommend-styles — 按选定户型推荐现有美学并新建风格 */
+router.post('/layout-agent/recommend-styles', async (req: Request, res: Response) => {
+  const parsed = StyleRecommendRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error: '请求参数无效' });
+  try {
+    const data = await recommendStylesForLayout((req as any).user?.id || 'system', parsed.data);
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    console.error('[layout-agent/recommend-styles] failed:', err);
+    return res.status(500).json({ success: false, error: err?.message || '美学推荐失败' });
+  }
+});
 
 /**
  * POST /api/space/build/extract-product-dna
