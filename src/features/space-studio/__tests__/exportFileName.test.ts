@@ -39,6 +39,11 @@ describe('buildShotExportFileName', () => {
     expect(name).toBe('MANWAH_ABC户型_我的-风格_A00_v1_0102-030405_2K.jpg');
   });
 
+  it('omits layout and style when a version has no recorded labels', () => {
+    const name = buildShotExportFileName({ ...base, spaceName: undefined, styleName: undefined, revisionNumber: 1, createdAt: new Date(2026, 10, 9, 9, 1, 13).toISOString() });
+    expect(name).toBe('MANWAH_A00_v1_1109-090113_2K.jpg');
+  });
+
   it('falls back to the current time when createdAt is invalid', () => {
     const name = buildShotExportFileName({ ...base, revisionNumber: 1, createdAt: 'bad-date', now: new Date(2026, 10, 9, 1, 2, 3) });
     expect(name).toContain('_1109-010203_');

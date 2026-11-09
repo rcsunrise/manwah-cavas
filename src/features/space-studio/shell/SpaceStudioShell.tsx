@@ -1123,8 +1123,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     space: cleanPresetName(selectedSpace.name),
     style: cleanPresetName(selectedStyle.name)
   });
-  const inheritExportLabels = (revisions: ShotRevision[], parentId?: string): RevisionExportLabels =>
-    revisions.find((r) => r.id === parentId)?.exportLabels || currentExportLabels();
+  // 衍生版本沿用原版本的标签；原版本是没有记录的旧版本时不猜，避免标成当前选中的美学
+  const inheritExportLabels = (revisions: ShotRevision[], parentId?: string): RevisionExportLabels | undefined => {
+    const parent = revisions.find((r) => r.id === parentId);
+    return parent ? parent.exportLabels : currentExportLabels();
+  };
 
   const handleGenerateEmptyPlate = async (sourceRev: ShotRevision | undefined = a00PlateSourceRev) => {
     const sourceImage = sourceRev?.imageUrl || sourceRev?.objectKey;
@@ -1162,7 +1165,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             label: `空场景 v${nextRevNum}`,
             metaSummary: '清除家具 · 可设为后续镜头场景参考',
             parentRevisionId: sourceRev.id,
-            exportLabels: sourceRev.exportLabels || currentExportLabels(),
+            exportLabels: sourceRev.exportLabels,
             objectKey: data.data.objectKey,
             imageUrl: data.data.imageUrl,
             thumbnailUrl: data.data.imageUrl,

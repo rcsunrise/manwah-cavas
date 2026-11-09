@@ -825,8 +825,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     const candidates = candidateBatch?.candidates || [];
     const candidateIndex = isExplicitCandidateSelected ? candidates.findIndex((c) => c.id === selectedCandidateId) : -1;
     return buildShotExportFileName({
-      spaceName: currentRevision?.exportLabels?.space || spacePreset?.name,
-      styleName: currentRevision?.exportLabels?.style || stylePreset?.name || styleName,
+      // 有版本时只用版本自己记录的户型与美学；旧版本没有记录就不写，避免标成后来切换的美学
+      spaceName: currentRevision ? currentRevision.exportLabels?.space : spacePreset?.name,
+      styleName: currentRevision ? currentRevision.exportLabels?.style : stylePreset?.name || styleName,
       shotCode: getShotDisplayCode(activeShot),
       revisionNumber: currentRevision?.revisionNumber,
       candidateNumber: candidates.length > 1 && candidateIndex >= 0 ? candidateIndex + 1 : undefined,
