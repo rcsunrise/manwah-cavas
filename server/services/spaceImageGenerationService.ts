@@ -26,6 +26,7 @@ import { deduplicateNegativeConstraints } from '../../src/features/space-studio/
 import { SpaceObjectKeyBuilder } from '../../src/shared/storage/spaceObjectKeys';
 import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
 import { cropCharacterIdentity } from './characterIdentityCropService';
+import { resolveSceneArchetype } from './spaceArchetypeResolver';
 
 export interface SpaceProductIdentityInput {
   id?: string;
@@ -297,14 +298,19 @@ export function buildStudioSwapDirective(params: {
       ...(Array.isArray(context?.styleDna) ? context.styleDna : [])
     ].filter(Boolean);
 
-    const combinedA00Context = `${effectiveSpaceTitle} ${spacePreset?.code || ''} ${effectiveStyleTitle} ${stylePreset?.code || ''} ${positivePrompt} ${spaceFragments.join(' ')} ${styleFragments.join(' ')}`;
-    const isAmerican = /美式|american|US-01|US-02/i.test(combinedA00Context);
-    const isFrench = /法式|简欧|parisian|haussmann|EU-01/i.test(combinedA00Context);
-    const isItalian = /意式|italian|milanese|IT-01|IT-02/i.test(combinedA00Context);
-    const isSunken = /下沉|sunken|N-R04/i.test(combinedA00Context);
-    const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedA00Context);
-    const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedA00Context);
-    const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedA00Context);
+    const archetype = resolveSceneArchetype({
+      spaceCode: spacePreset?.code,
+      spaceName: effectiveSpaceTitle,
+      styleCode: stylePreset?.code,
+      styleName: effectiveStyleTitle
+    });
+    const isAmerican = archetype.style === 'american';
+    const isFrench = archetype.style === 'french';
+    const isItalian = archetype.style === 'italian';
+    const isSunken = archetype.topology === 'sunken';
+    const isDuplex = archetype.topology === 'duplex';
+    const isPavilion = archetype.topology === 'pavilion';
+    const isPenthouse = archetype.topology === 'penthouse';
 
     let styleSpecificClause = '';
     const styleNegativesA00: string[] = [];
@@ -1603,16 +1609,19 @@ CORE INVARIANTS:
           (sec.product.name && /(休闲|无扶手|矮椅|旋转|单椅|焦糖)/.test(sec.product.name) && !/(功能|电动|头等舱|展开|太空舱)/.test(sec.product.name))
         );
 
-        const combinedContext = `${input.roomName || ''} ${input.spacePreset?.code || ''} ${input.spacePreset?.name || ''} ${input.styleName || ''} ${input.stylePreset?.code || ''} ${input.stylePreset?.name || ''} ${positivePrompt}`;
-
-        const isSunken = /下沉|sunken|N-R04/i.test(combinedContext);
-        const isDuplex = /挑空|复式|duplex|double.*height|N-R03/i.test(combinedContext);
-        const isPavilion = /山水|宽厅|pavilion|water.*garden|松柏|N-R05/i.test(combinedContext);
-        const isPenthouse = /顶层|天际|会所|penthouse|skyline|N-R06/i.test(combinedContext);
-
-        const isAmerican = /美式|american|US-01|US-02/i.test(combinedContext);
-        const isFrench = /法式|parisian|haussmann|EU-01/i.test(combinedContext);
-        const isItalian = /意式|italian|milanese|IT-01/i.test(combinedContext);
+        const archetype = resolveSceneArchetype({
+          spaceCode: input.spacePreset?.code,
+          spaceName: input.spacePreset?.name || input.roomName,
+          styleCode: input.stylePreset?.code,
+          styleName: input.stylePreset?.name || input.styleName
+        });
+        const isSunken = archetype.topology === 'sunken';
+        const isDuplex = archetype.topology === 'duplex';
+        const isPavilion = archetype.topology === 'pavilion';
+        const isPenthouse = archetype.topology === 'penthouse';
+        const isAmerican = archetype.style === 'american';
+        const isFrench = archetype.style === 'french';
+        const isItalian = archetype.style === 'italian';
 
         let topologyMandateA00 = '';
         const topologyNegativesA00: string[] = [];

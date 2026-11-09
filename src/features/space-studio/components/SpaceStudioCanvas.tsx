@@ -27,6 +27,7 @@ import {
   Move,
   Star,
   Check,
+  ListChecks,
   User,
   Activity,
   Layers,
@@ -104,6 +105,7 @@ interface SpaceStudioCanvasProps {
   onRenderHumanPass?: () => void;
   onSelectRevision?: (shotId: string, revisionId: string) => void;
   onDeleteRevision?: (shotId: string, revisionId: string) => void;
+  onDeleteRevisions?: (shotId: string, revisionIds: string[]) => void;
 
   // New Phase 2 Candidate Batch Props
   candidateBatch?: ShotCandidateBatch | null;
@@ -176,6 +178,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
   onRenderHumanPass,
   onSelectRevision,
   onDeleteRevision,
+  onDeleteRevisions,
   candidateBatch,
   selectedCandidateId,
   onSelectCandidate,
@@ -221,6 +224,13 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
     const t = setTimeout(() => setPendingDeleteRevisionId(null), 4000);
     return () => clearTimeout(t);
   }, [pendingDeleteRevisionId]);
+  // 生成记录批量勾选删除
+  const [isRevisionSelectMode, setIsRevisionSelectMode] = useState(false);
+  const [selectedRevisionIds, setSelectedRevisionIds] = useState<string[]>([]);
+  useEffect(() => {
+    setIsRevisionSelectMode(false);
+    setSelectedRevisionIds([]);
+  }, [activeShot.id]);
   const [isRatioDropdownOpen, setIsRatioDropdownOpen] = useState(false);
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [isResDropdownOpen, setIsResDropdownOpen] = useState(false);
@@ -1945,8 +1955,65 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                     </div>
                   </div>
 
+                  {/* 批量勾选模式的动作条 */}
+                  {isRevisionSelectMode && (() => {
+                    const selectableIds = unifiedCards.filter((c) => c.itemType === 'revision' && c.canDelete).map((c) => c.id);
+                    const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedRevisionIds.includes(id));
+                    return (
+                      <div className="flex items-center gap-1 flex-nowrap justify-end shrink-0">
+                        <span className="text-[10px] text-amber-300 font-mono whitespace-nowrap px-1">已选 {selectedRevisionIds.length}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRevisionIds(allSelected ? [] : selectableIds)}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white transition cursor-pointer whitespace-nowrap"
+                        >
+                          {allSelected ? '取消全选' : '全选'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selectedRevisionIds.length === 0}
+                          onClick={async () => {
+                            const ids = selectedRevisionIds;
+                            const isAll = ids.length >= activeShot.revisions.length;
+                            const message = `确定删除选中的 ${ids.length} 个版本吗？删除后无法恢复。${isAll ? '\n这会清空这个镜头的全部版本。' : ''}`;
+                            if (await confirmDialog(message)) {
+                              onDeleteRevisions?.(activeShot.id, ids);
+                              setSelectedRevisionIds([]);
+                              setIsRevisionSelectMode(false);
+                            }
+                          }}
+                          className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:hover:bg-rose-600 text-[10px] font-bold text-white transition cursor-pointer whitespace-nowrap flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3 shrink-0" />
+                          删除所选
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsRevisionSelectMode(false);
+                            setSelectedRevisionIds([]);
+                          }}
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white transition cursor-pointer whitespace-nowrap"
+                        >
+                          完成
+                        </button>
+                      </div>
+                    );
+                  })()}
+
                   {/* 右侧动作条 */}
-                  <div className="flex items-center gap-1 flex-nowrap justify-end shrink-0">
+                  <div className={`${isRevisionSelectMode ? 'hidden' : 'flex'} items-center gap-1 flex-nowrap justify-end shrink-0`}>
+                    {onDeleteRevisions && unifiedCards.some((c) => c.itemType === 'revision' && c.canDelete) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsRevisionSelectMode(true)}
+                        className="px-2 py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/40 text-[10px] text-neutral-300 hover:text-white transition cursor-pointer whitespace-nowrap flex items-center gap-1"
+                        title="勾选多个版本后一起删除"
+                      >
+                        <ListChecks className="w-3 h-3 text-rose-300 shrink-0" />
+                        <span>批量</span>
+                      </button>
+                    )}
                     <button
                       onClick={onRegenerateBatch}
                       className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-neutral-300 hover:text-white flex items-center gap-1 transition cursor-pointer whitespace-nowrap shrink-0"
@@ -2032,6 +2099,12 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                       <div
                         key={card.key}
                         onClick={() => {
+                          if (isRevisionSelectMode) {
+                            if (card.itemType === 'revision' && card.canDelete) {
+                              setSelectedRevisionIds((prev) => (prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]));
+                            }
+                            return;
+                          }
                           if (card.itemType === 'revision') {
                             onSelectRevision?.(activeShot.id, card.id);
                           } else if (card.candidate) {
@@ -2039,7 +2112,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                           }
                         }}
                         className={`group relative h-full aspect-[16/10] max-h-full rounded-xl overflow-hidden border cursor-pointer transition-all duration-150 flex flex-col bg-black/40 shrink-0 ${
-                          isSelected
+                          isRevisionSelectMode && selectedRevisionIds.includes(card.id)
+                            ? 'border-rose-500 ring-2 ring-rose-500/60 shadow-lg'
+                            : isSelected
                             ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-lg'
                             : 'border-white/10 hover:border-white/30'
                         }`}
@@ -2064,7 +2139,19 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
 
                         {/* Top Right Actions */}
                         <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
-                          {card.itemType === 'revision' && card.canDelete && (
+                          {isRevisionSelectMode && card.itemType === 'revision' && card.canDelete && (
+                            <span
+                              role="checkbox"
+                              aria-checked={selectedRevisionIds.includes(card.id)}
+                              aria-label={`选择 ${card.badgeText}`}
+                              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shadow ${
+                                selectedRevisionIds.includes(card.id) ? 'bg-rose-600 border-rose-500 text-white' : 'bg-black/50 border-white/70'
+                              }`}
+                            >
+                              {selectedRevisionIds.includes(card.id) && <Check className="w-3.5 h-3.5" />}
+                            </span>
+                          )}
+                          {!isRevisionSelectMode && card.itemType === 'revision' && card.canDelete && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2093,7 +2180,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
                             </button>
                           )}
 
-                          {card.itemType === 'candidate' && (
+                          {!isRevisionSelectMode && card.itemType === 'candidate' && (
                             <button
                               type="button"
                               onClick={(e) => {

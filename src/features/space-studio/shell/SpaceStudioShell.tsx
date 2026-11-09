@@ -3557,6 +3557,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setTimeout(() => setFeedbackNotice(null), 3000);
   }, [selectedSpace.code]);
 
+  // 批量删除：逐个走单版本删除，母版、当前版本的切换逻辑保持一致
+  const handleDeleteRevisions = useCallback((shotId: string, revisionIds: string[]) => {
+    revisionIds.forEach((revisionId) => handleDeleteRevision(shotId, revisionId));
+    setFeedbackNotice({ type: 'info', text: `已删除 ${revisionIds.length} 个版本` });
+  }, [handleDeleteRevision]);
+
   // 户型切换联动：自动重新适配空间蓝图并保持固定
   const handleSelectSpace = (space: SpacePreset) => {
     setSelectedSpace(space);
@@ -3910,6 +3916,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           onRenderHumanPass={() => handleRenderHumanPass(activeShot)}
           onSelectRevision={handleSelectRevision}
           onDeleteRevision={handleDeleteRevision}
+          onDeleteRevisions={handleDeleteRevisions}
           annotations={sceneAnnotations}
           showAnnotations={showAnnotations}
           onToggleShowAnnotations={() => {

@@ -1045,12 +1045,17 @@ Camera: 40mm architectural prime lens at 115cm standing eye-level height with ST
       ...placementClauses
     ];
 
+    // 转角双景和 AI 户型的采光面由户型自己决定，不能写死成“只从左侧窗进光”
+    const daylightSource = spacePreset.code === 'N-R02' || spacePreset.topology
+      ? 'streaming through the glazed window walls exactly as specified by the room topology'
+      : 'streaming exclusively from the left panoramic window flank';
+
     // 空间一致性四大金科玉律 (Four Spatial Invariance Pillars)
     const fourInvariancePillars = [
       'SPATIAL INVARIANCE ANCHOR: white matte cylindrical planter with indoor foliage plant serving as immutable physical coordinate origin (constant height and distance from window and backdrop wall)',
       isCloseOrMediumCropShot
         ? 'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming from the window flank, paired with warm ambient wall sconces (3000K) on the focal wall, casting consistent soft diagonal contact shadows'
-        : 'DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) streaming exclusively from the left panoramic window flank, paired with warm ambient cove lighting and wall sconces (3000K) illuminating the interior, casting consistent soft eastward diagonal contact shadows',
+        : `DUAL-TEMPERATURE LIGHTING CONSISTENCY: dominant cool daylight (6000K) ${daylightSource}, paired with warm ambient cove lighting and wall sconces (3000K) illuminating the interior, casting consistent soft eastward diagonal contact shadows`,
       'CONTACT SHADOW & AO: deep physical ambient occlusion contact shadows grounding all furniture legs, metal table frames, and recliner chassis firmly onto the area rug, completely eliminating floating sticker artifact',
       'TWO-POINT ARCHITECTURAL PERSPECTIVE: plumb vertical architectural lines with vertical shift correction (tilt angle = 0 degrees), window mullions and wall corners strictly parallel to vertical frame edges'
     ];
