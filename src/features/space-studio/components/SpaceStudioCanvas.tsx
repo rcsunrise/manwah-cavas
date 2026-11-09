@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { getShotDisplayCode } from '../data/shotTemplates';
 import { buildShotExportFileName } from '../engine/exportFileName';
 import { confirmDialog } from '../../../utils/confirmDialog';
-import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta } from '../../../config/imageModelRegistry';
+import { SPACE_AUTO_FALLBACK_MODELS, formatGenerationMeta, formatGenerationModelLabel } from '../../../config/imageModelRegistry';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Camera,
@@ -831,6 +831,9 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
       shotCode: getShotDisplayCode(activeShot),
       revisionNumber: currentRevision?.revisionNumber,
       candidateNumber: candidates.length > 1 && candidateIndex >= 0 ? candidateIndex + 1 : undefined,
+      modelLabel: formatGenerationModelLabel(
+        (candidateIndex >= 0 ? candidates[candidateIndex]?.model : undefined) || currentRevision?.generationModel
+      ),
       createdAt: currentRevision?.createdAt,
       resolution: resolution || '2K',
       format

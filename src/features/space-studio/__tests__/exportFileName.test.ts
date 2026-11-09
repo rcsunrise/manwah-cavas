@@ -15,6 +15,16 @@ describe('buildShotExportFileName', () => {
     expect(name).toBe('MANWAH_通透横厅大平层_美式庄园宅_A00_v2_1109-090312_2K.jpg');
   });
 
+  it('includes the model name after the version', () => {
+    const name = buildShotExportFileName({ ...base, revisionNumber: 8, modelLabel: 'GPT 2.6 Flare', createdAt: new Date(2026, 10, 9, 9, 57, 1).toISOString() });
+    expect(name).toBe('MANWAH_通透横厅大平层_美式庄园宅_A00_v8_GPT-2.6-Flare_1109-095701_2K.jpg');
+  });
+
+  it('keeps both models of a two-step generation', () => {
+    const name = buildShotExportFileName({ ...base, revisionNumber: 2, modelLabel: 'GPT 2.5 Flare + Nano Banana 2.1 精修', createdAt: new Date(2026, 10, 9, 9, 57, 1).toISOString() });
+    expect(name).toContain('_GPT-2.5-Flare+Nano-Banana-2.1-精修_');
+  });
+
   it('gives different names to versions of the same shot', () => {
     const createdAt = new Date(2026, 10, 9, 9, 3, 12).toISOString();
     expect(buildShotExportFileName({ ...base, revisionNumber: 1, createdAt })).not.toBe(buildShotExportFileName({ ...base, revisionNumber: 2, createdAt }));
