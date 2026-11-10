@@ -1124,24 +1124,24 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         <div className={`mx-auto h-full w-0.5 transition-colors ${isResizingPanel ? 'bg-[#B28C5A]' : 'bg-transparent group-hover/resize:bg-[#B28C5A]/60'}`} />
       </div>
       {/* Panel Header */}
-      <div className="p-4 md:p-5 border-b border-[#E5E0D8] bg-white/80 backdrop-blur-md flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center border border-[#E5E0D8] shadow-sm">
+      <div className="p-4 md:p-5 border-b border-[#E5E0D8] bg-white/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="w-9 h-9 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center border border-[#E5E0D8] shadow-sm shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="font-serif font-bold text-base text-[#2C2A29]">
+            <h2 className="font-serif font-bold text-base text-[#2C2A29] whitespace-nowrap">
               视觉企划智能体
             </h2>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-medium text-stone-500">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-[11px] font-medium text-stone-500 whitespace-nowrap">
                 {agentRun?.plan ? '全案企划已就绪' : activeDna ? 'DNA 已接入' : '工作区已就绪'}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 ml-auto">
           {/* Agent G Model Selector */}
           <select
             value={currentConversation?.model || 'gpt-6'}
@@ -1165,7 +1165,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           {onCreateNewConversation && (
             <button
               onClick={onCreateNewConversation}
-              className="text-[10px] bg-[#F9F5EF] text-[#B28C5A] hover:bg-[#B28C5A] hover:text-white px-2.5 py-1 rounded-full font-bold border border-[#E5E0D8]/60 transition-colors"
+              className="text-[10px] bg-[#F9F5EF] text-[#B28C5A] hover:bg-[#B28C5A] hover:text-white px-2.5 py-1 rounded-full font-bold border border-[#E5E0D8]/60 transition-colors whitespace-nowrap shrink-0"
               title="开启全新对话"
             >
               + 新建会话

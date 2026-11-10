@@ -268,6 +268,66 @@ router.post(['/', '/product-dnas'], async (req: AuthenticatedRequest, res: Respo
 });
 
 // ----------------------------------------------------------------------
+// 1b. GET /api/projects/:projectId/product-dna - 按项目读取 Product DNA 与版本列表
+//     画布加载与切换 DNA 版本时调用。可用 ?canvasId= 限定画布；项目尚无 DNA 时返回
+//     productDna: null（而不是 404），前端据此判断“未绑定 DNA”。
+// ----------------------------------------------------------------------
+router.get('/projects/:projectId/product-dna', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const projectId = String(req.params.projectId);
+    const canvasId = typeof req.query.canvasId === 'string' && req.query.canvasId ? req.query.canvasId : null;
+
+    let dna: any = null;
+    try {
+      let query = supabaseAdmin.from('product_dnas').select('*').eq('project_id', projectId);
+      if (canvasId) query = query.eq('canvas_id', canvasId);
+      const { data } = await query.order('updated_at', { ascending: false }).limit(1);
+      if (data && data.length > 0) dna = data[0];
+    } catch (e) {}
+
+    if (!dna) {
+      for (const item of inMemoryProductDnas.values()) {
+        if (item.project_id !== projectId) continue;
+        if (canvasId && item.canvas_id !== canvasId) continue;
+        if (!dna || String(item.updated_at || '') > String(dna.updated_at || '')) dna = item;
+      }
+    }
+
+    if (!dna) {
+      return res.status(200).json({ success: true, productDna: null, currentVersion: null, versions: [] });
+    }
+
+    let versions: any[] = [];
+    try {
+      const { data } = await supabaseAdmin
+        .from('product_dna_versions')
+        .select('*')
+        .eq('product_dna_id', dna.id)
+        .order('version_number', { ascending: true });
+      if (data && data.length > 0) versions = data;
+    } catch (e) {}
+
+    if (versions.length === 0) {
+      versions = inMemoryDnaVersions.get(dna.id) || [];
+    }
+
+    const currentVersion = versions.find(v => v.id === dna.current_version_id) || versions[versions.length - 1] || null;
+
+    return res.status(200).json({
+      success: true,
+      productDna: { ...dna, version_code: currentVersion?.version_code || null },
+      currentVersion,
+      versions
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { message: err.message, code: 'INTERNAL_ERROR' }
+    });
+  }
+});
+
+// ----------------------------------------------------------------------
 // 2. GET /api/product-dnas/:dnaId - Read Product DNA & Current Version
 // ----------------------------------------------------------------------
 router.get(['/:dnaId', '/product-dnas/:dnaId'], async (req: AuthenticatedRequest, res: Response, next: any) => {
