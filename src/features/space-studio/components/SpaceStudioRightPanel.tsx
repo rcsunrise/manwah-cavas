@@ -69,6 +69,7 @@ import { describeFallbackChain } from '../../../config/imageModelRegistry';
 import { SceneStyleGalleryModal } from './assets/SceneStyleGalleryModal';
 import { ModelAssetModal } from './assets/ModelAssetModal';
 import { AiHumanChoreographerModal } from './AiHumanChoreographerModal';
+import { labelLayoutAction, templateActionLabel } from '../engine/choreographyMatching';
 import { spaceAssetLibraryService } from '../../../services/spaceAssetLibraryService';
 import {
   STUDIO_CHOREOGRAPHY_TEMPLATES,
@@ -1023,7 +1024,7 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                    <span>本镜头专属参考素材 (45°特写)</span>
+                    <span>{['A00', 'A01'].includes(activeShot.templateCode) ? 'A00 / A01 共用镜头素材' : '本镜头素材'}</span>
                   </div>
                   <div className="text-[10px] text-stone-500 dark:text-neutral-400 mt-0.5">
                     已锁定当前上传图为最高真值
@@ -1624,7 +1625,8 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                             updateLayout({
                               characterCount: newSlots.length,
                               mode: recommendedTpl.mode,
-                              slots: newSlots
+                              slots: newSlots,
+                              ...labelLayoutAction(newSlots, templateActionLabel(recommendedTpl))
                             });
                           }}
                           className="shrink-0 px-2 py-0.5 rounded font-bold bg-amber-500 hover:bg-amber-400 text-black transition active:scale-95 shadow-2xs cursor-pointer flex items-center gap-0.5 text-[10px]"
@@ -1644,7 +1646,8 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                             updateLayout({
                               characterCount: newSlots.length,
                               mode: found.mode,
-                              slots: newSlots
+                              slots: newSlots,
+                              ...labelLayoutAction(newSlots, templateActionLabel(found))
                             });
                           }
                         }}
@@ -2482,11 +2485,12 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
               ).filter(Boolean)
             )
           )}
-          onApplyLayout={(newSlots, mode) => {
+          onApplyLayout={(newSlots, mode, actionLabel) => {
             updateLayout({
               characterCount: newSlots.length,
               mode,
-              slots: newSlots
+              slots: newSlots,
+              ...labelLayoutAction(newSlots, actionLabel)
             });
           }}
         />

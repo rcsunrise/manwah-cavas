@@ -210,6 +210,10 @@ const LEGACY_STYLE_PRESET_IDS = [
   'style-pure-empty-room'
 ];
 
+// 只跳过与内置预设重复的条目；管理员留存的模特同样标记了 isSystem，不能在启动时被丢掉，
+// 否则页面首次读到的角色库为空，人物编排器就匹配不到任何角色
+const BUILTIN_ASSET_IDS = new Set([...DEFAULT_SCENE_STYLES, ...DEFAULT_MODELS, ...DEFAULT_POSES].map((a) => a.id));
+
 class SpaceAssetLibraryService {
   private customAssets: Map<string, UnifiedSpaceAsset> = new Map();
   private deletedAssetIds: Set<string> = new Set();
@@ -224,7 +228,7 @@ class SpaceAssetLibraryService {
         if (stored) {
           const list: UnifiedSpaceAsset[] = JSON.parse(stored);
           list.forEach((item) => {
-            if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !item.isSystem && !item.tags?.includes('官方标准库')) {
+            if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !BUILTIN_ASSET_IDS.has(item.id) && !item.tags?.includes('官方标准库')) {
               this.customAssets.set(item.id, item);
             }
           });
@@ -273,7 +277,7 @@ class SpaceAssetLibraryService {
 
       if (storedAssets && Array.isArray(storedAssets)) {
         storedAssets.forEach((item) => {
-          if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !item.isSystem && !item.tags?.includes('官方标准库') && !this.customAssets.has(item.id)) {
+          if (!LEGACY_STYLE_PRESET_IDS.includes(item.id) && !BUILTIN_ASSET_IDS.has(item.id) && !item.tags?.includes('官方标准库') && !this.customAssets.has(item.id)) {
             this.customAssets.set(item.id, item);
             hasChanges = true;
           }
@@ -931,7 +935,7 @@ class SpaceAssetLibraryService {
       // 不再因为出现“功能位”三个字就展开（中间座、贵妃位的人也会被误伤）
       const footrestState =
         slot.footrestState ||
-        (/展开脚托|开脚托|伸出脚托|脚托展开|脚托.{0,4}展开|半躺|零重力/i.test(pos + ' ' + action) ? 'extended' : undefined);
+        (/展开脚托|开脚托|伸出脚托|脚托展开|脚托.{0,4}展开|脚托.{0,8}托起|半躺|平躺|后仰|零重力|睡眠位/i.test(pos + ' ' + action) ? 'extended' : undefined);
       if (footrestState === 'extended') {
         mechanicalClauses.push(
           `* CRITICAL PRODUCT MOTION MECHANISM: The motorized power recliner footrest of this designated seat MUST BE SMOOTHLY EXTENDED AND ELEVATED FORWARD, comfortably supporting the character's legs and feet in authentic zero-gravity relaxed comfort.`
@@ -939,6 +943,17 @@ class SpaceAssetLibraryService {
       } else if (footrestState === 'retracted') {
         mechanicalClauses.push(
           `* FOOTREST STATE: The footrest of this seat stays fully retracted and closed; the character sits upright with feet on the floor.`
+        );
+      }
+
+      // 靠背后仰：模板或描述里写了角度时，明确允许这个座位的靠背放倒到对应角度；
+      // 否则人物入座指令会把家具原样锁死，做不出 160° 睡眠位这类功能档位
+      const reclineMatch = (pos + ' ' + action).match(/(1[0-7]\d)\s*(°|度)/);
+      const reclineAngle = slot.reclineAngleDeg ?? (reclineMatch ? Number(reclineMatch[1]) : undefined);
+      if (reclineAngle && reclineAngle >= 100) {
+        const depth = reclineAngle >= 150 ? 'a deep near-flat sleeping recline' : reclineAngle >= 130 ? 'a relaxed laid-back recline' : 'a gentle upright-leaning recline';
+        mechanicalClauses.push(
+          `* BACKREST RECLINE (explicitly requested): The backrest of this designated seat MUST be reclined to approximately ${reclineAngle} degrees between seat and backrest (${depth}); the character's head, shoulders and back rest fully along the reclined backrest. Only this seat's backrest and footrest change; the seat stays in the same place and keeps its leather, color and design.`
         );
       }
 

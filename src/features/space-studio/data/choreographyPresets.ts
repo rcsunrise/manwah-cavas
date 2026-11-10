@@ -893,12 +893,33 @@ export function mapStudioSlotsToAssignments(
       }
     }
 
+    // 模板里的人体姿态、道具、后仰角度和脚托状态要完整带进槽位，否则出图只剩两句简述
+    const slotText = `${slotTpl.positionDesc} ${slotTpl.actionDesc} ${slotTpl.ergonomicPosture || ''}`;
+    const reclineAngleDeg = parseReclineAngle(slotText);
+    const footrestExtended =
+      /脚托.{0,8}(展开|托起|承托|平托)|(架|搁|放)在脚托|展开脚托/.test(slotText) || (reclineAngleDeg !== undefined && reclineAngleDeg >= 120);
+    const actionDesc = [
+      slotTpl.actionDesc,
+      slotTpl.ergonomicPosture ? `姿态：${slotTpl.ergonomicPosture}` : '',
+      slotTpl.suggestedProps?.length ? `道具：${slotTpl.suggestedProps.join('、')}` : ''
+    ]
+      .filter(Boolean)
+      .join('；');
+
     return {
       id: `slot-studio-${Date.now()}-${idx + 1}`,
       modelId: matchedModel?.id,
       modelName: matchedModel ? (matchedModel.nameZh || matchedModel.name) : undefined,
       positionDesc: slotTpl.positionDesc,
-      actionDesc: slotTpl.actionDesc
+      actionDesc,
+      ...(reclineAngleDeg !== undefined ? { reclineAngleDeg } : {}),
+      ...(footrestExtended ? { footrestState: 'extended' as const } : {})
     };
   });
+}
+
+/** 从“单椅 160° 深度后仰睡眠位”这类描述里取靠背后仰角度；只认 100°~175° 的功能座角度 */
+export function parseReclineAngle(text: string): number | undefined {
+  const match = text.match(/(1[0-7]\d)\s*(°|度)/);
+  return match ? Number(match[1]) : undefined;
 }

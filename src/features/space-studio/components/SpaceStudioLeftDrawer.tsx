@@ -1,4 +1,5 @@
 // src/features/space-studio/components/SpaceStudioLeftDrawer.tsx
+import { Images } from 'lucide-react';
 import { SpaceOwnerPanel } from './SpaceOwnerPanel';
 import { getOwnerPersona } from '../data/ownerPersonas';
 import { getOwnerStyleBoost } from '../engine/ownerContext';
@@ -18,7 +19,6 @@ import {
   Loader2,
   Layers,
   Building,
-  RefreshCw,
   Box,
   SlidersHorizontal,
   Upload,
@@ -57,6 +57,8 @@ interface SpaceStudioLeftDrawerProps {
   selectedOwnerViewId: string | null;
   onChangeOwner: (ownerId: string | null) => void;
   onChangeOwnerView: (viewId: string | null) => void;
+  shotMaterialSummary?: { filled: number; total: number };
+  onOpenShotMaterials?: () => void;
   onUseAiLayout: (layout: AgentLayoutResult) => SpacePreset;
   onSaveAiStyle: (style: AgentStyleResult) => StylePreset;
   onDeleteAiSpace: (spaceId: string) => void;
@@ -67,7 +69,6 @@ interface SpaceStudioLeftDrawerProps {
   onSelectStyle: (style: StylePreset) => void;
 
   products: ProductAsset[];
-  onSyncFromCanvas?: () => void;
   onOpenUploadModal?: (productToEdit?: ProductAsset | null) => void;
   onAddProduct?: (product: ProductAsset) => void;
   onBatchAddProducts?: (products: ProductAsset[]) => void;
@@ -101,6 +102,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   selectedOwnerViewId,
   onChangeOwner,
   onChangeOwnerView,
+  shotMaterialSummary,
+  onOpenShotMaterials,
   onUseAiLayout,
   onSaveAiStyle,
   onDeleteAiSpace,
@@ -109,7 +112,6 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
   selectedStyle,
   onSelectStyle,
   products,
-  onSyncFromCanvas,
   onOpenUploadModal,
   onAddProduct,
   onBatchAddProducts,
@@ -627,8 +629,8 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
             {/* TAB 2: 产品 (WHAT) */}
             {activeTab === 'product' && (
               <div className="space-y-3">
-                {/* 1. 操作栏：自主上传产品 + 从画布同步 */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* 1. 操作栏：录入产品 + 镜头素材 */}
+                <div className={onOpenShotMaterials ? 'grid grid-cols-2 gap-2' : ''}>
                   <button
                     type="button"
                     onClick={() => {
@@ -638,7 +640,7 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                         fileInputRef.current.click();
                       }
                     }}
-                    className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl font-bold text-xs transition shadow-xs cursor-pointer ${
+                    className={`w-full flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl font-bold text-xs transition shadow-xs cursor-pointer ${
                       isLight
                         ? 'bg-amber-600 hover:bg-amber-700 text-white'
                         : 'bg-amber-600 hover:bg-amber-500 text-white'
@@ -648,20 +650,20 @@ export const SpaceStudioLeftDrawer: React.FC<SpaceStudioLeftDrawerProps> = ({
                     <Upload className="w-3.5 h-3.5 shrink-0" />
                     <span className="whitespace-nowrap">录入产品</span>
                   </button>
-
-                  {onSyncFromCanvas && (
+                  {onOpenShotMaterials && (
                     <button
                       type="button"
-                      onClick={onSyncFromCanvas}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border font-semibold text-xs transition cursor-pointer ${
-                        isLight
-                          ? 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
-                          : 'bg-stone-800/80 hover:bg-stone-800 text-stone-300 border-stone-700'
+                      onClick={onOpenShotMaterials}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border font-bold text-xs transition cursor-pointer ${
+                        isLight ? 'bg-white hover:bg-amber-50 text-amber-800 border-amber-300' : 'bg-stone-900 hover:bg-stone-800 text-amber-300 border-amber-500/40'
                       }`}
-                      title="从视觉企划创意画布一键导入解析出的产品真值"
+                      title="按镜头录入实拍素材，A00 与 A01 共用一张，生成时自动匹配"
                     >
-                      <RefreshCw className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="whitespace-nowrap">同步画布</span>
+                      <Images className="w-3.5 h-3.5 shrink-0" />
+                      <span className="whitespace-nowrap">镜头素材</span>
+                      {shotMaterialSummary && (
+                        <span className="text-[10px] font-mono opacity-80">{shotMaterialSummary.filled}/{shotMaterialSummary.total}</span>
+                      )}
                     </button>
                   )}
                 </div>

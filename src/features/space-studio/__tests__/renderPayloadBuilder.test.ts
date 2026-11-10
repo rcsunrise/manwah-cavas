@@ -155,6 +155,44 @@ describe('renderPayloadBuilder (Unified Render Candidate Payload Engine)', () =>
     expect(payload.promptSnapshot.isHumanPass).toBe(true);
   });
 
+  it('sends one identity reference per assigned slot and keeps each slot number', async () => {
+    const targetShot = shots.find((s) => s.templateCode === 'A01')!;
+    const models = ['f', 'gm', 'd', 'gp', 'm', 's'].map((id) => ({ id, name: id, views: { portrait: `https://example.com/${id}.webp` } }) as any);
+    const slotIds = ['f', undefined, 'gm', 'd', 'gp', 'm', 's'];
+    const payload = buildRenderCandidatesPayload({
+      projectId: 'test-project',
+      targetShot,
+      candidateCount: 1,
+      activeSettings: { model: 'gemini-nano-banana-2.1-preview', resolution: '2K', aspectRatio: '4:3', useRandomSeed: true, autoModelFallback: false, renderMode: 'orchestration' },
+      selectedSpace: spacePreset,
+      selectedStyle: stylePreset,
+      products,
+      shots,
+      sceneMaster: null,
+      blueprint,
+      computeConfig: { model: 'gemini-nano-banana-2.1-preview', resolution: '2K', aspectRatio: '4:3', namingPreset: 'standard' },
+      isHumanPass: true,
+      baseShotImage: 'https://example.com/base.webp',
+      activeTargetHumanLayout: {
+        characterCount: 7,
+        mode: 'custom',
+        disallowExtraCharacters: true,
+        slots: slotIds.map((modelId, i) => ({ id: `slot-${i + 1}`, modelId, positionDesc: '', actionDesc: '' })) as any
+      },
+      allModels: models,
+      compiledHuman: { positivePrompt: 'family', negativePrompt: '' }
+    });
+    expect(payload.characterReferenceImages.map((c: any) => [c.modelId, c.slotNumber])).toEqual([
+      ['f', 1], ['gm', 3], ['d', 4], ['gp', 5], ['m', 6], ['s', 7]
+    ]);
+
+    const { buildHumanPassEditPrompt, MAX_CHARACTER_REFERENCES } = await import('../../../../server/services/spaceImageGenerationService');
+    expect(MAX_CHARACTER_REFERENCES).toBe(6);
+    const prompt = buildHumanPassEditPrompt({ slotBriefs: 'x', personCount: 7, charRefCount: 2, charSlotNumbers: [1, 3] });
+    expect(prompt).toContain('Reference Image 2 shows the person of Character Slot #1.');
+    expect(prompt).toContain('Reference Image 3 shows the person of Character Slot #3.');
+  });
+
   describe('A02 studio_swap angle source guard (A02 极简换景 45° 角度源守卫)', () => {
     const swapSettings = {
       model: 'gemini-nano-banana-2.1-preview',

@@ -577,6 +577,15 @@ export const SpaceStudioShotNavigator: React.FC<SpaceStudioShotNavigatorProps> =
                     </div>
                   )}
 
+                  {shot.customReferenceImage && (
+                    <img
+                      src={shot.customReferenceImage}
+                      alt=""
+                      title="已录入镜头素材，生成时自动使用"
+                      className="absolute top-1 left-1/2 -translate-x-1/2 z-20 w-7 h-7 rounded-md object-cover border-2 border-white shadow pointer-events-none"
+                    />
+                  )}
+
                   {isActive && (
                     <motion.div
                       layoutId="activeShotNodeIndicator"

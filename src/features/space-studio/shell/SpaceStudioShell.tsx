@@ -1,3 +1,6 @@
+import { labelLayoutAction, resolveActionLabel, templateActionLabel } from '../engine/choreographyMatching';
+import { ShotMaterialModal } from '../components/ShotMaterialModal';
+import { buildShotMaterialSlots, getMaterialSlotShotIds, selectBatchShotsByMaterial, uploadShotMaterial } from '../engine/shotMaterialSlots';
 import { getOwnerPersona } from '../data/ownerPersonas';
 import { applyOwnerToSpace } from '../engine/ownerContext';
 import { AgentEnsembleAdviceItem, applyEnsembleAdvice, isInEnsemble } from '../data/ensembleAgentBridge';
@@ -258,6 +261,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
   // 清除当前页面生成记录与开启新作业弹窗状态
   const [isClearRecordsModalOpen, setIsClearRecordsModalOpen] = useState<boolean>(false);
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
+  const [isShotMaterialOpen, setIsShotMaterialOpen] = useState(false);
 
   // 动态同步画布打标与当前场景关联的真实产品套组 (告别静态假数据坐标偏离)
   useEffect(() => {
@@ -1555,7 +1559,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         mode: tpl.mode,
         characterCount: slots.length,
         disallowExtraCharacters: true,
-        slots
+        slots,
+        ...labelLayoutAction(slots, templateActionLabel(tpl))
       };
     },
     [availableModels, shotHumanLayouts]
@@ -1605,6 +1610,8 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     };
 
     window.addEventListener('manwah_space_assets_changed', handleAssetsChange);
+    // 角色库可能在开始监听前就已加载完成，这里补读一次，避免一直停在空列表
+    handleAssetsChange();
     return () => {
       isMounted = false;
       window.removeEventListener('manwah_space_assets_changed', handleAssetsChange);
@@ -2517,13 +2524,21 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
       const candidateShots = shots.filter(
         (s) => s.templateCode !== 'A00' && s.status !== 'generating' && (!s.revisions || s.revisions.length === 0)
       );
-      if (candidateShots.length === 0) {
-        console.log('[SpaceStudioShell] 所有衍生镜头均已有方案或正在渲染，无需重复生成');
+      // 已录入镜头素材时只生成有素材的镜头
+      const { shots: materialShots, skipped: skippedShots } = selectBatchShotsByMaterial(candidateShots, shots);
+      if (skippedShots.length > 0) {
+        setFeedbackNotice({
+          type: 'info',
+          text: `已跳过 ${skippedShots.length} 个未录入素材的镜头：${skippedShots.map((s) => getShotDisplayCode(s)).join('、')}`
+        });
+      }
+      if (materialShots.length === 0) {
+        console.log('[SpaceStudioShell] 所有衍生镜头均已有方案、正在渲染或缺少素材，无需生成');
         return;
       }
 
       const concurrency = 2; // 自适应平滑并发，防止瞬间并发过高打穿上游限流
-      const queue = [...candidateShots];
+      const queue = [...materialShots];
       const executing: Promise<any>[] = [];
 
       for (const shot of queue) {
@@ -2760,6 +2775,7 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         activeTargetHumanLayout,
         allModels
       );
+      const humanActionLabel = resolveActionLabel(activeTargetHumanLayout);
 
       const isBaseUploaded = Boolean(
         (targetShot as any)?.isCustomUploadedShot ||
@@ -2860,13 +2876,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         ...candidateGenerationMeta(initialCandidate),
         status: 'approved',
         revisionType: 'human',
-        exportLabels: inheritExportLabels(existingRevs, parentRevId),
+        // 记录这次用的动作，导出文件名和生成记录里都能区分同一镜头的不同动作
+        exportLabels: { ...(inheritExportLabels(existingRevs, parentRevId) || { space: '', style: '' }), action: humanActionLabel },
         label: isBaseUploaded
           ? `v${nextRevNum} · 实拍底图${humanLayout.characterCount}人模特方案`
           : `v${nextRevNum} · ${humanLayout.characterCount}人模特入座方案`,
-        metaSummary: isBaseUploaded
-          ? '实拍底图绝对保真 · 仅添加模特'
-          : `模特自然落座 · 零形变商用精修`,
+        metaSummary: `${isBaseUploaded ? '实拍底图绝对保真 · 仅添加模特' : '模特自然落座 · 零形变商用精修'}${humanActionLabel ? ` · ${humanActionLabel}` : ''}`,
         score: {
           productIdentity: 96,
           placement: 97,
@@ -3593,6 +3608,22 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
     setFeedbackNotice({ type: 'info', text: `已删除 ${revisionIds.length} 个版本` });
   }, [handleDeleteRevision]);
 
+  // 镜头素材：写到坑位内全部镜头（A00 与 A01 共用），生成时作为底图自动使用
+  const handleAssignShotMaterial = (shotIds: string[], imageUrl: string | null) => {
+    setShots((prev) =>
+      prev.map((s) =>
+        shotIds.includes(s.id)
+          ? {
+              ...s,
+              customReferenceImage: imageUrl || undefined,
+              isUserUploadedPhoto: Boolean(imageUrl) || (s.revisions || []).some((r: any) => r.isUserUploaded)
+            }
+          : s
+      )
+    );
+    if (imageUrl) handleUpdateComputeConfig({ renderMode: 'studio_swap' });
+  };
+
   // 户型切换联动：自动重新适配空间蓝图并保持固定
   const handleSelectSpace = (space: SpacePreset) => {
     setSelectedSpace(space);
@@ -3793,6 +3824,11 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             setSelectedOwnerViewId(null);
           }}
           onChangeOwnerView={setSelectedOwnerViewId}
+          shotMaterialSummary={{
+            filled: buildShotMaterialSlots(shots).filter((slot) => slot.image).length,
+            total: buildShotMaterialSlots(shots).length
+          }}
+          onOpenShotMaterials={() => setIsShotMaterialOpen(true)}
           onUseAiLayout={handleUseAiLayout}
           onSaveAiStyle={handleSaveAiStyle}
           onDeleteAiSpace={handleDeleteAiSpace}
@@ -3801,7 +3837,6 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           selectedStyle={selectedStyle}
           onSelectStyle={setSelectedStyle}
           products={products}
-          onSyncFromCanvas={handleSyncFromCanvas}
           onOpenUploadModal={handleOpenUploadModal}
           onAddProduct={handleAddProduct}
           onBatchAddProducts={handleBatchSaveProductsFromModal}
@@ -4106,19 +4141,14 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
             setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, boundProductId: productId } : s));
           }}
           onUploadCustomShotRef={async (shotId, file) => {
-            const dataUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (e) => resolve((e.target?.result as string) || '');
-              reader.readAsDataURL(file);
-            });
-            if (dataUrl) {
-              setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: dataUrl, isUserUploadedPhoto: true } : s));
-              handleUpdateComputeConfig({ renderMode: 'studio_swap' });
+            const shotIds = getMaterialSlotShotIds(shots, shotId);
+            try {
+              handleAssignShotMaterial(shotIds, await uploadShotMaterial(projectId, shotIds.length > 1 ? 'A00-A01' : shotId, file));
+            } catch (err: any) {
+              setToastMessage(err?.message || '镜头素材上传失败');
             }
           }}
-          onRemoveCustomShotRef={(shotId) => {
-            setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, customReferenceImage: undefined } : s));
-          }}
+          onRemoveCustomShotRef={(shotId) => handleAssignShotMaterial(getMaterialSlotShotIds(shots, shotId), null)}
           onToggleDecoupleMaster={(shotId, decouple) => {
             setShots((prev) => prev.map((s) => s.id === shotId ? { ...s, decoupleOldMaster: decouple } : s));
           }}
@@ -4234,6 +4264,15 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
         theme={theme}
       />
 
+      <ShotMaterialModal
+        open={isShotMaterialOpen}
+        projectId={projectId}
+        shots={shots}
+        isLight={theme === 'light'}
+        onClose={() => setIsShotMaterialOpen(false)}
+        onAssign={handleAssignShotMaterial}
+      />
+
       {/* 5. Product Upload / Replace / Readings Modal */}
       {isProductUploadModalOpen && (
         <ProductUploadModal
@@ -4245,6 +4284,12 @@ export const SpaceStudioShell: React.FC<SpaceStudioShellProps> = ({
           }}
           onSaveProduct={handleSaveProductFromModal}
           onBatchSaveProducts={handleBatchSaveProductsFromModal}
+          onOpenShotMaterials={() => {
+            setIsProductUploadModalOpen(false);
+            setEditingProduct(null);
+            setInitialUploadImages([]);
+            setIsShotMaterialOpen(true);
+          }}
           initialProduct={editingProduct}
           initialImages={initialUploadImages}
         />

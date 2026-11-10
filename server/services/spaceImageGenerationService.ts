@@ -557,10 +557,22 @@ async function normalizeInlineBuffer(rawBuf: Buffer, maxEdge = 1024): Promise<{ 
 const SINGLE_FRAME_NEGATIVES =
   'collage, photo grid, multiple panels, split screen, diptych, triptych, contact sheet, character sheet layout, repeated same person, duplicated person';
 
-function buildCharacterReferenceClause(charCount: number): string {
+// 每位入座人物都带上自己的身份参考图；之前固定只取前 2 张，第 3 位以后只能靠文字描述生成，长相与角色库差异很大
+export const MAX_CHARACTER_REFERENCES = 6;
+// 角色卡是多宫格大图，先按高清读取再裁头像；按 1024 读取时裁出的头像只有约 170px，五官细节不足
+const CHARACTER_SHEET_MAX_EDGE = 2048;
+
+/** 参考图与槽位一一对应：第 i 张身份图（参考图 i+2）属于哪个槽位 */
+export function describeCharacterReferenceMapping(charSlots: number[]): string {
+  return charSlots.map((slot, i) => `Reference Image ${i + 2} shows the person of Character Slot #${slot}.`).join(' ');
+}
+
+function buildCharacterReferenceClause(charSlots: number[]): string {
+  const charCount = charSlots.length;
   if (charCount <= 0) return '';
-  const refLabel = charCount > 1 ? 'REFERENCE IMAGES 2 & 3' : 'REFERENCE IMAGE 2';
-  return `${refLabel}: Character identity reference(s) (headshots, possibly cut from multi-panel design boards). Use them ONLY to replicate each person's facial structure, ethnicity, age, hair, expression and outfit. NEVER copy their layout, panels, grid, plain backdrop or text.
+  const refLabel = charCount > 1 ? `REFERENCE IMAGES 2-${charCount + 1}` : 'REFERENCE IMAGE 2';
+  return `${describeCharacterReferenceMapping(charSlots)}
+${refLabel}: Character identity reference(s) (headshots, possibly cut from multi-panel design boards). Use them ONLY to replicate each person's facial structure, ethnicity, age, hair, expression and outfit. NEVER copy their layout, panels, grid, plain backdrop or text.
 [SINGLE-FRAME OUTPUT MANDATE]: The output MUST be ONE single continuous photograph with exactly the same frame, room and furniture as Reference Image 1. NEVER produce a collage, grid, split screen, multi-panel layout or contact sheet, and never show the same person more than once.`;
 }
 
@@ -572,20 +584,22 @@ export function buildHumanPassEditPrompt(params: {
   slotBriefs: string;
   personCount: number;
   charRefCount: number;
+  /** 每张身份参考图对应的槽位号；不传时按顺序对应 1、2、3… */
+  charSlotNumbers?: number[];
   disallowExtraPeople?: boolean;
 }): string {
-  const { slotBriefs, personCount, charRefCount, disallowExtraPeople = true } = params;
+  const { slotBriefs, personCount, charRefCount, charSlotNumbers, disallowExtraPeople = true } = params;
   const people = personCount === 1 ? 'ONE person' : `${personCount} people`;
-  const identityLines = Array.from({ length: charRefCount }, (_, i) =>
-    `Reference Image ${i + 2} shows the person of Character Slot #${i + 1}.`
-  ).join(' ');
+  const identityLines = describeCharacterReferenceMapping(
+    Array.from({ length: charRefCount }, (_, i) => charSlotNumbers?.[i] ?? i + 1)
+  );
   const identityClause = charRefCount > 0
     ? `${identityLines} Use these references ONLY for identity: copy face, age, ethnicity and hairstyle; ignore their plain backdrop and any panels or text.`
     : '';
 
   return `Edit Reference Image 1. Keep Reference Image 1 exactly as it is: same camera angle, framing, room, walls, window view, lighting, and every furniture piece with its shape, color, leather, position and current footrest state. Do not redraw, restyle, move, crop or replace anything.
 
-Only add ${people} as described below, each on the furniture designated for them in Reference Image 1. A footrest may only change when a character brief explicitly asks for it.
+Only add ${people} as described below, each on the furniture designated for them in Reference Image 1. A footrest or backrest recline angle may only change when a character brief explicitly asks for it, and then only on that seat.
 ${identityClause}
 Realistic body weight, leather compression and contact shadows.
 
@@ -795,8 +809,8 @@ export class SpaceImageGenerationService {
   /**
    * 辅助方法：解析图片引用为 inlineData 格式
    */
-  public static async resolveImageInline(imageRef?: string): Promise<{ mimeType: string; data: string } | null> {
-    return resolveImageInlineData(imageRef);
+  public static async resolveImageInline(imageRef?: string, maxEdge?: number): Promise<{ mimeType: string; data: string } | null> {
+    return resolveImageInlineData(imageRef, maxEdge);
   }
 
   /**
@@ -926,26 +940,35 @@ export class SpaceImageGenerationService {
     }
 
     // 收集人物参考图 (从 characterReferenceImages 或 selectedModels 中提取真实模特真值)
-    const rawCharImages: string[] = [];
+    const rawCharImages: Array<{ url: string; slot?: number }> = [];
     if (Array.isArray(characterReferenceImages) && characterReferenceImages.length > 0) {
-      for (const c of characterReferenceImages) {
-        if (c.imageUrl && typeof c.imageUrl === 'string') rawCharImages.push(c.imageUrl);
+      for (const c of characterReferenceImages as Array<{ imageUrl?: string; slotNumber?: number }>) {
+        if (c.imageUrl && typeof c.imageUrl === 'string') {
+          rawCharImages.push({ url: c.imageUrl, slot: typeof c.slotNumber === 'number' ? c.slotNumber : undefined });
+        }
       }
     } else if (Array.isArray(selectedModels) && selectedModels.length > 0) {
       for (const m of selectedModels) {
         const img = m.views?.portrait || m.views?.front || m.thumbnail || m.coverImage;
-        if (img && typeof img === 'string') rawCharImages.push(img);
+        if (img && typeof img === 'string') rawCharImages.push({ url: img });
       }
     }
 
-    // 角色资产图是多宫格角色卡，先裁成单人头像再发送，避免模型照搬排版输出拼图
-    const charInlines = await Promise.all(
-      (
-        await Promise.all(rawCharImages.slice(0, 2).map(imgUrl => resolveImageInlineData(imgUrl)))
+    // 角色资产图是多宫格角色卡，先裁成单人头像再发送，避免模型照搬排版输出拼图；
+    // 读不到的图直接跳过，槽位号保留，参考图不会对错人
+    const resolvedChars = (
+      await Promise.all(
+        rawCharImages.slice(0, MAX_CHARACTER_REFERENCES).map(async (c, i) => {
+          const inline = await resolveImageInlineData(c.url, CHARACTER_SHEET_MAX_EDGE);
+          return inline ? { inline, slot: c.slot ?? i + 1 } : null;
+        })
       )
-        .filter((item): item is { mimeType: string; data: string } => item !== null)
-        .map(item => cropCharacterIdentity(item, input.userId || 'system'))
+    ).filter((item): item is { inline: { mimeType: string; data: string }; slot: number } => item !== null);
+    const croppedChars = await Promise.all(
+      resolvedChars.map(async (c) => ({ slot: c.slot, inline: await cropCharacterIdentity(c.inline, input.userId || 'system') }))
     );
+    const charInlines = croppedChars.map((c) => c.inline);
+    const charSlotNumbers = croppedChars.map((c) => c.slot);
 
     // 确定有效色彩与材质描述 (采用中英文权威词典与 Hex 工业色卡精准绑定)
     const effectiveColor = translateColorToEnglish(productColor || activePrimaryProduct?.colors?.[0]);
@@ -1271,6 +1294,7 @@ ${isArmless ? '- SILHOUETTE & ERGONOMIC LOCK: This is strictly an ARMLESS LOUNGE
             slotBriefs: input.humanSlotBriefs,
             personCount: humanLayout?.characterCount || humanLayout?.slots?.length || charInlines.length || 1,
             charRefCount: charInlines.length,
+            charSlotNumbers,
             disallowExtraPeople: humanLayout?.disallowExtraCharacters !== false
           });
         } else if (input.preserveBasePhotoOnly || isHumanPass) {
@@ -1286,7 +1310,7 @@ Your task is EXCLUSIVELY to photorealistically insert the designated real human 
 2. ABSOLUTE PROHIBITION ON ZOOMING OR CROPPING: ABSOLUTELY DO NOT ZOOM IN! DO NOT ZOOM OUT! DO NOT crop out the left side chair, coffee table, or any surrounding elements! DO NOT re-frame or shift the sofa! The sofa and surrounding furniture must retain their exact scale, pixel position, and coordinates as in Reference Image 1!
 3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with realistic body weight, fabric folds, and authentic contact ambient occlusion shadows on the seating cushions. All surrounding architecture, windows, walls, and flooring remain completely untouched!
 
-${buildCharacterReferenceClause(charInlines.length)}
+${buildCharacterReferenceClause(charSlotNumbers)}
 
 STRICT OCCUPANCY & COMPOSITION RULES:
 1. The designated character(s) MUST BE SEATED ON THE HERO SOFA naturally with relaxed posture and realistic body contact.
@@ -1312,7 +1336,7 @@ THE HERO SOFA MUST HAVE THE SPECIFIED PEOPLE SEATED AND RELAXING IN IT.
 2. ABSOLUTE PROHIBITION ON RE-FRAMING: DO NOT zoom in, DO NOT zoom out, DO NOT change the perspective angle, DO NOT shift furniture left or right. ZERO tolerance for camera drift!
 3. SEATING ACTION ONLY: Only photorealistically paint the designated models seated naturally into the existing sofa cushions of Reference Image 1 with genuine weight and contact shadows. All surrounding architecture, windows, walls, and flooring remain completely untouched!
 
-${buildCharacterReferenceClause(charInlines.length)}
+${buildCharacterReferenceClause(charSlotNumbers)}
 ${secondaryReferencesText ? `\n${secondaryReferencesText}\n` : ''}
 
 STRICT COMMERCIAL MANDATES:

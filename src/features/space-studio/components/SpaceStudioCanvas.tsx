@@ -839,6 +839,7 @@ export const SpaceStudioCanvas: React.FC<SpaceStudioCanvasProps> = ({
       spaceName: currentRevision ? currentRevision.exportLabels?.space : spacePreset?.name,
       styleName: currentRevision ? currentRevision.exportLabels?.style : stylePreset?.name || styleName,
       shotCode: getShotDisplayCode(activeShot),
+      actionLabel: currentRevision?.exportLabels?.action,
       revisionNumber: currentRevision?.revisionNumber,
       candidateNumber: candidates.length > 1 && candidateIndex >= 0 ? candidateIndex + 1 : undefined,
       modelLabel: formatGenerationModelLabel(

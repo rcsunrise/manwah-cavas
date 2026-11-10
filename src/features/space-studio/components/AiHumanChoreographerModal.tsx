@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { countMatchedSlots, fillMissingModelMatches, templateActionLabel } from '../engine/choreographyMatching';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -78,7 +79,7 @@ interface AiHumanChoreographerModalProps {
   sceneMasterImageUrl?: string;
   currentShotCode?: string; // 当前镜头代码，例如 A01~A08
   furnitureInventory?: string[]; // 产品分析识别出的画面家具清单
-  onApplyLayout: (newSlots: HumanSlotAssignment[], mode: '4' | '6' | 'custom') => void;
+  onApplyLayout: (newSlots: HumanSlotAssignment[], mode: '4' | '6' | 'custom', actionLabel?: string) => void;
 }
 
 export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps> = ({
@@ -111,6 +112,11 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
 
   // 本地编辑的 slots（支持生成后用户再次手动微调）
   const [editableSlots, setEditableSlots] = useState<ChoreographedSlotItem[]>([]);
+
+  // 角色库晚于编排结果加载时，按角色类型补齐还没关联的槽位
+  useEffect(() => {
+    setEditableSlots((prev) => (prev.length > 0 ? fillMissingModelMatches(prev, availableModels) : prev));
+  }, [availableModels]);
 
   if (!isOpen) return null;
 
@@ -147,7 +153,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
   // 一键直接套用影棚标准姿态模板（跳过等待，即刻绑定角色与工学姿态）
   const handleApplyStudioTemplateDirectly = (tpl: StudioChoreographyTemplate) => {
     const formatted = mapStudioSlotsToAssignments(tpl, availableModels);
-    onApplyLayout(formatted, tpl.mode);
+    onApplyLayout(formatted, tpl.mode, templateActionLabel(tpl));
     onClose();
   };
 
@@ -178,7 +184,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
       });
 
       setResult(res);
-      setEditableSlots(res.slots);
+      setEditableSlots(fillMissingModelMatches(res.slots, availableModels));
     } catch (err: any) {
       console.error('[AiHumanChoreographerModal] error:', err);
       setErrorMsg(err.message || 'AI 构思请求失败，请重试');
@@ -232,7 +238,7 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
     const count = formattedSlots.length;
     const mode = count === 4 ? '4' : count === 6 ? '6' : 'custom';
 
-    onApplyLayout(formattedSlots, mode);
+    onApplyLayout(formattedSlots, mode, result?.theme);
     onClose();
   };
 
@@ -593,14 +599,26 @@ export const AiHumanChoreographerModal: React.FC<AiHumanChoreographerModalProps>
                     {result.spatialSummary}
                   </p>
                 </div>
-                {result.source !== 'heuristic_engine' && (
-                <div className="shrink-0 text-right">
-                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    已完成角色库匹配
-                  </span>
-                </div>
-                )}
+                {result.source !== 'heuristic_engine' && (() => {
+                  const matched = countMatchedSlots(editableSlots, availableModels);
+                  const allMatched = matched === editableSlots.length;
+                  return (
+                    <div className="shrink-0 text-right">
+                      <span
+                        className={`text-[10px] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg border ${
+                          allMatched ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : 'text-amber-300 bg-amber-500/10 border-amber-500/40'
+                        }`}
+                      >
+                        {allMatched ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                        {allMatched
+                          ? '已完成角色库匹配'
+                          : availableModels.length === 0
+                          ? '角色库为空，请先添加模特'
+                          : `已匹配 ${matched}/${editableSlots.length} 位，其余请手动选择`}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {result.notice && (

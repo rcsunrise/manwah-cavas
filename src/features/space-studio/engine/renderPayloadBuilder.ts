@@ -324,22 +324,28 @@ export function buildRenderCandidatesPayload(params: BuildRenderCandidatesPayloa
   const hasBaseBaseline = Boolean(baseShotImage);
   let promptSnapshot: Record<string, any> = compiled;
   let selectedModelsPayload: ModelAsset[] | undefined;
-  let characterRefImagesPayload: Array<{ modelId: string; name: string; imageUrl: string; role: string }> | undefined;
+  let characterRefImagesPayload: Array<{ modelId: string; name: string; imageUrl: string; role: string; slotNumber: number }> | undefined;
 
   if (isHumanPass && activeTargetHumanLayout) {
-    const assignedIds = activeTargetHumanLayout.slots.map((s) => s.modelId).filter(Boolean) as string[];
-    const matched = assignedIds.map((id) => allModels.find((m) => m.id === id)).filter(Boolean) as ModelAsset[];
-    const targetModelList = matched.length > 0 ? matched : allModels.slice(0, activeTargetHumanLayout.characterCount);
+    // 记录每位模特所在的槽位号，服务端据此告诉模型“参考图 N 是第几号人物”，中间有空槽位也不会对错人
+    const slotModels = activeTargetHumanLayout.slots
+      .map((s, i) => ({ slotNumber: i + 1, model: allModels.find((m) => m.id === s.modelId) }))
+      .filter((x): x is { slotNumber: number; model: ModelAsset } => Boolean(x.model));
+    const targetModelList =
+      slotModels.length > 0
+        ? slotModels
+        : allModels.slice(0, activeTargetHumanLayout.characterCount).map((model, i) => ({ slotNumber: i + 1, model }));
 
-    selectedModelsPayload = targetModelList;
+    selectedModelsPayload = targetModelList.map((x) => x.model);
     characterRefImagesPayload = targetModelList
-      .map((m) => ({
+      .map(({ slotNumber, model: m }) => ({
         modelId: m.id,
         name: m.nameZh || m.name,
         imageUrl: m.views?.portrait || m.views?.front || m.thumbnail || m.coverImage,
-        role: 'person_reference'
+        role: 'person_reference',
+        slotNumber
       }))
-      .filter((c) => Boolean(c.imageUrl)) as Array<{ modelId: string; name: string; imageUrl: string; role: string }>;
+      .filter((c) => Boolean(c.imageUrl)) as Array<{ modelId: string; name: string; imageUrl: string; role: string; slotNumber: number }>;
 
     promptSnapshot = {
       ...compiled,

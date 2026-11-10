@@ -212,6 +212,8 @@ export interface HumanSlotAssignment {
   actionDesc: string;        // 姿态动作描述，例如：舒展半躺，手持杂志
   seatType?: HumanSeatType;  // AI 构思给出的结构化座位，优先于 positionDesc 关键词
   footrestState?: HumanFootrestState;
+  /** 功能座靠背后仰角度（度），例如 160 表示深度睡眠位；有值时出图允许这个座位的靠背放倒 */
+  reclineAngleDeg?: number;
 }
 
 export interface HumanLayoutConfig {
@@ -219,6 +221,10 @@ export interface HumanLayoutConfig {
   mode: '4' | '6' | 'custom';
   disallowExtraCharacters: boolean; // 禁止新增额外人物
   slots: HumanSlotAssignment[];
+  /** 这组动作的名称（模板名或 AI 构思主题），用于生成记录和导出文件名 */
+  actionLabel?: string;
+  /** actionLabel 对应的动作内容签名；动作被手动改过后签名不再一致，名称自动失效 */
+  actionLabelFor?: string;
 }
 
 export const DEFAULT_4_HUMAN_SLOTS: HumanSlotAssignment[] = [

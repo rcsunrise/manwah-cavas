@@ -1,5 +1,6 @@
 // src/features/space-studio/components/ProductUploadModal.tsx
 // MANWAH Space Studio｜产品资产上传窗口与多模态读数控制台 V3.0
+import { Images } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   ProductAsset,
@@ -108,6 +109,8 @@ interface ProductUploadModalProps {
   initialProduct?: ProductAsset | null;
   projectId?: string;
   initialImages?: UploadedImageItem[];
+  /** 按镜头录入实拍素材（每个镜头一张，A00 与 A01 共用） */
+  onOpenShotMaterials?: () => void;
 }
 
 export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
@@ -117,7 +120,8 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   onBatchSaveProducts,
   initialProduct = null,
   projectId = 'manwah-noble-space-01',
-  initialImages = []
+  initialImages = [],
+  onOpenShotMaterials
 }) => {
   const [uploadedImages, setUploadedImages] = useState<UploadedImageItem[]>(() => {
     if (initialImages && initialImages.length > 0) {
@@ -1796,6 +1800,17 @@ interface CanvasDraftPayload {
                 <Boxes className="w-3.5 h-3.5" />
                 <span>单品与切片分割</span>
               </button>
+              {onOpenShotMaterials && (
+                <button
+                  type="button"
+                  onClick={onOpenShotMaterials}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer text-stone-600 hover:text-stone-900"
+                  title="每个镜头录入一张实拍素材（A00 与 A01 共用），生成时按镜头自动匹配"
+                >
+                  <Images className="w-3.5 h-3.5" />
+                  <span>按镜头录入素材</span>
+                </button>
+              )}
             </div>
 
             <button
