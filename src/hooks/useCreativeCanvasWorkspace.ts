@@ -536,6 +536,32 @@ export function useCreativeCanvasWorkspace(
     return String(json.url);
   }, [workspaceIdParam]);
 
+  // 生成图落云端：只处理内嵌 data:image，重试 3 次拿云端地址；仍失败就提示，并优先用服务端本地兜底地址（避免把大 base64 留在节点里）
+  const persistGeneratedImage = useCallback(async (imageUrl: string, label: string): Promise<string> => {
+    if (!imageUrl.startsWith('data:image/')) return imageUrl;
+    const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
+    let localFallback = '';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/canvases/${encodeURIComponent(canvasId)}/inline-images`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl: imageUrl })
+        });
+        const json = await res.json().catch(() => null);
+        const url = res.ok && json?.url ? String(json.url) : '';
+        if (/^https?:\/\//i.test(url)) return url;
+        if (url) localFallback = url; // 服务端云端没传上，退回了本机地址
+      } catch {
+        // 网络抖动，下面重试
+      }
+      if (attempt < 3) await new Promise(r => setTimeout(r, 800 * attempt));
+    }
+    addAgentMessage(`⚠️ 「${label}」图片没能上传到云端（网络不稳），目前只存在本机，换设备或清缓存后可能丢失。建议稍后点「再次生成」，或先下载保存。`);
+    return localFallback || imageUrl;
+  }, [workspaceIdParam, addAgentMessage]);
+
   // 视频任务完成后把成片回传到对话：先本地显示，再落库（失败不影响画布）
   const postVideoResultToChat = useCallback((card: AgentVideoCard) => {
     const meta = [card.modelKey, card.resolution, card.durationSeconds ? `${Math.round(card.durationSeconds)}s` : ''].filter(Boolean).join(' · ');
@@ -2333,12 +2359,14 @@ export function useCreativeCanvasWorkspace(
     }
 
     // Prioritize user-edited sceneNode on canvas, falling back to currentRun.plan.screens
+    // 选中的若是已生成的海报（含模板 A），它的标题/提示词是成品信息，不能当分镜策划来源，否则标题会被当文案画进新图
+    const isFinishedPosterNode = (n: Node) => n.type === 'generatedImageNode' || Boolean((n.data as any)?.templatePoster);
     const sceneNode = currentNodes.find(
-      n => n.id === `scene-plan-node-${screenIndex}` || 
-           n.data?.screenIndex === screenIndex || 
+      n => n.id === `scene-plan-node-${screenIndex}` ||
+           n.data?.screenIndex === screenIndex ||
            Number(n.data?.screenIndex) === screenIndex ||
            n.id === `screen-${screenIndex}` ||
-           (n.id === selectedNodeId && (n.data?.promptSuggestion || n.data?.prompt))
+           (n.id === selectedNodeId && !isFinishedPosterNode(n) && (n.data?.promptSuggestion || n.data?.prompt))
     );
 
     const baseScreen = currentRun?.plan?.screens?.find(s => s.screenIndex === screenIndex);
@@ -2650,6 +2678,8 @@ export function useCreativeCanvasWorkspace(
         );
 
         // Create new distinct GeneratedImageNode (parallel branching, non-overwriting)
+        // 先落云端再建节点：节点里只放地址，不留大 base64
+        const persistedImageUrl = await persistGeneratedImage(result.imageUrl, screen!.screenTitle || `第 ${screenIndex} 屏`);
         const resultNodeId = `gen-img-node-s${screenIndex}-${withText ? 'poster' : 'clean'}-${Date.now()}`;
         setNodes(prev => {
           const sameSceneImages = prev.filter(
@@ -2675,7 +2705,7 @@ export function useCreativeCanvasWorkspace(
               coreSellingPoint: screen!.coreSellingPoint,
               themeTitle: currentRun?.plan?.themeTitle,
               withText: !!withText,
-              imageUrl: result.imageUrl,
+              imageUrl: persistedImageUrl,
               dimensions: resolutionToUse === '4K' ? '3840x2160' : resolutionToUse === '2K' ? '2560x1440' : '1024x1365',
               aspectRatio: screen!.aspectRatio || '3:4',
               model: result.actualModel || modelToUse,
@@ -2684,8 +2714,8 @@ export function useCreativeCanvasWorkspace(
               version,
               reviewStatus: 'pendingReview',
               prompt: fullPrompt,
-              cleanBackgroundUrl: withText ? undefined : result.imageUrl,
-              rawImageUrl: result.imageUrl,
+              cleanBackgroundUrl: withText ? undefined : persistedImageUrl,
+              rawImageUrl: persistedImageUrl,
               onOpenPosterStudio: () => onOpenPosterStudioRef.current?.(screenIndex),
               onGeneratePoster: () => handleGenerateSceneImage(screenIndex, undefined, modelToUse, resolutionToUse, true),
               onRegenerate: () => handleGenerateSceneImage(screenIndex, undefined, modelToUse, resolutionToUse, false),
@@ -2907,10 +2937,7 @@ export function useCreativeCanvasWorkspace(
       if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
       return json;
     };
-    const storeImage = async (dataUrl: string) => {
-      const json = await postJson(`/api/canvases/${encodeURIComponent(canvasId)}/inline-images`, { dataUrl }).catch(() => null);
-      return (json?.url as string) || dataUrl;
-    };
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '模板 A 海报');
 
     try {
       const { concept } = await postJson('/api/poster-templates/concept', {
@@ -2945,7 +2972,8 @@ export function useCreativeCanvasWorkspace(
           position: { x: basePos.x + 460, y: basePos.y + siblings * 420 },
           data: {
             sceneIndex: params?.screenIndex || 0,
-            screenTitle: `模板 A · ${concept.name}`,
+            // 只放海报名：screenTitle 会被排版叠加、企划出图当标题用，不能带“模板 A”标签（节点页脚显示时再加前缀）
+            screenTitle: concept.name,
             coreSellingPoint: concept.subtitle,
             themeTitle: concept.idea,
             withText: true,

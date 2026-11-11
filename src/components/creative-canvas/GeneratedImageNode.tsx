@@ -49,8 +49,12 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
   // 模板 A 海报文字已由后端用真实字体烧进成品图，排版工坊 / T文字叠加对它无意义，仅隐藏入口
   const isTemplatePoster = Boolean((data as any).templatePoster);
 
+  // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
+  const [imgRetry, setImgRetry] = React.useState(0);
+
   React.useEffect(() => {
     setImgError(false);
+    setImgRetry(0);
   }, [data.imageUrl]);
   const [showConsistencyPanel, setShowConsistencyPanel] = useState(false);
   const [showCompositionModal, setShowCompositionModal] = useState(false);
@@ -555,13 +559,19 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
             {!imgError && imageUrl ? (
               <>
                 <img
-                  src={imageUrl}
+                  src={imgRetry > 0 && !imageUrl.startsWith('data:') ? `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}r=${imgRetry}` : imageUrl}
                   alt={`分镜 #${sceneIndex} ${screenTitle}`}
                   className="w-full h-full object-contain transition-transform duration-300"
                   draggable={false}
                   referrerPolicy="no-referrer"
                   onLoad={handleImageLoad}
-                  onError={() => setImgError(true)}
+                  onError={() => {
+                    if (imgRetry < 1 && !imageUrl.startsWith('data:')) {
+                      setTimeout(() => setImgRetry(c => (c < 1 ? c + 1 : c)), 1500);
+                    } else {
+                      setImgError(true);
+                    }
+                  }}
                 />
                 {!isTemplatePoster && (
                   <PosterTypographyOverlay
@@ -577,12 +587,13 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-stone-100 text-stone-400 text-center">
                 <Sparkles className="w-8 h-8 mb-2 text-[#B28C5A]/40 animate-pulse" />
-                <span className="text-xs font-medium text-stone-500">图片资源加载中或已更新</span>
-                <span className="text-[10px] text-stone-400 mt-1">请重试或重新生成分镜渲染</span>
+                <span className="text-xs font-medium text-stone-500">图片加载失败（已自动重试）</span>
+                <span className="text-[10px] text-stone-400 mt-1">可能是网络不稳，请再试一次；仍失败请重新生成</span>
                 {imageUrl && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setImgRetry(c => c + 1);
                       setImgError(false);
                     }}
                     className="mt-2 px-2.5 py-1 bg-white border border-stone-200 rounded text-[10px] text-stone-600 hover:text-[#B28C5A] hover:border-[#B28C5A] transition-colors shadow-xs"
@@ -669,8 +680,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
           {/* Action Footer */}
           <div className="p-2.5 bg-[#FAF8F5] border-t border-[#E5E0D8]/60 space-y-2">
             <div className="flex items-center justify-between text-[10px] text-stone-500">
-              <span className="truncate max-w-[130px] font-medium" title={screenTitle}>
-                {screenTitle}
+              <span className="truncate max-w-[130px] font-medium" title={isTemplatePoster ? `模板 A · ${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}>
+                {/* 旧节点的 screenTitle 已带“模板 A · ”前缀，先去掉再统一加，避免重复 */}
+                {isTemplatePoster ? `模板 A · ${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}
               </span>
               <div className="flex items-center gap-1 font-mono">
                 {data.productDnaVersionCode && (
