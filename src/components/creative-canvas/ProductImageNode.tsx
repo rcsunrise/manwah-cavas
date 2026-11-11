@@ -22,6 +22,19 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [imgRetry, setImgRetry] = useState(0);
+  // 换图后重新加载；存储网络抖动时自动重试一次，避免一次失败就永远显示成空的上传框
+  React.useEffect(() => {
+    setImgError(false);
+    setImgRetry(0);
+  }, [nodeData?.imageUrl]);
+  const handleImgError = () => {
+    if (imgRetry < 1) {
+      setTimeout(() => setImgRetry(r => r + 1), 1500);
+    } else {
+      setImgError(true);
+    }
+  };
 
   const handleUploadFile = (file: File) => {
     if (nodeData?.onUpload) {
@@ -155,10 +168,11 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
         {nodeData?.imageUrl && !imgError ? (
           <div className="relative w-full h-48 bg-stone-900/5 rounded-xl overflow-hidden border border-[#E5E0D8]/80 group flex items-center justify-center">
             <img
+              key={imgRetry}
               src={nodeData.imageUrl}
               alt={nodeData.fileName || 'Product Image'}
               className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-102"
-              onError={() => setImgError(true)}
+              onError={handleImgError}
             />
 
             {/* Hover Actions Bar */}
@@ -236,19 +250,36 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           <span className="text-stone-400">
             {nodeData?.uploadedAt ? `上传时间：${nodeData.uploadedAt}` : '支持拖拽/粘贴图片'}
           </span>
-          {nodeData?.imageUrl && nodeData?.onReanalyze && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                nodeData.onReanalyze?.();
-              }}
-              className="flex items-center gap-1 text-[#B28C5A] hover:text-[#9E7A4A] font-bold px-2 py-1 rounded-md bg-[#F9F5EF] hover:bg-[#F2EBDC] transition-all"
-            >
-              <RotateCw className="w-3 h-3" />
-              <span>重新分析</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5">
+            {nodeData?.imageUrl && nodeData?.onTemplatePoster && (
+              <button
+                type="button"
+                disabled={nodeData.templatePosterRunning}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nodeData.onTemplatePoster?.();
+                }}
+                title="用这张产品图生成模板 A 海报（多张产品图可同时生成）"
+                className="nodrag flex items-center gap-1 text-white font-bold px-2 py-1 rounded-md bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-60 disabled:cursor-wait transition-all"
+              >
+                {nodeData.templatePosterRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                <span>{nodeData.templatePosterRunning ? '海报生成中' : '模板海报'}</span>
+              </button>
+            )}
+            {nodeData?.imageUrl && nodeData?.onReanalyze && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  nodeData.onReanalyze?.();
+                }}
+                className="flex items-center gap-1 text-[#B28C5A] hover:text-[#9E7A4A] font-bold px-2 py-1 rounded-md bg-[#F9F5EF] hover:bg-[#F2EBDC] transition-all"
+              >
+                <RotateCw className="w-3 h-3" />
+                <span>重新分析</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <Handle type="source" position={Position.Right} id="source" className="!w-2.5 !h-2.5 !bg-[#B28C5A] !border-2 !border-white" />

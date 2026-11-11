@@ -26,9 +26,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# 系统依赖：ffmpeg 用于智能体“看视频”时抽帧（server/services/video/videoFrameSampler.ts）
+# 系统依赖：ffmpeg 用于智能体“看视频”时抽帧（server/services/video/videoFrameSampler.ts）；
+# fonts-noto-cjk 提供思源宋体 / 黑体（Noto Serif / Sans CJK），模板海报排版用（server/services/posterTemplate/posterFonts.ts）
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg \
+  && apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 
 # 仅安装生产运行依赖（减少镜像体积并提升安全水位）

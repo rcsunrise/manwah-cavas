@@ -75,6 +75,8 @@ export default function CreativeCanvasPage() {
     selectedResolution,
     setSelectedResolution,
     handleGenerateSceneImage,
+    handleGenerateTemplatePoster,
+    handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
 
@@ -898,6 +900,8 @@ export default function CreativeCanvasPage() {
             setSelectedResolution={setSelectedResolution}
             onGenerateSceneImage={handleTriggerGenerateSceneImage}
             onOpenPosterStudio={handleOpenPosterStudio}
+            onGenerateTemplatePoster={handleGenerateTemplatePoster}
+            onAddProductImage={handleAddProductNode}
             onPreviewGptImage={handleOpenGptPreviewManual}
             onApproveSceneImage={handleApproveSceneImage}
             onRejectSceneImage={handleRejectSceneImage}

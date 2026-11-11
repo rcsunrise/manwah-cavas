@@ -174,7 +174,7 @@ export const STUDIO_SWAP_REFINE_PROMPT = `画面精修重绘：以窗口1为底�
 [CRITICAL NEGATIVE INSTRUCTION]: ABSOLUTELY NO TEXT, NO NUMBERS, NO DIMENSION LINES, NO ARROWS, NO MEASUREMENTS, NO LABELS, NO ANNOTATIONS of any kind on the image. Even if the reference image contains text or dimensions, DO NOT include them in the final output. The final image MUST be a clean render without any overlaid text or UI elements.`;
 
 /** 调用统一网关出一张图，返回图像 Buffer；失败时抛出带上游原因的错误 */
-async function requestGatewayImage(params: {
+export async function requestGatewayImage(params: {
   prompt: string;
   model: string;
   images: Array<{ data: string; mimeType?: string; role?: string }>;

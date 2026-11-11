@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard } from '../types/creativeCanvas';
+import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard, AgentActionParams } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { confirmDialog } from '../utils/confirmDialog';
 import { AgentChatService } from '../services/agentChatService';
@@ -126,6 +126,11 @@ const initialNodes: Node[] = [
 ];
 
 const initialEdges: Edge[] = [];
+
+/** 主产品图节点：上传会提取 DNA、驱动企划；画布上其他产品图节点各自独立 */
+export function isMainProductNodeId(id: string | undefined | null): boolean {
+  return id === 'img-node-1' || id === 'product-image-node-1';
+}
 
 export function normalizeCanvasIds(idParam?: string): { projectId: string; canvasId: string } {
   let raw = String(idParam || 'latest').trim();
@@ -2757,6 +2762,245 @@ export function useCreativeCanvasWorkspace(
     }
   };
 
+  // 非主产品图节点：上传的图只进这个节点（先传到存储拿地址，避免草稿里塞大图）
+  const handleUploadToProductNode = async (nodeId: string, file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    hasUserMutationRef.current = true;
+    const patch = (data: Record<string, unknown>) =>
+      setNodes(prev => prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n)));
+    patch({ status: 'uploading', fileName: file.name, errorMsg: undefined });
+    try {
+      const url = await uploadChatImage(file);
+      // 尺寸从本地文件读：存储地址在网络抖动时可能迟迟不返回，不能让节点一直卡在上传中
+      const dimensions = await new Promise<{ width: number; height: number }>(resolve => {
+        const localUrl = URL.createObjectURL(file);
+        const done = (d: { width: number; height: number }) => {
+          URL.revokeObjectURL(localUrl);
+          resolve(d);
+        };
+        const timer = setTimeout(() => done({ width: 0, height: 0 }), 8000);
+        const img = new Image();
+        img.onload = () => {
+          clearTimeout(timer);
+          done({ width: img.naturalWidth, height: img.naturalHeight });
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          done({ width: 0, height: 0 });
+        };
+        img.src = localUrl;
+      });
+      patch({
+        imageUrl: url,
+        fileName: file.name,
+        mimeType: file.type,
+        fileSize: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+        dimensions,
+        status: 'completed',
+        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    } catch (err: any) {
+      patch({ status: 'error', errorMsg: err?.message || '上传失败' });
+    }
+  };
+  // 在画布上新增一个产品图节点并把图放进去（对话框里贴多张产品图时用），不动主产品图
+  const handleAddProductNode = (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    hasUserMutationRef.current = true;
+    const newId = `node_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    setNodes(prev => {
+      const products = prev.filter(n => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage');
+      const anchor = products.find(n => isMainProductNodeId(n.id)) || products[0];
+      const x = anchor?.position?.x ?? 150;
+      const y = products.length > 0 ? Math.max(...products.map(n => n.position?.y ?? 0)) + 460 : 150;
+      return [
+        ...prev,
+        { id: newId, type: 'productImageNode', position: { x, y }, data: { fileName: file.name, imageUrl: '', status: 'uploading', uploadedAt: '刚刚' } }
+      ];
+    });
+    void handleUploadToProductNode(newId, file);
+  };
+  const handleClearProductNode = (nodeId: string) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev =>
+      prev.map(n =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, imageUrl: '', fileName: undefined, fileSize: undefined, dimensions: undefined, status: 'idle', uploadedAt: undefined } }
+          : n
+      )
+    );
+  };
+
+  // 模板 A 海报（原型）：概念 → 主场景底图 → 细节裁切 + 真实字体排版，成图进画布并回传对话。
+  // 画布上可以有多张产品图，每张各自生成、可同时进行：锁、避重名、成图位置都按产品节点区分。
+  const templatePosterRunningRef = useRef<Set<string>>(new Set());
+  const [templatePosterRunningIds, setTemplatePosterRunningIds] = useState<string[]>([]);
+  const handleGenerateTemplatePoster = async (params?: AgentActionParams): Promise<boolean> => {
+    const currentNodes = nodesRef.current || nodes;
+    const isProductNode = (n: Node) => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage';
+    const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
+    // 选哪张产品图：指定的节点 → 当前选中的产品图 → 画布上唯一的产品图
+    const productNode =
+      (params?.nodeId ? productNodes.find(n => n.id === params.nodeId) : undefined) ||
+      (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
+      (productNodes.length === 1 ? productNodes[0] : undefined);
+    if (!productNode && productNodes.length > 1) {
+      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做海报的那一张，或直接点产品图上的「模板海报」按钮。`);
+      return false;
+    }
+    let productImage = (productNode?.data?.imageUrl as string) || '';
+    if (!productImage) {
+      const raw = uploadedBase64Ref.current || uploadedBase64;
+      if (raw) productImage = raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`;
+    }
+    if (!productImage) {
+      addAgentMessage('❌ 还没有产品主图，请先上传产品图再生成模板海报。');
+      return false;
+    }
+    const productKey = productNode?.id || 'img-node-1';
+    const productLabel = (productNode?.data?.fileName as string) || '产品图';
+    if (templatePosterRunningRef.current.has(productKey)) {
+      addAgentMessage(`「${productLabel}」的模板海报正在生成中，请等这一张完成后再试；其他产品图可以同时生成。`);
+      return false;
+    }
+
+    const currentRun = agentRunRef.current || agentRun;
+    // DNA 只属于主产品图；其他产品图以图片为准
+    const dna = isMainProductNodeId(productKey) ? activeDnaRef.current || activeDna || currentRun?.dna : undefined;
+    // 这张产品图已出过的海报：新海报避开它们的命名与场景（旧版没记录产品的海报，按连线归属）
+    const used = currentNodes
+      .filter(n => (n.data as any)?.templatePoster?.concept?.name)
+      .filter(n => {
+        const owner = (n.data as any).templatePoster.productNodeId;
+        if (owner) return owner === productKey;
+        return (edgesRef.current || edges).some(e => e.target === n.id && e.source === productKey);
+      })
+      .map(n => {
+        const c = (n.data as any).templatePoster.concept;
+        return { name: c.name, idea: c.idea, sceneDirection: c.sceneDirection };
+      });
+    // 企划也只属于主产品图
+    const isMainProduct = isMainProductNodeId(productKey);
+    const screen = isMainProduct && params?.screenIndex ? currentRun?.plan?.screens?.find(s => s.screenIndex === params.screenIndex) : undefined;
+    const planContext = !isMainProduct ? '' : [
+      currentRun?.plan?.themeTitle ? `企划主题：${currentRun.plan.themeTitle}` : '',
+      currentRun?.plan?.targetAudience ? `目标客群：${currentRun.plan.targetAudience}` : '',
+      screen?.coreSellingPoint ? `本屏卖点：${screen.coreSellingPoint}` : ''
+    ].filter(Boolean).join('\n');
+
+    templatePosterRunningRef.current.add(productKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskTitle = productNodes.length > 1 ? `模板 A 海报 · ${productLabel}` : '模板 A 海报';
+    const taskId = addAgentMessage('', {
+      taskCard: { title: taskTitle, status: 'running', detail: '1/3 构思命名、场景与细节文案…' }
+    });
+    const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
+
+    const postJson = async (url: string, body: any) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
+      return json;
+    };
+    const storeImage = async (dataUrl: string) => {
+      const json = await postJson(`/api/canvases/${encodeURIComponent(canvasId)}/inline-images`, { dataUrl }).catch(() => null);
+      return (json?.url as string) || dataUrl;
+    };
+
+    try {
+      const { concept } = await postJson('/api/poster-templates/concept', {
+        productImage,
+        dna,
+        hint: params?.hint,
+        planContext,
+        used
+      });
+      finishTaskCard(taskId, 'running', `2/3 「${concept.name}」：${concept.idea || concept.subtitle}\n正在生成主场景底图（约 1–3 分钟）…`);
+
+      const hero = await postJson('/api/poster-templates/template-a/hero', {
+        concept,
+        productImage,
+        dna,
+        model: selectedModel || undefined,
+        resolution: selectedResolution || '2K'
+      });
+      const heroUrl = await storeImage(hero.imageDataUrl);
+      finishTaskCard(taskId, 'running', `3/3 「${concept.name}」：定位细节部位并排版…`);
+
+      const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept });
+      const posterUrl = await storeImage(composed.imageDataUrl);
+
+      const resultNodeId = `template-poster-a-${Date.now()}`;
+      const basePos = productNode?.position || { x: 100, y: 100 };
+      setNodes(prev => {
+        const siblings = prev.filter(n => n.id.startsWith('template-poster-a-') && (n.data as any)?.templatePoster?.productNodeId === productKey).length;
+        const posterNode: Node = {
+          id: resultNodeId,
+          type: 'generatedImageNode',
+          position: { x: basePos.x + 460, y: basePos.y + siblings * 420 },
+          data: {
+            sceneIndex: params?.screenIndex || 0,
+            screenTitle: `模板 A · ${concept.name}`,
+            coreSellingPoint: concept.subtitle,
+            themeTitle: concept.idea,
+            withText: true,
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            heroImageUrl: heroUrl,
+            dimensions: `${composed.width}x${composed.height}`,
+            aspectRatio: '4:3',
+            model: hero.model,
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            version: 1,
+            reviewStatus: 'pendingReview',
+            prompt: hero.prompt,
+            templatePoster: { template: 'A', productNodeId: productKey, concept, details: composed.details, layout: composed.layout }
+          }
+        };
+        return [...prev, posterNode];
+      });
+      if (productNode) {
+        setEdges(prev => [
+          ...prev,
+          {
+            id: `edge-template-poster-${resultNodeId}`,
+            source: productNode.id,
+            target: resultNodeId,
+            sourceHandle: 'source',
+            targetHandle: 'target',
+            label: '模板 A 海报',
+            labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+            labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
+            style: { stroke: '#B28C5A', strokeWidth: 2 }
+          }
+        ]);
+      }
+
+      const warnings: string[] = Array.isArray(composed.warnings) ? composed.warnings : [];
+      finishTaskCard(taskId, 'done', warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `模板 A · ${concept.name}`,
+        nodeId: resultNodeId,
+        withText: true,
+        source: 'poster',
+        detail: [concept.subtitle, concept.inspiration].filter(Boolean).join(' / ')
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '模板海报生成失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(productKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
   // Phase C3B: Batch Generation & Controlled Task Queue
   const [batchState, setBatchState] = useState<GenerationBatch | null>(null);
   const [queueItems, setQueueItems] = useState<SceneQueueItem[]>([]);
@@ -3398,6 +3642,9 @@ export function useCreativeCanvasWorkspace(
     handleGenerateNineGridPlan,
     handleReplanSingleScene,
     handleGenerateSceneImage,
+    handleGenerateTemplatePoster,
+    handleUploadToProductNode,
+    handleClearProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
     handleReanalyze,
@@ -3498,13 +3745,24 @@ export function useCreativeCanvasWorkspace(
           data.onOpenPosterStudio = () => onOpenPosterStudioRef.current?.(idx);
           data.onGeneratePoster = () => nodeActionsRef.current.handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
         } else if (isProdImg) {
-          data.onUpload = (f: File) => (handleUploadFileRef.current ? handleUploadFileRef.current(f) : nodeActionsRef.current.handleUploadFile(f));
-          data.onRemove = () => (handleRemoveProductImageRef.current ? handleRemoveProductImageRef.current() : nodeActionsRef.current.handleRemoveProductImage());
-          data.onReanalyze = () => (handleReanalyzeRef.current ? handleReanalyzeRef.current() : nodeActionsRef.current.handleReanalyze());
-          if (!data.imageUrl && (uploadedImageUrl || uploadedBase64)) {
-            data.imageUrl = uploadedImageUrl || uploadedBase64;
-            if (data.status === 'idle' || !data.status) data.status = 'completed';
+          if (isMainProductNodeId(node.id)) {
+            // 主产品图：上传会提取 DNA、驱动企划
+            data.onUpload = (f: File) => (handleUploadFileRef.current ? handleUploadFileRef.current(f) : nodeActionsRef.current.handleUploadFile(f));
+            data.onRemove = () => (handleRemoveProductImageRef.current ? handleRemoveProductImageRef.current() : nodeActionsRef.current.handleRemoveProductImage());
+            data.onReanalyze = () => (handleReanalyzeRef.current ? handleReanalyzeRef.current() : nodeActionsRef.current.handleReanalyze());
+            if (!data.imageUrl && (uploadedImageUrl || uploadedBase64)) {
+              data.imageUrl = uploadedImageUrl || uploadedBase64;
+              if (data.status === 'idle' || !data.status) data.status = 'completed';
+            }
+          } else {
+            // 其他产品图：图只进这个节点，不替换主产品图、不重提 DNA
+            data.onUpload = (f: File) => nodeActionsRef.current.handleUploadToProductNode(node.id, f);
+            data.onRemove = () => nodeActionsRef.current.handleClearProductNode(node.id);
+            data.onReanalyze = undefined;
           }
+          // 每张产品图各自生成模板海报（可同时进行）
+          data.onTemplatePoster = () => nodeActionsRef.current.handleGenerateTemplatePoster({ nodeId: node.id });
+          data.templatePosterRunning = templatePosterRunningIds.includes(node.id);
         }
 
         return { ...node, data };
@@ -3518,7 +3776,8 @@ export function useCreativeCanvasWorkspace(
       dnaVersions,
       activeDna,
       uploadedImageUrl,
-      uploadedBase64
+      uploadedBase64,
+      templatePosterRunningIds
     ]
   );
 
@@ -4997,6 +5256,8 @@ export function useCreativeCanvasWorkspace(
     setSelectedResolution,
     generatingScenes: generatingScenesRef.current,
     handleGenerateSceneImage,
+    handleGenerateTemplatePoster,
+    handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
 

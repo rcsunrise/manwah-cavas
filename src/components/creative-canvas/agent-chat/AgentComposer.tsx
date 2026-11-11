@@ -15,6 +15,9 @@ interface AgentComposerProps {
   onUploadAttachment?: (file: File) => Promise<string>;
   onStop?: () => void;
   onUploadFile: (file: File) => void;
+  /** 画布上已有主产品图时，附件加为新的产品图节点（多产品各自出海报），不替换主产品图 */
+  onAddProductImage?: (file: File) => void;
+  hasProductImage?: boolean;
   quickActions: AgentActionOption[];
   onQuickAction: (option: AgentActionOption) => void;
   mentionableNodes: MentionableNode[];
@@ -37,6 +40,8 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   onSend,
   onStop,
   onUploadFile,
+  onAddProductImage,
+  hasProductImage,
   onUploadAttachment,
   quickActions,
   onQuickAction,
@@ -62,7 +67,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
       onUploadFile(file);
       return;
     }
-    if (attachments.length >= 4) return;
+    if (attachments.length >= MAX_ATTACHMENTS) return;
     const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setAttachments(prev => [...prev, { id, file, previewUrl: URL.createObjectURL(file), status: 'uploading' }]);
     onUploadAttachment(file).then(
@@ -71,8 +76,20 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     );
     textareaRef.current?.focus();
   };
+  /** 一次拖入 / 粘贴 / 选择多张图：按剩余名额全部加入（最多 4 张） */
+  const MAX_ATTACHMENTS = 4;
+  const addImages = (files: File[]) => {
+    if (files.length === 0) return;
+    if (!onUploadAttachment) {
+      onUploadFile(files[0]);
+      return;
+    }
+    files.slice(0, Math.max(0, MAX_ATTACHMENTS - attachments.length)).forEach(addImage);
+  };
+  const addsAsNewProduct = Boolean(hasProductImage && onAddProductImage);
   const setAsProductImage = (att: Attachment) => {
-    onUploadFile(att.file);
+    if (addsAsNewProduct) onAddProductImage!(att.file);
+    else onUploadFile(att.file);
     removeAttachment(att.id);
   };
 
@@ -141,25 +158,29 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
 
   // 粘贴 / 拖入图片：和 + 按钮一样上传为产品主图；纯文字粘贴照常进入输入框
   const [isDraggingImage, setIsDraggingImage] = useState(false);
-  const firstImageFile = (files: FileList | DataTransferItemList | null | undefined): File | null => {
-    if (!files) return null;
+  const imageFiles = (files: FileList | DataTransferItemList | null | undefined): File[] => {
+    const out: File[] = [];
+    if (!files) return out;
     for (let i = 0; i < files.length; i++) {
       const item = files[i] as File | DataTransferItem;
       if ('kind' in item) {
-        if (item.kind === 'file' && item.type.startsWith('image/')) return item.getAsFile();
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) out.push(f);
+        }
       } else if (item.type.startsWith('image/')) {
-        return item;
+        out.push(item);
       }
     }
-    return null;
+    return out;
   };
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const file = firstImageFile(e.clipboardData?.items);
-    if (!file) return;
+    const files = imageFiles(e.clipboardData?.items);
+    if (files.length === 0) return;
     e.preventDefault();
     // 阻止冒泡到画布的全局粘贴监听，避免同一张图上传两次
     e.stopPropagation();
-    addImage(file);
+    addImages(files);
   };
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     if (!e.dataTransfer.types.includes('Files')) return;
@@ -169,11 +190,11 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   };
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     setIsDraggingImage(false);
-    const file = firstImageFile(e.dataTransfer.files);
-    if (!file) return;
+    const files = imageFiles(e.dataTransfer.files);
+    if (files.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
-    addImage(file);
+    addImages(files);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -253,9 +274,9 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
                     type="button"
                     onClick={() => setAsProductImage(att)}
                     className="w-full py-1 text-[9px] font-bold text-[#8C6F43] hover:bg-[#F9F5EF] border-t border-[#E5E0D8] cursor-pointer"
-                    title="替换画布上的产品主图并提取产品 DNA"
+                    title={addsAsNewProduct ? '在画布上新增一个产品图节点，可单独生成模板海报（不替换主产品图）' : '设为画布上的产品主图并提取产品 DNA'}
                   >
-                    设为产品主图
+                    {addsAsNewProduct ? '加为新产品' : '设为产品主图'}
                   </button>
                 )}
               </div>
@@ -324,10 +345,10 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={e => {
-                const file = e.target.files?.[0];
-                if (file) addImage(file);
+                addImages(imageFiles(e.target.files));
                 e.target.value = '';
               }}
             />

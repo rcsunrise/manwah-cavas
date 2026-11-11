@@ -629,6 +629,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - search_market：联网检索竞品与爆款参考。params: keywords
 - open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用), videoShots(分镜清单，用户要分镜/拆成视频任务时必填：[{title(4~12字), durationSeconds(每镜秒数), camera(运镜，如"缓慢推近""小幅横移""机位锁定"), content(这个镜头画面里要表现什么，20~80字)}]，2~8 个镜头，给了就严格按它出镜头), videoRatio(画面比例 "16:9"/"9:16"/"1:1"/"4:3"/"3:4"，按投放场景选：详情页/官网 16:9，短视频信息流 9:16), referenceImageUrl(视频以哪张图为准：用户在对话里发了产品图并要用它做视频时，填【附：用户随消息上传的图片】里的地址；不填则用画布产品主图)
 - open_poster：打开全案海报工作台。params: screenIndex
+- template_poster：一键生成一张模板 A 单屏产品海报（自动构思两字命名与呼应命名的场景，上方主场景 + 宋体标题区，底部三格真实细节特写与短说明，约 2~4 分钟）。用户想要“成品海报”“带标题和细节的海报”时提议。params: hint(场景或风格要求，可选，如“未来感建筑”“湖景”), screenIndex(参考某屏企划时填)
 - upload_product：上传产品主图（打开文件选择）
 - set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置

@@ -118,6 +118,10 @@ interface AgentPanelProps {
   setSelectedResolution?: (r: '1K' | '2K' | '4K') => void;
   onGenerateSceneImage?: (screenIndex: number, reviewFeedback?: string, overrideModel?: string, overrideResolution?: '1K' | '2K' | '4K', withText?: boolean) => void;
   onOpenPosterStudio?: (screenIndex: number) => void;
+  /** 模板海报（原型）：命名构思 → 主场景 → 细节裁切 + 真实字体排版 */
+  onGenerateTemplatePoster?: (params?: AgentActionParams) => void;
+  /** 把对话框里的图加为画布上的新产品图节点（不替换主产品图） */
+  onAddProductImage?: (file: File) => void;
   onPreviewGptImage?: () => void;
   onApproveSceneImage?: (screenIndex: number) => void;
   onRejectSceneImage?: (screenIndex: number, feedback: string) => void;
@@ -451,6 +455,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   setSelectedResolution,
   onGenerateSceneImage,
   onOpenPosterStudio,
+  onGenerateTemplatePoster,
+  onAddProductImage,
   onPreviewGptImage,
   onApproveSceneImage,
   onRejectSceneImage,
@@ -920,6 +926,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'open_poster':
         onOpenPosterStudio?.(params?.screenIndex || selectedSceneIndex || 1);
         return;
+      case 'template_poster':
+        onGenerateTemplatePoster?.(params);
+        return;
       case 'goto_setup':
         setActiveTab('setup');
         return;
@@ -986,12 +995,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     : hasPlan
     ? [
         { label: '批量渲染分镜', actionId: 'render_all' },
+        { label: '模板 A 海报', actionId: 'template_poster' },
         { label: '做全案海报', actionId: 'open_poster' },
         { label: '做视频分镜', actionId: 'open_video' },
         { label: '重做详情页企划', actionId: 'generate_plan' }
       ]
     : [
         { label: '详情页企划', actionId: 'generate_plan' },
+        { label: '模板 A 海报', actionId: 'template_poster' },
         { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
       ];
@@ -2979,6 +2990,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             onStop={onStopGenerating}
             onUploadFile={onUploadFile}
             onUploadAttachment={onUploadChatImage}
+            onAddProductImage={onAddProductImage}
+            hasProductImage={Boolean(nodes?.some(n => n.id === 'img-node-1' && n.data?.imageUrl))}
             quickActions={quickActions}
             onQuickAction={option => option.actionId && runAgentAction(option.actionId, option.params)}
             mentionableNodes={mentionableNodes}

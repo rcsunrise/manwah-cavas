@@ -21,6 +21,7 @@ import consistencyRoutes from './server/routes/consistencyRoutes';
 import detailCompositionRoutes from './server/routes/detailCompositionRoutes';
 import detailExportRoutes from './server/routes/detailExportRoutes';
 import posterRoutes from './server/routes/posterRoutes';
+import posterTemplateRoutes from './server/routes/posterTemplateRoutes';
 import videoRoutes from './server/routes/videoRoutes';
 import storageManagementRoutes from './server/routes/storageManagementRoutes';
 import spaceStorageRoutes from './server/routes/spaceStorageRoutes';
@@ -394,6 +395,8 @@ async function startServer() {
   app.use('/api/asset-versions', assetRoutes);
   app.use('/api/product-dnas', productDnaRoutes);
   app.use('/api/product-dna-versions', productDnaRoutes);
+  // 需先于下面挂在 /api 上的通配路由
+  app.use('/api/poster-templates', posterTemplateRoutes);
   app.use('/api', detailCompositionRoutes);
   app.use('/api', productDnaRoutes);
   app.use('/api', assetRoutes);

@@ -63,6 +63,7 @@ const ACTION_IDS: AgentActionId[] = [
   'search_market',
   'open_video',
   'open_poster',
+  'template_poster',
   'goto_setup',
   'goto_render',
   'replan_screen',
@@ -82,7 +83,8 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   open_video: '生成视频分镜',
   set_product_image: '设为产品主图并提取 DNA',
   edit_image: '修改海报画面',
-  open_poster: '打开全案海报'
+  open_poster: '打开全案海报',
+  template_poster: '生成模板 A 海报'
 };
 
 /** 去掉动作块（含流式输出中尚未闭合的部分），得到给用户看的正文 */
