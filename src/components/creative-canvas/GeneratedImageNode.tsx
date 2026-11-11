@@ -46,6 +46,8 @@ interface GeneratedImageNodeProps {
 
 export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, selected }) => {
   const [imgError, setImgError] = React.useState(false);
+  // 模板 A 海报文字已由后端用真实字体烧进成品图，排版工坊 / T文字叠加对它无意义，仅隐藏入口
+  const isTemplatePoster = Boolean((data as any).templatePoster);
 
   React.useEffect(() => {
     setImgError(false);
@@ -561,14 +563,16 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                   onLoad={handleImageLoad}
                   onError={() => setImgError(true)}
                 />
-                <PosterTypographyOverlay
-                  screenTitle={screenTitle}
-                  coreSellingPoint={(data.coreSellingPoint as string) || screenTitle}
-                  themeTitle={(data.themeTitle as string) || '敏华全案企划'}
-                  sceneIndex={sceneIndex}
-                  imageUrl={imageUrl}
-                  defaultVisible={false}
-                />
+                {!isTemplatePoster && (
+                  <PosterTypographyOverlay
+                    screenTitle={screenTitle}
+                    coreSellingPoint={(data.coreSellingPoint as string) || screenTitle}
+                    themeTitle={(data.themeTitle as string) || '敏华全案企划'}
+                    sceneIndex={sceneIndex}
+                    imageUrl={imageUrl}
+                    defaultVisible={false}
+                  />
+                )}
               </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-stone-100 text-stone-400 text-center">
@@ -603,6 +607,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <span>局部重绘</span>
               </button>
 
+              {!isTemplatePoster && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -619,6 +624,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 )}
                 <span>{isOcrLoading ? 'AI 消除中...' : '排版工坊'}</span>
               </button>
+              )}
 
               <button
                 onClick={(e) => {
@@ -694,6 +700,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <span>局部重绘</span>
               </button>
 
+              {!isTemplatePoster && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -705,6 +712,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <Type className="w-3 h-3 text-[#B28C5A]" />
                 <span>排版工坊</span>
               </button>
+              )}
 
               {onGeneratePoster && !data.withText && (
                 <button
