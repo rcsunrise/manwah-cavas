@@ -856,9 +856,32 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
   };
 
+  // 这个镜头的描述要不要一张专属首帧：图生视频只会在首帧上“动”，首帧是白墙棚拍的产品图时，
+  // 提示词里的换场景、近景起幅、拉远到全景都不会发生
+  const shotNeedsOwnKeyframe = (shot: VideoShotPlan) =>
+    !shot.keyframeImageUrl &&
+    (style === 'outline' ||
+      /客厅|落地窗|窗外|湖|海边|场景|环境|背景|拉远|近景|特写|推近|living room|window|lake|close-up|zoom out|pull back/i.test(
+        `${shot.composition || ''} ${shot.prompt || ''}`
+      ));
+
   // Batch submit all shots in director plan
   const handleBatchSubmitAllShots = async () => {
     if (!directorPlan || directorPlan.shots.length === 0) return;
+    const needKeyframe = directorPlan.shots.filter(shotNeedsOwnKeyframe);
+    let makeKeyframes = false;
+    if (needKeyframe.length > 0) {
+      const lines = [
+        `有 ${needKeyframe.length} 个镜头没有专属首帧：`,
+        ...needKeyframe.map(shot => `· ${shot.title || shot.shotId}`),
+        '',
+        '没有首帧时会直接用产品原图（通常是棚拍背景）做首帧，镜头里“换场景 / 近景起幅 / 拉远到全景”的描述不会生效，视频会和分镜对不上。',
+        '',
+        '【确定】先为这些镜头各生成一张首帧再出片（每个镜头多一次出图，会消耗出图点数，需要多等一会儿）',
+        '【取消】不生成首帧，仍直接用产品原图出片'
+      ];
+      makeKeyframes = window.confirm(lines.join('\n'));
+    }
     setIsBatchSubmitting(true);
     setBatchSubmitError(null);
     const failedShots: string[] = [];
@@ -866,7 +889,16 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       // 单个镜头失败不影响后续镜头提交
       for (const shot of directorPlan.shots) {
         try {
-          await handleSubmitDirectVideo(shot.prompt, shot.shotId, shot.keyframeImageUrl, shot.endFrameImageUrl, shot.durationSeconds);
+          let keyframeUrl = shot.keyframeImageUrl;
+          if (makeKeyframes && shotNeedsOwnKeyframe(shot)) {
+            const ratio = style === 'outline' ? settingsForShot(currentCapability, videoSettings, shot.durationSeconds).ratio : videoSettings.ratio;
+            // 首帧只描述这一镜开始时的画面（场景、景别、产品位置），不带运镜
+            // 近景镜头的描述里往往没有场景，模型会照抄产品原图的棚拍背景；所以把整套视频统一的场景设定也带上
+            const sceneSetting = userPrompt.trim() ? `整套视频统一场景与光线（每个镜头都在这个环境里，近景也要保留环境虚化背景）：${userPrompt.trim().slice(0, 160)}` : '';
+            const framePrompt = [shot.firstFrameHint, shot.composition, sceneSetting, '产品造型、颜色、材质与参考图完全一致'].filter(Boolean).join('。');
+            keyframeUrl = await generateKeyframeFor({ shotId: shot.shotId, prompt: framePrompt || shot.prompt }, ratio);
+          }
+          await handleSubmitDirectVideo(shot.prompt, shot.shotId, keyframeUrl, shot.endFrameImageUrl, shot.durationSeconds);
         } catch (err: any) {
           console.warn(`Batch submit failed for shot ${shot.shotId}:`, err);
           failedShots.push(shot.title || shot.shotId);

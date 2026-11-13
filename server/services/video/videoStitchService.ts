@@ -49,7 +49,21 @@ export async function stitchVideos(req: StitchRequest): Promise<StitchResult> {
   const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'stitch-'));
   try {
     const files = urls.map((_, i) => path.join(workDir, `clip-${i}.mp4`));
-    await Promise.all(urls.map((url, i) => downloadVideo(url, files[i])));
+    await Promise.all(
+      urls.map(async (url, i) => {
+        let lastErr: any;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await downloadVideo(url, files[i]);
+            return;
+          } catch (e: any) {
+            lastErr = e;
+            console.warn(`[videoStitch] download clip ${i + 1} attempt ${attempt}/3 failed: ${e?.message || e}`);
+          }
+        }
+        throw new Error(`镜头 ${i + 1} 下载失败（已重试 3 次）：${lastErr?.message || lastErr}`);
+      })
+    );
 
     const probes = await Promise.all(files.map(f => runFfmpeg(['-hide_banner', '-i', f])));
     const durations = probes.map(p => parseDuration(p.stderr));
@@ -103,8 +117,20 @@ export async function stitchVideos(req: StitchRequest): Promise<StitchResult> {
     const buf = await fs.promises.readFile(output);
     const safeCanvas = String(req.canvasId || 'canvas').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
     const objectPath = `videos/stitched/${safeCanvas}/stitch-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.mp4`;
-    const { error } = await supabaseAdmin.storage.from(BUCKET).upload(objectPath, buf, { contentType: 'video/mp4', upsert: true });
-    if (error) throw new Error(`成片上传失败：${error.message}`);
+    // Supabase 网络常 ECONNRESET / fetch failed，成片已经拼好，别因为一次上传失败就整个作废
+    let uploadError: { message: string } | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { error } = await supabaseAdmin.storage.from(BUCKET).upload(objectPath, buf, { contentType: 'video/mp4', upsert: true });
+        uploadError = error ? { message: error.message } : null;
+      } catch (e: any) {
+        uploadError = { message: e?.message || 'fetch failed' };
+      }
+      if (!uploadError) break;
+      console.warn(`[videoStitch] upload attempt ${attempt}/3 failed: ${uploadError.message}`);
+      if (attempt < 3) await new Promise(r => setTimeout(r, 1500 * attempt));
+    }
+    if (uploadError) throw new Error(`成片上传失败（已重试 3 次）：${uploadError.message}`);
     const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(objectPath);
     if (!data?.publicUrl) throw new Error('成片上传后没有拿到播放地址');
 

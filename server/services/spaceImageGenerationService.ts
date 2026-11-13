@@ -663,15 +663,19 @@ async function resolveImageInlineData(imageRef?: string, maxEdge = 1024): Promis
 
   // 4. 如果是远程 HTTP/HTTPS URL
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    try {
-      const res = await fetch(trimmed, { signal: AbortSignal.timeout(5000) });
-      if (res.ok) {
-        const arrayBuf = await res.arrayBuffer();
-        const buf = Buffer.from(arrayBuf);
-        return await normalizeInlineBuffer(buf, maxEdge);
+    // 产品原图常有 5–8MB，5 秒内下不完会让参考图变成 0 张、模型自己编一个产品，所以给足时间并重试一次
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(trimmed, { signal: AbortSignal.timeout(30000) });
+        if (res.ok) {
+          const arrayBuf = await res.arrayBuffer();
+          const buf = Buffer.from(arrayBuf);
+          return await normalizeInlineBuffer(buf, maxEdge);
+        }
+        console.warn(`[SpaceImageGenerationService] Remote image ref HTTP ${res.status} (attempt ${attempt}): ${trimmed}`);
+      } catch (err: any) {
+        console.warn(`[SpaceImageGenerationService] Failed to fetch remote image ref (attempt ${attempt}): ${trimmed}`, err.message);
       }
-    } catch (err: any) {
-      console.warn(`[SpaceImageGenerationService] Failed to fetch remote image ref: ${trimmed}`, err.message);
     }
   }
 

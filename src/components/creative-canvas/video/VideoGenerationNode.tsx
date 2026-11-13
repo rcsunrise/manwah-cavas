@@ -1,6 +1,6 @@
 // src/components/creative-canvas/video/VideoGenerationNode.tsx
 import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import { Handle, Position, NodeProps, useStore } from '@xyflow/react';
 import { Play, RotateCw, AlertTriangle, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react';
 import { VideoJob } from '../../../types/creativeCanvasVideo';
 
@@ -15,6 +15,14 @@ export interface VideoGenerationNodeData {
 export const VideoGenerationNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as VideoGenerationNodeData;
   const job = nodeData.job;
+  // 出片后画布上会有同一任务的“成果”节点，播放器放在那里；任务节点不再重复放一个同样的播放器
+  const hasResultNode = useStore((st: any) => {
+    if (!job?.id) return false;
+    for (const n of st.nodeLookup.values()) {
+      if (n.type === 'videoResultNode' && n.data?.job?.id === job.id) return true;
+    }
+    return false;
+  });
 
   const getStatusBadge = () => {
     if (!job) {
@@ -149,18 +157,23 @@ export const VideoGenerationNode = memo(({ id, data, selected }: NodeProps) => {
               const videoSrc = (job as any).videoUrl || (job as any).supabaseVideoUrl || (job.assetVersionId ? `/api/video-assets/${job.assetVersionId}/playback-url` : '');
               return (
                 <div className="space-y-2">
-                  <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-neutral-200 group">
-                    <video
-                      src={videoSrc}
-                      controls
-                      playsInline
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
+                  {!hasResultNode && (
+                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-neutral-200 group">
+                      <video
+                        src={videoSrc}
+                        controls
+                        playsInline
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>{job.status === 'transferring' ? '已就绪 (云端归档中)' : '渲染完成'}</span>
+                      <span>
+                        {job.status === 'transferring' ? '已就绪 (云端归档中)' : '渲染完成'}
+                        {hasResultNode ? ' · 视频在右侧成果节点' : ''}
+                      </span>
                     </span>
                     {videoSrc && (
                       <a

@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import { ensureParentProjectExists, safeUpsertCanvas } from './canvasRoutes';
 import { bridgeRelayHub } from '../services/bridgeRelayHub';
 import { getTokenModelIds } from '../services/video/videoModelAvailability';
+import { VideoJobService } from '../services/video/videoJobService';
 import { sampleVideoFrames } from '../services/video/videoFrameSampler';
 import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 
@@ -630,6 +631,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用), videoShots(分镜清单，用户要分镜/拆成视频任务时必填：[{title(4~12字), durationSeconds(每镜秒数), camera(运镜，如"缓慢推近""小幅横移""机位锁定"), content(这个镜头画面里要表现什么，20~80字)}]，2~8 个镜头，给了就严格按它出镜头), videoRatio(画面比例 "16:9"/"9:16"/"1:1"/"4:3"/"3:4"，按投放场景选：详情页/官网 16:9，短视频信息流 9:16), referenceImageUrl(视频以哪张图为准：用户在对话里发了产品图并要用它做视频时，填【附：用户随消息上传的图片】里的地址；不填则用画布产品主图)
 - open_poster：打开全案海报工作台。params: screenIndex
 - template_poster：一键生成一张模板 A 单屏产品海报（自动构思两字命名与呼应命名的场景，上方主场景 + 宋体标题区，底部三格真实细节特写与短说明，约 2~4 分钟）。用户想要“成品海报”“带标题和细节的海报”时提议。params: hint(场景或风格要求，可选，如“未来感建筑”“湖景”), screenIndex(参考某屏企划时填)
+- stitch_video：把画布上各分镜视频按镜头序号拼成一条成片（本地合成，不耗点数）。用户说“合并”“拼接”“剪成一条”“出成片”且画布上已有 2 个以上生成完成的镜头时提议；镜头还没生成完就先提醒，不要给这个动作。params: stitchTransition(转场，"fade"淡入淡出默认 / "cut"硬切)
 - upload_product：上传产品主图（打开文件选择）
 - set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
@@ -655,6 +657,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 视频以哪件产品为准要说清楚：用户发了产品图并要做它的视频，就按图描述产品并填 referenceImageUrl，不要套用画布上另一件产品的 DNA；没发图时才按画布产品 DNA。
 - 用户在聊视频时，plan 和 suggestions 都不要给 generate_plan（那是详情页海报企划）；下一步建议给视频相关的，如带 videoBrief 的 open_video、或用 prompt 追问时长/镜头数/风格。只有用户明确要做详情页或海报时才用 generate_plan。
 - 正文里只要出现“确认后将……”“确认后会……”，就必须在动作块里附上对应的 plan，否则用户看不到确认按钮、什么也执行不了；没有 plan 时不要写“确认后”。
+- 用户让你检查/核对/点评画布上的视频时，服务端会把视频抽帧附在本条消息里：只依据附图和附带的生成信息回答，逐条对照之前商定的创意与分镜；有偏差就给 open_video 的 plan（videoBrief 写清保留什么、修正什么，需要时用 videoShots 重写问题镜头）；本条没有附图就如实说看不到画面，不要猜。
+- 用户说“可以”“好”“去生成”“就这样”等，是同意你上一条的提议：本条回复必须直接附上对应的 plan 动作块（edit_image 要写全 instruction，并带上 nodeId）。不要叫用户去点“上一条的卡片”，除非上一条回复里确实带了动作块；上一条没带，就在本条补上。
 - 用户直接发来一份已写好的方案（比如粘贴了分镜清单、时长、比例），视为要求执行：不要复述，直接给出对应的 plan（视频分镜用 open_video，把清单原样填进 videoShots、比例填 videoRatio），正文一两句说明即可。
 - 纯问答、闲聊不需要 plan，可只给 suggestions 或不加动作块。
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
@@ -762,8 +766,14 @@ async function streamChatCompletions(params: {
  * Universal Multi-Transport Agent Model Streamer with Self-Healing Fallback
  */
 /** 判断用户是不是在问画布上的视频效果（评价、找问题），是则抽帧给模型看 */
-const VIDEO_REVIEW_INTENT =
-  /(视频|成片|片子|镜头|运镜|画面).{0,12}(怎么样|如何|评价|看看|看下|好不好|问题|分析|点评|哪里|变形|效果|满意|觉得|改进|优化)|(怎么样|评价|看看|看下|分析|点评|觉得).{0,12}(视频|成片|片子|镜头)/i;
+const VIDEO_WORDS = '视频|成片|片子|镜头|运镜|分镜|短片';
+const VIDEO_REVIEW_VERBS = '怎么样|如何|评价|看看|看下|看一下|好不好|问题|分析|点评|哪里|变形|效果|满意|觉得|改进|优化|检查|核对|对比|比对|匹配|符合|是否|有没有|对不对|一致|达到|预期|差异|偏差|修改|调整|重做|不对|不像|走样|穿帮';
+export const VIDEO_REVIEW_INTENT = new RegExp(
+  `(${VIDEO_WORDS}|画面).{0,16}(${VIDEO_REVIEW_VERBS})|(${VIDEO_REVIEW_VERBS}).{0,16}(${VIDEO_WORDS})`,
+  'i'
+);
+/** 用户明确说要看“两段/全部/每段”视频时，不只看最新一条 */
+export const VIDEO_REVIEW_ALL = /两(段|条|个)|全部|所有|每(段|条|个)|各(段|条)|都/;
 
 interface UserAttachment {
   text: string;
@@ -821,45 +831,82 @@ function mergeAttachments(...parts: (UserAttachment | undefined)[]): UserAttachm
   return { text: present.map(p => p.text).join('\n\n'), images: present.flatMap(p => p.images) };
 }
 
-async function buildVideoReviewAttachment(message: string, snapshot: AgentContextSnapshot | undefined): Promise<UserAttachment | undefined> {
-  const videos = Array.isArray(snapshot?.videoNodes) ? snapshot!.videoNodes!.slice(0, 5) : [];
+/** 画布上没有视频节点（视频只存在于视频创作面板的任务里）时，按画布取已出片的任务，最新在前 */
+function videoRefsFromJobs(canvasId: string | undefined): NonNullable<AgentContextSnapshot['videoNodes']> {
+  if (!canvasId) return [];
+  try {
+    return VideoJobService.getInstance()
+      .listJobsByCanvas(canvasId)
+      .filter(j => j.status === 'ready' && ((j as any).videoUrl || (j as any).supabaseVideoUrl || j.assetVersionId))
+      .slice(0, 5)
+      .map(j => ({
+        nodeId: j.id,
+        jobId: j.id,
+        title: j.shotId ? `${j.shotId} 视频` : '视频',
+        videoUrl: (j as any).videoUrl || (j as any).supabaseVideoUrl || undefined,
+        assetVersionId: j.assetVersionId || undefined,
+        prompt: typeof j.prompt === 'string' ? j.prompt.slice(0, 600) : undefined,
+        modelKey: j.modelKey,
+        durationSeconds: j.videoSettings?.durationSeconds,
+        resolution: j.videoSettings?.resolution
+      })) as any;
+  } catch {
+    return [];
+  }
+}
+
+async function buildVideoReviewAttachment(message: string, snapshot: AgentContextSnapshot | undefined, canvasId?: string): Promise<UserAttachment | undefined> {
+  let videos = Array.isArray(snapshot?.videoNodes) ? snapshot!.videoNodes!.slice(0, 5) : [];
+  if (videos.length === 0 && VIDEO_REVIEW_INTENT.test(message)) videos = videoRefsFromJobs(canvasId);
   if (videos.length === 0) return undefined;
   const selected = snapshot?.selectedNodeIds || [];
   // 选中/引用的可能是生成节点或成果节点，按节点 id 或任务 id 匹配
   const pointed = videos.find(v => selected.includes(v.nodeId) || (v.jobId && selected.some(id => id.includes(v.jobId!))));
   if (!pointed && !VIDEO_REVIEW_INTENT.test(message)) return undefined;
-  // 优先用户 @ 引用或选中的视频，否则取最新一条已生成的视频
-  const target = pointed || videos.find(v => v.videoUrl || v.assetVersionId);
-  if (!target) return undefined;
+  const ready = videos.filter(v => v.videoUrl || v.assetVersionId);
+  // 优先用户 @ 引用或选中的视频；说“两段/全部”时看最新两条；否则取最新一条已生成的视频
+  const targets = pointed
+    ? [pointed]
+    : VIDEO_REVIEW_ALL.test(message)
+    ? ready.slice(0, 2)
+    : ready.slice(0, 1);
+  if (targets.length === 0) return undefined;
 
   const s = (v: unknown, max = 600) => String(v ?? '').slice(0, max);
-  const info = [
-    `视频节点 ${s(target.nodeId, 80)}「${s(target.title || '视频', 60)}」`,
-    target.modelKey ? `生成模型 ${s(target.modelKey, 60)}` : '',
-    target.durationSeconds ? `时长 ${Number(target.durationSeconds)} 秒` : '',
-    target.resolution ? `分辨率 ${s(target.resolution, 20)}` : '',
-    target.prompt ? `生成提示词：${s(target.prompt)}` : ''
-  ].filter(Boolean).join('；');
+  const framesPerVideo = targets.length > 1 ? 4 : 5;
+  const blocks: string[] = [];
+  const images: string[] = [];
 
-  try {
-    const startedAt = Date.now();
-    const sample = await sampleVideoFrames({ videoUrl: target.videoUrl, assetVersionId: target.assetVersionId }, 5);
-    console.log(`[AgentConversationRoutes] sampled ${sample.frames.length} frames from ${target.nodeId} in ${Date.now() - startedAt}ms`);
-    const frameList = sample.frames.map((f, i) => `第${i + 1}张=${f.label}（${f.atSeconds}s）`).join('，');
-    return {
-      text:
-        `【附：画布视频画面】${info}。实际时长 ${sample.durationSeconds} 秒。` +
-        `附图是从该视频按时间顺序抽取的 ${sample.frames.length} 帧：${frameList}。` +
-        `请依据这些画面如实评价（产品造型/颜色/材质是否前后一致、有无变形、运镜与构图、光线、与提示词是否一致），指出具体是哪一帧的问题并给出可执行的改进建议；看不出的细节不要编造。`,
-      images: sample.frames.map(f => f.dataUrl)
-    };
-  } catch (err: any) {
-    console.warn(`[AgentConversationRoutes] video frame sampling failed for ${target.nodeId}:`, err?.message || err);
-    return {
-      text: `【附：画布视频信息】${info}。（读取视频画面失败：${s(err?.message, 120)}。只能依据生成参数回答，请向用户说明你没有看到实际画面。）`,
-      images: []
-    };
+  for (const [index, target] of targets.entries()) {
+    const info = [
+      `视频节点 ${s(target.nodeId, 80)}「${s(target.title || '视频', 60)}」`,
+      target.modelKey ? `生成模型 ${s(target.modelKey, 60)}` : '',
+      target.durationSeconds ? `时长 ${Number(target.durationSeconds)} 秒` : '',
+      target.resolution ? `分辨率 ${s(target.resolution, 20)}` : '',
+      target.prompt ? `生成提示词：${s(target.prompt)}` : ''
+    ].filter(Boolean).join('；');
+    const tag = targets.length > 1 ? `视频${index + 1}` : '该视频';
+    try {
+      const startedAt = Date.now();
+      const sample = await sampleVideoFrames({ videoUrl: target.videoUrl, assetVersionId: target.assetVersionId }, framesPerVideo);
+      console.log(`[AgentConversationRoutes] sampled ${sample.frames.length} frames from ${target.nodeId} in ${Date.now() - startedAt}ms`);
+      const frameList = sample.frames.map((f, i) => `第${i + 1}张=${f.label}（${f.atSeconds}s）`).join('，');
+      blocks.push(`【${tag}】${info}。实际时长 ${sample.durationSeconds} 秒。接下来附图里有 ${sample.frames.length} 张是它按时间顺序抽的帧：${frameList}。`);
+      images.push(...sample.frames.map(f => f.dataUrl));
+    } catch (err: any) {
+      console.warn(`[AgentConversationRoutes] video frame sampling failed for ${target.nodeId}:`, err?.message || err);
+      blocks.push(`【${tag}】${info}。（读取视频画面失败：${s(err?.message, 120)}，这一条没有画面，请向用户说明没看到它的实际画面。）`);
+    }
   }
+
+  const guide =
+    '请依据画面如实核对：1) 与对话里商定的视频创意/分镜（运镜顺序、展示重点、氛围光线、节奏）逐条对照，说明哪些做到了、哪些没做到；' +
+    '2) 产品造型、颜色、材质前后是否一致，有无变形、穿帮；3) 指出具体是哪一段/哪一帧的问题；看不出的细节不要编造。' +
+    '有偏差时，在回复末尾给出 open_video 的 plan 动作块：videoBrief 写明“保留什么、要修正什么”，必要时用 videoShots 重写有问题的镜头，让用户确认后重新生成；没有明显偏差就不要给 plan。';
+  return {
+    text: [`【附：画布视频画面（共 ${targets.length} 段，已附 ${images.length} 张抽帧）】`, ...blocks, guide].join('\n'),
+    images
+  };
 }
 
 async function invokeAgentModelStream(params: {
@@ -1310,7 +1357,7 @@ router.post('/conversations/:conversationId/messages', async (req: Authenticated
     const history = await getMessagesByConversation(conversationId);
     const userAttachment = mergeAttachments(
       await buildImageAttachment(attachmentUrls),
-      await buildVideoReviewAttachment(trimmedMsg, context_snapshot)
+      await buildVideoReviewAttachment(trimmedMsg, context_snapshot, conv.canvas_id)
     );
     const result = await invokeAgentModelStream({
       userId,

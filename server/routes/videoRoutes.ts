@@ -12,6 +12,7 @@ import { VideoJobService } from '../services/video/videoJobService';
 import { annotateCapabilityAvailability } from '../services/video/videoModelAvailability';
 import { GcsVideoStorage } from '../services/storage/gcsVideoStorage';
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
+import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 import { AssetRepository } from '../repositories/assetRepository';
 import { runGcsDiagnosticCheck } from '../../scripts/gcs_diagnostic_self_check';
 import { optionalAuthenticateToken } from '../middleware/auth';
@@ -161,13 +162,33 @@ router.post('/api/gateway/video/generate-shot-keyframe', async (req: Request, re
     const safeShotId = shotId || `shot-${Date.now()}`;
     const objectKey = `keyframes/${canvasId}/${safeShotId}-${keyframeRatio.replace(':', 'x')}.webp`;
 
+    // 产品参考图必须先稳稳取到：下载偶发失败时，生图服务会在没有参考图的情况下自己编一个沙发，
+    // 首帧的产品就不是我们的了。这里重试取图，仍取不到就明确报错，不出一张“错产品”的图。
+    let referenceForModel: string | undefined = referenceImageUrl;
+    if (referenceImageUrl && typeof referenceImageUrl === 'string') {
+      let lastErr: any = null;
+      referenceForModel = undefined;
+      for (let attempt = 1; attempt <= 3 && !referenceForModel; attempt++) {
+        try {
+          referenceForModel = await VideoSourceImageResolver.toVisionDataUrl(referenceImageUrl);
+        } catch (e: any) {
+          lastErr = e;
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+        }
+      }
+      if (!referenceForModel) {
+        res.status(502).json({ error: { message: `产品参考图读取失败（网络不稳），为避免生成出不是这款产品的首帧，已停止。请重试。${lastErr?.message ? `（${String(lastErr.message).slice(0, 80)}）` : ''}` } });
+        return;
+      }
+    }
+
     const result = await SpaceImageGenerationService.generateAndStore({
       projectId: canvasId,
       shotCode: safeShotId,
       positivePrompt: prompt,
       objectKey,
       productName: productTitle || '现代意式真皮家具',
-      productReferenceImage: referenceImageUrl,
+      productReferenceImage: referenceForModel,
       aspectRatio: keyframeRatio
     });
 
