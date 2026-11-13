@@ -454,7 +454,15 @@ export const generateSvgFromImage = async (
 };
 
 export function createFallbackProductSvg(prompt: string, aspectRatio = '3:4'): string {
-  const safeTitle = (prompt || '敏华AI企划渲染图').replace(/<[^>]*>?/gm, '').slice(0, 45);
+  // 要进 XML：先去标签，再转义 & < > " '，否则提示词里带 & 之类字符会让 SVG 不合法、图片加载失败
+  const safeTitle = (prompt || '敏华AI企划渲染图')
+    .replace(/<[^>]*>?/gm, '')
+    .slice(0, 45)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
   const ratioParts = String(aspectRatio).split(':');
   const w = parseFloat(ratioParts[0]) || 3;
   const h = parseFloat(ratioParts[1]) || 4;
@@ -476,7 +484,7 @@ export function createFallbackProductSvg(prompt: string, aspectRatio = '3:4'): s
     <rect width="100%" height="100%" fill="url(#bgGrad)" />
     <!-- Ambient Light Glows -->
     <circle cx="${width * 0.5}" cy="${height * 0.3}" r="${width * 0.4}" fill="#38BDF8" opacity="0.08" filter="blur(40px)" />
-    <circle cx="${width * 0.2}" cy="${height * 0.6}" r="${width * 0.3}" fill="#F59E0B" opacity="0.06" filter="blur(40px)" opacity="0.1" />
+    <circle cx="${width * 0.2}" cy="${height * 0.6}" r="${width * 0.3}" fill="#F59E0B" opacity="0.1" filter="blur(40px)" />
     
     <!-- Horizon Line -->
     <line x1="0" y1="${height * 0.72}" x2="${width}" y2="${height * 0.72}" stroke="#334155" stroke-width="2" stroke-dasharray="6,6" opacity="0.6" />

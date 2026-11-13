@@ -88,8 +88,17 @@ export class LocalAssetService {
       };
     } catch (err: any) {
       this.isScanning = false;
+      console.warn('[LocalAsset] 文件夹授权失败:', err?.name, err?.message);
       if (err.name === 'AbortError') {
-        return { success: false, error: '用户取消了文件夹授权' };
+        // 浏览器对“取消选择”和“所选文件夹被禁止授权”给的都是 AbortError，无法区分，两种可能都说清楚
+        return {
+          success: false,
+          error:
+            '没有选中文件夹：可能是你取消了选择，也可能是所选文件夹被浏览器禁止授权。桌面、文档、下载、用户主目录和磁盘根目录本身不能授权，请先建一个素材子文件夹（如 D:\\素材）再选它。若文件夹确实合规仍反复失败，请用 Chrome / Edge 打开，或改用「配对桌面」。'
+        };
+      }
+      if (err.name === 'SecurityError') {
+        return { success: false, error: '浏览器要求在点击按钮后直接选择文件夹，请重新点一次「授权文件夹」。' };
       }
       return { success: false, error: err.message || '获取本地文件夹失败' };
     }
