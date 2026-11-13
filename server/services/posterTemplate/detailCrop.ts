@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { chatCompletionText } from './chatFallback';
 import { createServerGenAI } from '../../utils/aiClient';
 
 /**
@@ -152,9 +153,31 @@ ${list}
       } catch (err: any) {
         lastErr = err;
         console.warn(`[PosterDetailCrop] ${model} 定位部位失败:`, err?.message || err);
+        // 通道不可用 / 网络不通时不再逐个等超时，直接走对话模型兜底
+        if (/model_not_found|no available channel|unknown provider|fetch failed/i.test(String(err?.message || err))) break;
       }
     }
-    if (found.size === 0 && lastErr) throw lastErr;
+    if (found.size === 0 && lastErr) {
+      // gemini 原生通道不可用：改走 chat/completions 的对话模型
+      try {
+        const fb = await chatCompletionText({
+          prompt,
+          images: [{ mimeType: 'image/jpeg', data: small.toString('base64') }],
+          temperature: 0.1,
+          userId
+        });
+        const m = fb.text.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
+        if (!m) throw new Error('视觉模型未返回 JSON 数组');
+        for (const item of JSON.parse(m[0])) {
+          const box = boxFrom2d(item?.box_2d);
+          if (box && typeof item?.key === 'string') found.set(item.key, box);
+        }
+        console.info(`[PosterDetailCrop] gemini 通道不可用，已改用 ${fb.model} 定位部位`);
+      } catch (fbErr: any) {
+        console.warn('[PosterDetailCrop] 对话模型兜底也失败:', fbErr?.message || fbErr);
+      }
+      if (found.size === 0) throw lastErr;
+    }
   } catch (err: any) {
     warnings.push(`细节部位自动定位失败，已改用默认取景：${err?.message || err}`);
   }

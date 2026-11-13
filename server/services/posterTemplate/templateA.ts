@@ -36,6 +36,8 @@ export interface TemplateADetail {
 
 export interface TemplateAInput {
   hero: Buffer;
+  /** 成品倍率：1 = 2048×1536，2 = 4096×3072。所有字号、间距、留白同比放大，版式不变 */
+  outputScale?: 1 | 2;
   title: TemplateATitle;
   titleSide?: TitleSide | 'auto';
   /** 标题下短横线与细节栏点缀色 */
@@ -117,12 +119,13 @@ export function availableTitleWidth(
   marginX: number,
   maxWidth: number,
   canvasWidth: number,
-  gap = 48
+  gap = 48,
+  minWidth = 280
 ): number {
   if (!product) return maxWidth;
   if (top + height < product.top - gap / 2 || top > product.bottom) return maxWidth;
   const room = side === 'left' ? product.left - gap - marginX : canvasWidth - marginX - (product.right + gap);
-  return Math.round(Math.max(280, Math.min(maxWidth, room)));
+  return Math.round(Math.max(minWidth, Math.min(maxWidth, room)));
 }
 
 /** 把 hero 原图里的归一化框换算到 cover 缩放裁切后的排版坐标 */
@@ -209,8 +212,9 @@ async function textShadow(text: string, style: TextStyle): Promise<{ buffer: Buf
 }
 
 export async function composeTemplateA(input: TemplateAInput): Promise<TemplateAResult> {
-  const W = TEMPLATE_A_SIZE.width;
-  const H = TEMPLATE_A_SIZE.height;
+  const S = input.outputScale === 2 ? 2 : 1;
+  const W = TEMPLATE_A_SIZE.width * S;
+  const H = TEMPLATE_A_SIZE.height * S;
   const HERO_H = Math.round(H * TEMPLATE_A_HERO_RATIO);
   const accent = normalizeHexColor(input.accentColor);
 
@@ -232,22 +236,22 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
 
   const marginX = Math.round(W * 0.07);
   const textMaxW = Math.round(W * 0.38);
-  const nameStyle: TextStyle = { role: 'serif', size: 128, weight: 600, color: colors.name, letterSpacingEm: 0.12 };
-  const subtitleStyle: TextStyle = { role: 'serif', size: 46, weight: 500, color: colors.subtitle, letterSpacingEm: 0.14, maxWidth: textMaxW };
+  const nameStyle: TextStyle = { role: 'serif', size: 128 * S, weight: 600, color: colors.name, letterSpacingEm: 0.12 };
+  const subtitleStyle: TextStyle = { role: 'serif', size: 46 * S, weight: 500, color: colors.subtitle, letterSpacingEm: 0.14, maxWidth: textMaxW };
   const inspirationStyle: TextStyle = {
     role: 'sans',
-    size: 25,
+    size: 25 * S,
     weight: 400,
     color: colors.inspiration,
     letterSpacingEm: 0.3,
     maxWidth: textMaxW,
-    lineGap: 10
+    lineGap: 10 * S
   };
 
   // 主角产品在排版画面中的位置：标题文字遇到它就收窄换行，避免压到产品上
   const productRect = input.productBox ? await mapBoxToCover(input.hero, input.productBox, W, HERO_H) : null;
 
-  const ACCENT_LINE = { width: 84, height: 4, gapBefore: 30, gapAfter: 34 };
+  const ACCENT_LINE = { width: 84 * S, height: 4 * S, gapBefore: 30, gapAfter: 34 };
   const blocks: Array<{ text: string; style: TextStyle; gapBefore: number; isName?: boolean }> = [];
   const name = (input.title.name || '').trim();
   if (name) blocks.push({ text: name, style: nameStyle, gapBefore: 0, isName: true });
@@ -259,7 +263,7 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
   const overlays: sharp.OverlayOptions[] = [];
   const alignX = (width: number) => (titleSide === 'left' ? marginX : W - marginX - width);
   const titleTop = Math.round(HERO_H * 0.09);
-  const productGap = 40;
+  const productGap = 40 * S;
 
   /**
    * 按比例 scale 排一遍标题区。narrow=false 时每行都用满宽度（标题整体放在产品上方）；
@@ -269,7 +273,7 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
     const layers: sharp.OverlayOptions[] = [];
     let cursorY = titleTop;
     for (const block of blocks) {
-      cursorY += Math.round(block.gapBefore * scale);
+      cursorY += Math.round(block.gapBefore * scale * S);
       let style: TextStyle = { ...block.style, size: Math.round(block.style.size * scale) };
       let rendered: RenderedText;
       if (block.isName || !narrow) {
@@ -278,9 +282,9 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
         // 收窄时字距也收一点，避免窄栏里每行只剩几个字
         style = { ...style, letterSpacingEm: Math.min(style.letterSpacingEm || 0, 0.16) };
         const estimate = Math.round(style.size * 1.45);
-        style = { ...style, maxWidth: availableTitleWidth(titleSide, cursorY, estimate, productRect, marginX, textMaxW, W) };
+        style = { ...style, maxWidth: availableTitleWidth(titleSide, cursorY, estimate, productRect, marginX, textMaxW, W, 48 * S, 280 * S) };
         rendered = await renderText(block.text, style);
-        const recheck = availableTitleWidth(titleSide, cursorY, rendered.height, productRect, marginX, textMaxW, W);
+        const recheck = availableTitleWidth(titleSide, cursorY, rendered.height, productRect, marginX, textMaxW, W, 48 * S, 280 * S);
         if (recheck < (style.maxWidth || textMaxW)) {
           style = { ...style, maxWidth: recheck };
           rendered = await renderText(block.text, style);
@@ -289,15 +293,15 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
       const x = alignX(rendered.width);
       if (scheme === 'light') {
         const shadow = await textShadow(block.text, style);
-        layers.push({ input: shadow.buffer, left: x - shadow.pad, top: cursorY - shadow.pad + 3 });
+        layers.push({ input: shadow.buffer, left: x - shadow.pad, top: cursorY - shadow.pad + 3 * S });
       }
       layers.push({ input: rendered.buffer, left: x, top: cursorY });
       cursorY += rendered.height;
       // 命名下面的短横线
       if (block.isName) {
-        cursorY += Math.round(ACCENT_LINE.gapBefore * scale);
+        cursorY += Math.round(ACCENT_LINE.gapBefore * scale * S);
         layers.push({ input: solidRect(ACCENT_LINE.width, ACCENT_LINE.height, accent), left: alignX(ACCENT_LINE.width), top: cursorY });
-        cursorY += ACCENT_LINE.height + Math.round(ACCENT_LINE.gapAfter * scale);
+        cursorY += ACCENT_LINE.height + Math.round(ACCENT_LINE.gapAfter * scale * S);
       }
     }
     return { layers, bottom: cursorY };
@@ -327,14 +331,14 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
   // ---------- 底部三栏细节 ----------
   const stripTop = HERO_H;
   const stripH = H - HERO_H;
-  const padX = 64;
-  const padY = 42;
+  const padX = 64 * S;
+  const padY = 42 * S;
   const cells = input.details.slice(0, 3);
   const cellW = (W - padX * 2) / Math.max(1, cells.length);
   const imgH = stripH - padY * 2;
   const imgW = Math.round(imgH * TEMPLATE_A_DETAIL_ASPECT);
-  const innerPad = 28;
-  const textGap = 32;
+  const innerPad = 28 * S;
+  const textGap = 32 * S;
 
   const strip = stripPalette(input.stripColor);
   overlays.push({ input: solidRect(W, stripH, strip.bg), left: 0, top: stripTop });
@@ -348,23 +352,23 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
     overlays.push({ input: tile, left: imgX, top: imgY });
 
     if (i > 0) {
-      overlays.push({ input: solidRect(2, stripH - padY * 2 - 48, strip.divider), left: cellX - 1, top: stripTop + padY + 24 });
+      overlays.push({ input: solidRect(2 * S, stripH - padY * 2 - 48 * S, strip.divider), left: cellX - S, top: stripTop + padY + 24 * S });
     }
 
     const textX = imgX + imgW + textGap;
     const textW = Math.round(cellX + cellW - innerPad - textX);
-    const titleR = await renderText(cell.title, { role: 'serif', size: 40, weight: 600, color: strip.title, letterSpacingEm: 0.06, maxWidth: textW });
-    const lineW = 36;
-    const lineH = 2;
+    const titleR = await renderText(cell.title, { role: 'serif', size: 40 * S, weight: 600, color: strip.title, letterSpacingEm: 0.06, maxWidth: textW });
+    const lineW = 36 * S;
+    const lineH = 2 * S;
     const descR = cell.desc
-      ? await renderText(cell.desc, { role: 'sans', size: 23, weight: 400, color: strip.desc, letterSpacingEm: 0.08, maxWidth: textW, lineGap: 10 })
+      ? await renderText(cell.desc, { role: 'sans', size: 23 * S, weight: 400, color: strip.desc, letterSpacingEm: 0.08, maxWidth: textW, lineGap: 10 * S })
       : null;
-    const blockH = titleR.height + 18 + lineH + (descR ? 18 + descR.height : 0);
+    const blockH = titleR.height + 18 * S + lineH + (descR ? 18 * S + descR.height : 0);
     let ty = Math.round(imgY + (imgH - blockH) / 2);
     overlays.push({ input: titleR.buffer, left: textX, top: ty });
-    ty += titleR.height + 18;
-    overlays.push({ input: solidRect(lineW, lineH, accent), left: textX + 2, top: ty });
-    ty += lineH + 18;
+    ty += titleR.height + 18 * S;
+    overlays.push({ input: solidRect(lineW, lineH, accent), left: textX + 2 * S, top: ty });
+    ty += lineH + 18 * S;
     if (descR) overlays.push({ input: descR.buffer, left: textX, top: ty });
   }
 

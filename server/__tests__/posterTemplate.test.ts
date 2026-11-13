@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
 import { boxFrom2d, cropRectForBox } from '../services/posterTemplate/detailCrop';
-import { cutAtPunctuation, sanitizeConcept } from '../services/posterTemplate/posterConcept';
+import { buildTemplateAHeroPrompt, cutAtPunctuation, sanitizeConcept } from '../services/posterTemplate/posterConcept';
 import { availableTitleWidth, chooseTitleSide, composeTemplateA, stripPalette, needsScrim, normalizeHexColor, pickTextScheme, TEMPLATE_A_SIZE } from '../services/posterTemplate/templateA';
 import { resolvePosterFont } from '../services/posterTemplate/posterFonts';
 import { isAllowedImageSource } from '../routes/posterTemplateRoutes';
@@ -84,6 +84,19 @@ describe('poster template A · concept sanitising', () => {
   });
 });
 
+describe('poster template A · packaging mark', () => {
+  it('keeps the packaging film and logo in the prompt only when the product has one', () => {
+    const withPack = buildTemplateAHeroPrompt(sanitizeConcept({ name: '银弧', packaging: '底部透明包装膜，印红色飞机图标和蓝色 CHEERS 字样' }));
+    expect(withPack).toContain('必须原样保留');
+    expect(withPack).toContain('CHEERS');
+    expect(withPack).toContain('除沙发上原有的包装标识外');
+
+    const noPack = buildTemplateAHeroPrompt(sanitizeConcept({ name: '银弧' }));
+    expect(noPack).toContain('没有包装膜和品牌标识');
+    expect(noPack).not.toContain('必须原样保留');
+  });
+});
+
 describe('poster template A · copy length', () => {
   it('cuts over-long lines at the last punctuation instead of mid-phrase', () => {
     expect(cutAtPunctuation('灵感源于都市云端之上的静谧，与头层真皮细腻触感的温柔相遇在每一个午后时光里', 20)).toBe('灵感源于都市云端之上的静谧');
@@ -156,4 +169,35 @@ describe.skipIf(!fontsAvailable)('poster template A · composition', () => {
     expect(result.layout.textScheme).toBe('dark');
     expect(result.layout.titleSide).toBe('left');
   }, 20000);
+
+  it('outputScale 2 renders 4096x3072 with the same layout (scaled-up 2048 version ≈ the 4K one)', async () => {
+    const solid = (w: number, h: number, c: string) => sharp({ create: { width: w, height: h, channels: 3, background: c } }).png().toBuffer();
+    const input = {
+      hero: await solid(1600, 900, '#EDE4D8'),
+      title: { name: '琥光', subtitle: '温润如琥，沉浸暮色', inspiration: '灵感源于琥珀色调与暮光' },
+      titleSide: 'left' as const,
+      productBox: { left: 0.3, top: 0.45, width: 0.4, height: 0.4 },
+      details: [
+        { image: await solid(300, 300, '#C27D38'), title: '弧面扶手', desc: '圆润包覆 · 分割缝线' },
+        { image: await solid(300, 300, '#B06A2A'), title: '分段靠背', desc: '立体拉点 · 双段承托' },
+        { image: await solid(300, 300, '#999999'), title: '金属圆足', desc: '精炼矮足 · 沉稳托底' }
+      ]
+    };
+    const one = await composeTemplateA(input);
+    const two = await composeTemplateA({ ...input, outputScale: 2 });
+    expect([two.width, two.height]).toEqual([TEMPLATE_A_SIZE.width * 2, TEMPLATE_A_SIZE.height * 2]);
+    expect((await sharp(two.buffer).metadata()).width).toBe(4096);
+    expect(two.layout.titleSide).toBe(one.layout.titleSide);
+    expect(two.layout.textScheme).toBe(one.layout.textScheme);
+    // 把 4K 缩回 2048 与 1x 逐像素对比：版式一致则平均差异很小
+    const a = await sharp(one.buffer).raw().toBuffer();
+    const b = await sharp(two.buffer).resize(2048, 1536).raw().toBuffer();
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) diff += Math.abs(a[i] - b[i]);
+    expect(diff / a.length).toBeLessThan(4);
+    if (process.env.POSTER_DUMP) {
+      await sharp(one.buffer).toFile(`${process.env.POSTER_DUMP}/a1x.jpg`);
+      await sharp(two.buffer).resize(1024, 768).toFile(`${process.env.POSTER_DUMP}/a2x_small.jpg`);
+    }
+  }, 40000);
 });

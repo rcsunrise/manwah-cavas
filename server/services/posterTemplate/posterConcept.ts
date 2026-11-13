@@ -1,6 +1,7 @@
 import { createServerGenAI } from '../../utils/aiClient';
 import type { DetailTarget } from './detailCrop';
 import type { TitleSide } from './templateA';
+import { chatCompletionText } from './chatFallback';
 import { findSceneDirection, namesCollide, pickSceneDirection, SceneDirection } from './sceneDirections';
 
 /**
@@ -34,6 +35,8 @@ export interface PosterConcept {
   lighting: string;
   /** 茶几、摆件、地毯、抱枕等如何呼应命名 */
   props: string;
+  /** 产品图上真实带有的包装膜 / 品牌标识（位置、颜色、图案）；图里没有就是空串，出图时据此决定保留还是不画 */
+  packaging: string;
   /** 底部细节栏底色：深色场景配深色栏（如弧光的藏蓝），否则用浅色 */
   stripColor: string;
   accentColor: string;
@@ -134,6 +137,7 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
   "lighting": "时间与光线，20–50 字：时刻、主光方向、光效",
   "props": "道具呼应，30–70 字：茶几（形状与材质）、雕塑或摆件、地毯、一对同款抱枕的图案",
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
+  "packaging": "只看产品图：沙发上如果真实带有包装膜或品牌标识（例如底部透明包装膜上印着红蓝色品牌字样），用一句话写明位置、颜色和图案，如“沙发底部座位正面有透明包装膜，印红色飞机图标和蓝色 CHEERS 字样”；图里没有就输出空字符串 \\"\\"，不要猜、不要编",
   "stripColor": "#RRGGBB，海报底部细节栏的底色：夜景、星际等深色场景用与场景同色系的深色（如藏蓝 #14213A、炭黑 #1C1A19）；其余用暖白 #F7F3EE",
   "accentColor": "#RRGGBB，与产品主色和场景协调的点缀色，用于标题下的短横线",
   "titleSide": "left 或 right，标题放哪一侧（这一侧上方是天空、远景或结构的大曲面，明暗均匀）",
@@ -210,6 +214,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
     palette: cut(raw?.palette, 90, ''),
     lighting: cut(raw?.lighting, 90, ''),
     props: cut(raw?.props, 120, ''),
+    packaging: cut(raw?.packaging, 100, ''),
     stripColor: typeof raw?.stripColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.stripColor.trim()) ? raw.stripColor.trim() : '#F7F3EE',
     accentColor: typeof raw?.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor.trim()) ? raw.accentColor.trim() : '#A8743F',
     titleSide: raw?.titleSide === 'right' ? 'right' : 'left',
@@ -254,6 +259,27 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       } catch (err: any) {
         lastErr = err;
         console.warn(`[PosterConcept] ${model} 生成海报概念失败:`, err?.message || err);
+        // 通道不可用 / 网络不通时不再逐个等超时，直接走对话模型兜底
+        if (/model_not_found|no available channel|unknown provider|fetch failed/i.test(String(err?.message || err))) break;
+      }
+    }
+    if (!concept) {
+      // gemini 原生通道全部不可用时，改走 chat/completions 的对话模型
+      try {
+        const fb = await chatCompletionText({
+          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction }),
+          images: input.productImage?.data
+            ? [{ mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') }]
+            : [],
+          temperature: 1,
+          userId
+        });
+        const m = fb.text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+        if (!m) throw new Error('模型未返回 JSON');
+        concept = sanitizeConcept(JSON.parse(m[0]));
+        console.info(`[PosterConcept] gemini 通道不可用，已改用 ${fb.model} 生成概念`);
+      } catch (fbErr: any) {
+        lastErr = fbErr;
       }
     }
     if (!concept) break;
@@ -307,8 +333,16 @@ ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 
 [产品一致性，最重要]
 沙发必须与参考图完全一致：造型、扶手、靠背分段与拉点、缝线走向、脚型、面料质感和颜色都不能改。
-${dnaLines.length ? dnaLines.join('\n') + '\n' : ''}去掉参考图里产品上的保护膜、贴纸、标签和吊牌。
+${dnaLines.length ? dnaLines.join('\n') + '\n' : ''}${
+    concept.packaging
+      ? `参考图里的产品自带包装膜与品牌标识（${concept.packaging}）：这是产品的一部分，必须原样保留——位置、大小、颜色、图案都和参考图一致，标识按原样画出，不要改字、不要重排字母、不要虚化掉。除此之外的保护膜、贴纸、吊牌仍然去掉。`
+      : '参考图里的产品没有包装膜和品牌标识：不要给沙发添加任何包装膜、贴纸、标签、吊牌或 Logo；参考图里若有保护膜、贴纸、吊牌，一律去掉。'
+  }
 
 [禁止]
-画面里不要出现任何文字、字母、数字、Logo、水印；不要拼图、分格、画中画、细节小窗或边框，只要一张完整的场景照片。`;
+${
+    concept.packaging
+      ? '除沙发上原有的包装标识外，画面里不要出现任何文字、字母、数字、Logo、水印；'
+      : '画面里不要出现任何文字、字母、数字、Logo、水印；'
+  }不要拼图、分格、画中画、细节小窗或边框，只要一张完整的场景照片。`;
 }

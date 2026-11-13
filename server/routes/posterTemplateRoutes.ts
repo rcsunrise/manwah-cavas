@@ -129,7 +129,7 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
 
 router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { heroImage, concept: rawConcept } = req.body || {};
+    const { heroImage, concept: rawConcept, outputScale } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeConcept(rawConcept);
     const hero = await loadImage(heroImage, '主场景底图');
@@ -149,6 +149,7 @@ router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Respon
     const crops = await Promise.all(located.map(d => cropDetail(hero, d.box, TEMPLATE_A_DETAIL_ASPECT)));
     const result = await composeTemplateA({
       hero,
+      outputScale: Number(outputScale) === 2 ? 2 : 1,
       title: { name: concept.name, subtitle: concept.subtitle, inspiration: concept.inspiration },
       titleSide: concept.titleSide,
       accentColor: concept.accentColor,
