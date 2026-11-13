@@ -358,145 +358,133 @@ export function detectNodeCollisions(nodes: Node[]): { collisionCount: number; d
 }
 
 /**
- * One-click neat layout arrangement: Organizes canvas into neat rows/columns by scene hierarchy & run swimlanes
+ * 一键整理（自动对齐）：
+ * - 按连线深度从左到右分列（来源 → 企划 → 场景/任务 → 成图），列内按节点真实高度从上到下排，不会再叠成一条长竖线；
+ * - 一列放不下（太高）时自动换到右边相邻的子列；
+ * - 视频的“任务节点 + 成果节点”是同一个镜头的两个视图，并排成一组放在最右侧，
+ *   同一镜头的多次重试聚在一起（新的在上），镜头按 shot-1、shot-2… 排序。
  */
+const TREE_LAYOUT = { originX: 50, originY: 100, colGap: 120, subColGap: 40, rowGap: 40, pairGap: 40, maxColHeight: 3000 };
+
+interface LayoutUnit {
+  nodes: Node[];
+  width: number;
+  height: number;
+}
+
+function layoutUnitsInColumns(units: LayoutUnit[], startX: number, positions: Map<string, { x: number; y: number }>): number {
+  let x = startX;
+  let y = TREE_LAYOUT.originY;
+  let colMaxW = 0;
+  let colCount = 0;
+  for (const unit of units) {
+    if (colCount > 0 && y + unit.height > TREE_LAYOUT.originY + TREE_LAYOUT.maxColHeight) {
+      x += colMaxW + TREE_LAYOUT.subColGap;
+      y = TREE_LAYOUT.originY;
+      colMaxW = 0;
+      colCount = 0;
+    }
+    let nx = x;
+    for (const n of unit.nodes) {
+      positions.set(n.id, { x: nx, y });
+      nx += getNodeDimensions(n).width + TREE_LAYOUT.pairGap;
+    }
+    y += unit.height + TREE_LAYOUT.rowGap;
+    colMaxW = Math.max(colMaxW, unit.width);
+    colCount += 1;
+  }
+  return x + colMaxW;
+}
+
 export function arrangeCleanTreeLayout(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge[] } {
-  const updatedNodes: Node[] = [];
-  const processed = new Set<string>();
+  const data = (n: Node) => (n.data || {}) as Record<string, any>;
+  const layoutNodes = nodes.filter(n => n.type !== 'workflowStageGroupNode');
+  const isVideoNode = (n: Node) => n.type === 'videoGenerationNode' || n.type === 'videoResultNode';
 
-  // Helper getters
-  const getRunId = (n: Node): string => {
-    const data = (n.data || {}) as Record<string, any>;
-    return (data.runId as string) || (data.agentRunId as string) || 'default_run';
+  const typeRank = (n: Node): number => {
+    if (n.type === 'productImageNode' || n.id === 'img-node-1' || n.id === 'product-image-node-1') return 0;
+    if (n.type === 'productDnaNode' || n.id === 'dna-node-1') return 1;
+    if (n.type === 'welcomeNode' || n.id === 'welcome-1') return 2;
+    if (n.type === 'nineGridPlanNode' || n.id.startsWith('plan-node-') || n.id.startsWith('nine-grid-plan-node')) return 3;
+    if (n.type === 'scenePlanNode') return 4;
+    if (n.type === 'imageGenerationNode') return 5;
+    if (data(n).templatePoster) return 6;
+    if (n.type === 'generatedImageNode') return 7;
+    return 8;
   };
+  const sceneOf = (n: Node) => Number(data(n).sceneIndex || data(n).screenIndex || 0);
 
-  const getSceneIdx = (n: Node): number => {
-    const data = (n.data || {}) as Record<string, any>;
-    return Number(data.sceneIndex || data.screenIndex || 0);
-  };
-
-  // 1. Column 0 (X = 50): Static Source Pipeline Nodes (Product Image, DNA, Welcome)
-  const productImgNode = nodes.find(n => n.id === 'product-image-node-1' || n.id === 'img-node-1' || n.type === 'productImageNode');
-  if (productImgNode) {
-    updatedNodes.push({ ...productImgNode, position: { x: 50, y: 100 } });
-    processed.add(productImgNode.id);
-  }
-
-  const dnaNode = nodes.find(n => n.id === 'dna-node-1' || n.type === 'productDnaNode');
-  if (dnaNode) {
-    updatedNodes.push({ ...dnaNode, position: { x: 50, y: 550 } });
-    processed.add(dnaNode.id);
-  }
-
-  const welcomeNode = nodes.find(n => n.id === 'welcome-1' || n.type === 'welcomeNode');
-  if (welcomeNode) {
-    updatedNodes.push({ ...welcomeNode, position: { x: 50, y: 980 } });
-    processed.add(welcomeNode.id);
-  }
-
-  // 2. Identify all Plan runs (NineGridPlanNode)
-  const planNodes = nodes.filter(n => !processed.has(n.id) && (n.type === 'nineGridPlanNode' || n.id.startsWith('plan-node-') || n.id.startsWith('nine-grid-plan-node')));
-
-  // Group all scene plan nodes by runId
-  const scenePlanNodes = nodes.filter(n => !processed.has(n.id) && (n.type === 'scenePlanNode' || n.id.startsWith('scene-plan-')));
-  const runGroupMap = new Map<string, { planNode?: Node; scenes: Node[] }>();
-
-  // Register plan nodes
-  planNodes.forEach(pNode => {
-    const rId = getRunId(pNode) || pNode.id;
-    if (!runGroupMap.has(rId)) {
-      runGroupMap.set(rId, { planNode: pNode, scenes: [] });
-    } else {
-      runGroupMap.get(rId)!.planNode = pNode;
+  // ---------- 非视频节点：按连线深度分列 ----------
+  const general = layoutNodes.filter(n => !isVideoNode(n));
+  const generalIds = new Set(general.map(n => n.id));
+  const depth = new Map<string, number>(general.map(n => [n.id, 0]));
+  const relevantEdges = edges.filter(e => generalIds.has(e.source) && generalIds.has(e.target) && e.source !== e.target);
+  for (let pass = 0; pass < general.length; pass++) {
+    let changed = false;
+    for (const e of relevantEdges) {
+      const next = (depth.get(e.source) || 0) + 1;
+      if (next > (depth.get(e.target) || 0) && next <= general.length) {
+        depth.set(e.target, next);
+        changed = true;
+      }
     }
-  });
-
-  // Register scene nodes into their run groups
-  scenePlanNodes.forEach(sNode => {
-    const rId = getRunId(sNode);
-    if (!runGroupMap.has(rId)) {
-      runGroupMap.set(rId, { scenes: [sNode] });
-    } else {
-      runGroupMap.get(rId)!.scenes.push(sNode);
-    }
-  });
-
-  // Handle unassigned scene plan nodes (if runId missing)
-  const orphanScenes = scenePlanNodes.filter(s => !processed.has(s.id) && !Array.from(runGroupMap.values()).some(g => g.scenes.includes(s)));
-  if (orphanScenes.length > 0) {
-    runGroupMap.set('orphan_run', { scenes: orphanScenes });
+    if (!changed) break;
   }
 
-  let currentRunY = 100;
-  const Y_ROW_STEP = 460;
-  const RUN_GAP_Y = 120;
-
-  // Process each run swimlane sequentially
-  Array.from(runGroupMap.entries()).forEach(([runId, group]) => {
-    const pNode = group.planNode;
-    const scenes = group.scenes;
-    scenes.sort((a, b) => getSceneIdx(a) - getSceneIdx(b));
-
-    // Column 1 (X = 440): Nine Grid Plan Master Node for this run
-    if (pNode) {
-      updatedNodes.push({ ...pNode, position: { x: 440, y: currentRunY } });
-      processed.add(pNode.id);
-    }
-
-    // Column 2 (X = 840): Scene Plan Nodes for this run
-    scenes.forEach((spNode, idx) => {
-      const sceneNum = getSceneIdx(spNode) || (idx + 1);
-      const rowY = currentRunY + idx * Y_ROW_STEP;
-
-      updatedNodes.push({ ...spNode, position: { x: 840, y: rowY } });
-      processed.add(spNode.id);
-
-      // Column 3 (X = 1240): Image Generation Task Nodes belonging strictly to this scene & run
-      const genTaskNodes = nodes.filter(n => {
-        if (processed.has(n.id) || n.type !== 'imageGenerationNode') return false;
-        const nScene = getSceneIdx(n);
-        const nRun = getRunId(n);
-        const isExactScene = nScene === sceneNum || nScene === Number(sceneNum);
-        const isTargetTask = n.id.includes(spNode.id) || n.id === `img-gen-task-${spNode.id}` || n.id === `img-gen-task-${sceneNum}`;
-        const isRunMatch = !runId || runId === 'default_run' || !nRun || nRun === 'default_run' || nRun === runId || n.id.includes(runId);
-        return (isExactScene || isTargetTask) && isRunMatch;
+  const positions = new Map<string, { x: number; y: number }>();
+  const byDepth = new Map<number, Node[]>();
+  for (const n of general) {
+    const d = depth.get(n.id) || 0;
+    byDepth.set(d, [...(byDepth.get(d) || []), n]);
+  }
+  let cursorX = TREE_LAYOUT.originX;
+  Array.from(byDepth.keys())
+    .sort((a, b) => a - b)
+    .forEach(d => {
+      const items = (byDepth.get(d) || [])
+        .slice()
+        .sort((a, b) => typeRank(a) - typeRank(b) || sceneOf(a) - sceneOf(b) || a.position.y - b.position.y || a.position.x - b.position.x);
+      const units: LayoutUnit[] = items.map(n => {
+        const dims = getNodeDimensions(n);
+        return { nodes: [n], width: dims.width, height: dims.height };
       });
-
-      genTaskNodes.forEach((taskNode, tIdx) => {
-        updatedNodes.push({ ...taskNode, position: { x: 1240 + tIdx * 340, y: rowY } });
-        processed.add(taskNode.id);
-      });
-
-      // Column 4+ (X = 1620+): All Generated Result Images belonging strictly to this scene & run (arranged horizontally side-by-side)
-      const genImgNodes = nodes.filter(n => {
-        if (processed.has(n.id) || n.type !== 'generatedImageNode') return false;
-        const nScene = getSceneIdx(n);
-        const nRun = getRunId(n);
-        const isExactScene = nScene === sceneNum || nScene === Number(sceneNum);
-        const isRunMatch = !runId || runId === 'default_run' || !nRun || nRun === 'default_run' || nRun === runId || n.id.includes(runId);
-        return isExactScene && isRunMatch;
-      });
-
-      genImgNodes.forEach((imgNode, imgIdx) => {
-        updatedNodes.push({ ...imgNode, position: { x: 1620 + imgIdx * 380, y: rowY } });
-        processed.add(imgNode.id);
-      });
+      const endX = layoutUnitsInColumns(units, cursorX, positions);
+      cursorX = endX + TREE_LAYOUT.colGap;
     });
 
-    const runOccupiedRows = Math.max(scenes.length, 1);
-    currentRunY += runOccupiedRows * Y_ROW_STEP + RUN_GAP_Y;
-  });
-
-  // 3. Place any remaining unplaced nodes (notes, custom user nodes)
-  let extraY = 100;
-  nodes.forEach(n => {
-    if (!processed.has(n.id) && n.type !== 'workflowStageGroupNode') {
-      updatedNodes.push({ ...n, position: { x: 2000, y: extraY } });
-      processed.add(n.id);
-      extraY += 360;
+  // ---------- 视频节点：任务 + 成果并排成一组 ----------
+  const videoNodes = layoutNodes.filter(isVideoNode);
+  if (videoNodes.length > 0) {
+    const groups = new Map<string, Node[]>();
+    for (const n of videoNodes) {
+      const job = data(n).job || {};
+      const key = String(job.id || data(n).assetVersionId || data(n).jobId || n.id);
+      groups.set(key, [...(groups.get(key) || []), n]);
     }
-  });
+    const shotNo = (ns: Node[]) => {
+      const shotId = String((data(ns[0]).job || {}).shotId || '');
+      const m = shotId.match(/^shot-(\d+)/);
+      return m ? Number(m[1]) : 999;
+    };
+    const createdAt = (ns: Node[]) => Date.parse(String((data(ns[0]).job || {}).createdAt || '')) || 0;
+    const videoUnits: LayoutUnit[] = Array.from(groups.values())
+      .map(ns => ns.slice().sort((a, b) => (a.type === 'videoGenerationNode' ? -1 : 1) - (b.type === 'videoGenerationNode' ? -1 : 1)))
+      .sort((a, b) => shotNo(a) - shotNo(b) || createdAt(b) - createdAt(a))
+      .map(ns => {
+        const dims = ns.map(getNodeDimensions);
+        return {
+          nodes: ns,
+          width: dims.reduce((s, d) => s + d.width, 0) + TREE_LAYOUT.pairGap * (ns.length - 1),
+          height: Math.max(...dims.map(d => d.height))
+        };
+      });
+    layoutUnitsInColumns(videoUnits, cursorX, positions);
+  }
 
+  const updatedNodes = nodes.map(n => {
+    const p = positions.get(n.id);
+    return p ? { ...n, position: p } : n;
+  });
   return { nodes: updatedNodes, edges };
 }
 
