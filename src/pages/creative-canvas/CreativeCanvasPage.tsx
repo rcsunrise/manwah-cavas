@@ -74,6 +74,8 @@ export default function CreativeCanvasPage() {
     setPlanReasoningEffort,
     selectedResolution,
     setSelectedResolution,
+    templateA4K,
+    setTemplateA4K,
     handleGenerateSceneImage,
     handleGenerateTemplatePoster,
     handleAddProductNode,
@@ -901,6 +903,9 @@ export default function CreativeCanvasPage() {
             onGenerateSceneImage={handleTriggerGenerateSceneImage}
             onOpenPosterStudio={handleOpenPosterStudio}
             onGenerateTemplatePoster={handleGenerateTemplatePoster}
+            onPostVideoResult={postVideoResultToChat}
+            templateA4K={templateA4K}
+            setTemplateA4K={setTemplateA4K}
             onAddProductImage={handleAddProductNode}
             onPreviewGptImage={handleOpenGptPreviewManual}
             onApproveSceneImage={handleApproveSceneImage}

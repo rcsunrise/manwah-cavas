@@ -48,14 +48,7 @@ export async function downloadHighResImage(url: string, filename: string): Promi
     }, 100);
   } catch (err) {
     console.warn('Direct fetch download failed, falling back to window opening:', err);
-    // Fallback: open in new tab or trigger direct download link
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => document.body.removeChild(link), 100);
+    // 取不到图片（网络/跨域）：抛出让调用方提示，不再用链接导航——在桌面应用里会把整个窗口带走
+    throw err instanceof Error ? err : new Error('图片下载失败');
   }
 }

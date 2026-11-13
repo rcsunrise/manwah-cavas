@@ -70,7 +70,8 @@ const ACTION_IDS: AgentActionId[] = [
   'render_screen',
   'edit_image_text',
   'set_product_image',
-  'edit_image'
+  'edit_image',
+  'stitch_video'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -84,7 +85,8 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   set_product_image: '设为产品主图并提取 DNA',
   edit_image: '修改海报画面',
   open_poster: '打开全案海报',
-  template_poster: '生成模板 A 海报'
+  template_poster: '生成模板 A 海报',
+  stitch_video: '拼接成片'
 };
 
 /** 去掉动作块（含流式输出中尚未闭合的部分），得到给用户看的正文 */
@@ -105,6 +107,7 @@ function isActionId(value: unknown): value is AgentActionId {
 function normalizeParams(raw: any): AgentActionParams | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const params: AgentActionParams = {};
+  if (raw.stitchTransition === 'cut' || raw.stitchTransition === 'fade') params.stitchTransition = raw.stitchTransition;
   const screenCount = Number(raw.screenCount);
   if (Number.isInteger(screenCount) && screenCount >= 1 && screenCount <= 12) params.screenCount = screenCount;
   if (typeof raw.aspectRatio === 'string' && /^\d+:\d+$/.test(raw.aspectRatio)) params.aspectRatio = raw.aspectRatio;
@@ -184,6 +187,11 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     });
   }
   if (params?.videoRatio) items.push({ label: '画面比例', value: params.videoRatio });
+  if (actionId === 'stitch_video') {
+    items.push({ label: '镜头', value: '画布上每个镜头序号取最新一条已完成的视频，按序号顺序拼接' });
+    items.push({ label: '转场', value: params?.stitchTransition === 'cut' ? '硬切' : '淡入淡出' });
+    items.push({ label: '方式', value: '本地 ffmpeg 合成，不消耗生成点数，约 20 秒~2 分钟' });
+  }
   if (params?.referenceImageUrl) items.push({ label: '参考图', value: '使用对话里发的图片' });
   if (params?.instruction) items.push({ label: '修改要求', value: params.instruction });
   if (actionId === 'edit_image') items.push({ label: '方式', value: '在原图上按要求修改，产品造型与材质保持不变，结果作为新版本节点' });
@@ -306,6 +314,16 @@ export function buildCanvasSummary(input: {
  * 动作块缺失或格式不对时只返回正文，不影响普通对话。
  */
 export function extractAgentActions(text: string): Pick<AgentMessage, 'text' | 'clarifyCard' | 'planCard' | 'suggestions'> {
+  const result = extractAgentActionsRaw(text);
+  // 模型写了“确认后将……”却没给出可用的计划卡（漏写或参数不全被丢弃）：给一个按钮让它补发，避免用户面对不存在的卡片
+  if (!result.planCard && !result.clarifyCard && /确认后(将|会)/.test(result.text)) {
+    const retry: AgentActionOption = { label: '生成确认卡片', prompt: '请把上面的方案整理成可执行的确认卡片（带完整参数）' };
+    result.suggestions = [retry, ...(result.suggestions || [])].slice(0, 4);
+  }
+  return result;
+}
+
+function extractAgentActionsRaw(text: string): Pick<AgentMessage, 'text' | 'clarifyCard' | 'planCard' | 'suggestions'> {
   const start = text.indexOf(OPEN_TAG);
   if (start < 0) return { text };
   const end = text.indexOf(CLOSE_TAG, start);

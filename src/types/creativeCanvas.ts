@@ -114,10 +114,14 @@ export type AgentActionId =
   | 'render_screen'
   | 'edit_image_text'
   | 'set_product_image'
-  | 'edit_image';
+  | 'edit_image'
+  /** 把画布上各分镜视频按顺序拼成一条成片 */
+  | 'stitch_video';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
+  /** 拼接成片：镜头之间的转场（cut 硬切 / fade 淡入淡出） */
+  stitchTransition?: 'cut' | 'fade';
   /** 修改画面：对话里提的修改要求（换背景、调光线等） */
   instruction?: string;
   /** 设为产品主图：对话里用户发的图片地址 */

@@ -362,6 +362,14 @@ export function useCreativeCanvasWorkspace(
   const [planScreenCount, setPlanScreenCount] = useState<number>(1);
   const [planAspectRatio, setPlanAspectRatio] = useState<string>('4:3');
   const [selectedResolution, setSelectedResolution] = useState<'1K' | '2K' | '4K'>('2K');
+  // 模板 A 成品 4K（4096×3072）：默认关；开启后主场景用 4K 生成，排版整体放大 2 倍
+  const [templateA4K, setTemplateA4KState] = useState<boolean>(() => {
+    try { return localStorage.getItem('templateA4K') === '1'; } catch { return false; }
+  });
+  const setTemplateA4K = (on: boolean) => {
+    setTemplateA4KState(on);
+    try { localStorage.setItem('templateA4K', on ? '1' : '0'); } catch { /* 无痕等环境忽略 */ }
+  };
 
   // Style reference images & reference doc states
   const [styleRefImages, setStyleRefImages] = useState<string[]>([]);
@@ -2326,6 +2334,17 @@ export function useCreativeCanvasWorkspace(
       return false;
     }
 
+    // 「生成带字海报」统一走模板 A：文本模型先构思名字与文案 → 无字场景图 → 后端真实字体排版 + 细节裁切。
+    // 不再让图像模型自己画字。批量生成（fromBatch）按屏排队、版式各异，仍走原链路；纯净底图也不受影响。
+    if (withText && !fromBatch) {
+      const mainProduct = (nodesRef.current || nodes).find(n => n.id === 'img-node-1');
+      return handleGenerateTemplatePoster({
+        screenIndex,
+        nodeId: mainProduct ? mainProduct.id : undefined,
+        hint: reviewFeedback || undefined
+      });
+    }
+
     const currentNodes = nodesRef.current || nodes;
     const currentRun = agentRunRef.current || agentRun;
     const currentDna = activeDnaRef.current || activeDna || currentRun?.dna;
@@ -2648,6 +2667,12 @@ export function useCreativeCanvasWorkspace(
         msg => console.log(`[SceneImage #${screenIndex}]`, msg)
       );
 
+      // 上游出图失败时 generateEditedImage 会返回一张本地占位 SVG（isFallback）。
+      // 不能把它当成图建节点：既不是真实渲染，还会让人以为成功了，这里直接按失败处理（占位图本身不扣点）
+      if (result?.isFallback) {
+        throw new Error(`渲染服务暂时没有出图（${result.fallbackError || '上游连接中断'}），未扣点，请稍后再试`);
+      }
+
       if (result && result.imageUrl) {
         // Auto archive to history
         dbService.saveHistoryWithEvent({
@@ -2954,12 +2979,12 @@ export function useCreativeCanvasWorkspace(
         productImage,
         dna,
         model: selectedModel || undefined,
-        resolution: selectedResolution || '2K'
+        resolution: templateA4K ? '4K' : (selectedResolution || '2K')
       });
       const heroUrl = await storeImage(hero.imageDataUrl);
       finishTaskCard(taskId, 'running', `3/3 「${concept.name}」：定位细节部位并排版…`);
 
-      const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept });
+      const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept, outputScale: templateA4K ? 2 : 1 });
       const posterUrl = await storeImage(composed.imageDataUrl);
 
       const resultNodeId = `template-poster-a-${Date.now()}`;
@@ -5282,6 +5307,8 @@ export function useCreativeCanvasWorkspace(
     handleSearchMarketReference,
     selectedResolution,
     setSelectedResolution,
+    templateA4K,
+    setTemplateA4K,
     generatingScenes: generatingScenesRef.current,
     handleGenerateSceneImage,
     handleGenerateTemplatePoster,

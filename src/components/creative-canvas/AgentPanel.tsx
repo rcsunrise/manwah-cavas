@@ -40,7 +40,8 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
-import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard } from '../../types/creativeCanvas';
+import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard } from '../../types/creativeCanvas';
+import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentMessageActions } from './agent-chat/AgentMessageActions';
@@ -52,6 +53,7 @@ import { ProductVisualDNA, AgentRun } from '../../types';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
 import { localAssetService } from '../../services/localAssetService';
+import { downloadHighResImage } from '../../utils/downloadUtils';
 import { downloadPosterImage } from '../../utils/posterExportHelper';
 
 interface AgentPanelProps {
@@ -69,6 +71,8 @@ interface AgentPanelProps {
   onPostAgentMessage?: (text: string, extras?: Partial<AgentMessage>) => string;
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
+  /** 拼接成片完成后把成片卡片发到对话 */
+  onPostVideoResult?: (card: AgentVideoCard) => void;
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
   onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'>) => void;
   /** 修改画布图片中的文字（局部重绘） */
@@ -120,6 +124,9 @@ interface AgentPanelProps {
   onOpenPosterStudio?: (screenIndex: number) => void;
   /** 模板海报（原型）：命名构思 → 主场景 → 细节裁切 + 真实字体排版 */
   onGenerateTemplatePoster?: (params?: AgentActionParams) => void;
+  /** 模板 A 成品 4K（4096×3072，默认关） */
+  templateA4K?: boolean;
+  setTemplateA4K?: (on: boolean) => void;
   /** 把对话框里的图加为画布上的新产品图节点（不替换主产品图） */
   onAddProductImage?: (file: File) => void;
   onPreviewGptImage?: () => void;
@@ -167,6 +174,9 @@ export interface EngineConfigSelectorProps {
   selectedResolution: '1K' | '2K' | '4K';
   setSelectedResolution: (r: '1K' | '2K' | '4K') => void;
   onPreviewGptImage?: () => void;
+  /** 只在渲染引擎面板传入：模板 A 成品 4K 开关 */
+  templateA4K?: boolean;
+  setTemplateA4K?: (on: boolean) => void;
 }
 
 export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
@@ -174,7 +184,9 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
   setSelectedModel,
   selectedResolution,
   setSelectedResolution,
-  onPreviewGptImage
+  onPreviewGptImage,
+  templateA4K,
+  setTemplateA4K
 }) => {
   const models = [
     {
@@ -379,6 +391,21 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
           })}
         </div>
       </div>
+
+      {setTemplateA4K && (
+        <label className="flex items-start gap-2 pt-2 border-t border-[#E5E0D8]/60 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(templateA4K)}
+            onChange={e => setTemplateA4K(e.target.checked)}
+            className="mt-0.5 accent-[#B28C5A]"
+          />
+          <span className="text-[10px] leading-snug">
+            <span className="font-bold text-stone-600">模板 A 成品 4K（4096×3072）</span>
+            <span className="block text-stone-400">默认关（成品 2048×1536）。开启后主场景按 4K 生成，更慢、可能更耗点。</span>
+          </span>
+        </label>
+      )}
     </div>
   );
 };
@@ -456,6 +483,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onGenerateSceneImage,
   onOpenPosterStudio,
   onGenerateTemplatePoster,
+  templateA4K,
+  setTemplateA4K,
   onAddProductImage,
   onPreviewGptImage,
   onApproveSceneImage,
@@ -484,6 +513,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onChangeConversationModel,
   onPostAgentMessage,
   onUpdateAgentMessage,
+  onPostVideoResult,
   onOpenVideoPanel,
   onEditImageText,
   onEditImage
@@ -772,8 +802,91 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       }
     });
 
+  // 拼接成片：每个镜头序号取最新一条已完成的视频，按序号排列
+  const collectStitchClips = async () => {
+    const jobs = (await VideoGenerationService.fetchCanvasJobs(canvasId || '')) as any[];
+    const urlOf = (j: any): string => j.videoUrl || j.supabaseVideoUrl || j.playbackUrl || '';
+    const num = (j: any) => Number(String(j.shotId || '').match(/^shot-(\d+)/)?.[1] || 0);
+    const latest = new Map<number, any>();
+    jobs
+      .filter(j => j.status === 'ready' && urlOf(j) && num(j) > 0)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .forEach(j => {
+        if (!latest.has(num(j))) latest.set(num(j), j);
+      });
+    return [...latest.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([n, j]) => ({ n, url: urlOf(j), assetVersionId: j.assetVersionId as string | undefined, prompt: String(j.prompt || '') }));
+  };
+
+  const prepareStitchCard = async (params?: AgentActionParams) => {
+    if (!canvasId) {
+      postAgent('当前画布还没有保存，暂时无法拼接成片。');
+      return;
+    }
+    postAgent('正在检查画布上已生成的镜头…');
+    try {
+      const clips = await collectStitchClips();
+      if (clips.length < 2) {
+        postAgent(
+          clips.length === 1
+            ? '目前只有 1 个镜头生成完成，至少需要 2 个才能拼接。把其余镜头生成完再来。'
+            : '画布上还没有生成完成的分镜视频。先用「做视频分镜」生成各镜头，再来拼接。',
+          { clarifyCard: { question: '要先去做视频分镜吗？', options: [{ label: '做视频分镜', actionId: 'open_video' }] } }
+        );
+        return;
+      }
+      const transition = params?.stitchTransition === 'cut' ? 'cut' : 'fade';
+      postAgent('确认后开始拼接：', {
+        planCard: {
+          title: '拼接成片',
+          actionId: 'stitch_video',
+          params: { stitchTransition: transition },
+          status: 'pending',
+          items: [
+            { label: '镜头', value: `共 ${clips.length} 个，按镜头序号顺序，每个序号取最新一条` },
+            ...clips.map(c => ({ label: `镜头${c.n}`, value: c.prompt.replace(/\s+/g, ' ').slice(0, 40) || '（无提示词）' })),
+            { label: '转场', value: transition === 'fade' ? '淡入淡出' : '硬切' },
+            { label: '方式', value: '本地 ffmpeg 合成，不消耗生成点数，约 20 秒~2 分钟' }
+          ]
+        }
+      });
+    } catch (err: any) {
+      postAgent(`读取镜头失败：${err?.message || '网络错误'}，请稍后重试。`);
+    }
+  };
+
+  const runStitch = async (params?: AgentActionParams) => {
+    try {
+      const clips = await collectStitchClips();
+      if (clips.length < 2) {
+        postAgent('可拼接的镜头不足 2 个，已取消。');
+        return;
+      }
+      postAgent(`正在拼接 ${clips.length} 个镜头…`);
+      const film = await VideoGenerationService.stitchVideos({
+        canvasId: canvasId || '',
+        clips: clips.map(c => ({ videoUrl: c.url, assetVersionId: c.assetVersionId })),
+        transition: params?.stitchTransition === 'cut' ? 'cut' : 'fade'
+      });
+      onPostVideoResult?.({
+        jobId: `stitch-${Date.now()}`,
+        videoUrl: film.videoUrl,
+        title: `成片 · ${film.clipCount} 个镜头`,
+        durationSeconds: film.durationSeconds
+      });
+    } catch (err: any) {
+      postAgent(`拼接失败：${err?.message || '请稍后重试'}`, {
+        clarifyCard: { question: '要重试吗？', options: [{ label: '重新拼接', actionId: 'stitch_video' }] }
+      });
+    }
+  };
+
   const runAgentAction = (actionId: AgentActionId, params?: AgentActionParams) => {
     switch (actionId) {
+      case 'stitch_video':
+        void prepareStitchCard(params);
+        return;
       case 'upload_product':
         chatUploadInputRef.current?.click();
         return;
@@ -974,6 +1087,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'edit_image':
         onEditImage?.(params || {});
+        return;
+      case 'stitch_video':
+        void runStitch(params);
         return;
       default:
         runAgentAction(card.actionId, params);
@@ -1878,6 +1994,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     </select>
                   </label>
                 </div>
+
+                {setTemplateA4K && (
+                  <label className="flex items-start gap-2 pt-2 border-t border-[#E5E0D8]/60 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(templateA4K)}
+                      onChange={event => setTemplateA4K(event.target.checked)}
+                      className="mt-0.5 accent-[#B28C5A]"
+                    />
+                    <span className="text-[10px] leading-snug">
+                      <span className="font-bold text-stone-600">模板 A 海报成品 4K（4096×3072）</span>
+                      <span className="block text-stone-400">默认关（成品 2048×1536）。开启后「模板 A 海报」的主场景按 4K 生成，更慢、可能更耗点。</span>
+                    </span>
+                  </label>
+                )}
               </div>
 
               <button
@@ -2063,6 +2194,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             selectedResolution={resolution}
                             setSelectedResolution={setResolution}
                             onPreviewGptImage={onPreviewGptImage}
+                            templateA4K={templateA4K}
+                            setTemplateA4K={setTemplateA4K}
                           />
 
                           {/* Image Generation Trigger Buttons */}
@@ -2788,15 +2921,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                               在画布定位
                             </button>
                           )}
-                          <a
-                            href={msg.imageCard.imageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            download
-                            className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-stone-600 text-[10px] font-bold transition-colors"
+                          {/* 用 fetch→blob 下载：跨域图片的 <a download> 会被浏览器忽略，直接把整个窗口导航到图片地址 */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const card = msg.imageCard!;
+                              const safe = (card.title || '海报').replace(/[\s/\\?%*:|"<>]/g, '_').slice(0, 40);
+                              const ext = /\.png(\?|$)/i.test(card.imageUrl) || card.imageUrl.startsWith('data:image/png') ? 'png' : 'jpg';
+                              downloadHighResImage(card.imageUrl, `MW_${safe}.${ext}`).catch(err => {
+                                alert('下载失败：' + (err?.message || '网络连接异常') + '。可以点击图片查看大图后另存。');
+                              });
+                            }}
+                            className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-stone-600 text-[10px] font-bold transition-colors cursor-pointer"
                           >
                             下载
-                          </a>
+                          </button>
                         </div>
                       </div>
                     )}
@@ -2825,6 +2964,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                           >
                             点评这条视频
                           </button>
+                          {!String(msg.videoCard.jobId).startsWith('stitch-') && (
+                            <button
+                              type="button"
+                              onClick={() => runAgentAction('stitch_video')}
+                              className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-[#8C6F43] text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                            >
+                              拼接全部镜头
+                            </button>
+                          )}
                           <a
                             href={msg.videoCard.videoUrl}
                             target="_blank"

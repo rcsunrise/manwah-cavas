@@ -88,3 +88,16 @@ describe('agentActionProtocol', () => {
     expect(stripAgentActions('a < b')).toBe('a < b');
   });
 });
+
+describe('extractAgentActions · 缺卡片兜底', () => {
+  it('正文说“确认后将”但没有计划卡时，补一个“生成确认卡片”按钮', () => {
+    const r = extractAgentActions('确认后将为「泊澜」更换背景。');
+    expect(r.planCard).toBeUndefined();
+    expect(r.suggestions?.[0]?.label).toBe('生成确认卡片');
+  });
+  it('有计划卡时不补按钮', () => {
+    const r = extractAgentActions('确认后将改图<agent_actions>{"plan": {"actionId": "edit_image", "params": {"instruction": "背景换成湖畔现代客厅，光线柔和"}}}</agent_actions>');
+    expect(r.planCard).toBeDefined();
+    expect(r.suggestions).toBeUndefined();
+  });
+});
