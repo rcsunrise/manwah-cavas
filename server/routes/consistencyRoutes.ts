@@ -2,10 +2,35 @@ import { Router, Response, NextFunction } from 'express';
 import { AuthenticatedRequest, AppError } from '../types';
 import { optionalAuthenticateToken } from '../middleware/auth';
 import { EvaluateProductConsistencyInputSchema, ProductConsistencyReport } from '../../src/types/consistencySchema';
-import { evaluateProductConsistency, getCachedReport } from '../services/consistencyService';
+import sharp from 'sharp';
+import { evaluateProductConsistency, getCachedReport, ConsistencyImages } from '../services/consistencyService';
+import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
+import { isAllowedImageSource } from './posterTemplateRoutes';
 import { supabaseAdmin } from '../../src/lib/supabase';
 
 const router = Router();
+
+/** 读取前端传来的参考图 / 候选图，压成 1280 以内的 JPEG 给视觉模型；地址不合规或读不到就跳过，由评估服务按“缺图”明确失败 */
+async function loadConsistencyImages(body: any): Promise<ConsistencyImages> {
+  const toPart = async (src: unknown, label: string) => {
+    if (!isAllowedImageSource(src)) {
+      if (src) console.warn(`[Consistency] ${label}地址不在允许范围内，已忽略`);
+      return undefined;
+    }
+    try {
+      const { buffer } = await VideoSourceImageResolver.loadImageBuffer(src);
+      const small = await sharp(buffer, { failOn: 'none' }).resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      return { mimeType: 'image/jpeg', data: small.toString('base64') };
+    } catch (e: any) {
+      console.warn(`[Consistency] 读取${label}失败:`, e?.message || e);
+      return undefined;
+    }
+  };
+  const refSources: unknown[] = Array.isArray(body?.referenceImageUrls) ? body.referenceImageUrls.slice(0, 3) : [];
+  const references = (await Promise.all(refSources.map(r => toPart(r, '参考图')))).filter(Boolean) as { mimeType: string; data: string }[];
+  const candidate = await toPart(body?.candidateImageUrl, '候选图');
+  return { candidate, references };
+}
 
 router.use(optionalAuthenticateToken as any);
 
@@ -76,7 +101,8 @@ router.post('/:canvasId/product-consistency/evaluate', async (req: Authenticated
       idempotencyKey: input.idempotencyKey
     });
 
-    const report = await evaluateProductConsistency(input);
+    const images = await loadConsistencyImages(req.body);
+    const report = await evaluateProductConsistency(input, images);
 
     broadcastConsistencySSE(canvasId, 'evaluation_completed', {
       screenId: input.screenId,
