@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Handle, Position, NodeResizer } from '@xyflow/react';
+import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Handle, Position, NodeResizer, useReactFlow, useStore } from '@xyflow/react';
 import {
   CheckCircle2,
   XCircle,
@@ -44,10 +45,15 @@ interface GeneratedImageNodeProps {
   selected?: boolean;
 }
 
-export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, selected }) => {
+export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data, selected }: any) => {
   const [imgError, setImgError] = React.useState(false);
-  // 模板 A 海报文字已由后端用真实字体烧进成品图，排版工坊 / T文字叠加对它无意义，仅隐藏入口
+  const { getNodes } = useReactFlow();
+  // 节点被用户拖拽调整过时才有显式宽度（measured 宽度不算）；没调整过保持 320
+  const nodeWidth = useStore((st: any) => st.nodeLookup?.get(id)?.internals?.userNode?.width as number | undefined);
   const isTemplatePoster = Boolean((data as any).templatePoster);
+  // 文字已经在成品图里（模板 A 用真实字体排好；企划“带字海报”由模型直接画出），再开排版工坊 / T文字叠加只会重影，仅隐藏入口。
+  // 纯净底图（withText === false）没有字，仍保留这些入口。
+  const hideTextTools = isTemplatePoster || data.withText === true;
 
   // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
   const [imgRetry, setImgRetry] = React.useState(0);
@@ -77,6 +83,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+  // 下载菜单渲染到 body 上：节点根容器 overflow-hidden 会把菜单裁掉
+  const downloadToggleRef = useRef<HTMLButtonElement | null>(null);
+  const [downloadMenuPos, setDownloadMenuPos] = useState<{ right: number; bottom: number } | null>(null);
   const [isQuickDownloading, setIsQuickDownloading] = useState(false);
 
   // 一键直接下载原始 AI 生成图 (零二次污染、零弹窗阻断)
@@ -433,7 +442,8 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
 
   return (
     <div
-      className={`w-[320px] max-w-full bg-white rounded-2xl border transition-all duration-200 shadow-sm hover:shadow-md select-none overflow-hidden ${
+      style={typeof nodeWidth === 'number' && nodeWidth > 0 ? { width: '100%', height: '100%', minWidth: 320 } : { width: 320 }}
+      className={`flex flex-col bg-white rounded-2xl border transition-all duration-200 shadow-sm hover:shadow-md select-none overflow-hidden ${
         selected ? 'border-[#B28C5A] ring-2 ring-[#B28C5A]/20' : 'border-[#E5E0D8]'
       }`}
     >
@@ -441,10 +451,10 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
         <NodeResizer
           color="#B28C5A"
           isVisible={selected}
-          minWidth={260}
-          minHeight={220}
-          maxWidth={840}
-          maxHeight={1200}
+          minWidth={320}
+          minHeight={360}
+          maxWidth={1200}
+          maxHeight={1600}
           handleStyle={{ width: 8, height: 8, borderRadius: 2 }}
         />
       )}
@@ -553,7 +563,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
         <>
           {/* Image Preview Container with Dynamic Ratio and object-contain */}
           <div
-            className="relative w-full bg-stone-100 overflow-hidden group min-h-[160px] flex items-center justify-center"
+            className="relative w-full bg-stone-100 overflow-hidden group min-h-[160px] flex-1 min-h-0 flex items-center justify-center"
             style={{ aspectRatio: sourceRatioCss }}
           >
             {!imgError && imageUrl ? (
@@ -573,7 +583,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                     }
                   }}
                 />
-                {!isTemplatePoster && (
+                {!hideTextTools && (
                   <PosterTypographyOverlay
                     screenTitle={screenTitle}
                     coreSellingPoint={(data.coreSellingPoint as string) || screenTitle}
@@ -587,8 +597,12 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-stone-100 text-stone-400 text-center">
                 <Sparkles className="w-8 h-8 mb-2 text-[#B28C5A]/40 animate-pulse" />
-                <span className="text-xs font-medium text-stone-500">图片加载失败（已自动重试）</span>
-                <span className="text-[10px] text-stone-400 mt-1">可能是网络不稳，请再试一次；仍失败请重新生成</span>
+                <span className="text-xs font-medium text-stone-500">
+                  {imageUrl.startsWith('data:') ? '图片数据无法显示' : '图片加载失败（已自动重试）'}
+                </span>
+                <span className="text-[10px] text-stone-400 mt-1">
+                  {imageUrl.startsWith('data:') ? '这张图本身不可用，请重新生成' : '可能是网络不稳，请再试一次；仍失败请重新生成'}
+                </span>
                 {imageUrl && (
                   <button
                     onClick={(e) => {
@@ -618,7 +632,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <span>局部重绘</span>
               </button>
 
-              {!isTemplatePoster && (
+              {!hideTextTools && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -699,7 +713,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
               </div>
             </div>
 
-            <div className="flex items-center gap-1 pt-1 border-t border-[#E5E0D8]/40">
+            <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-[#E5E0D8]/40 [&_button]:whitespace-nowrap [&_button]:shrink-0">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -712,7 +726,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <span>局部重绘</span>
               </button>
 
-              {!isTemplatePoster && (
+              {!hideTextTools && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -771,8 +785,11 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                       <span>直接下载</span>
                     </button>
                     <button
+                      ref={downloadToggleRef}
                       onClick={(e) => {
                         e.stopPropagation();
+                        const rect = downloadToggleRef.current?.getBoundingClientRect();
+                        if (rect) setDownloadMenuPos({ right: Math.max(8, window.innerWidth - rect.right), bottom: window.innerHeight - rect.top + 6 });
                         setShowDownloadDropdown(!showDownloadDropdown);
                       }}
                       className="px-1 bg-[#9E7A4A] hover:bg-[#8C6F43] text-white border-l border-white/20 flex items-center justify-center transition-colors"
@@ -783,10 +800,13 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                   </div>
 
                   {/* 展开的底部精巧参数面板，不遮挡画面 */}
-                  {showDownloadDropdown && (
+                  {showDownloadDropdown && downloadMenuPos && createPortal(
+                    <>
+                    <div className="fixed inset-0 z-[9998]" onClick={(e) => { e.stopPropagation(); setShowDownloadDropdown(false); }} />
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 bottom-full mb-1.5 w-48 bg-white rounded-xl shadow-xl border border-stone-200 py-1 z-50 text-left animate-in fade-in zoom-in-95 duration-100"
+                      style={{ position: 'fixed', right: downloadMenuPos.right, bottom: downloadMenuPos.bottom }}
+                      className="w-52 bg-white rounded-xl shadow-xl border border-stone-200 py-1 z-[9999] text-left animate-in fade-in zoom-in-95 duration-100"
                     >
                       <button
                         onClick={handleDirectDownloadOriginal}
@@ -833,6 +853,8 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                         <ChevronRight className="w-3 h-3" />
                       </button>
                     </div>
+                    </>,
+                    document.body
                   )}
                 </div>
               )}
@@ -865,6 +887,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <span>复现 Workflow</span>
               </button>
 
+              {!hideTextTools && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -876,6 +899,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
                 <Type className="w-3 h-3" />
                 <span>排版</span>
               </button>
+              )}
             </div>
 
             {/* ComfyUI style embedded Workflow metadata badge */}
@@ -900,6 +924,17 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ data, se
         screenRole={(data.screenRole as any) || (sceneIndex === 1 ? 'PRODUCT_HERO' : 'LIFESTYLE_SCENE')}
         productDnaVersionId={data.productDnaVersionId || 'dna-v001'}
         candidateAssetVersionId={data.assetVersionId || assetVersionCode || 'asset-v001'}
+        getImages={() => {
+          // 候选图：这张生成图；参考图：它对应的产品原图（模板 A 记录了所属产品节点，其余用主产品节点）
+          const productNodeId = ((data as any).templatePoster?.productNodeId as string) || 'img-node-1';
+          const nodes = getNodes();
+          const refNode = nodes.find(n => n.id === productNodeId) || nodes.find(n => n.id === 'img-node-1');
+          const ref = (refNode?.data as any)?.imageUrl as string | undefined;
+          return {
+            candidateImageUrl: data.rawImageUrl || data.imageUrl,
+            referenceImageUrls: ref ? [ref] : []
+          };
+        }}
       />
 
       {/* Screen Composition Preview Modal */}
