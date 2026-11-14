@@ -1175,6 +1175,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     ? [
         { label: '批量渲染分镜', actionId: 'render_all' },
         { label: '模板 A 海报', actionId: 'template_poster' },
+        { label: '面料海报', actionId: 'fabric_poster' },
         { label: '做全案海报', actionId: 'open_poster' },
         { label: '做视频分镜', actionId: 'open_video' },
         { label: '重做详情页企划', actionId: 'generate_plan' }
@@ -1182,6 +1183,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     : [
         { label: '详情页企划', actionId: 'generate_plan' },
         { label: '模板 A 海报', actionId: 'template_poster' },
+        { label: '面料海报', actionId: 'fabric_poster' },
         { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
       ];
