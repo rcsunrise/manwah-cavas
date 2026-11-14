@@ -22,6 +22,7 @@ import detailCompositionRoutes from './server/routes/detailCompositionRoutes';
 import detailExportRoutes from './server/routes/detailExportRoutes';
 import posterRoutes from './server/routes/posterRoutes';
 import posterTemplateRoutes from './server/routes/posterTemplateRoutes';
+import localFolderRoutes from './server/routes/localFolderRoutes';
 import videoRoutes from './server/routes/videoRoutes';
 import storageManagementRoutes from './server/routes/storageManagementRoutes';
 import spaceStorageRoutes from './server/routes/spaceStorageRoutes';
@@ -397,6 +398,8 @@ async function startServer() {
   app.use('/api/product-dna-versions', productDnaRoutes);
   // 需先于下面挂在 /api 上的通配路由
   app.use('/api/poster-templates', posterTemplateRoutes);
+  // 本机调试：服务端按路径读素材文件夹（浏览器授权不可用时的兜底，仅回环地址 + 非生产）
+  app.use('/api/local-folder', localFolderRoutes);
   app.use('/api', detailCompositionRoutes);
   app.use('/api', productDnaRoutes);
   app.use('/api', assetRoutes);

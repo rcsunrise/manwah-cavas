@@ -170,3 +170,83 @@ describe('buildCanvasSummary · 面料海报', () => {
     expect(summary).toContain('有抱枕');
   });
 });
+
+describe('面料色卡海报（textile_poster / textile_edit）', () => {
+  it('textile_poster 解析主面料、版式、色卡数、型号、底色，非法值被丢弃，卡片写明默认 AI 出 3 张氛围图的扣点', () => {
+    const r = extractAgentActions(
+      '好<agent_actions>{"plan": {"actionId": "textile_poster", "params": {"textileMain": "DSC_8837", "textileLayout": "hex", "textileSwatchCount": 5, "textileCode": "NH30425", "textileBg": "#3a4150", "textileSwatches": ["DSC_8836", ""]}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('textile_poster');
+    expect(r.planCard?.params).toMatchObject({
+      textileMain: 'DSC_8837',
+      textileLayout: 'hex',
+      textileSwatchCount: 5,
+      textileCode: 'NH30425',
+      textileBg: '#3A4150',
+      textileSwatches: ['DSC_8836']
+    });
+    const text = JSON.stringify(r.planCard?.items);
+    expect(text).toContain('六边形');
+    expect(text).toContain('AI 生成 3 张');
+    expect(text).toContain('9000 点');
+  });
+
+  it('非法的版式、底色、色卡数、氛围图张数不进入 params', () => {
+    const r = extractAgentActions(
+      '好<agent_actions>{"plan": {"actionId": "textile_poster", "params": {"textileLayout": "triangle", "textileBg": "red", "textileSwatchCount": 9, "textileMoods": 7}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('textile_poster');
+    expect(r.planCard?.params).toBeUndefined();
+  });
+
+  it('textile_edit：型号传空字符串表示不显示；要氛围图时卡片提示扣点', () => {
+    const r = extractAgentActions(
+      '好<agent_actions>{"plan": {"actionId": "textile_edit", "params": {"textileLayout": "circle", "textileCode": "", "textileMoods": 2, "nodeId": "template-poster-c-1"}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('textile_edit');
+    expect(r.planCard?.params).toMatchObject({ textileLayout: 'circle', textileCode: '', textileMoods: 2, nodeId: 'template-poster-c-1' });
+    const items = r.planCard?.items || [];
+    expect(items.find(i => i.label === '型号')?.value).toBe('不显示');
+    expect(JSON.stringify(items)).toContain('3000 点');
+    expect(JSON.stringify(items)).toContain('旧版保留');
+  });
+
+  it('画布摘要列出本地素材文件夹的文件名和已生成的面料色卡海报', () => {
+    const summary = buildCanvasSummary({
+      dna: null,
+      planSettings: {},
+      nodes: [
+        {
+          id: 'template-poster-c-9',
+          type: 'generatedImageNode',
+          data: { templatePoster: { template: 'C', layout: 'circle', name: '苔原绒', code: 'NH30425', mainName: 'DSC_8837.JPG', swatchNames: ['a', 'b'], bgColor: null, moods: [] } }
+        }
+      ],
+      localFolder: { dirName: '面料', imageCount: 83, names: ['DSC_8836.JPG', 'DSC_8837.JPG'] }
+    });
+    expect(summary).toContain('「面料」：83 张图片');
+    expect(summary).toContain('DSC_8837.JPG');
+    expect(summary).toContain('textile_poster');
+    expect(summary).toContain('template-poster-c-9（圆形版；主面料 DSC_8837.JPG；3 块色卡；名称「苔原绒」；型号NH30425');
+    expect(summary).toContain('textile_edit');
+  });
+});
+
+describe('面料色卡海报的氛围图参数', () => {
+  it('用户发的图当氛围图：只收 https / 画布资产地址，不再 AI 生成、不扣点', () => {
+    const r = extractAgentActions(
+      '好<agent_actions>{"plan": {"actionId": "textile_poster", "params": {"textileMain": "主色.JPG", "textileMoodUrls": ["https://x.supabase.co/a.jpg", "javascript:alert(1)", "/api/canvases/assets/b.png"]}}}</agent_actions>'
+    );
+    expect(r.planCard?.params?.textileMoodUrls).toEqual(['https://x.supabase.co/a.jpg', '/api/canvases/assets/b.png']);
+    const text = JSON.stringify(r.planCard?.items);
+    expect(text).toContain('用你发的 2 张图');
+    expect(text).toContain('不扣点');
+  });
+
+  it('textileMoods=0 表示不要氛围图，卡片说明不扣点', () => {
+    const r = extractAgentActions('好<agent_actions>{"plan": {"actionId": "textile_poster", "params": {"textileMoods": 0}}}</agent_actions>');
+    expect(r.planCard?.params?.textileMoods).toBe(0);
+    expect(JSON.stringify(r.planCard?.items)).toContain('面料特写代替');
+    expect(JSON.stringify(r.planCard?.items)).toContain('不扣点');
+  });
+});

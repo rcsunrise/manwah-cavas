@@ -8,6 +8,8 @@ import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedP
 import { cropDetail, locateDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT } from '../services/posterTemplate/templateA';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
+import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
+import { composeTextilePoster, deriveBackground, TEXTILE_MAX_SWATCHES, textileLayoutOf, textileMoodAspectFor } from '../services/posterTemplate/textilePoster';
 import {
   centerSquare,
   composeFabricPoster,
@@ -344,6 +346,102 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       details: located.filter(d => d.key !== SEAT_KEY),
       seat: seat || null,
       warnings
+    });
+  } catch (err: any) {
+    sendError(res, err, '面料海报合成失败');
+  }
+});
+
+/* ───────── 模板 C：面料色卡海报（三种版式见 textilePoster.ts） ─────────
+ *   POST /textile/concept  看主面料照片，给面料名、说明、标签型号、氛围图描述（失败回退默认文案）
+ *   POST /textile/mood     按版式槽位生成一张氛围图（出图，耗点数；用户要求才调用）
+ *   POST /textile/compose  避开标签取面料、取底色、排版合成（不出图、不扣点）
+ */
+router.post('/textile/concept', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { mainImage, hint, currentName } = req.body || {};
+    const buf = await loadImage(mainImage, '主面料图');
+    const { concept, fromModel, mainColor } = await generateTextileConcept(
+      buf,
+      typeof hint === 'string' ? hint : undefined,
+      userIdOf(req),
+      typeof currentName === 'string' && currentName.trim() ? { name: currentName.trim() } : undefined
+    );
+    res.json({ success: true, concept, fromModel, mainColor, bgColor: deriveBackground(mainColor) });
+  } catch (err: any) {
+    sendError(res, err, '生成面料海报文案失败');
+  }
+});
+
+router.post('/textile/mood', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { concept: rawConcept, index, count, layout, mainColor, model, resolution } = req.body || {};
+    if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
+    const concept = sanitizeTextileConcept(rawConcept, typeof mainColor === 'string' ? mainColor : undefined);
+    const i = Number(index);
+    if (!Number.isInteger(i) || i < 0 || i > 3) return res.status(400).json({ success: false, error: { message: 'index 无效' } });
+    const total = Math.max(1, Math.min(4, Number(count) || 1));
+    const out = await fabricImage(req, {
+      prompt: concept.moodPrompts[i % concept.moodPrompts.length],
+      aspectRatio: textileMoodAspectFor(textileLayoutOf(layout), total, i),
+      model,
+      resolution
+    });
+    res.json({ success: true, index: i, ...out });
+  } catch (err: any) {
+    sendError(res, err, '生成氛围图失败');
+  }
+});
+
+router.post('/textile/compose', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { mainImage, heroImages, swatchImages, moodImages, layout, name, description, code, bgColor, outputScale } = req.body || {};
+    const main = await loadImage(mainImage, '主面料图');
+    const heroAlternatives = await Promise.all((Array.isArray(heroImages) ? heroImages.slice(0, 3) : []).map((u: unknown, i: number) => loadImage(u, `同色面料图${i + 1}`)));
+    const swatchList: unknown[] = Array.isArray(swatchImages) ? swatchImages.slice(0, TEXTILE_MAX_SWATCHES - 1) : [];
+    const moodList: unknown[] = Array.isArray(moodImages) ? moodImages.slice(0, 4) : [];
+    const swatches = await Promise.all(swatchList.map((u, i) => loadImage(u, `配色面料${i + 1}`)));
+    const moods = await Promise.all(moodList.filter(isAllowedImageSource).map((u, i) => loadImage(u, `氛围图${i + 1}`)));
+    // 定位每张氛围图里的人物（视觉模型，不出图不扣点），排版时让小图避开人物、裁切时保住人物
+    const moodPersons = await Promise.all(
+      moods.map(async buf => {
+        try {
+          const { details } = await locateDetails(
+            buf,
+            [{ key: 'person', locate: '画面里的人物，框住整个人（头部、身体和衣服都要框进来）；画面里没有人就框左上角很小的一点' }],
+            userIdOf(req)
+          );
+          const d = details[0];
+          if (!d || d.source !== 'vision') return null;
+          // 太小的框是“没有人”的占位
+          return d.box.width * d.box.height < 0.02 ? null : d.box;
+        } catch {
+          return null;
+        }
+      })
+    );
+    const result = await composeTextilePoster({
+      layout: textileLayoutOf(layout),
+      main,
+      heroAlternatives,
+      swatches,
+      moods,
+      moodPersons,
+      name: typeof name === 'string' ? name.slice(0, 12) : '',
+      description: typeof description === 'string' ? description.slice(0, 200) : '',
+      code: typeof code === 'string' ? code.slice(0, 24) : '',
+      bgColor: typeof bgColor === 'string' ? bgColor : undefined,
+      outputScale: Number(outputScale) === 2 ? 2 : 1
+    });
+    res.json({
+      success: true,
+      imageDataUrl: `data:image/jpeg;base64,${result.buffer.toString('base64')}`,
+      width: result.width,
+      height: result.height,
+      bgColor: result.bgColor,
+      mainColor: result.mainColor,
+      swatchColors: result.swatchColors,
+      warnings: result.warnings
     });
   } catch (err: any) {
     sendError(res, err, '面料海报合成失败');

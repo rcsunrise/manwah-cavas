@@ -80,6 +80,8 @@ export default function CreativeCanvasPage() {
     handleGenerateTemplatePoster,
     handleGenerateFabricPoster,
     handleEditFabricPoster,
+    handleGenerateTextilePoster,
+    handleEditTextilePoster,
     handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
@@ -907,6 +909,8 @@ export default function CreativeCanvasPage() {
             onGenerateTemplatePoster={handleGenerateTemplatePoster}
             onGenerateFabricPoster={handleGenerateFabricPoster}
             onEditFabricPoster={handleEditFabricPoster}
+            onGenerateTextilePoster={handleGenerateTextilePoster}
+            onEditTextilePoster={handleEditTextilePoster}
             onPostVideoResult={postVideoResultToChat}
             templateA4K={templateA4K}
             setTemplateA4K={setTemplateA4K}

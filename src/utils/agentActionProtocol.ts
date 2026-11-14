@@ -73,7 +73,9 @@ const ACTION_IDS: AgentActionId[] = [
   'edit_image',
   'stitch_video',
   'fabric_poster',
-  'fabric_edit'
+  'fabric_edit',
+  'textile_poster',
+  'textile_edit'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -90,7 +92,16 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   template_poster: '生成模板 A 海报',
   stitch_video: '拼接成片',
   fabric_poster: '生成沙发面料海报',
-  fabric_edit: '修改面料海报'
+  fabric_edit: '修改面料海报',
+  textile_poster: '生成面料色卡海报',
+  textile_edit: '修改面料色卡海报'
+};
+
+/** 面料色卡海报的三种版式：对话里用户说的是“斜切/六边形/圆形”，内部是 slant/hex/circle */
+export const TEXTILE_LAYOUT_LABELS: Record<'slant' | 'hex' | 'circle', string> = {
+  slant: '斜切版（右侧大面料被斜线切开，左下 2×3 色卡）',
+  hex: '六边形版（右侧大面料六边形加白描边，右下一排色卡）',
+  circle: '圆形版（左侧大圆形面料，右下圆形色卡）'
 };
 
 /** 去掉动作块（含流式输出中尚未闭合的部分），得到给用户看的正文 */
@@ -126,6 +137,30 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
       .filter((m: { slot: number; prompt: string }) => Number.isInteger(m.slot) && m.slot >= 1 && m.slot <= 4 && m.prompt)
       .slice(0, 4);
     if (moods.length) params.fabricMoods = moods;
+  }
+  if (raw.textileLayout === 'slant' || raw.textileLayout === 'hex' || raw.textileLayout === 'circle') params.textileLayout = raw.textileLayout;
+  if (typeof raw.textileMain === 'string' && raw.textileMain.trim()) params.textileMain = raw.textileMain.trim().slice(0, 120);
+  if (typeof raw.textileMainColor === 'string' && raw.textileMainColor.trim()) params.textileMainColor = raw.textileMainColor.trim().slice(0, 12);
+  if (Array.isArray(raw.textileSwatches)) {
+    const list = raw.textileSwatches.map((s: any) => String(s || '').trim().slice(0, 120)).filter(Boolean).slice(0, 5);
+    if (list.length) params.textileSwatches = list;
+  }
+  const swatchCount = Number(raw.textileSwatchCount);
+  if (Number.isInteger(swatchCount) && swatchCount >= 2 && swatchCount <= 6) params.textileSwatchCount = swatchCount;
+  if (typeof raw.textileName === 'string' && raw.textileName.trim()) params.textileName = raw.textileName.trim().slice(0, 8);
+  if (typeof raw.textileDesc === 'string' && raw.textileDesc.trim()) params.textileDesc = raw.textileDesc.trim().slice(0, 160);
+  // 型号空字符串有意义：表示“不显示型号”
+  if (typeof raw.textileCode === 'string') params.textileCode = raw.textileCode.trim().slice(0, 24);
+  if (typeof raw.textileBg === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.textileBg.trim())) params.textileBg = raw.textileBg.trim().toUpperCase();
+  const moodCount = Number(raw.textileMoods);
+  if (raw.textileMoods !== undefined && raw.textileMoods !== null && Number.isInteger(moodCount) && moodCount >= 0 && moodCount <= 4) params.textileMoods = moodCount;
+  if (Array.isArray(raw.textileMoodUrls)) {
+    const urls = raw.textileMoodUrls
+      .map((u: any) => String(u || '').trim())
+      .filter((u: string) => /^(https:\/\/|\/api\/canvases\/assets\/)/.test(u))
+      .map((u: string) => u.slice(0, 2000))
+      .slice(0, 4);
+    if (urls.length) params.textileMoodUrls = urls;
   }
   const screenCount = Number(raw.screenCount);
   if (Number.isInteger(screenCount) && screenCount >= 1 && screenCount <= 12) params.screenCount = screenCount;
@@ -228,6 +263,32 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     });
     items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
   }
+  if (actionId === 'textile_poster' || actionId === 'textile_edit') {
+    const edit = actionId === 'textile_edit';
+    if (params?.textileLayout) items.push({ label: edit ? '换版式' : '版式', value: TEXTILE_LAYOUT_LABELS[params.textileLayout] });
+    else if (!edit) items.push({ label: '版式', value: '斜切版（可随时在对话里换成六边形版、圆形版）' });
+    if (params?.textileMain) items.push({ label: '主面料', value: params.textileMain });
+    else if (params?.textileMainColor) items.push({ label: '主面料', value: `文件夹里最接近「${params.textileMainColor}」的一款` });
+    if (params?.textileSwatches?.length) items.push({ label: '配色面料', value: params.textileSwatches.join('、') });
+    else if (!edit) items.push({ label: '配色面料', value: '按主色从同一文件夹自动挑选（颜色拉开、彼此协调）' });
+    if (params?.textileSwatchCount) items.push({ label: '色卡数量', value: `${params.textileSwatchCount} 块（含主面料）` });
+    if (params?.textileName) items.push({ label: '面料名', value: params.textileName });
+    if (params?.textileDesc) items.push({ label: '说明', value: params.textileDesc });
+    if (params?.textileCode !== undefined) items.push({ label: '型号', value: params.textileCode || '不显示' });
+    if (params?.textileBg) items.push({ label: '底色', value: params.textileBg });
+    // 生成时默认 AI 出 3 张氛围图（参考图左侧那块时装/生活方式拼贴）；修改时只有点名才重出
+    const moodCount = params?.textileMoodUrls?.length ? 0 : params?.textileMoods ?? (edit ? 0 : 3);
+    if (params?.textileMoodUrls?.length) items.push({ label: '氛围图', value: `用你发的 ${params.textileMoodUrls.length} 张图拼贴，不扣点` });
+    else if (moodCount > 0) items.push({ label: '氛围图', value: `AI 生成 ${moodCount} 张（时装大片、软装静物、氛围静物），每张约 3000 点，约 2~5 分钟` });
+    else if (!edit) items.push({ label: '氛围图', value: '不生成，左侧用面料特写代替' });
+    items.push({
+      label: edit ? '出图' : '方式',
+      value: moodCount > 0
+        ? `氛围图共约 ${moodCount * 3000} 点；面料取自你的本地素材、文字用真实字体`
+        : '面料取自你的本地素材、文字用真实字体，不出图、不扣点，约 10~30 秒'
+    });
+    if (edit) items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
+  }
   if (actionId === 'stitch_video') {
     items.push({ label: '镜头', value: '画布上每个镜头序号取最新一条已完成的视频，按序号顺序拼接' });
     items.push({ label: '转场', value: params?.stitchTransition === 'cut' ? '硬切' : '淡入淡出' });
@@ -275,9 +336,11 @@ export function buildCanvasSummary(input: {
   nodes: any[];
   mentionedNodeIds?: string[];
   selectedSceneIndex?: number | null;
+  /** 已授权的本地素材文件夹（让智能体知道有哪些面料文件可以指定） */
+  localFolder?: { dirName: string; imageCount: number; names: string[] } | null;
 }): string {
   const lines: string[] = [];
-  const { dna, dnaReady, plan, planSettings, nodes, mentionedNodeIds, selectedSceneIndex } = input;
+  const { dna, dnaReady, plan, planSettings, nodes, mentionedNodeIds, selectedSceneIndex, localFolder } = input;
 
   if (dna) {
     const materials = Array.isArray(dna.materials) && dna.materials.length > 0 ? `，材质 ${dna.materials.slice(0, 3).join('/')}` : '';
@@ -301,6 +364,19 @@ export function buildCanvasSummary(input: {
       return `${n.id}（版式${tp.layout === 'hero3' ? '2' : '1'}；${slots.join('、')}；${tp.assets?.pillow ? '有抱枕' : '无抱枕'}；型号${tp.code || '无'}）`;
     });
     lines.push(`- 画布上的沙发面料海报（可用 fabric_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
+  }
+
+  if (localFolder && localFolder.imageCount > 0) {
+    const more = localFolder.imageCount > localFolder.names.length ? `……共 ${localFolder.imageCount} 张` : '';
+    lines.push(`- 已授权本地素材文件夹「${localFolder.dirName}」：${localFolder.imageCount} 张图片，文件名如 ${localFolder.names.join('、')}${more}（可用 textile_poster 以其中一款为主色做面料色卡海报，textileMain 填文件名）`);
+  }
+  const textiles = nodes.filter(n => n?.data?.templatePoster?.template === 'C').slice(-4);
+  if (textiles.length > 0) {
+    const desc = textiles.map(n => {
+      const tp = n.data.templatePoster;
+      return `${n.id}（${tp.layout === 'hex' ? '六边形版' : tp.layout === 'circle' ? '圆形版' : '斜切版'}；主面料 ${tp.mainName || '未知'}；${(tp.swatchNames?.length || 0) + 1} 块色卡；名称「${tp.name || ''}」；型号${tp.code || '无'}；底色 ${tp.bgColor || '自动'}；${tp.moods?.length ? `${tp.moods.length} 张氛围图` : '无氛围图'}）`;
+    });
+    lines.push(`- 画布上的面料色卡海报（可用 textile_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
   }
 
   const screens = plan?.screens || [];

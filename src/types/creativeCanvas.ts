@@ -27,6 +27,10 @@ export interface LocalAssetItem {
   previewUrl?: string;
   fileHandle?: any;
   file?: File;
+  /** 本机调试模式（服务端按路径读文件夹）：原文件地址，需要时 fetch 成 File */
+  serverUrl?: string;
+  /** 面料平均色缓存（挑配色时算出） */
+  colorHex?: string;
 }
 
 export interface LocalAssetSearchCardData {
@@ -120,10 +124,34 @@ export type AgentActionId =
   /** 沙发面料海报（模板 B）：白底沙发 + 抱枕 + 氛围照拼贴 + 圆形细节与面料色卡 */
   | 'fabric_poster'
   /** 修改已生成的面料海报：换抱枕/氛围图、改型号与编号、调抱枕大小、换版式（复用已有素材，只重出改动的那几张） */
-  | 'fabric_edit';
+  | 'fabric_edit'
+  /** 面料色卡海报（模板 C）：从本地面料素材里选一款做主色，其余配色做色卡，三种版式 */
+  | 'textile_poster'
+  /** 修改已生成的面料色卡海报：换版式、改名称/说明/型号、换底色、换主面料、增减色卡（不出图不扣点；氛围图 AI 重出才扣点） */
+  | 'textile_edit';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
+  /** 面料色卡海报：版式（slant 斜切 / hex 六边形 / circle 圆形） */
+  textileLayout?: 'slant' | 'hex' | 'circle';
+  /** 主面料：本地素材里的文件名或其中的关键字（如 DSC_8837）；不填用对话里选中的那一张 */
+  textileMain?: string;
+  /** 按颜色选主面料（如“绿色”“藏青”）；textileMain 没给时用 */
+  textileMainColor?: string;
+  /** 指定配色面料（文件名或关键字）；不填则按主色自动挑选配色 */
+  textileSwatches?: string[];
+  /** 色卡总数（含主面料），2~6 */
+  textileSwatchCount?: number;
+  textileName?: string;
+  textileDesc?: string;
+  /** 型号；空字符串表示不显示 */
+  textileCode?: string;
+  /** 海报底色 #RRGGBB */
+  textileBg?: string;
+  /** 让 AI 生成几张氛围图（每张扣点）；生成时不填默认 3 张，0 表示不生成（左侧用面料特写） */
+  textileMoods?: number;
+  /** 用户在对话里发的图当氛围图（给了就不再 AI 生成），最多 4 张 */
+  textileMoodUrls?: string[];
   /** 面料海报：版式（collage4 参考图 1：4 张氛围照；hero3 参考图 2：1 大 + 2 小）、左上角型号、色卡编号 */
   fabricLayout?: 'collage4' | 'hero3';
   /** 修改面料海报：新的抱枕图案描述 / 不要抱枕 / 抱枕大小倍数（1 为基准，默认 1.25）/ 要换的氛围图（slot 为当前版式里从左到右、从上到下的第几格，1 起） */

@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
+import { LocalAssetItem } from '../types/creativeCanvas';
+import { deltaE, findAssetByKeyword, pickBestSource, pickPaletteSwatches, textileColorTarget } from '../utils/textilePalette';
 import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard, AgentActionParams } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { confirmDialog } from '../utils/confirmDialog';
@@ -728,7 +730,13 @@ export function useCreativeCanvasWorkspace(
         planSettings: { screenCount: planScreenCount, aspectRatio: planAspectRatio, model: planAgentModel },
         nodes,
         mentionedNodeIds: options?.mentionedNodeIds,
-        selectedSceneIndex
+        selectedSceneIndex,
+        localFolder: localAssetService.isConnected()
+          ? (() => {
+              const images = localAssetService.getAssets().filter(a => a.type === 'image');
+              return { dirName: localAssetService.getDirectoryName(), imageCount: images.length, names: images.slice(0, 40).map(a => a.name) };
+            })()
+          : null
       }),
       videoNodes: collectVideoNodeRefs(nodes)
     };
@@ -749,10 +757,13 @@ export function useCreativeCanvasWorkspace(
     // 带图的消息直接交给模型看图回答，不走本地关键词拦截
 
     // Agent G Execution Interceptor: Autonomous 4:3 Poster Layout from Local Assets
+    // 面料海报 / 色卡海报 / 模板海报有自己的动作（由智能体提议确认卡片），不走这个写死的 2650 本地素材拦截
+    const isNamedTemplatePoster = /(面料|色卡|配色|模板\s*[A-C]|模板海报)/i.test(trimmed);
     const isPosterLayoutIntent =
-      /(制作|生成|排版|设计|排一套|做一张|创建|自动制作).*(海报|4:3|四比三|版面)/i.test(trimmed) ||
-      /(使用|用).*(本地|素材).*(海报|排版)/i.test(trimmed) ||
-      /(4:3|四比三).*(海报|排版)/i.test(trimmed);
+      !isNamedTemplatePoster &&
+      (/(制作|生成|排版|设计|排一套|做一张|创建|自动制作).*(海报|4:3|四比三|版面)/i.test(trimmed) ||
+        /(使用|用).*(本地|素材).*(海报|排版)/i.test(trimmed) ||
+        /(4:3|四比三).*(海报|排版)/i.test(trimmed));
 
     if (isPosterLayoutIntent && imageUrls.length === 0) {
       if (!localAssetService.isConnected()) {
@@ -3372,6 +3383,479 @@ export function useCreativeCanvasWorkspace(
     }
   };
 
+  // ───────── 面料色卡海报（模板 C）：本地面料素材 → 主色 + 自动配色 → 三种版式排版 ─────────
+  // 不出图、不扣点（除非用户要 AI 氛围图）；所有图片/文字排版在服务端 compose 完成，
+  // 版式、名称、说明、型号、底色都能在对话里改，改动只重新排版，几秒完成。
+  const textilePostJson = async (url: string, body: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
+    return json;
+  };
+
+  const textileNodePosition = (): { x: number; y: number } => {
+    const list = nodesRef.current || nodes;
+    if (!list.length) return { x: 100, y: 100 };
+    const maxX = Math.max(...list.map(n => n.position.x + (Number((n as any).width) || 420)));
+    const minY = Math.min(...list.map(n => n.position.y));
+    const siblings = list.filter(n => n.id.startsWith('template-poster-c-')).length;
+    return { x: maxX + 60, y: minY + siblings * 460 };
+  };
+
+  /** 挑配色面料：用户点名的按名字找；否则按主色从同一文件夹自动挑（颜色拉开、彼此协调）。找不到/有歧义时抛出可直接给用户看的话 */
+  const pickTextileSwatches = async (
+    main: LocalAssetItem,
+    params: AgentActionParams | undefined,
+    wantCount: number,
+    onProgress: (done: number, total: number) => void
+  ): Promise<LocalAssetItem[]> => {
+    const images = localAssetService.getAssets().filter(a => a.type === 'image' && a.id !== main.id);
+    const others = Math.max(1, Math.min(5, wantCount - 1));
+    if (params?.textileSwatches?.length) {
+      const picked: LocalAssetItem[] = [];
+      for (const kw of params.textileSwatches) {
+        const r = findAssetByKeyword(images, kw);
+        if (!r.match) {
+          throw new Error(
+            r.ambiguous.length
+              ? `「${kw}」匹配到多张：${r.ambiguous.map(a => a.name).join('、')}，请说具体的文件名。`
+              : `在「${localAssetService.getDirectoryName()}」里没找到「${kw}」，请说准确的文件名，或不指定让我自动配色。`
+          );
+        }
+        if (!picked.includes(r.match)) picked.push(r.match);
+      }
+      return picked.slice(0, 5);
+    }
+    const dirOf = (a: LocalAssetItem) => (a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '');
+    let pool = images.filter(a => dirOf(a) === dirOf(main));
+    if (pool.length < others) pool = images;
+    if (pool.length === 0) throw new Error('文件夹里除了主面料没有别的图片，没法配色。');
+    // 候选太多时均匀抽样，避免逐张解码十几 MB 的原图等太久
+    if (pool.length > 48) pool = pool.filter((_, i) => i % Math.ceil(pool.length / 48) === 0);
+    const mainHex = await localAssetService.getFabricColor(main);
+    if (!mainHex) throw new Error(`读不出「${main.name}」的颜色，请确认这是一张图片。`);
+    const colored: Array<{ id: string; hex: string }> = [];
+    let done = 0;
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        while (cursor < pool.length) {
+          const a = pool[cursor++];
+          const hex = await localAssetService.getFabricColor(a);
+          if (hex) colored.push({ id: a.id, hex });
+          onProgress(++done, pool.length);
+        }
+      })
+    );
+    const chosen = pickPaletteSwatches(mainHex, colored, others);
+    return chosen.map(c => pool.find(a => a.id === c.id)!).filter(Boolean);
+  };
+
+  /** 读图用：文件夹里同名文件有多份时（如 3000px 缩略版和 6880px 原片）取体积最大的 */
+  const textileSource = (a: LocalAssetItem): LocalAssetItem => pickBestSource(a, localAssetService.getAssets());
+
+  /** 与主面料同色的其他照片（如没有标签的特写），大图优先用它们里干净区域更大的；最多 2 张，按颜色接近程度排 */
+  const pickHeroAlternatives = async (main: LocalAssetItem, excludeIds: string[]): Promise<LocalAssetItem[]> => {
+    const mainHex = await localAssetService.getFabricColor(main);
+    if (!mainHex) return [];
+    const scored: Array<{ a: LocalAssetItem; d: number }> = [];
+    for (const a of localAssetService.getAssets()) {
+      if (a.type !== 'image' || a.id === main.id || excludeIds.includes(a.id) || !a.colorHex) continue; // 只看已算过颜色的（配色时已读过同目录）
+      const d = deltaE(mainHex, a.colorHex);
+      if (d < 14) scored.push({ a, d });
+    }
+    return scored.sort((x, y) => x.d - y.d).slice(0, 2).map(s => s.a);
+  };
+
+  /** 按颜色说法（如“绿色”“藏青”）在文件夹里找最接近的一张做主面料；读颜色会逐张解码，最多看 60 张 */
+  const findMainByColorName = async (colorName: string): Promise<LocalAssetItem | null> => {
+    const target = textileColorTarget(colorName);
+    if (!target) return null;
+    const pool = localAssetService.getAssets().filter(a => a.type === 'image').slice(0, 60);
+    let best: { a: LocalAssetItem; d: number } | null = null;
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: 4 }, async () => {
+        while (cursor < pool.length) {
+          const a = pool[cursor++];
+          const hex = await localAssetService.getFabricColor(a);
+          if (!hex) continue;
+          const d = deltaE(target, hex);
+          if (!best || d < best.d) best = { a, d };
+        }
+      })
+    );
+    return best ? (best as { a: LocalAssetItem; d: number }).a : null;
+  };
+
+  const handleGenerateTextilePoster = async (params?: AgentActionParams, opts?: { mainAsset?: LocalAssetItem }): Promise<boolean> => {
+    if (!localAssetService.isConnected()) {
+      addAgentMessage('面料色卡海报要用你本地的面料素材：请先点上方【授权文件夹】选择面料文件夹（本机调试授权不了的话，用「输入路径读取」直接填 D:\\素材\\面料 这样的路径），再选一款面料做主色。');
+      return false;
+    }
+    const images = localAssetService.getAssets().filter(a => a.type === 'image');
+    let main = opts?.mainAsset;
+    if (!main && params?.textileMain) {
+      const r = findAssetByKeyword(images, params.textileMain);
+      if (!r.match) {
+        addAgentMessage(
+          r.ambiguous.length
+            ? `「${params.textileMain}」匹配到多张：${r.ambiguous.map(a => a.name).join('、')}，请说具体的文件名。`
+            : `在「${localAssetService.getDirectoryName()}」里没找到「${params.textileMain}」，请在素材列表里点「设为主色 · 面料海报」，或告诉我准确的文件名。`
+        );
+        return false;
+      }
+      main = r.match;
+    }
+    if (!main && params?.textileMainColor) {
+      main = (await findMainByColorName(params.textileMainColor)) || undefined;
+      if (!main) {
+        addAgentMessage(`没认出「${params.textileMainColor}」是什么颜色，请点「设为主色 · 面料海报」选一张，或告诉我文件名。`);
+        return false;
+      }
+    }
+    if (!main) {
+      addAgentMessage('先选一款面料做主色：在上方素材列表里点「设为主色 · 面料海报」，或告诉我文件名。');
+      return false;
+    }
+    const lockKey = `textile:${main.id}`;
+    if (templatePosterRunningRef.current.has(lockKey)) {
+      addAgentMessage(`「${main.name}」的面料海报正在生成中，请等它完成。`);
+      return false;
+    }
+    const layout: 'slant' | 'hex' | 'circle' = params?.textileLayout || 'slant';
+
+    templatePosterRunningRef.current.add(lockKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskId = addAgentMessage('', { taskCard: { title: `面料色卡海报 · ${main.name}`, status: 'running', detail: '1/4 读取面料颜色并挑选配色…' } });
+    try {
+      const swatchAssets = await pickTextileSwatches(main, params, params?.textileSwatchCount || 6, (done, total) =>
+        finishTaskCard(taskId, 'running', `1/4 读取面料颜色并挑选配色… ${done}/${total}`)
+      );
+      const heroAssets = await pickHeroAlternatives(main, swatchAssets.map(a => a.id));
+      finishTaskCard(taskId, 'running', `2/4 读取 ${swatchAssets.length + 1 + heroAssets.length} 张面料原图并构思名称与说明…`);
+      const [mainData, ...restData] = await Promise.all([
+        localAssetService.getImageDataUrl(textileSource(main), 4800, 0.9),
+        ...swatchAssets.map(a => localAssetService.getImageDataUrl(textileSource(a), 2000, 0.86)),
+        ...heroAssets.map(a => localAssetService.getImageDataUrl(textileSource(a), 4800, 0.9))
+      ]);
+      if (!mainData || restData.some(d => !d)) throw new Error('有面料图片读取失败，请重新读取文件夹后再试。');
+      const swatchSrc = restData.slice(0, swatchAssets.length) as string[];
+      const heroSrc = restData.slice(swatchAssets.length) as string[];
+
+      const { concept, mainColor } = await textilePostJson('/api/poster-templates/textile/concept', {
+        mainImage: mainData,
+        hint: params?.hint,
+        currentName: params?.textileName
+      });
+
+      // 氛围图（参考图左侧的时装/生活方式拼贴）：用户发了图就用用户的；否则默认 AI 出 3 张（扣点，确认卡片里写明），textileMoods=0 不出
+      const moodUrls: string[] = [...(params?.textileMoodUrls || [])];
+      const warnings: string[] = [];
+      const moodCount = moodUrls.length ? 0 : params?.textileMoods ?? 3;
+      if (moodCount > 0) {
+        finishTaskCard(taskId, 'running', `3/4 生成 ${moodCount} 张氛围图（每张扣点，约 2–5 分钟）…`);
+        const retryOnce = <T,>(fn: () => Promise<T>) => fn().catch(() => fn());
+        const results = await Promise.allSettled(
+          Array.from({ length: moodCount }, (_, i) =>
+            retryOnce(() =>
+              textilePostJson('/api/poster-templates/textile/mood', {
+                concept, index: i, count: moodCount, layout, mainColor,
+                model: selectedModel || undefined, resolution: selectedResolution || '2K'
+              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料海报氛围图'))
+            )
+          )
+        );
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') moodUrls.push(r.value);
+          else warnings.push(`第 ${i + 1} 张氛围图失败（已省略）：${(r.reason as any)?.message || ''}`);
+        });
+      }
+      finishTaskCard(taskId, 'running', '4/4 避开标签取面料、取底色并排版…');
+
+      const name = params?.textileName || concept.name;
+      const description = params?.textileDesc || concept.description;
+      const code = params?.textileCode ?? concept.code ?? '';
+      const composed = await textilePostJson('/api/poster-templates/textile/compose', {
+        mainImage: mainData,
+        heroImages: heroSrc,
+        swatchImages: swatchSrc,
+        moodImages: moodUrls,
+        layout,
+        name,
+        description,
+        code,
+        bgColor: params?.textileBg
+      });
+      const [posterUrl, mainUrl, ...restUrls] = await Promise.all([
+        persistGeneratedImage(composed.imageDataUrl, '面料色卡海报'),
+        persistGeneratedImage(mainData, '面料原图'),
+        ...swatchSrc.map(d => persistGeneratedImage(d, '面料原图')),
+        ...heroSrc.map(d => persistGeneratedImage(d, '面料原图'))
+      ]);
+      const swatchUrls = restUrls.slice(0, swatchSrc.length);
+      const heroUrls = restUrls.slice(swatchSrc.length);
+
+      const resultNodeId = `template-poster-c-${Date.now()}`;
+      const pos = textileNodePosition();
+      setNodes(prev => [
+        ...prev,
+        {
+          id: resultNodeId,
+          type: 'generatedImageNode',
+          position: pos,
+          data: {
+            sceneIndex: 0,
+            screenTitle: name,
+            coreSellingPoint: concept.colorName,
+            themeTitle: '面料色卡海报',
+            withText: true,
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            dimensions: `${composed.width}x${composed.height}`,
+            aspectRatio: '4:3',
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            version: 1,
+            reviewStatus: 'pendingReview',
+            templatePoster: {
+              template: 'C',
+              layout,
+              name,
+              description,
+              code,
+              bgColor: params?.textileBg || null,
+              autoBgColor: composed.bgColor,
+              mainColor: composed.mainColor,
+              mainName: main.name,
+              mainImage: mainUrl,
+              heroImages: heroUrls,
+              swatchNames: swatchAssets.map(a => a.name),
+              swatchImages: swatchUrls,
+              moods: moodUrls,
+              concept
+            }
+          }
+        } as Node
+      ]);
+      const all = [...warnings, ...(Array.isArray(composed.warnings) ? composed.warnings : [])];
+      finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `面料海报 · ${name}`,
+        nodeId: resultNodeId,
+        withText: true,
+        source: 'poster',
+        detail: `${layout === 'hex' ? '六边形版' : layout === 'circle' ? '圆形版' : '斜切版'} · 主面料 ${main.name} · ${swatchAssets.length + 1} 块色卡 / 想换版式、改名称说明、换底色直接告诉我`
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '面料海报生成失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(lockKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
+  // 修改已生成的面料色卡海报：沿用已存的面料原图，只重新排版（换版式/名称/说明/型号/底色/色卡数）；
+  // 换主面料或指定配色才需要再读本地文件夹；要 AI 氛围图才扣点。结果是新版本节点，旧版保留。
+  const handleEditTextilePoster = async (params?: AgentActionParams): Promise<boolean> => {
+    const currentNodes = nodesRef.current || nodes;
+    const textileNodes = currentNodes.filter(n => n.id.startsWith('template-poster-c-') && (n.data as any)?.templatePoster?.template === 'C');
+    const target =
+      (params?.nodeId ? textileNodes.find(n => n.id === params.nodeId) : undefined) ||
+      (selectedNodeId ? textileNodes.find(n => n.id === selectedNodeId) : undefined) ||
+      textileNodes[textileNodes.length - 1];
+    if (!target) {
+      addAgentMessage('画布上还没有面料色卡海报，先在素材列表里点「设为主色 · 面料海报」生成一张，再来修改。');
+      return false;
+    }
+    const lockKey = `textile-edit:${target.id}`;
+    if (templatePosterRunningRef.current.has(lockKey)) {
+      addAgentMessage('这张面料海报正在修改中，请等它完成。');
+      return false;
+    }
+    const tp = (target.data as any).templatePoster;
+    const needsFolder = Boolean(params?.textileMain || params?.textileSwatches?.length || (params?.textileSwatchCount && params.textileSwatchCount - 1 > (tp.swatchImages?.length || 0)));
+    if (needsFolder && !localAssetService.isConnected()) {
+      addAgentMessage('换主面料或增加色卡要重新读本地面料文件夹，请先点【授权文件夹】（或「输入路径读取」）再说一次。');
+      return false;
+    }
+    let newMain: LocalAssetItem | undefined;
+    if (params?.textileMain) {
+      const r = findAssetByKeyword(localAssetService.getAssets().filter(a => a.type === 'image'), params.textileMain);
+      if (!r.match) {
+        addAgentMessage(r.ambiguous.length ? `「${params.textileMain}」匹配到多张：${r.ambiguous.map(a => a.name).join('、')}，请说具体的文件名。` : `在「${localAssetService.getDirectoryName()}」里没找到「${params.textileMain}」。`);
+        return false;
+      }
+      newMain = r.match;
+    }
+
+    templatePosterRunningRef.current.add(lockKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskId = addAgentMessage('', {
+      taskCard: { title: '修改面料色卡海报', status: 'running', detail: params?.textileMoods ? `重出 ${params.textileMoods} 张氛围图（每张扣点），其余沿用…` : '沿用已有面料重新排版…' }
+    });
+    const warnings: string[] = [];
+    try {
+      const layout: 'slant' | 'hex' | 'circle' = params?.textileLayout || tp.layout || 'slant';
+      let mainImage: string = tp.mainImage;
+      let mainName: string = tp.mainName;
+      let swatchImages: string[] = [...(tp.swatchImages || [])];
+      let heroImages: string[] = [...(tp.heroImages || [])];
+      let swatchNames: string[] = [...(tp.swatchNames || [])];
+      let concept = JSON.parse(JSON.stringify(tp.concept || {}));
+      let name: string = params?.textileName ?? tp.name;
+      let description: string = params?.textileDesc ?? tp.description;
+      const code: string = params?.textileCode ?? tp.code ?? '';
+      let moods: string[] = [...(tp.moods || [])];
+
+      if (newMain || params?.textileSwatches?.length || (params?.textileSwatchCount && params.textileSwatchCount - 1 > swatchImages.length)) {
+        const main = newMain || localAssetService.getAssets().find(a => a.name === tp.mainName && a.type === 'image');
+        if (!main) throw new Error(`本地文件夹里找不到原来的主面料「${tp.mainName}」，请指定新的主面料。`);
+        finishTaskCard(taskId, 'running', '重新读取面料并挑选配色…');
+        const swatchAssets = await pickTextileSwatches(main, params, params?.textileSwatchCount || swatchImages.length + 1, (d, t) =>
+          finishTaskCard(taskId, 'running', `重新读取面料并挑选配色… ${d}/${t}`)
+        );
+        const heroAssets = await pickHeroAlternatives(main, swatchAssets.map(a => a.id));
+        const [mainData, ...restData] = await Promise.all([
+          localAssetService.getImageDataUrl(textileSource(main), 4800, 0.9),
+          ...swatchAssets.map(a => localAssetService.getImageDataUrl(textileSource(a), 2000, 0.86)),
+          ...heroAssets.map(a => localAssetService.getImageDataUrl(textileSource(a), 4800, 0.9))
+        ]);
+        if (!mainData || restData.some(d => !d)) throw new Error('有面料图片读取失败，请重新读取文件夹后再试。');
+        const persisted = await Promise.all([mainData, ...(restData as string[])].map(d => persistGeneratedImage(d, '面料原图')));
+        mainImage = persisted[0];
+        swatchImages = persisted.slice(1, 1 + swatchAssets.length);
+        heroImages = persisted.slice(1 + swatchAssets.length);
+        mainName = main.name;
+        swatchNames = swatchAssets.map(a => a.name);
+        if (newMain && newMain.name !== tp.mainName) {
+          // 换了主面料：名称/说明按新面料重写（用户明确给了的除外）
+          const fresh = await textilePostJson('/api/poster-templates/textile/concept', { mainImage: mainData, currentName: params?.textileName });
+          concept = fresh.concept;
+          if (params?.textileName === undefined) name = fresh.concept.name;
+          if (params?.textileDesc === undefined) description = fresh.concept.description;
+        }
+      } else if (params?.textileSwatchCount && params.textileSwatchCount - 1 < swatchImages.length) {
+        swatchImages = swatchImages.slice(0, Math.max(1, params.textileSwatchCount - 1));
+        swatchNames = swatchNames.slice(0, swatchImages.length);
+      }
+
+      if (params?.textileMoodUrls?.length) {
+        moods = [...params.textileMoodUrls];
+      } else if (params?.textileMoods === 0) {
+        moods = [];
+      } else if (params?.textileMoods) {
+        const retryOnce = <T,>(fn: () => Promise<T>) => fn().catch(() => fn());
+        const results = await Promise.allSettled(
+          Array.from({ length: params.textileMoods }, (_, i) =>
+            retryOnce(() =>
+              textilePostJson('/api/poster-templates/textile/mood', {
+                concept, index: i, count: params.textileMoods, layout, mainColor: tp.mainColor,
+                model: selectedModel || undefined, resolution: selectedResolution || '2K'
+              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料海报氛围图'))
+            )
+          )
+        );
+        const fresh: string[] = [];
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled') fresh.push(r.value);
+          else warnings.push(`第 ${i + 1} 张氛围图重出失败：${(r.reason as any)?.message || ''}`);
+        });
+        if (fresh.length) moods = fresh;
+      }
+      finishTaskCard(taskId, 'running', '重新排版…');
+
+      const bgColor: string | null = params?.textileBg ?? tp.bgColor ?? null;
+      // 换了主面料后原来手动指定的底色不再适用，除非这次又指定了
+      const effectiveBg = newMain && newMain.name !== tp.mainName && !params?.textileBg ? null : bgColor;
+      const composed = await textilePostJson('/api/poster-templates/textile/compose', {
+        mainImage,
+        heroImages,
+        swatchImages,
+        moodImages: moods,
+        layout,
+        name,
+        description,
+        code,
+        bgColor: effectiveBg || undefined
+      });
+      const posterUrl = await persistGeneratedImage(composed.imageDataUrl, '面料色卡海报');
+
+      const resultNodeId = `template-poster-c-${Date.now()}`;
+      const base = target.position || { x: 100, y: 100 };
+      const version = Number((target.data as any).version || 1) + 1;
+      setNodes(prev => [
+        ...prev,
+        {
+          id: resultNodeId,
+          type: 'generatedImageNode',
+          position: { x: base.x + 460, y: base.y + 20 },
+          data: {
+            ...(target.data as any),
+            screenTitle: name,
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            dimensions: `${composed.width}x${composed.height}`,
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            version,
+            reviewStatus: 'pendingReview',
+            templatePoster: {
+              ...tp,
+              layout,
+              name,
+              description,
+              code,
+              bgColor: effectiveBg,
+              autoBgColor: composed.bgColor,
+              mainColor: composed.mainColor,
+              mainName,
+              mainImage,
+              heroImages,
+              swatchNames,
+              swatchImages,
+              moods,
+              concept
+            }
+          }
+        } as Node
+      ]);
+      setEdges(prev => [
+        ...prev,
+        {
+          id: `edge-textile-edit-${resultNodeId}`,
+          source: target.id,
+          target: resultNodeId,
+          sourceHandle: 'source',
+          targetHandle: 'target',
+          label: `修改版 v${version}`,
+          labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+          labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
+          style: { stroke: '#B28C5A', strokeWidth: 2, strokeDasharray: '6 4' }
+        }
+      ]);
+      const all = [...warnings, ...(Array.isArray(composed.warnings) ? composed.warnings : [])];
+      finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，修改版已加入画布', { nodeId: resultNodeId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `面料海报 · ${name} · v${version}`,
+        nodeId: resultNodeId,
+        withText: true,
+        source: 'poster',
+        detail: `${layout === 'hex' ? '六边形版' : layout === 'circle' ? '圆形版' : '斜切版'} · 沿用已有面料重新排版`
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '修改面料海报失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(lockKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
   // Phase C3B: Batch Generation & Controlled Task Queue
   const [batchState, setBatchState] = useState<GenerationBatch | null>(null);
   const [queueItems, setQueueItems] = useState<SceneQueueItem[]>([]);
@@ -4016,6 +4500,8 @@ export function useCreativeCanvasWorkspace(
     handleGenerateTemplatePoster,
     handleGenerateFabricPoster,
     handleEditFabricPoster,
+    handleGenerateTextilePoster,
+    handleEditTextilePoster,
     handleUploadToProductNode,
     handleClearProductNode,
     handleApproveSceneImage,
@@ -5636,6 +6122,8 @@ export function useCreativeCanvasWorkspace(
     handleGenerateTemplatePoster,
     handleGenerateFabricPoster,
     handleEditFabricPoster,
+    handleGenerateTextilePoster,
+    handleEditTextilePoster,
     handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,

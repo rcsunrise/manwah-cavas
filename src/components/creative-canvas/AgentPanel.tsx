@@ -40,7 +40,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
-import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard } from '../../types/creativeCanvas';
+import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
@@ -128,6 +128,10 @@ interface AgentPanelProps {
   onGenerateFabricPoster?: (params?: AgentActionParams) => void;
   /** 修改已生成的面料海报 */
   onEditFabricPoster?: (params?: AgentActionParams) => void;
+  /** 面料色卡海报（模板 C）：本地面料素材做主色 + 自动配色，三种版式；opts.mainAsset 是素材列表里点选的那一张 */
+  onGenerateTextilePoster?: (params?: AgentActionParams, opts?: { mainAsset?: LocalAssetItem }) => void;
+  /** 修改已生成的面料色卡海报（换版式、改名称/说明/型号/底色、换主面料、增减色卡） */
+  onEditTextilePoster?: (params?: AgentActionParams) => void;
   /** 模板 A 成品 4K（4096×3072，默认关） */
   templateA4K?: boolean;
   setTemplateA4K?: (on: boolean) => void;
@@ -489,6 +493,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onGenerateTemplatePoster,
   onGenerateFabricPoster,
   onEditFabricPoster,
+  onGenerateTextilePoster,
+  onEditTextilePoster,
   templateA4K,
   setTemplateA4K,
   onAddProductImage,
@@ -1072,6 +1078,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           }
         });
         return;
+      case 'textile_poster':
+      case 'textile_edit': {
+        // 不出图也不扣点（除非要 AI 氛围图），但会读本地文件夹、生成新节点，先出确认卡片让用户看清用哪块面料、什么版式
+        const edit = actionId === 'textile_edit';
+        postAgent(edit ? '确认后开始修改面料色卡海报：' : '确认后开始生成面料色卡海报：', {
+          planCard: {
+            title: edit ? '修改面料色卡海报' : '生成面料色卡海报',
+            actionId,
+            params: params || {},
+            status: 'pending',
+            items: describePlanParams(actionId, params)
+          }
+        });
+        return;
+      }
       case 'goto_setup':
         setActiveTab('setup');
         return;
@@ -1126,6 +1147,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'fabric_edit':
         onEditFabricPoster?.(params);
+        return;
+      case 'textile_poster':
+        onGenerateTextilePoster?.(params);
+        return;
+      case 'textile_edit':
+        onEditTextilePoster?.(params);
         return;
       default:
         runAgentAction(card.actionId, params);
@@ -2706,6 +2733,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 setRefDocName?.(name);
                 setRefDocText?.(text);
               }}
+              onMakeTextilePoster={asset => runAgentAction('textile_poster', { textileMain: asset.path })}
             />
 
             {/* Conversation Guidelines：对话刚开始时展示 */}

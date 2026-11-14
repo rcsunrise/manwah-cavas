@@ -29,13 +29,18 @@ interface LocalAssetBridgePanelProps {
   onAddAsStyleRef?: (imageUrl: string) => void;
   onImportAsRefDoc?: (docName: string, textContent: string) => void;
   onTriggerSearchInChat?: (keyword: string) => void;
+  /** 把这张面料照片设为主面料，生成面料色卡海报（其余配色自动从同一文件夹挑） */
+  onMakeTextilePoster?: (asset: LocalAssetItem) => void;
 }
+
+const SERVER_PATH_KEY = 'manwah_local_folder_path';
 
 export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
   onImportAsMainImage,
   onAddAsStyleRef,
   onImportAsRefDoc,
-  onTriggerSearchInChat
+  onTriggerSearchInChat,
+  onMakeTextilePoster
 }) => {
   // P0 Native Web state
   const [isConnected, setIsConnected] = useState(localAssetService.isConnected());
@@ -54,6 +59,47 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResult, setSearchResult] = useState<LocalAssetSearchCardData | null>(null);
   const [isPanelExpanded, setIsPanelExpanded] = useState(true);
+
+  // 本机调试兜底：浏览器授权不可用时，让本地服务按路径直接读文件夹（云端部署没有这个入口）
+  const [serverAvailable, setServerAvailable] = useState(false);
+  const [pathInput, setPathInput] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    localAssetService.isServerFolderAvailable().then(ok => alive && setServerAvailable(ok));
+    try {
+      const saved = localStorage.getItem(SERVER_PATH_KEY);
+      if (saved) setPathInput(saved);
+    } catch {
+      /* 读不到就留空 */
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleAuthorizeByPath = async () => {
+    const dir = pathInput.trim();
+    if (!dir) {
+      setErrorMsg('请先填写素材文件夹的完整路径，如 D:\\素材\\面料');
+      return;
+    }
+    setErrorMsg(null);
+    setIsScanning(true);
+    const res = await localAssetService.authorizeServerFolder(dir);
+    setIsScanning(false);
+    if (res.success) {
+      try {
+        localStorage.setItem(SERVER_PATH_KEY, dir);
+      } catch {
+        /* 存不了不影响使用 */
+      }
+      updateLocalState();
+      setSearchResult(localAssetService.searchAssets('', 'all', 6));
+    } else {
+      setErrorMsg(res.error || '读取失败');
+    }
+  };
 
   // Sync state with local service
   const updateLocalState = useCallback(() => {
@@ -210,7 +256,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
   // Import Asset as Main Image
   const handleSelectMainImage = async (asset: LocalAssetItem) => {
     // If from Bridge (without native File handle), stage it via bridge API
-    if (!asset.file && !asset.fileHandle && asset.path) {
+    if (!asset.file && !asset.fileHandle && !asset.serverUrl && asset.path) {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         const token = sessionData?.session?.access_token;
@@ -425,6 +471,36 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
         </div>
       )}
 
+      {/* 本机调试：输入路径读取（只在本地服务开放时出现，云端不显示） */}
+      {serverAvailable && !hasAnyActiveConnection && (
+        <div className="p-2 bg-white border border-dashed border-[#B28C5A]/50 rounded-xl space-y-1.5">
+          <p className="text-[10px] text-stone-500 leading-relaxed">
+            <span className="font-bold text-[#2C2A29]">本机调试 · 输入路径读取：</span>
+            浏览器授权不可用（内嵌浏览器、受保护目录）时，让本地服务直接读这个文件夹。
+          </p>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={pathInput}
+              onChange={e => setPathInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleAuthorizeByPath();
+              }}
+              placeholder="如 D:\素材\面料"
+              className="flex-1 min-w-0 px-2 py-1 bg-[#FAF8F5] border border-[#E5E0D8] rounded-lg text-[11px] text-[#2C2A29] placeholder-stone-400 outline-none focus:border-[#B28C5A]"
+            />
+            <button
+              type="button"
+              onClick={handleAuthorizeByPath}
+              disabled={isScanning}
+              className="shrink-0 px-2.5 py-1 bg-stone-800 hover:bg-stone-900 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+            >
+              {isScanning ? '读取中…' : '读取'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Expanded Search & Asset Grid when connected */}
       {hasAnyActiveConnection && isPanelExpanded && (
         <div className="space-y-2.5 pt-1 border-t border-[#E5E0D8]/60 animate-in fade-in duration-150">
@@ -543,6 +619,16 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
                         </>
                       ) : null}
                     </div>
+                    {asset.type === 'image' && onMakeTextilePoster && (
+                      <button
+                        type="button"
+                        onClick={() => onMakeTextilePoster(asset)}
+                        className="w-full py-1 bg-stone-800 hover:bg-stone-900 text-white rounded text-[9px] font-bold transition-colors whitespace-nowrap"
+                        title="以这块面料为主色，自动配色，生成面料色卡海报（三种版式可在对话里切换）"
+                      >
+                        设为主色 · 面料海报
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
