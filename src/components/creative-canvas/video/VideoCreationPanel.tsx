@@ -41,6 +41,10 @@ import { VideoGenerationService } from '../../../services/videoGenerationService
 interface VideoCreationPanelProps {
   canvasId: string;
   isOpen: boolean;
+  /** 在对话里完成：面板挂着但不显示，AI 导演的分镜方案回传到对话，确认也在对话里做 */
+  hidden?: boolean;
+  /** 对话模式下分镜方案生成完成：把方案交给对话展示 */
+  onPlanReadyInChat?: (plan: VideoDirectorPlan | null, error?: string) => void;
   onClose: () => void;
   selectedNode: {
     id: string;
@@ -63,6 +67,8 @@ interface VideoCreationPanelProps {
     videoShots?: VideoShotOutline[];
     videoRatio?: string;
     referenceImageUrl?: string;
+    /** 来自对话确认：导演在后台出方案，不展开面板 */
+    chat?: boolean;
     nonce: number;
   } | null;
 }
@@ -215,6 +221,8 @@ function savePanelState(canvasId: string, state: PersistedPanelState) {
 export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   canvasId,
   isOpen,
+  hidden,
+  onPlanReadyInChat,
   onClose,
   selectedNode,
   allNodes,
@@ -339,6 +347,14 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
 
   // 填入 Agent G 带来的视频创意：等本画布存档恢复完成后再写，避免被存档覆盖；同一 nonce 只填一次
   const appliedBriefNonceRef = useRef<number | null>(null);
+  // 本次分镜是从对话确认来的：方案出来后回传对话，而不是留在面板里
+  const chatModeRef = useRef(false);
+  const submitAllRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const onSubmitAll = () => submitAllRef.current?.();
+    window.addEventListener('video:submit-all', onSubmitAll);
+    return () => window.removeEventListener('video:submit-all', onSubmitAll);
+  }, []);
   // 对话里要的是视频分镜：填入创意后自动让 AI 导演出分镜方案（等状态更新后再触发）
   // 用 state 而不是 ref：要等创意、运镜模式、分镜大纲这些状态都提交后，下一次渲染再触发，
   // 否则触发时拿到的还是上一轮的参数（曾因此按旧的智能混剪 + 6 秒出了 5 个镜头）
@@ -347,6 +363,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     if (!incomingBrief || hydratedCanvasId !== canvasId) return;
     if (appliedBriefNonceRef.current === incomingBrief.nonce) return;
     appliedBriefNonceRef.current = incomingBrief.nonce;
+    chatModeRef.current = Boolean(incomingBrief.chat);
     setActiveTab(incomingBrief.videoMode === 'generate_video' ? 'generate_video' : 'product_showcase');
     // 对话里的创意通常按顺序描述多个卖点，默认用多镜头分镜，否则一镜到底只能表现开头和结尾
     const outline = (incomingBrief.videoShots || []).filter(s => s.title && s.content && s.durationSeconds > 0);
@@ -732,7 +749,9 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       undefined;
     const effectiveRefs = referenceImages.length > 0 ? referenceImages : fallbackProductImage ? [fallbackProductImage] : [];
 
-    const plan = await generatePlan({
+    let plan: VideoDirectorPlan;
+    try {
+      plan = await generatePlan({
       mode: activeTab,
       style,
       userPrompt: userPrompt.trim() || '产品全景微移，展现高端居家光影质感',
@@ -750,12 +769,26 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
       supportsLastFrame: Boolean(currentCapability?.modes.includes('first_last_frame')),
       ...(style === 'outline' && shotOutline?.length ? { shotOutline } : {})
     });
+    } catch (err: any) {
+      if (chatModeRef.current) {
+        chatModeRef.current = false;
+        onPlanReadyInChat?.(null, err?.message || '生成导演分镜方案失败');
+        return;
+      }
+      throw err;
+    }
 
     if (onPlanCreated && selectedNode) {
       onPlanCreated(plan, selectedNode.id);
     }
+    if (chatModeRef.current && plan) {
+      chatModeRef.current = false;
+      onPlanReadyInChat?.(plan);
+    }
   };
   handleGeneratePlanRef.current = () => { void handleGeneratePlan(); };
+
+  // (submitAllRef 在 handleBatchSubmitAllShots 定义之后赋值)
 
   // Generate Static Keyframe image for single shot
   // 生成镜头首帧：比例跟随视频比例（之前固定 16:9，竖屏视频会出现上下黑边）
@@ -912,6 +945,8 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
     }
   };
 
+  submitAllRef.current = () => { void handleBatchSubmitAllShots(); };
+
   // 每个分镜取最新一条已完成的视频，按分镜顺序拼接
   const jobVideoUrlOf = (job: VideoJob): string => {
     const anyJob = job as any;
@@ -965,7 +1000,10 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
           ? `fixed bg-white border border-neutral-200 rounded-xl shadow-2xl z-40 flex flex-col font-sans overflow-hidden ${isDraggingPanel || isResizingPanel ? 'ring-2 ring-purple-300' : ''}`
           : 'fixed top-14 right-0 bottom-0 w-[440px] bg-white border-l border-neutral-200 shadow-2xl z-40 flex flex-col font-sans'
       }
-      style={panelPos ? { left: panelPos.x, top: panelPos.y, width: panelSize.w, height: panelSize.h } : undefined}
+      style={{
+        ...(panelPos ? { left: panelPos.x, top: panelPos.y, width: panelSize.w, height: panelSize.h } : {}),
+        ...(hidden ? { display: 'none' } : {})
+      }}
     >
       {panelPos && (
         <>
