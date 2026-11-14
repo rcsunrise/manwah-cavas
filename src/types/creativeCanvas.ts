@@ -109,6 +109,7 @@ export type AgentActionId =
   | 'render_all'
   | 'search_market'
   | 'open_video'
+  | 'video_submit_all'
   | 'open_poster'
   /** 模板海报（原型）：命名构思 → 主场景 → 细节裁切 + 排版 */
   | 'template_poster'

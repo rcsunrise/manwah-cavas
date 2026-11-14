@@ -306,10 +306,18 @@ export default function CreativeCanvasPage() {
     videoShots?: { title: string; durationSeconds: number; camera?: string; content: string }[];
     videoRatio?: string;
     referenceImageUrl?: string;
+    chat?: boolean;
     nonce: number;
   } | null>(null);
+  // 在对话里完成视频分镜：视频面板挂在后台不展开，方案回传到对话确认
+  const [chatVideoActive, setChatVideoActive] = React.useState(false);
+  React.useEffect(() => {
+    const open = () => setIsVideoPanelOpen(true);
+    window.addEventListener('video:open-panel', open);
+    return () => window.removeEventListener('video:open-panel', open);
+  }, []);
 
-  const handleOpenVideoPanel = React.useCallback((targetNode?: any) => {
+  const handleOpenVideoPanel = React.useCallback((targetNode?: any, silent = false) => {
     let nodeToUse = targetNode;
     if (!nodeToUse && selectedNodeId) {
       nodeToUse = nodes.find(n => n.id === selectedNodeId);
@@ -336,7 +344,8 @@ export default function CreativeCanvasPage() {
     } else {
       setVideoSelectedNode(null);
     }
-    setIsVideoPanelOpen(true);
+    if (silent) setChatVideoActive(true);
+    else setIsVideoPanelOpen(true);
   }, [selectedNodeId, nodes]);
 
   const handlePlanCreated = React.useCallback((plan: any, sourceNodeId: string) => {
@@ -617,8 +626,13 @@ export default function CreativeCanvasPage() {
           onUpdate: (updated: any) => {
             setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
           },
-          onGeneratePoster: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, true),
-          onRegenerate: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, false),
+          // 模板海报（A/B/C）不是企划屏出图结果，不能挂“按屏出纯净底图/带字海报”的回调，否则点再次生成会变成出纯净底图
+          ...(node.data?.templatePoster
+            ? {}
+            : {
+                onGeneratePoster: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, true),
+                onRegenerate: () => triggerGenerateRef.current(sceneIdx, undefined, generationSettingsRef.current.selectedModel, generationSettingsRef.current.selectedResolution, false)
+              }),
           onOpenAssetVersions: () => {
             const idx = node.data?.sceneIndex || 1;
             const key = `scene-${String(idx).padStart(2, '0')}`;
@@ -852,7 +866,7 @@ export default function CreativeCanvasPage() {
             onUpdateAgentMessage={updateAgentMessage}
             onOpenVideoPanel={brief => {
               if (brief) setVideoBriefRequest({ ...brief, nonce: Date.now() });
-              handleOpenVideoPanel();
+              handleOpenVideoPanel(undefined, Boolean(brief?.chat));
             }}
             onEditImageText={handleEditImageText}
             onEditImage={handleEditImage}
@@ -1016,8 +1030,34 @@ export default function CreativeCanvasPage() {
         {/* Video Generation Right Panel (Creative Canvas Video V1) */}
         <VideoCreationPanel
           canvasId={effectiveCanvasId}
-          isOpen={isVideoPanelOpen}
-          onClose={() => setIsVideoPanelOpen(false)}
+          isOpen={isVideoPanelOpen || chatVideoActive}
+          hidden={!isVideoPanelOpen}
+          onPlanReadyInChat={(plan, error) => {
+            if (!plan) {
+              addAgentMessage(`导演分镜方案没能生成：${error || '未知错误'}。可以再说一次，或打开视频面板手动调整。`);
+              return;
+            }
+            const shots = plan.shots || [];
+            addAgentMessage(`导演分镜方案出来了：${shots.length} 个镜头，约 ${plan.estimatedDurationSeconds || 0} 秒。确认后每个镜头提交为一个视频任务（会消耗视频点数），结果会回到画布和这里。`, {
+              planCard: {
+                title: '生成全部镜头',
+                actionId: 'video_submit_all',
+                params: {},
+                status: 'pending',
+                items: [
+                  ...shots.map((s: any, i: number) => ({
+                    label: `镜头${i + 1} · ${s.durationSeconds}s`,
+                    value: `${s.title || s.shotId}${s.cameraMotion ? `（${s.cameraMotion}）` : ''}：${String(s.composition || s.prompt || '').slice(0, 90)}`
+                  })),
+                  { label: '导演', value: String(plan.directorModel || '') }
+                ].filter(it => it.value)
+              }
+            });
+          }}
+          onClose={() => {
+            setIsVideoPanelOpen(false);
+            setChatVideoActive(false);
+          }}
           selectedNode={videoSelectedNode}
           allNodes={nodes}
           onPlanCreated={handlePlanCreated}

@@ -242,6 +242,7 @@ export function useCreativeCanvasWorkspace(
   const hasExplicitUserClearRef = useRef<boolean>(false);
   // 本地刚新建、尚无任何云端数据的项目 ID：hydrate 时跳过全部远程拉取
   const freshProjectIdRef = useRef<string | null>(null);
+  const lastHydratedProjectRef = useRef<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -2900,6 +2901,17 @@ export function useCreativeCanvasWorkspace(
 
   // 模板 A 海报（原型）：概念 → 主场景底图 → 细节裁切 + 真实字体排版，成图进画布并回传对话。
   // 画布上可以有多张产品图，每张各自生成、可同时进行：锁、避重名、成图位置都按产品节点区分。
+  /**
+   * 模板海报成品的落点：在起点右侧按 3 列网格找第一个没被占用的位置，
+   * 同一产品的各版海报（含对话里生成的浅色版、修改版）就会整齐排成一组，不再互相叠压或散落。
+   */
+  const findFreePosterSlot = (all: Node[], start: { x: number; y: number }, w = 520, h = 640): { x: number; y: number } => {
+    for (let k = 0; k < 60; k++) {
+      const p = { x: start.x + (k % 3) * w, y: start.y + Math.floor(k / 3) * h };
+      if (!all.some(n => Math.abs(n.position.x - p.x) < w - 20 && Math.abs(n.position.y - p.y) < h - 20)) return p;
+    }
+    return { x: start.x, y: start.y + all.length * 40 };
+  };
   const templatePosterRunningRef = useRef<Set<string>>(new Set());
   const [templatePosterRunningIds, setTemplatePosterRunningIds] = useState<string[]>([]);
   const handleGenerateTemplatePoster = async (params?: AgentActionParams): Promise<boolean> => {
@@ -3002,11 +3014,10 @@ export function useCreativeCanvasWorkspace(
       const resultNodeId = `template-poster-a-${Date.now()}`;
       const basePos = productNode?.position || { x: 100, y: 100 };
       setNodes(prev => {
-        const siblings = prev.filter(n => n.id.startsWith('template-poster-a-') && (n.data as any)?.templatePoster?.productNodeId === productKey).length;
         const posterNode: Node = {
           id: resultNodeId,
           type: 'generatedImageNode',
-          position: { x: basePos.x + 460, y: basePos.y + siblings * 420 },
+          position: findFreePosterSlot(prev, { x: basePos.x + 460, y: basePos.y }),
           data: {
             sceneIndex: params?.screenIndex || 0,
             // 只放海报名：screenTitle 会被排版叠加、企划出图当标题用，不能带“模板 A”标签（节点页脚显示时再加前缀）
@@ -3167,11 +3178,10 @@ export function useCreativeCanvasWorkspace(
       const resultNodeId = `template-poster-b-${Date.now()}`;
       const basePos = productNode?.position || { x: 100, y: 100 };
       setNodes(prev => {
-        const siblings = prev.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.productNodeId === productKey).length;
         const posterNode: Node = {
           id: resultNodeId,
           type: 'generatedImageNode',
-          position: { x: basePos.x + 460, y: basePos.y + siblings * 420 },
+          position: findFreePosterSlot(prev, { x: basePos.x + 460, y: basePos.y }),
           data: {
             sceneIndex: 0,
             screenTitle: code || '沙发面料海报',
@@ -3322,11 +3332,10 @@ export function useCreativeCanvasWorkspace(
       const base = target.position || { x: 100, y: 100 };
       const version = Number((target.data as any).version || 1) + 1;
       setNodes(prev => {
-        const siblings = prev.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.productNodeId === tp.productNodeId).length;
         const node: Node = {
           id: resultNodeId,
           type: 'generatedImageNode',
-          position: { x: base.x + 460, y: base.y + Math.max(1, siblings) * 20 },
+          position: findFreePosterSlot(prev, { x: base.x + 520, y: base.y }),
           data: {
             ...(target.data as any),
             imageUrl: posterUrl,
@@ -4603,7 +4612,9 @@ export function useCreativeCanvasWorkspace(
           data.onApprove = () => nodeActionsRef.current.handleApproveSceneImage(idx);
           data.onReject = (feedback: string) => nodeActionsRef.current.handleRejectSceneImage(idx, feedback);
           data.onOpenPosterStudio = () => onOpenPosterStudioRef.current?.(idx);
-          data.onGeneratePoster = () => nodeActionsRef.current.handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
+          if (!data.templatePoster) {
+            data.onGeneratePoster = () => nodeActionsRef.current.handleGenerateSceneImage(idx, undefined, undefined, undefined, true);
+          }
         } else if (isProdImg) {
           if (isMainProductNodeId(node.id)) {
             // 主产品图：上传会提取 DNA、驱动企划
@@ -4683,6 +4694,14 @@ export function useCreativeCanvasWorkspace(
       let fetchedRun: AgentRun | null = null;
 
       const isFreshCanvas = Boolean(targetProjectId) && freshProjectIdRef.current === targetProjectId;
+
+      // 页面组件在不同画布间复用：从一个真实画布切到另一个（或新建页）时，对话区不能还留着上一张画布的消息。
+      // 占位页（new/latest）跳到真实项目是同一次创建流程，保留；新建画布的欢迎消息由新建流程自己设置。
+      const prevHydrated = lastHydratedProjectRef.current;
+      if (prevHydrated && prevHydrated !== targetProjectId && !['new', 'latest', 'default_project'].includes(prevHydrated) && !isFreshCanvas) {
+        setMessages([makeWelcomeMessage()]);
+      }
+      lastHydratedProjectRef.current = targetProjectId;
 
       // 画布草稿与项目详情、agent-runs 互不依赖，并行发起
       const canvasPromise = isFreshCanvas

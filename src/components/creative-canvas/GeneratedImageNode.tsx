@@ -35,6 +35,7 @@ import { PosterDownloadModal } from './PosterDownloadModal';
 import { ImageInpaintModal } from './ImageInpaintModal';
 import { downloadHighResImage } from '../../utils/downloadUtils';
 import { downloadPosterImage } from '../../utils/posterExportHelper';
+import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
 
 interface GeneratedImageNodeProps {
   data: GeneratedImageNodeData & {
@@ -54,6 +55,10 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
   // 文字已经在成品图里（模板 A 用真实字体排好；企划“带字海报”由模型直接画出），再开排版工坊 / T文字叠加只会重影，仅隐藏入口。
   // 纯净底图（withText === false）没有字，仍保留这些入口。
   const hideTextTools = isTemplatePoster || data.withText === true;
+  const [showRegenMenu, setShowRegenMenu] = useState(false);
+  const templateKind = (data as any).templatePoster?.template as string | undefined;
+  const regenOptions = isTemplatePoster ? posterRegenOptions((data as any).templatePoster) : [];
+  const posterTitleLabel = `${templateKind === 'B' ? '面料海报' : templateKind === 'C' ? '面料色卡' : '模板 A'} · `;
 
   // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
   const [imgRetry, setImgRetry] = React.useState(0);
@@ -684,8 +689,8 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
               />
             )}
 
-            {/* Resolution & Aspect ratio tag */}
-            <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md text-white text-[9px] px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+            {/* Resolution & Aspect ratio tag：只在悬停时出现，且放右上角，避免常驻遮住海报底部的细节和文字（尺寸信息卡片底部另有一份） */}
+            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white text-[9px] px-2 py-0.5 rounded-full font-mono flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
               <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
               <span>cloud_saved · {sourceAspectRatio || aspectRatio}</span>
             </div>
@@ -694,9 +699,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
           {/* Action Footer */}
           <div className="p-2.5 bg-[#FAF8F5] border-t border-[#E5E0D8]/60 space-y-2">
             <div className="flex items-center justify-between text-[10px] text-stone-500">
-              <span className="truncate max-w-[130px] font-medium" title={isTemplatePoster ? `模板 A · ${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}>
-                {/* 旧节点的 screenTitle 已带“模板 A · ”前缀，先去掉再统一加，避免重复 */}
-                {isTemplatePoster ? `模板 A · ${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}
+              <span className="truncate max-w-[130px] font-medium" title={isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}>
+                {/* 旧节点的 screenTitle 已带“模板 A · ”前缀，先去掉再统一加，避免重复；面料海报用自己的前缀 */}
+                {isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}
               </span>
               <div className="flex items-center gap-1 font-mono">
                 {data.productDnaVersionCode && (
@@ -713,6 +718,38 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
               </div>
             </div>
 
+            {isTemplatePoster && showRegenMenu && (
+              <div className="rounded-lg border border-[#B28C5A]/30 bg-white p-1.5 space-y-1 nodrag" onClick={e => e.stopPropagation()}>
+                {regenOptions.map(opt => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => {
+                      setShowRegenMenu(false);
+                      window.dispatchEvent(new CustomEvent(AGENT_RUN_ACTION_EVENT, { detail: { actionId: opt.actionId, params: opt.params } }));
+                    }}
+                    className="w-full text-left px-2 py-1 rounded-md hover:bg-[#F2EDE4] text-[10px] text-stone-700"
+                  >
+                    <span className="font-bold text-[#8C6F43]">{opt.label}</span>
+                    <span className="block text-[9px] text-stone-400">{opt.hint}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRegenMenu(false);
+                    const kind = POSTER_KIND_NAME[templateKind || 'A'] || '海报';
+                    window.dispatchEvent(
+                      new CustomEvent(AGENT_COMPOSE_EVENT, { detail: { nodeId: id, text: `修改这张${kind}（${screenTitle.replace(/^模板 A · /, '')}）：` } })
+                    );
+                  }}
+                  className="w-full text-left px-2 py-1 rounded-md hover:bg-[#F2EDE4] text-[10px] text-stone-700"
+                >
+                  <span className="font-bold text-[#8C6F43]">引用到对话修改</span>
+                  <span className="block text-[9px] text-stone-400">选中这张，在对话里说要改哪里（换氛围图、抱枕、型号、版式…）</span>
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-[#E5E0D8]/40 [&_button]:whitespace-nowrap [&_button]:shrink-0">
               <button
                 onClick={(e) => {
@@ -754,7 +791,22 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                 </button>
               )}
 
-              {onRegenerate && (
+              {isTemplatePoster && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowRegenMenu(v => !v);
+                  }}
+                  className="py-1 px-1.5 rounded-lg text-[10px] font-bold bg-[#FAF8F5] hover:bg-[#F2EDE4] text-[#8C6F43] border border-[#B28C5A]/30 flex items-center justify-center gap-1 transition-all"
+                  title="模板海报的再次生成：整套重出，或引用到对话里改局部"
+                >
+                  <RefreshCw className="w-3 h-3 text-[#B28C5A]" />
+                  <span>再次生成</span>
+                  <ChevronDown className="w-2.5 h-2.5" />
+                </button>
+              )}
+
+              {onRegenerate && !isTemplatePoster && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

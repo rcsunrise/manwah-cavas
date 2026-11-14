@@ -43,6 +43,7 @@ import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
+import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentMessageActions } from './agent-chat/AgentMessageActions';
 import { ConversationSwitcher } from './agent-chat/ConversationSwitcher';
@@ -74,7 +75,7 @@ interface AgentPanelProps {
   /** 拼接成片完成后把成片卡片发到对话 */
   onPostVideoResult?: (card: AgentVideoCard) => void;
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
-  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'>) => void;
+  onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'> & { chat?: boolean }) => void;
   /** 修改画布图片中的文字（局部重绘） */
   onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
   /** 按对话要求修改画面（换背景、调光线等） */
@@ -653,7 +654,91 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   };
+  // 整个对话面板可以拖成悬浮窗（拖标题栏），悬浮后可拖右下角缩放；点“停靠”或双击标题栏回到右侧
+  const FLOAT_KEY = 'creative-canvas:agent-panel-float';
+  type FloatRect = { x: number; y: number; w: number; h: number };
+  const clampFloat = (r: FloatRect): FloatRect => {
+    const w = Math.round(Math.min(Math.max(r.w, 360), Math.max(360, window.innerWidth - 16)));
+    const h = Math.round(Math.min(Math.max(r.h, 420), Math.max(420, window.innerHeight - 16)));
+    return {
+      w,
+      h,
+      x: Math.round(Math.min(Math.max(r.x, 8 - w + 120), window.innerWidth - 120)),
+      y: Math.round(Math.min(Math.max(r.y, 0), window.innerHeight - 48))
+    };
+  };
+  const [floatRect, setFloatRect] = useState<FloatRect | null>(() => {
+    try {
+      const raw = localStorage.getItem(FLOAT_KEY);
+      if (raw) return clampFloat(JSON.parse(raw));
+    } catch {}
+    return null;
+  });
+  const saveFloat = (r: FloatRect | null) => {
+    try {
+      if (r) localStorage.setItem(FLOAT_KEY, JSON.stringify(r));
+      else localStorage.removeItem(FLOAT_KEY);
+    } catch {}
+  };
+  const asideRef = useRef<HTMLElement | null>(null);
+  const handleHeaderDragStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || window.innerWidth < 768) return;
+    if ((e.target as HTMLElement).closest('button, select, input, textarea, a, [role="listbox"], [role="menu"]')) return;
+    const box = asideRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const start = floatRect || { x: box.left, y: box.top, w: box.width, h: box.height };
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let latest: FloatRect | null = floatRect;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 6) return;
+      moved = true;
+      latest = clampFloat({ ...start, x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy });
+      setFloatRect(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      if (moved && latest) saveFloat(latest);
+    };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  const handleFloatResizeStart = (e: React.PointerEvent<HTMLDivElement>, axis: 'x' | 'y' | 'xy') => {
+    if (!floatRect) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const start = floatRect;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    let latest = start;
+    const onMove = (ev: PointerEvent) => {
+      latest = clampFloat({
+        ...start,
+        w: axis === 'y' ? start.w : start.w + ev.clientX - sx,
+        h: axis === 'x' ? start.h : start.h + ev.clientY - sy
+      });
+      setFloatRect(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      saveFloat(latest);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  const dockAgentPanel = () => {
+    setFloatRect(null);
+    saveFloat(null);
+  };
   const [composerFill, setComposerFill] = useState<{ text: string; mode: 'replace' | 'append'; nonce: number } | null>(null);
+  const [regenMenuFor, setRegenMenuFor] = useState<string | null>(null);
   const [promptValue, setPromptValue] = useState<string>(planTargetAudience || '');
   const [isPromptHighlighted, setIsPromptHighlighted] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
@@ -1017,10 +1102,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'search_market':
         onSearchMarketReference?.(params?.keywords || planSearchKeywords || undefined);
         return;
-      case 'open_video':
+      case 'open_video': {
+        // 带着创意/分镜来的：不展开面板，AI 导演在后台出方案，回到对话里确认；没带创意（点快捷标签）才打开面板自己填
+        const hasBrief = Boolean(params?.videoBrief || params?.focusPoints?.length || params?.videoShots?.length);
+        if (hasBrief && params?.videoMode !== 'generate_video') {
+          postAgent('AI 导演正在构思分镜方案，出来后会回到这里让你确认…');
+        }
         onOpenVideoPanel?.(
-          params?.videoBrief || params?.focusPoints?.length || params?.videoShots?.length
+          hasBrief
             ? {
+                chat: params?.videoMode !== 'generate_video',
                 videoBrief: params.videoBrief,
                 focusPoints: params.focusPoints,
                 videoMode: params.videoMode,
@@ -1032,6 +1123,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             : undefined
         );
         return;
+      }
       case 'set_product_image': {
         const url = params?.imageUrl;
         if (!url) return;
@@ -1145,6 +1237,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'fabric_poster':
         onGenerateFabricPoster?.(params);
         return;
+      case 'video_submit_all':
+        // 视频面板在后台挂着，由它按导演方案逐镜提交
+        window.dispatchEvent(new CustomEvent('video:submit-all'));
+        return;
       case 'fabric_edit':
         onEditFabricPoster?.(params);
         return;
@@ -1165,8 +1261,39 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   };
 
   const handleAdjustPlan = (card: AgentPlanCard) => {
+    if (card.actionId === 'video_submit_all') {
+      window.dispatchEvent(new CustomEvent('video:open-panel'));
+      return;
+    }
     setActiveTab(card.actionId === 'render_all' ? 'render' : 'setup');
   };
+
+  // 选中画布上的某张图并把“关于这张图：”填进输入框，方便引用它在对话里提修改
+  const composeAboutNode = (nodeId: string, text: string) => {
+    window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId } }));
+    setComposerFill({ text, mode: 'replace', nonce: Date.now() });
+  };
+  // 画布节点上的“再次生成 / 引用修改”通过事件通知到这里：重出走确认卡片（扣点前先看清楚）
+  const runAgentActionRef = useRef(runAgentAction);
+  runAgentActionRef.current = runAgentAction;
+  const composeAboutNodeRef = useRef(composeAboutNode);
+  composeAboutNodeRef.current = composeAboutNode;
+  useEffect(() => {
+    const onRun = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.actionId) runAgentActionRef.current(d.actionId, d.params);
+    };
+    const onCompose = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.nodeId && d.text) composeAboutNodeRef.current(d.nodeId, d.text);
+    };
+    window.addEventListener(AGENT_RUN_ACTION_EVENT, onRun);
+    window.addEventListener(AGENT_COMPOSE_EVENT, onCompose);
+    return () => {
+      window.removeEventListener(AGENT_RUN_ACTION_EVENT, onRun);
+      window.removeEventListener(AGENT_COMPOSE_EVENT, onCompose);
+    };
+  }, []);
 
   // 输入框上方的快捷任务：随工作流阶段变化
   const quickActions: AgentActionOption[] = !chatHasDna
@@ -1296,11 +1423,29 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   return (
     <aside
-      className={`relative w-full md:w-[var(--agent-panel-w)] h-full flex flex-col bg-[#FDFBF7] border-l border-[#E5E0D8] shrink-0 z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] select-none ${
-        isResizingPanel ? '' : 'transition-[width] duration-300'
-      }`}
-      style={{ '--agent-panel-w': `${panelWidth}px` } as React.CSSProperties}
+      ref={asideRef}
+      className={
+        floatRect
+          ? 'hidden md:flex fixed z-40 flex-col bg-[#FDFBF7] border border-[#E5E0D8] rounded-2xl shadow-2xl overflow-hidden select-none'
+          : `relative w-full md:w-[var(--agent-panel-w)] h-full flex flex-col bg-[#FDFBF7] border-l border-[#E5E0D8] shrink-0 z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)] select-none ${
+              isResizingPanel ? '' : 'transition-[width] duration-300'
+            }`
+      }
+      style={
+        floatRect
+          ? ({ left: floatRect.x, top: floatRect.y, width: floatRect.w, height: floatRect.h } as React.CSSProperties)
+          : ({ '--agent-panel-w': `${panelWidth}px` } as React.CSSProperties)
+      }
     >
+      {floatRect && (
+        <>
+          <div onPointerDown={e => handleFloatResizeStart(e, 'x')} className="absolute top-0 right-0 bottom-5 w-2 z-50 cursor-ew-resize" title="拖动调整宽度" />
+          <div onPointerDown={e => handleFloatResizeStart(e, 'y')} className="absolute left-0 right-5 bottom-0 h-2 z-50 cursor-ns-resize" title="拖动调整高度" />
+          <div onPointerDown={e => handleFloatResizeStart(e, 'xy')} className="absolute right-0 bottom-0 w-6 h-6 z-50 cursor-nwse-resize flex items-end justify-end p-0.5" title="拖动调整窗口大小">
+            <svg viewBox="0 0 16 16" className="w-4 h-4 text-stone-400"><path d="M14 6 L6 14 M14 10 L10 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+          </div>
+        </>
+      )}
       <div
         role="separator"
         aria-orientation="vertical"
@@ -1311,12 +1456,19 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           setPanelWidth(PANEL_DEFAULT_WIDTH);
           savePanelWidth(PANEL_DEFAULT_WIDTH);
         }}
-        className={`hidden md:block absolute -left-1 top-0 h-full w-2 z-30 cursor-col-resize group/resize`}
+        className={`${floatRect ? 'hidden' : 'hidden md:block'} absolute -left-1 top-0 h-full w-2 z-30 cursor-col-resize group/resize`}
       >
         <div className={`mx-auto h-full w-0.5 transition-colors ${isResizingPanel ? 'bg-[#B28C5A]' : 'bg-transparent group-hover/resize:bg-[#B28C5A]/60'}`} />
       </div>
       {/* Panel Header */}
-      <div className="p-4 md:p-5 border-b border-[#E5E0D8] bg-white/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0">
+      <div
+        onPointerDown={handleHeaderDragStart}
+        onDoubleClick={e => {
+          if (floatRect && !(e.target as HTMLElement).closest('button, select, input, textarea')) dockAgentPanel();
+        }}
+        title={floatRect ? '拖动可移动对话窗口，双击标题栏停靠回右侧' : '拖动标题栏可把对话窗口拖成悬浮窗'}
+        className="p-4 md:p-5 border-b border-[#E5E0D8] bg-white/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-x-3 gap-y-2 shrink-0 md:cursor-grab active:cursor-grabbing"
+      >
         <div className="flex items-center gap-3 shrink-0">
           <div className="w-9 h-9 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center border border-[#E5E0D8] shadow-sm shrink-0">
             <Sparkles className="w-5 h-5" />
@@ -1334,6 +1486,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-2 min-w-0 ml-auto">
+          {floatRect && (
+            <button
+              type="button"
+              onClick={dockAgentPanel}
+              className="text-[10px] font-bold px-2 py-1 rounded-lg border border-[#E5E0D8] bg-white text-stone-600 hover:text-[#8C6F43] hover:border-[#B28C5A]/50 transition-colors cursor-pointer whitespace-nowrap"
+              title="停靠回右侧"
+            >
+              停靠
+            </button>
+          )}
           {/* Agent G Model Selector */}
           <select
             value={currentConversation?.model || 'gpt-6'}
@@ -2977,6 +3139,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                               改文字
                             </button>
                           )}
+                          {(() => {
+                            const posterNode: any = msg.imageCard!.nodeId ? nodes.find((n: any) => n.id === msg.imageCard!.nodeId) : null;
+                            const tp = posterNode?.data?.templatePoster;
+                            if (!tp) return null;
+                            return (
+                              <button
+                                type="button"
+                                disabled={isStreaming}
+                                onClick={() => setRegenMenuFor(prev => (prev === msg.id ? null : msg.id))}
+                                className="px-2.5 py-1 rounded-lg border border-[#B28C5A]/50 hover:bg-white text-[#8C6F43] text-[10px] font-bold transition-colors cursor-pointer"
+                                title="整套重出，或换一种版式；也可以引用这张图在对话里改局部"
+                              >
+                                再次生成 ▾
+                              </button>
+                            );
+                          })()}
                           {msg.imageCard.nodeId && (
                             <button
                               type="button"
@@ -3003,6 +3181,42 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             下载
                           </button>
                         </div>
+                        {regenMenuFor === msg.id && (() => {
+                          const posterNode: any = msg.imageCard!.nodeId ? nodes.find((n: any) => n.id === msg.imageCard!.nodeId) : null;
+                          const tp = posterNode?.data?.templatePoster;
+                          if (!tp) return null;
+                          const kind = POSTER_KIND_NAME[tp.template] || '海报';
+                          return (
+                            <div className="px-2.5 pb-2 space-y-1">
+                              {posterRegenOptions(tp).map(opt => (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  disabled={isStreaming}
+                                  onClick={() => {
+                                    setRegenMenuFor(null);
+                                    runAgentAction(opt.actionId, opt.params);
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-lg border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] disabled:opacity-50 text-[10px] cursor-pointer"
+                                >
+                                  <span className="font-bold text-[#8C6F43]">{opt.label}</span>
+                                  <span className="block text-[9px] text-stone-400">{opt.hint}</span>
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRegenMenuFor(null);
+                                  composeAboutNode(msg.imageCard!.nodeId!, `修改这张${kind}（${(msg.imageCard!.title || '').replace(/^面料海报 · |^模板 A · /, '')}）：`);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] text-[10px] cursor-pointer"
+                              >
+                                <span className="font-bold text-[#8C6F43]">引用这张修改</span>
+                                <span className="block text-[9px] text-stone-400">选中这张，在对话里说要改哪里（换氛围图、抱枕、型号、版式…）</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
