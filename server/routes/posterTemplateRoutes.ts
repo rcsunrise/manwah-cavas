@@ -7,6 +7,18 @@ import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept } from '../services/posterTemplate/posterConcept';
 import { cropDetail, locateDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT } from '../services/posterTemplate/templateA';
+import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
+import {
+  centerSquare,
+  composeFabricPoster,
+  cutoutWhiteBackground,
+  cutoutWhiteBackgroundWithBox,
+  FabricLayoutId,
+  flattenSwatch,
+  flattestSquare,
+  moodAspectFor,
+  moodIndexesFor
+} from '../services/posterTemplate/fabricPoster';
 
 /**
  * 模板海报（原型）：概念 → 主场景底图 → 细节裁切 + 真实字体排版。
@@ -169,6 +181,172 @@ router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Respon
     });
   } catch (err: any) {
     sendError(res, err, '模板排版合成失败');
+  }
+});
+
+/* ───────── 模板 B：沙发面料海报（版式见 fabricPoster.ts，参考图 1、2） ─────────
+ *   POST /fabric/concept  看沙发图，给出皮革色、抱枕图案、4 条氛围照描述（失败回退默认方案）
+ *   POST /fabric/sofa     沙发改成纯白底（出图，耗点数）
+ *   POST /fabric/pillow   生成一对同色系抱枕（出图，耗点数）
+ *   POST /fabric/mood     生成第 shotIndex 张氛围照（出图，耗点数）
+ *   POST /fabric/compose  抠图、定位细节、取色卡、排版合成
+ */
+const FABRIC_LAYOUT_IDS: FabricLayoutId[] = ['collage4', 'hero3'];
+function layoutOf(value: unknown): FabricLayoutId {
+  return FABRIC_LAYOUT_IDS.includes(value as FabricLayoutId) ? (value as FabricLayoutId) : 'collage4';
+}
+
+async function fabricImage(
+  req: AuthenticatedRequest,
+  opts: { prompt: string; aspectRatio: string; model?: unknown; resolution?: unknown; images?: Buffer[] }
+) {
+  const model = typeof opts.model === 'string' && opts.model.trim() ? opts.model.trim() : DEFAULT_HERO_MODEL;
+  const image = await requestGatewayImage({
+    prompt: opts.prompt,
+    model,
+    images: (opts.images || []).map(b => ({ data: `data:image/jpeg;base64,${b.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' })),
+    aspectRatio: opts.aspectRatio,
+    resolution: opts.resolution === '1K' || opts.resolution === '4K' ? (opts.resolution as string) : '2K',
+    userId: userIdOf(req),
+    deptId: req.headers['x-dept-id'] as string | undefined,
+    timeoutMs: 300000
+  });
+  const png = await sharp(image, { failOn: 'none' }).rotate().png().toBuffer();
+  const meta = await sharp(png).metadata();
+  return { imageDataUrl: `data:image/png;base64,${png.toString('base64')}`, width: meta.width, height: meta.height, model };
+}
+
+router.post('/fabric/concept', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { productImage, hint, used } = req.body || {};
+    const buf = await loadImage(productImage, '沙发图');
+    // 同一沙发已出过的氛围照方向 id，新海报避开它们
+    const usedIds: string[] = Array.isArray(used) ? used.filter((x: unknown) => typeof x === 'string').slice(-30).map((x: string) => x.slice(0, 24)) : [];
+    const { concept, fromModel } = await generateFabricConcept(buf, typeof hint === 'string' ? hint : undefined, userIdOf(req), usedIds);
+    res.json({ success: true, concept, fromModel });
+  } catch (err: any) {
+    sendError(res, err, '生成面料海报概念失败');
+  }
+});
+
+router.post('/fabric/sofa', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { productImage, model, resolution } = req.body || {};
+    const product = await loadImage(productImage, '沙发图');
+    const jpeg = await sharp(product, { failOn: 'none' }).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
+    const out = await fabricImage(req, { prompt: FABRIC_SOFA_PROMPT, aspectRatio: '3:2', model, resolution, images: [jpeg] });
+    res.json({ success: true, ...out });
+  } catch (err: any) {
+    sendError(res, err, '沙发改白底失败');
+  }
+});
+
+router.post('/fabric/pillow', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { concept: rawConcept, model, resolution } = req.body || {};
+    if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
+    const concept = sanitizeFabricConcept(rawConcept);
+    const out = await fabricImage(req, { prompt: buildFabricPillowPrompt(concept), aspectRatio: '1:1', model, resolution });
+    res.json({ success: true, ...out });
+  } catch (err: any) {
+    sendError(res, err, '生成抱枕失败');
+  }
+});
+
+router.post('/fabric/mood', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { concept: rawConcept, shotIndex, layout, model, resolution } = req.body || {};
+    if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
+    const concept = sanitizeFabricConcept(rawConcept);
+    const index = Number(shotIndex);
+    if (!Number.isInteger(index) || index < 0 || index >= concept.moodShots.length) {
+      return res.status(400).json({ success: false, error: { message: 'shotIndex 无效' } });
+    }
+    const out = await fabricImage(req, {
+      prompt: concept.moodShots[index].prompt,
+      aspectRatio: moodAspectFor(layoutOf(layout), index),
+      model,
+      resolution
+    });
+    res.json({ success: true, shotIndex: index, ...out });
+  } catch (err: any) {
+    sendError(res, err, '生成氛围照失败');
+  }
+});
+
+router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { sofaImage, pillowImage, moodImages, concept: rawConcept, layout: rawLayout, code, label, outputScale, pillowScale } = req.body || {};
+    if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
+    const concept = sanitizeFabricConcept(rawConcept);
+    const layout = layoutOf(rawLayout);
+    const sofaRaw = await loadImage(sofaImage, '白底沙发图');
+    const { buffer: sofa, box: sofaBox } = await cutoutWhiteBackgroundWithBox(sofaRaw);
+    const pillows = pillowImage ? await cutoutWhiteBackground(await loadImage(pillowImage, '抱枕图')) : undefined;
+
+    // moodImages 按 MOOD_SHOT_ORDER 的下标给，版式只取自己需要的几张
+    const moodList: unknown[] = Array.isArray(moodImages) ? moodImages : [];
+    const photos = await Promise.all(
+      moodIndexesFor(layout).map(async i => (isAllowedImageSource(moodList[i]) ? loadImage(moodList[i], `氛围照${i + 1}`) : undefined))
+    );
+
+    // 细节与色卡都取自沙发本体（在沙发图上定位，不带抱枕）
+    const SEAT_KEY = '__seat';
+    const { details: located, warnings } = await locateDetails(
+      sofaRaw,
+      [
+        ...concept.details.map(d => ({ key: d.key, locate: d.locate })),
+        { key: SEAT_KEY, locate: '沙发最右侧那个座位的座面（人坐的那块水平面，只框座垫上表面，不要框靠背、扶手和座垫前侧的竖直立面）' }
+      ],
+      userIdOf(req)
+    );
+    const circles = await Promise.all(
+      located.filter(d => d.key !== SEAT_KEY).map(d => cropDetail(sofaRaw, d.box, 1))
+    );
+    // 皮革色卡：在沙发抠图上找最平的一块（避开缝线和接缝），去掉明暗后做纯平底色
+    const leather = await flattenSwatch(await flattestSquare(sofa));
+    const pillowSwatch = pillows ? await centerSquare(pillows, 0.4) : undefined;
+
+    // 座面框换算到“裁掉空白边后的沙发图”坐标；视觉没找到（兜底框）就不用，改按版式比例 + 轮廓兜底
+    const seatLoc = located.find(d => d.key === SEAT_KEY);
+    const seat =
+      seatLoc && seatLoc.source === 'vision'
+        ? (() => {
+            const px = seatLoc.box.left * sofaBox.srcWidth - sofaBox.left;
+            const py = seatLoc.box.top * sofaBox.srcHeight - sofaBox.top;
+            const pw = seatLoc.box.width * sofaBox.srcWidth;
+            const ph = seatLoc.box.height * sofaBox.srcHeight;
+            const r = { x: px / sofaBox.width, y: py / sofaBox.height, w: pw / sofaBox.width, h: ph / sofaBox.height };
+            const ok = r.x > -0.05 && r.y > -0.05 && r.w > 0.04 && r.h > 0.03 && r.x + r.w < 1.05 && r.y + r.h < 1.05;
+            return ok ? { x: Math.max(0, r.x), y: Math.max(0, r.y), w: Math.min(1, r.w), h: Math.min(1, r.h) } : undefined;
+          })()
+        : undefined;
+
+    const result = await composeFabricPoster({
+      layout,
+      sofa,
+      seat,
+      pillows,
+      photos,
+      circles,
+      swatches: [leather, pillowSwatch],
+      code: typeof code === 'string' ? code.slice(0, 24) : '',
+      label: typeof label === 'string' ? label.slice(0, 24) : '',
+      pillowScale: Number.isFinite(Number(pillowScale)) ? Number(pillowScale) : undefined,
+      outputScale: Number(outputScale) === 2 ? 2 : 1
+    });
+    res.json({
+      success: true,
+      imageDataUrl: `data:image/jpeg;base64,${result.buffer.toString('base64')}`,
+      width: result.width,
+      height: result.height,
+      layout: result.layout,
+      details: located.filter(d => d.key !== SEAT_KEY),
+      seat: seat || null,
+      warnings
+    });
+  } catch (err: any) {
+    sendError(res, err, '面料海报合成失败');
   }
 });
 

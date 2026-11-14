@@ -198,7 +198,8 @@ export async function requestGatewayImage(params: {
       aspectRatio: params.aspectRatio,
       resolution: params.resolution,
       images: params.images,
-      generationIntent: 'image_edit',
+      // 带参考图是改图；没带（如面料海报的氛围照、抱枕）是纯文字生图，网关要求二者明确区分
+      generationIntent: params.images.length > 0 ? 'image_edit' : 'text_to_image',
       userUuid: params.userId,
       userId: params.userId,
       deptId: params.deptId
