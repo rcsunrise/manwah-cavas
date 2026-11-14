@@ -71,7 +71,9 @@ const ACTION_IDS: AgentActionId[] = [
   'edit_image_text',
   'set_product_image',
   'edit_image',
-  'stitch_video'
+  'stitch_video',
+  'fabric_poster',
+  'fabric_edit'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -86,7 +88,9 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   edit_image: '修改海报画面',
   open_poster: '打开全案海报',
   template_poster: '生成模板 A 海报',
-  stitch_video: '拼接成片'
+  stitch_video: '拼接成片',
+  fabric_poster: '生成沙发面料海报',
+  fabric_edit: '修改面料海报'
 };
 
 /** 去掉动作块（含流式输出中尚未闭合的部分），得到给用户看的正文 */
@@ -108,6 +112,21 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const params: AgentActionParams = {};
   if (raw.stitchTransition === 'cut' || raw.stitchTransition === 'fade') params.stitchTransition = raw.stitchTransition;
+  if (raw.fabricLayout === 'collage4' || raw.fabricLayout === 'hero3') params.fabricLayout = raw.fabricLayout;
+  // 空字符串有意义：表示“不要这个编号”，要保留
+  if (typeof raw.fabricCode === 'string') params.fabricCode = raw.fabricCode.trim().slice(0, 24);
+  if (typeof raw.fabricLabel === 'string') params.fabricLabel = raw.fabricLabel.trim().slice(0, 24);
+  if (typeof raw.fabricPillow === 'string' && raw.fabricPillow.trim()) params.fabricPillow = raw.fabricPillow.trim().slice(0, 120);
+  if (raw.fabricNoPillow === true) params.fabricNoPillow = true;
+  const pillowScale = Number(raw.fabricPillowScale);
+  if (Number.isFinite(pillowScale) && pillowScale >= 0.5 && pillowScale <= 1.8) params.fabricPillowScale = Math.round(pillowScale * 100) / 100;
+  if (Array.isArray(raw.fabricMoods)) {
+    const moods = raw.fabricMoods
+      .map((m: any) => ({ slot: Number(m?.slot), prompt: typeof m?.prompt === 'string' ? m.prompt.trim().slice(0, 200) : '' }))
+      .filter((m: { slot: number; prompt: string }) => Number.isInteger(m.slot) && m.slot >= 1 && m.slot <= 4 && m.prompt)
+      .slice(0, 4);
+    if (moods.length) params.fabricMoods = moods;
+  }
   const screenCount = Number(raw.screenCount);
   if (Number.isInteger(screenCount) && screenCount >= 1 && screenCount <= 12) params.screenCount = screenCount;
   if (typeof raw.aspectRatio === 'string' && /^\d+:\d+$/.test(raw.aspectRatio)) params.aspectRatio = raw.aspectRatio;
@@ -187,6 +206,28 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     });
   }
   if (params?.videoRatio) items.push({ label: '画面比例', value: params.videoRatio });
+  if (actionId === 'fabric_poster') {
+    items.push({ label: '版式', value: params?.fabricLayout === 'hero3' ? '1 张大竖图 + 2 张小图（参考图 2）' : '4 张氛围照拼贴（参考图 1）' });
+    if (params?.fabricCode) items.push({ label: '型号', value: params.fabricCode });
+    if (params?.fabricLabel) items.push({ label: '色卡编号', value: params.fabricLabel });
+    items.push({ label: '出图', value: '沙发改白底 1 张 + 抱枕 1 张 + 氛围照 3~4 张，共 5~6 张，每张约 3000 点，约 3~6 分钟' });
+    items.push({ label: '排版', value: '圆形细节、面料色卡取自你的沙发图，文字用真实字体' });
+  }
+  if (actionId === 'fabric_edit') {
+    if (params?.fabricLayout) items.push({ label: '换版式', value: params.fabricLayout === 'hero3' ? '1 张大竖图 + 2 张小图（参考图 2）' : '4 张氛围照拼贴（参考图 1）' });
+    if (params?.fabricPillow) items.push({ label: '抱枕', value: `重出：${params.fabricPillow}` });
+    if (params?.fabricNoPillow) items.push({ label: '抱枕', value: '去掉抱枕' });
+    if (params?.fabricPillowScale) items.push({ label: '抱枕大小', value: `${params.fabricPillowScale} 倍（1 为基准，默认 0.8）` });
+    (params?.fabricMoods || []).forEach(m => items.push({ label: `第 ${m.slot} 格氛围图`, value: `重出：${m.prompt}` }));
+    if (params?.fabricCode !== undefined) items.push({ label: '型号', value: params.fabricCode || '不显示' });
+    if (params?.fabricLabel !== undefined) items.push({ label: '色卡编号', value: params.fabricLabel || '不显示' });
+    const regen = (params?.fabricPillow ? 1 : 0) + (params?.fabricMoods?.length || 0);
+    items.push({
+      label: '出图',
+      value: regen ? `重出 ${regen} 张（每张约 3000 点），其余沿用已有素材重新排版` : '不重新出图，沿用已有素材重新排版，不扣点'
+    });
+    items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
+  }
   if (actionId === 'stitch_video') {
     items.push({ label: '镜头', value: '画布上每个镜头序号取最新一条已完成的视频，按序号顺序拼接' });
     items.push({ label: '转场', value: params?.stitchTransition === 'cut' ? '硬切' : '淡入淡出' });
@@ -246,6 +287,20 @@ export function buildCanvasSummary(input: {
   } else {
     const hasProductImage = nodes.some(n => n?.type === 'productImageNode');
     lines.push(`- 产品 DNA：未提取（${hasProductImage ? '画布上已有产品主图，可在企划配置中分析' : '画布上还没有产品主图'}）`);
+  }
+
+  const fabrics = nodes.filter(n => n?.data?.templatePoster?.template === 'B').slice(-4);
+  if (fabrics.length > 0) {
+    const desc = fabrics.map(n => {
+      const tp = n.data.templatePoster;
+      const slots = (tp.layout === 'hero3' ? [0, 2, 3] : [0, 1, 2, 3]).map((idx: number, k: number) => {
+        const key = tp.concept?.moodShots?.[idx]?.key;
+        const tag = key === 'tall' ? tp.concept?.tags?.portrait?.label : key === 'ambient' ? tp.concept?.tags?.scene?.label : key === 'street' ? tp.concept?.tags?.street?.label : '';
+        return `第${k + 1}格${key === 'tall' ? '大人像' : key === 'closeup' ? '人像特写' : key === 'ambient' ? '场景图' : '街拍'}${tag ? `(${tag})` : ''}`;
+      });
+      return `${n.id}（版式${tp.layout === 'hero3' ? '2' : '1'}；${slots.join('、')}；${tp.assets?.pillow ? '有抱枕' : '无抱枕'}；型号${tp.code || '无'}）`;
+    });
+    lines.push(`- 画布上的沙发面料海报（可用 fabric_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
   }
 
   const screens = plan?.screens || [];

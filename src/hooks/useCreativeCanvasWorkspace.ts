@@ -3054,6 +3054,324 @@ export function useCreativeCanvasWorkspace(
     }
   };
 
+  // 沙发面料海报（模板 B）：构思 → 沙发改白底 / 抱枕 / 氛围照并行出图 → 抠图、取细节与色卡、排版。
+  // 出图每张都扣点，所以某一张失败不丢弃其他已出的图：抱枕失败就不放抱枕，氛围照失败就留白并提示。
+  const handleGenerateFabricPoster = async (params?: AgentActionParams): Promise<boolean> => {
+    const currentNodes = nodesRef.current || nodes;
+    const isProductNode = (n: Node) => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage';
+    const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
+    const productNode =
+      (params?.nodeId ? productNodes.find(n => n.id === params.nodeId) : undefined) ||
+      (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
+      (productNodes.length === 1 ? productNodes[0] : undefined);
+    if (!productNode && productNodes.length > 1) {
+      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做面料海报的那一张，或直接点沙发图上的「面料海报」按钮。`);
+      return false;
+    }
+    let productImage = (productNode?.data?.imageUrl as string) || '';
+    if (!productImage) {
+      const raw = uploadedBase64Ref.current || uploadedBase64;
+      if (raw) productImage = raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`;
+    }
+    if (!productImage) {
+      addAgentMessage('❌ 还没有沙发图，请先上传沙发图再生成面料海报。');
+      return false;
+    }
+    const productKey = productNode?.id || 'img-node-1';
+    const lockKey = `fabric:${productKey}`;
+    const productLabel = (productNode?.data?.fileName as string) || '沙发图';
+    if (templatePosterRunningRef.current.has(lockKey)) {
+      addAgentMessage(`「${productLabel}」的面料海报正在生成中，请等这一张完成后再试。`);
+      return false;
+    }
+
+    // 版式：指定的 → 同一沙发已出过的面料海报数量决定（第 1 张参考图 1，第 2 张参考图 2，交替）
+    const existing = currentNodes.filter(n => (n.data as any)?.templatePoster?.template === 'B' && (n.data as any).templatePoster.productNodeId === productKey).length;
+    const layout: 'collage4' | 'hero3' = params?.fabricLayout || (existing % 2 === 0 ? 'collage4' : 'hero3');
+    // 版式用到哪几条氛围照（与服务端 FABRIC_LAYOUTS.photoOrder 一致）
+    const moodIndexes = layout === 'hero3' ? [0, 2, 3] : [0, 1, 2, 3];
+    // 左上角型号：没指定就用文件名（去掉扩展名），如 12595M.jpg → 12595M
+    // 型号默认不显示（不再拿文件名充数），用户给了才写，之后可在对话里改
+    const code = params?.fabricCode ?? '';
+    const label = params?.fabricLabel ?? '';
+
+    templatePosterRunningRef.current.add(lockKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskId = addAgentMessage('', {
+      taskCard: { title: productNodes.length > 1 ? `面料海报 · ${productLabel}` : '沙发面料海报', status: 'running', detail: '1/3 构思皮革色、抱枕图案与氛围照…' }
+    });
+    const postJson = async (url: string, body: any) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
+      return json;
+    };
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '面料海报');
+    const model = selectedModel || undefined;
+    const resolution = selectedResolution || '2K';
+
+    try {
+      // 这张沙发已出过的氛围照方向（场景/人像背景/街拍），新海报避开，避免每张都一样
+      const usedTags = currentNodes
+        .filter(n => (n.data as any)?.templatePoster?.template === 'B' && (n.data as any).templatePoster.productNodeId === productKey)
+        .flatMap(n => {
+          const t = (n.data as any).templatePoster.concept?.tags;
+          return t ? [t.scene?.id, t.portrait?.id, t.street?.id].filter(Boolean) : [];
+        });
+      const { concept } = await postJson('/api/poster-templates/fabric/concept', { productImage, hint: params?.hint, used: usedTags });
+      finishTaskCard(taskId, 'running', `2/3 「${concept.leatherName}」：沙发改白底、抱枕与 ${moodIndexes.length} 张氛围照并行生成中（约 2–5 分钟，每张扣点）…`);
+
+      const sofaP = postJson('/api/poster-templates/fabric/sofa', { productImage, model, resolution }).then(r => storeImage(r.imageDataUrl));
+      // 网关偶尔超时，抱枕/氛围照失败时自动再试一次（沙发是版面主体，失败直接报错，不重试以免重复扣点）
+      const retryOnce = <T,>(fn: () => Promise<T>) => fn().catch(() => fn());
+      const pillowP = retryOnce(() => postJson('/api/poster-templates/fabric/pillow', { concept, model, resolution }).then(r => storeImage(r.imageDataUrl)));
+      const moodPs = moodIndexes.map(i =>
+        retryOnce(() => postJson('/api/poster-templates/fabric/mood', { concept, shotIndex: i, layout, model, resolution }).then(r => storeImage(r.imageDataUrl)))
+      );
+      const [sofaR, pillowR, ...moodRs] = await Promise.allSettled([sofaP, pillowP, ...moodPs]);
+      if (sofaR.status !== 'fulfilled') throw new Error(`沙发改白底失败：${(sofaR.reason as any)?.message || '未知错误'}（其余已出的图未使用）`);
+      const failures: string[] = [];
+      if (pillowR.status !== 'fulfilled') failures.push(`抱枕生成失败（已省略）：${(pillowR.reason as any)?.message || ''}`);
+      // 氛围照按“条目下标”放进数组，没出的位置留空，排版时留白
+      const moodImages: Array<string | undefined> = [undefined, undefined, undefined, undefined];
+      moodRs.forEach((r, k) => {
+        if (r.status === 'fulfilled') moodImages[moodIndexes[k]] = r.value;
+        else failures.push(`第 ${k + 1} 张氛围照失败（已留白）：${(r.reason as any)?.message || ''}`);
+      });
+      finishTaskCard(taskId, 'running', '3/3 抠图、取圆形细节与面料色卡并排版…');
+
+      const composed = await postJson('/api/poster-templates/fabric/compose', {
+        sofaImage: sofaR.value,
+        pillowImage: pillowR.status === 'fulfilled' ? pillowR.value : undefined,
+        moodImages,
+        concept,
+        layout,
+        code,
+        label
+      });
+      const posterUrl = await storeImage(composed.imageDataUrl);
+
+      const resultNodeId = `template-poster-b-${Date.now()}`;
+      const basePos = productNode?.position || { x: 100, y: 100 };
+      setNodes(prev => {
+        const siblings = prev.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.productNodeId === productKey).length;
+        const posterNode: Node = {
+          id: resultNodeId,
+          type: 'generatedImageNode',
+          position: { x: basePos.x + 460, y: basePos.y + siblings * 420 },
+          data: {
+            sceneIndex: 0,
+            screenTitle: code || '沙发面料海报',
+            coreSellingPoint: concept.leatherName,
+            themeTitle: '沙发面料海报',
+            withText: true,
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            heroImageUrl: sofaR.value,
+            dimensions: `${composed.width}x${composed.height}`,
+            aspectRatio: '3:2',
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            version: 1,
+            reviewStatus: 'pendingReview',
+            templatePoster: { template: 'B', productNodeId: productKey, concept, layout, code, label, details: composed.details, assets: { sofa: sofaR.value, pillow: pillowR.status === 'fulfilled' ? pillowR.value : null, moods: moodImages } }
+          }
+        };
+        return [...prev, posterNode];
+      });
+      if (productNode) {
+        setEdges(prev => [
+          ...prev,
+          {
+            id: `edge-template-poster-${resultNodeId}`,
+            source: productNode.id,
+            target: resultNodeId,
+            sourceHandle: 'source',
+            targetHandle: 'target',
+            label: '面料海报',
+            labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+            labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
+            style: { stroke: '#B28C5A', strokeWidth: 2 }
+          }
+        ]);
+      }
+      const warnings: string[] = [...failures, ...(Array.isArray(composed.warnings) ? composed.warnings : [])];
+      finishTaskCard(taskId, 'done', warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `面料海报 · ${code || concept.leatherName}`,
+        nodeId: resultNodeId,
+        withText: true,
+        source: 'poster',
+        detail: [concept.leatherName, layout === 'hero3' ? '版式 2' : '版式 1'].join(' / ')
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '面料海报生成失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(lockKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
+  // 修改已生成的面料海报：沿用已有素材，只重出被点名的抱枕/氛围图，其余重新排版；结果是新版本节点，旧版保留。
+  const handleEditFabricPoster = async (params?: AgentActionParams): Promise<boolean> => {
+    const currentNodes = nodesRef.current || nodes;
+    const fabricNodes = currentNodes.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.template === 'B');
+    const target =
+      (params?.nodeId ? fabricNodes.find(n => n.id === params.nodeId) : undefined) ||
+      (selectedNodeId ? fabricNodes.find(n => n.id === selectedNodeId) : undefined) ||
+      fabricNodes[fabricNodes.length - 1];
+    if (!target) {
+      addAgentMessage('画布上还没有面料海报，先点沙发图上的「面料海报」生成一张，再来修改。');
+      return false;
+    }
+    const lockKey = `fabric-edit:${target.id}`;
+    if (templatePosterRunningRef.current.has(lockKey)) {
+      addAgentMessage('这张面料海报正在修改中，请等它完成。');
+      return false;
+    }
+    const tp = (target.data as any).templatePoster;
+    const concept = JSON.parse(JSON.stringify(tp.concept));
+    const layout: 'collage4' | 'hero3' = params?.fabricLayout || tp.layout || 'collage4';
+    const slots = layout === 'hero3' ? [0, 2, 3] : [0, 1, 2, 3];
+    const moods: Array<string | undefined> = [0, 1, 2, 3].map(i => (tp.assets?.moods?.[i] as string) || undefined);
+    let pillow: string | null = params?.fabricNoPillow ? null : tp.assets?.pillow || null;
+    const regenMoods = new Set<number>();
+    for (const m of params?.fabricMoods || []) {
+      const idx = slots[m.slot - 1];
+      if (idx === undefined) continue;
+      concept.moodShots[idx].prompt = m.prompt;
+      regenMoods.add(idx);
+    }
+    // 换版式后新增的格子如果还没有图，也要出
+    for (const idx of slots) if (!moods[idx]) regenMoods.add(idx);
+    const regenPillow = Boolean(params?.fabricPillow);
+    if (params?.fabricPillow) concept.pillowPattern = params.fabricPillow;
+    const code = params?.fabricCode ?? tp.code ?? String((target.data as any).screenTitle || '');
+    const label = params?.fabricLabel ?? tp.label ?? '';
+    const pillowScale = params?.fabricPillowScale ?? tp.pillowScale;
+    const regenCount = regenMoods.size + (regenPillow ? 1 : 0);
+
+    templatePosterRunningRef.current.add(lockKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskId = addAgentMessage('', {
+      taskCard: { title: '修改面料海报', status: 'running', detail: regenCount ? `重出 ${regenCount} 张图（每张扣点），其余沿用已有素材…` : '沿用已有素材重新排版…' }
+    });
+    const postJson = async (url: string, body: any) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(url, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
+      return json;
+    };
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '面料海报');
+    const retryOnce = <T,>(fn: () => Promise<T>) => fn().catch(() => fn());
+    const model = selectedModel || undefined;
+    const resolution = selectedResolution || '2K';
+    const warnings: string[] = [];
+
+    try {
+      const jobs: Array<Promise<void>> = [];
+      if (regenPillow) {
+        jobs.push(
+          retryOnce(() => postJson('/api/poster-templates/fabric/pillow', { concept, model, resolution }).then(r => storeImage(r.imageDataUrl)))
+            .then(url => { pillow = url; })
+            .catch(e => { warnings.push(`抱枕重出失败，沿用原来的：${e?.message || ''}`); concept.pillowPattern = tp.concept.pillowPattern; })
+        );
+      }
+      for (const idx of regenMoods) {
+        jobs.push(
+          retryOnce(() => postJson('/api/poster-templates/fabric/mood', { concept, shotIndex: idx, layout, model, resolution }).then(r => storeImage(r.imageDataUrl)))
+            .then(url => { moods[idx] = url; })
+            .catch(e => {
+              warnings.push(`第 ${slots.indexOf(idx) + 1} 格氛围图重出失败，${tp.assets?.moods?.[idx] ? '沿用原来的' : '该格留白'}：${e?.message || ''}`);
+              if (tp.concept.moodShots[idx]) concept.moodShots[idx].prompt = tp.concept.moodShots[idx].prompt;
+            })
+        );
+      }
+      await Promise.all(jobs);
+      finishTaskCard(taskId, 'running', '重新抠图、取细节并排版…');
+
+      const composed = await postJson('/api/poster-templates/fabric/compose', {
+        sofaImage: tp.assets.sofa,
+        pillowImage: pillow || undefined,
+        moodImages: moods,
+        concept,
+        layout,
+        code,
+        label,
+        pillowScale
+      });
+      const posterUrl = await storeImage(composed.imageDataUrl);
+
+      const resultNodeId = `template-poster-b-${Date.now()}`;
+      const base = target.position || { x: 100, y: 100 };
+      const version = Number((target.data as any).version || 1) + 1;
+      setNodes(prev => {
+        const siblings = prev.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.productNodeId === tp.productNodeId).length;
+        const node: Node = {
+          id: resultNodeId,
+          type: 'generatedImageNode',
+          position: { x: base.x + 460, y: base.y + Math.max(1, siblings) * 20 },
+          data: {
+            ...(target.data as any),
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            screenTitle: code || (target.data as any).screenTitle,
+            dimensions: `${composed.width}x${composed.height}`,
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            version,
+            reviewStatus: 'pendingReview',
+            templatePoster: {
+              ...tp,
+              concept,
+              layout,
+              code,
+              label,
+              pillowScale,
+              details: composed.details,
+              assets: { sofa: tp.assets.sofa, pillow, moods }
+            }
+          }
+        };
+        return [...prev, node];
+      });
+      setEdges(prev => [
+        ...prev,
+        {
+          id: `edge-fabric-edit-${resultNodeId}`,
+          source: target.id,
+          target: resultNodeId,
+          sourceHandle: 'source',
+          targetHandle: 'target',
+          label: `修改版 v${version}`,
+          labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+          labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
+          style: { stroke: '#B28C5A', strokeWidth: 2, strokeDasharray: '6 4' }
+        }
+      ]);
+      const all = [...warnings, ...(Array.isArray(composed.warnings) ? composed.warnings : [])];
+      finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，修改版已加入画布', { nodeId: resultNodeId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `面料海报 · ${code || concept.leatherName} · v${version}`,
+        nodeId: resultNodeId,
+        withText: true,
+        source: 'poster',
+        detail: regenCount ? `重出 ${regenCount} 张，其余沿用` : '沿用已有素材重新排版'
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '修改面料海报失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(lockKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
   // Phase C3B: Batch Generation & Controlled Task Queue
   const [batchState, setBatchState] = useState<GenerationBatch | null>(null);
   const [queueItems, setQueueItems] = useState<SceneQueueItem[]>([]);
@@ -3696,6 +4014,8 @@ export function useCreativeCanvasWorkspace(
     handleReplanSingleScene,
     handleGenerateSceneImage,
     handleGenerateTemplatePoster,
+    handleGenerateFabricPoster,
+    handleEditFabricPoster,
     handleUploadToProductNode,
     handleClearProductNode,
     handleApproveSceneImage,
@@ -3816,6 +4136,8 @@ export function useCreativeCanvasWorkspace(
           // 每张产品图各自生成模板海报（可同时进行）
           data.onTemplatePoster = () => nodeActionsRef.current.handleGenerateTemplatePoster({ nodeId: node.id });
           data.templatePosterRunning = templatePosterRunningIds.includes(node.id);
+          data.onFabricPoster = () => nodeActionsRef.current.handleGenerateFabricPoster({ nodeId: node.id });
+          data.fabricPosterRunning = templatePosterRunningIds.includes(`fabric:${node.id}`);
         }
 
         return { ...node, data };
@@ -5312,6 +5634,8 @@ export function useCreativeCanvasWorkspace(
     generatingScenes: generatingScenesRef.current,
     handleGenerateSceneImage,
     handleGenerateTemplatePoster,
+    handleGenerateFabricPoster,
+    handleEditFabricPoster,
     handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,

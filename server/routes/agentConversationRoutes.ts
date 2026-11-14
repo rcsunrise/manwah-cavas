@@ -631,6 +631,8 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - open_video：生成视频分镜。打开视频创作面板，把对话里商定的视频创意带过去，AI 导演据此自动规划视频分镜（product_showcase 时）。params: videoBrief(视频创意要求，中文 60~300 字：氛围与光线、按顺序要表现的卖点、运镜方向与节奏；会填入面板“创意描述”交给 AI 导演), focusPoints(2~5 个展示重点，每个 4~12 字), videoMode("product_showcase"=AI 导演规划分镜（默认）/"generate_video"=直接生成单条视频), videoStyle("smart_mix"=多镜头分镜，创意里按顺序有 2 个以上卖点/景别时用（默认）/"single_take"=一镜到底，只有一个连贯运镜时用), videoShots(分镜清单，用户要分镜/拆成视频任务时必填：[{title(4~12字), durationSeconds(每镜秒数), camera(运镜，如"缓慢推近""小幅横移""机位锁定"), content(这个镜头画面里要表现什么，20~80字)}]，2~8 个镜头，给了就严格按它出镜头), videoRatio(画面比例 "16:9"/"9:16"/"1:1"/"4:3"/"3:4"，按投放场景选：详情页/官网 16:9，短视频信息流 9:16), referenceImageUrl(视频以哪张图为准：用户在对话里发了产品图并要用它做视频时，填【附：用户随消息上传的图片】里的地址；不填则用画布产品主图)
 - open_poster：打开全案海报工作台。params: screenIndex
 - template_poster：一键生成一张模板 A 单屏产品海报（自动构思两字命名与呼应命名的场景，上方主场景 + 宋体标题区，底部三格真实细节特写与短说明，约 2~4 分钟）。用户想要“成品海报”“带标题和细节的海报”时提议。params: hint(场景或风格要求，可选，如“未来感建筑”“湖景”), screenIndex(参考某屏企划时填)
+- fabric_poster：生成“沙发面料海报”：左侧纯白底沙发 + 两个同色系抱枕，右侧 4 张（或 1 大 2 小）与沙发配色协调的氛围照，底部两个圆形细节特写和两块面料色卡（皮革、抱枕），左上角型号。会出 5~6 张图、扣点，所以一定走确认卡片。用户要“面料海报”“沙发面料图”“带色卡的沙发海报”时提议。params: fabricLayout("collage4"=4 张氛围照拼贴，默认 / "hero3"=1 大图+2 小图), fabricCode(左上角型号，如 12595M，用户给了才填，没给就不填、海报上不显示), fabricLabel(皮革色卡编号，如 20250430-6#，用户给了才填，没给就不显示), hint(风格或氛围要求，可选)
+- fabric_edit：修改画布上已生成的沙发面料海报（画布摘要里会列出海报 nodeId、版式和每一格是什么）。可改：抱枕（fabricPillow=新图案描述会重出一张；fabricNoPillow=去掉抱枕；fabricPillowScale=大小倍数，1 为基准、默认 0.8（参考图里抱枕都比较小），“大一点”给 1.0、“小一点”给 0.65）、氛围图（fabricMoods=[{slot:第几格,从 1 起, prompt:新画面描述}]，只重出这几张）、型号 fabricCode、色卡编号 fabricLabel（用户说“不要型号/编号”时传空字符串 ""，海报上就不显示）、版式 fabricLayout。只改文字或抱枕大小不重新出图、不扣点；换抱枕/氛围图每张约 3000 点。用户说“把第二张换成…”“抱枕换成橙色几何”“型号改成…”“再大一点”时用；要整张重做才用 fabric_poster。params 里 nodeId 填目标海报，没说就不填（默认最新一张）。氛围图描述要是画面本身（场景、人物、光线），人像写欧美模特，场景图不要出现人。
 - stitch_video：把画布上各分镜视频按镜头序号拼成一条成片（本地合成，不耗点数）。用户说“合并”“拼接”“剪成一条”“出成片”且画布上已有 2 个以上生成完成的镜头时提议；镜头还没生成完就先提醒，不要给这个动作。params: stitchTransition(转场，"fade"淡入淡出默认 / "cut"硬切)
 - upload_product：上传产品主图（打开文件选择）
 - set_product_image：把用户在对话里发的某张图设为产品主图，并提取产品 DNA。params: imageUrl(必填，取自【附：用户随消息上传的图片】列表里的地址)。只有图里确实是要做的家具产品、且用户想用它做主图/做企划时才提议；截图、参考图、风格图不要提议
@@ -664,7 +666,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 
   if (context?.canvasSummary) {
-    prompt += `\n\n【当前画布状态】:\n${String(context.canvasSummary).slice(0, 2500)}`;
+    prompt += `\n\n【当前画布状态】:\n${String(context.canvasSummary).slice(0, 4000)}`;
   }
 
   if (context) {

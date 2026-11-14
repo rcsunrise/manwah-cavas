@@ -116,10 +116,23 @@ export type AgentActionId =
   | 'set_product_image'
   | 'edit_image'
   /** 把画布上各分镜视频按顺序拼成一条成片 */
-  | 'stitch_video';
+  | 'stitch_video'
+  /** 沙发面料海报（模板 B）：白底沙发 + 抱枕 + 氛围照拼贴 + 圆形细节与面料色卡 */
+  | 'fabric_poster'
+  /** 修改已生成的面料海报：换抱枕/氛围图、改型号与编号、调抱枕大小、换版式（复用已有素材，只重出改动的那几张） */
+  | 'fabric_edit';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {
+  /** 面料海报：版式（collage4 参考图 1：4 张氛围照；hero3 参考图 2：1 大 + 2 小）、左上角型号、色卡编号 */
+  fabricLayout?: 'collage4' | 'hero3';
+  /** 修改面料海报：新的抱枕图案描述 / 不要抱枕 / 抱枕大小倍数（1 为基准，默认 1.25）/ 要换的氛围图（slot 为当前版式里从左到右、从上到下的第几格，1 起） */
+  fabricPillow?: string;
+  fabricNoPillow?: boolean;
+  fabricPillowScale?: number;
+  fabricMoods?: Array<{ slot: number; prompt: string }>;
+  fabricCode?: string;
+  fabricLabel?: string;
   /** 拼接成片：镜头之间的转场（cut 硬切 / fade 淡入淡出） */
   stitchTransition?: 'cut' | 'fade';
   /** 修改画面：对话里提的修改要求（换背景、调光线等） */
@@ -213,6 +226,9 @@ export interface ProductImageNodeData extends Record<string, unknown> {
   /** 用这张产品图生成模板 A 海报（多张产品图可各自同时生成） */
   onTemplatePoster?: () => void;
   templatePosterRunning?: boolean;
+  /** 用这张沙发图生成沙发面料海报（模板 B） */
+  onFabricPoster?: () => void;
+  fabricPosterRunning?: boolean;
 }
 
 export interface ProductDnaNodeData extends Record<string, unknown> {

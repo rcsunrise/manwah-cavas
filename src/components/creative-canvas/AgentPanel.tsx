@@ -124,6 +124,10 @@ interface AgentPanelProps {
   onOpenPosterStudio?: (screenIndex: number) => void;
   /** 模板海报（原型）：命名构思 → 主场景 → 细节裁切 + 真实字体排版 */
   onGenerateTemplatePoster?: (params?: AgentActionParams) => void;
+  /** 沙发面料海报（模板 B） */
+  onGenerateFabricPoster?: (params?: AgentActionParams) => void;
+  /** 修改已生成的面料海报 */
+  onEditFabricPoster?: (params?: AgentActionParams) => void;
   /** 模板 A 成品 4K（4096×3072，默认关） */
   templateA4K?: boolean;
   setTemplateA4K?: (on: boolean) => void;
@@ -483,6 +487,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onGenerateSceneImage,
   onOpenPosterStudio,
   onGenerateTemplatePoster,
+  onGenerateFabricPoster,
+  onEditFabricPoster,
   templateA4K,
   setTemplateA4K,
   onAddProductImage,
@@ -1042,6 +1048,30 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'template_poster':
         onGenerateTemplatePoster?.(params);
         return;
+      case 'fabric_edit':
+        // 重出图要扣点，先出确认卡片；只改文字/大小的也走卡片，让用户看到改了什么
+        postAgent('确认后开始修改面料海报：', {
+          planCard: {
+            title: '修改面料海报',
+            actionId: 'fabric_edit',
+            params: params || {},
+            status: 'pending',
+            items: describePlanParams('fabric_edit', params)
+          }
+        });
+        return;
+      case 'fabric_poster':
+        // 一次要出 5~6 张图、每张扣点，先出确认卡片再开始
+        postAgent('确认后开始生成沙发面料海报：', {
+          planCard: {
+            title: '生成沙发面料海报',
+            actionId: 'fabric_poster',
+            params: params || {},
+            status: 'pending',
+            items: describePlanParams('fabric_poster', params)
+          }
+        });
+        return;
       case 'goto_setup':
         setActiveTab('setup');
         return;
@@ -1090,6 +1120,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'stitch_video':
         void runStitch(params);
+        return;
+      case 'fabric_poster':
+        onGenerateFabricPoster?.(params);
+        return;
+      case 'fabric_edit':
+        onEditFabricPoster?.(params);
         return;
       default:
         runAgentAction(card.actionId, params);

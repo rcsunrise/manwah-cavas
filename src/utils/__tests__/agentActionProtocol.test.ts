@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractAgentActions, stripAgentActions } from '../agentActionProtocol';
+import { buildCanvasSummary, extractAgentActions, stripAgentActions } from '../agentActionProtocol';
 
 describe('agentActionProtocol', () => {
   it('parses a plan block and strips it from the visible text', () => {
@@ -99,5 +99,74 @@ describe('extractAgentActions · 缺卡片兜底', () => {
     const r = extractAgentActions('确认后将改图<agent_actions>{"plan": {"actionId": "edit_image", "params": {"instruction": "背景换成湖畔现代客厅，光线柔和"}}}</agent_actions>');
     expect(r.planCard).toBeDefined();
     expect(r.suggestions).toBeUndefined();
+  });
+});
+
+describe('extractAgentActions · 沙发面料海报', () => {
+  it('fabric_poster 计划带版式、型号、色卡编号，并在卡片里提示出图扣点', () => {
+    const r = extractAgentActions(
+      '做一张面料海报<agent_actions>{"plan": {"actionId": "fabric_poster", "params": {"fabricLayout": "hero3", "fabricCode": "12800M", "fabricLabel": "2057#"}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('fabric_poster');
+    expect(r.planCard?.params).toMatchObject({ fabricLayout: 'hero3', fabricCode: '12800M', fabricLabel: '2057#' });
+    const labels = (r.planCard?.items || []).map(i => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['版式', '型号', '色卡编号', '出图']));
+  });
+  it('非法版式被丢弃，不带参数也能出卡片', () => {
+    const r = extractAgentActions('好<agent_actions>{"plan": {"actionId": "fabric_poster", "params": {"fabricLayout": "weird"}}}</agent_actions>');
+    expect(r.planCard?.actionId).toBe('fabric_poster');
+    expect(r.planCard?.params?.fabricLayout).toBeUndefined();
+  });
+});
+
+describe('extractAgentActions · 修改面料海报', () => {
+  it('fabric_edit 带抱枕、氛围图、大小等参数，卡片说明重出几张与扣点', () => {
+    const r = extractAgentActions(
+      '好的<agent_actions>{"plan": {"actionId": "fabric_edit", "params": {"fabricPillow": "橙色几何拼接图案", "fabricPillowScale": 1.5, "fabricMoods": [{"slot": 2, "prompt": "无人的落日海岸"}, {"slot": 9, "prompt": "越界应丢弃"}, {"slot": 3, "prompt": ""}], "fabricCode": "12800M"}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('fabric_edit');
+    expect(r.planCard?.params).toMatchObject({ fabricPillow: '橙色几何拼接图案', fabricPillowScale: 1.5, fabricCode: '12800M' });
+    expect(r.planCard?.params?.fabricMoods).toEqual([{ slot: 2, prompt: '无人的落日海岸' }]);
+    const text = JSON.stringify(r.planCard?.items);
+    expect(text).toContain('重出 2 张');
+    expect(text).toContain('旧版保留');
+  });
+
+  it('只改文字时提示不重新出图、不扣点；越界倍数被丢弃', () => {
+    const r = extractAgentActions('行<agent_actions>{"plan": {"actionId": "fabric_edit", "params": {"fabricLabel": "2057#", "fabricPillowScale": 5}}}</agent_actions>');
+    expect(r.planCard?.params?.fabricPillowScale).toBeUndefined();
+    expect(JSON.stringify(r.planCard?.items)).toContain('不扣点');
+  });
+});
+
+describe('buildCanvasSummary · 面料海报', () => {
+  it('列出面料海报的 id、版式和每一格内容，便于智能体指定改第几格', () => {
+    const summary = buildCanvasSummary({
+      planSettings: {},
+      nodes: [
+        {
+          id: 'template-poster-b-1',
+          type: 'generatedImageNode',
+          data: {
+            imageUrl: 'x',
+            templatePoster: {
+              template: 'B',
+              layout: 'hero3',
+              code: '12595M',
+              concept: {
+                moodShots: [{ key: 'tall' }, { key: 'closeup' }, { key: 'ambient' }, { key: 'street' }],
+                tags: { portrait: { label: '石墙靠拍' }, scene: { label: '落日海岸' }, street: { label: '水果摊' } }
+              },
+              assets: { pillow: 'p' }
+            }
+          }
+        }
+      ]
+    } as any);
+    expect(summary).toContain('template-poster-b-1');
+    expect(summary).toContain('版式2');
+    expect(summary).toContain('第2格场景图(落日海岸)');
+    expect(summary).toContain('第3格街拍(水果摊)');
+    expect(summary).toContain('有抱枕');
   });
 });
