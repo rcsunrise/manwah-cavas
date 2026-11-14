@@ -52,6 +52,36 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   const [mentions, setMentions] = useState<MentionableNode[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ start: number; query: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // 输入框高度：拖上方的把手往上拉可以放大（写长需求时），双击恢复，记住上次高度
+  const INPUT_MIN_H = 52;
+  const INPUT_DEFAULT_H = 52;
+  const clampInputH = (h: number) => Math.round(Math.min(Math.max(h, INPUT_MIN_H), Math.max(120, Math.min(520, window.innerHeight * 0.6))));
+  const [inputH, setInputH] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('creative-canvas:agent-input-height'));
+      if (saved > 0) return clampInputH(saved);
+    } catch {}
+    return INPUT_DEFAULT_H;
+  });
+  const handleInputResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const sy = e.clientY;
+    const start = inputH;
+    let latest = start;
+    const onMove = (ev: PointerEvent) => {
+      latest = clampInputH(start + (sy - ev.clientY));
+      setInputH(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      try { localStorage.setItem('creative-canvas:agent-input-height', String(latest)); } catch {}
+    };
+    document.body.style.cursor = 'ns-resize';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   type Attachment = { id: string; file: File; previewUrl: string; status: 'uploading' | 'ready' | 'error'; url?: string; error?: string };
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -306,10 +336,25 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
           </div>
         )}
 
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="拖动调整输入框高度"
+          title="向上拖动可放大输入框，双击恢复"
+          onPointerDown={handleInputResizeStart}
+          onDoubleClick={() => {
+            setInputH(INPUT_DEFAULT_H);
+            try { localStorage.setItem('creative-canvas:agent-input-height', String(INPUT_DEFAULT_H)); } catch {}
+          }}
+          className="h-3 -mb-1 flex items-center justify-center cursor-ns-resize group/inputresize touch-none"
+        >
+          <div className="w-8 h-1 rounded-full bg-stone-300/70 group-hover/inputresize:bg-[#B28C5A]/70 transition-colors" />
+        </div>
         <textarea
           ref={textareaRef}
           value={text}
           rows={2}
+          style={{ height: inputH }}
           disabled={isStreaming}
           onChange={e => {
             setText(e.target.value);
@@ -319,7 +364,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={isStreaming ? '智能体正在回复中...' : attachments.length > 0 ? '说说想对这张图做什么，或直接发送让智能体看图' : '说说你的需求，输入 @ 引用画布素材；可粘贴或拖入图片'}
-          className="w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none disabled:opacity-60 max-h-32"
+          className="w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-xs text-[#2C2A29] placeholder:text-stone-400 outline-none disabled:opacity-60"
         />
 
         <div className="flex items-center justify-between px-2 pb-2">
