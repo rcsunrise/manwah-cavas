@@ -425,9 +425,11 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
     let pw = baseW * scale;
     if (input.seat) {
       const s = { x: input.seat.x * sofaW, y: input.seat.y * sofaH, w: input.seat.w * sofaW, h: input.seat.h * sofaH };
-      cx = s.x + s.w * 0.55;
-      bottom = s.y + s.h * 0.72;
-      pw = Math.min(pw, s.w * 0.9);
+      // 抱枕靠着靠背立在座面后部：底边落在座面框上部（座垫与靠背交界附近），水平放在座位中间略偏内侧，
+      // 不贴扶手。以前底边取 72%（座垫前沿）、中心取 55%（偏扶手），抱枕像立在座垫前角、悬空。
+      cx = s.x + s.w * 0.45;
+      bottom = s.y + s.h * 0.42;
+      pw = Math.min(pw, s.w * 0.75);
     }
     // 底边那一行：从水平中心向两侧找出连续的沙发实体范围；底边下面不是沙发就往上抬
     let by = Math.min(sofaH - 2, Math.max(2, Math.round(bottom)));
@@ -444,6 +446,28 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
     const left = Math.max(lo + 8, Math.min(hi - 8 - pw, cx - pw / 2));
     const top = Math.max(0, bottom - ph);
     const pillowRect = { x: Math.round(sofaLeft + left), y: Math.round(sofaTop + top), w: pw, h: Math.round(Math.min(ph, bottom - top)) };
+    // 接触阴影：抱枕底部一条压扁的柔和暗影，让抱枕“压”在座垫上而不是贴上去的
+    const shW = Math.round(pillowRect.w * 0.9);
+    const shH = Math.max(6, Math.round(pillowRect.w * 0.12));
+    const blur = Math.max(2, Math.round(shH * 0.35));
+    const shadow = await sharp({
+      create: { width: shW + blur * 4, height: shH + blur * 4, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${shW + blur * 4}" height="${shH + blur * 4}"><ellipse cx="${(shW + blur * 4) / 2}" cy="${(shH + blur * 4) / 2}" rx="${shW / 2}" ry="${shH / 2}" fill="rgba(30,28,26,0.24)"/></svg>`
+          )
+        }
+      ])
+      .blur(blur)
+      .png()
+      .toBuffer();
+    layers.push({
+      input: shadow,
+      left: Math.max(0, Math.round(pillowRect.x + (pillowRect.w - shW) / 2 - blur * 2)),
+      top: Math.max(0, Math.round(pillowRect.y + pillowRect.h - shH * 0.8 - blur * 2))
+    });
     layers.push({ input: await sharp(input.pillows).resize(pillowRect.w, pillowRect.h, { fit: 'fill' }).png().toBuffer(), left: pillowRect.x, top: pillowRect.y });
     result.pillows = pillowRect;
   }
