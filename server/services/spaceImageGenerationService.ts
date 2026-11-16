@@ -28,6 +28,7 @@ import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry'
 import { cropCharacterIdentity } from './characterIdentityCropService';
 import { resolveSceneArchetype } from './spaceArchetypeResolver';
 import { buildOwnerPromptBlock } from '../../src/features/space-studio/engine/ownerContext';
+import { internalGatewayHeaders } from '../middleware/apiGuard';
 
 // 网关单次等待上游 300 秒，这里略长一点，让网关自己的错误信息先返回
 const RENDER_ATTEMPT_TIMEOUT_MS = 330000;
@@ -189,7 +190,7 @@ export async function requestGatewayImage(params: {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-user-uuid': params.userId,
+      ...internalGatewayHeaders(params.userId),
       ...(params.deptId ? { 'x-dept-id': params.deptId } : {})
     },
     body: JSON.stringify({
@@ -1875,7 +1876,7 @@ CORE INVARIANTS:
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-user-uuid': effectiveUserId,
+              ...internalGatewayHeaders(effectiveUserId),
               ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
             },
             body: JSON.stringify({

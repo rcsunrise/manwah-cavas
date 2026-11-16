@@ -10,6 +10,7 @@ import { SpaceImageGenerationService, describeLocalRenderTimeout } from '../serv
 import sharp from 'sharp';
 import { SPACE_AUTO_FALLBACK_MODELS } from '../../src/config/imageModelRegistry';
 import { dehazeGrade, RENDER_CLARITY_CLAUSE } from '../services/spaceImageGrading';
+import { internalGatewayHeaders } from '../middleware/apiGuard';
 
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
@@ -616,7 +617,7 @@ ${promptSupplement ? `USER EXPANSION DIRECTIVE & GUIDANCE:\n${promptSupplement}`
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-uuid': effectiveUserId,
+        ...internalGatewayHeaders(effectiveUserId),
         ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
       },
       body: JSON.stringify({
@@ -864,7 +865,7 @@ MANDATORY QUALITY RULES:
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-user-uuid': effectiveUserId,
+        ...internalGatewayHeaders(effectiveUserId),
         ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
       },
       body: JSON.stringify({
@@ -1114,7 +1115,7 @@ router.post('/empty-plate', async (req: Request, res: Response) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-uuid': effectiveUserId,
+          ...internalGatewayHeaders(effectiveUserId),
           ...(effectiveDeptId ? { 'x-dept-id': effectiveDeptId } : {})
         },
         body: JSON.stringify({

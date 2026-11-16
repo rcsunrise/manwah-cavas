@@ -1,6 +1,6 @@
 import './server/loadEnv';
 import express from 'express';
-import cors from 'cors';
+import { corsGuard, isInternalGatewayCall, rateLimitWrites, requireLoginForWrites, requireUserOrInternal } from './server/middleware/apiGuard';
 import multer from 'multer';
 import path from 'path';
 import sharp from 'sharp';
@@ -257,7 +257,8 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(cors());
+  // 跨域只放行同源 / ALLOWED_ORIGINS / 本地开发（以前 cors() 对所有网站开放）
+  app.use(corsGuard);
 
   // Mount Supabase reverse proxy before JSON body parser to ensure exact streaming & raw payloads
   app.use('/api/supabase-proxy', express.raw({ type: () => true, limit: '150mb' }), supabaseProxyRoutes);
@@ -265,6 +266,10 @@ async function startServer() {
   // 提升 JSON 与 Raw 请求体预算至 150MB，支持高精度模特资产图与母版多参考图传输
   app.use(express.json({ limit: '150mb' }));
   app.use(express.urlencoded({ limit: '150mb', extended: true }));
+
+  // 会花钱的写请求必须登录（只认 Bearer 凭证），并按用户限流；生图网关的内部回环调用用内部令牌放行
+  app.use(requireLoginForWrites);
+  app.use(rateLimitWrites);
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'manwah-ai-studio' });
@@ -614,18 +619,18 @@ async function startServer() {
 
   // API Route to proxy to API Gateway
   // Endpoint: /api/gateway/generate-image
-  app.post('/api/gateway/generate-image', optionalAuthenticateToken as any, async (req, res) => {
+  app.post('/api/gateway/generate-image', requireUserOrInternal as any, async (req, res) => {
     try {
       let { prompt, model = "openai/gpt-image-2", generationIntent, aspectRatio = "1:1", images = [], resolution = "1K", seed, size, quality, format, output_format, background, moderation, mask } = req.body;
       const user = (req as any).user;
-      const userUuid = 
-        (user?.id && user.id !== '00000000-0000-0000-0000-000000000001' ? user.id : undefined) ||
-        (req.body && (req.body.userUuid || req.body.userId || req.body.employeeId)) ||
-        (req.headers['x-user-uuid'] as string | undefined) ||
-        (req.headers['x-user-id'] as string | undefined) ||
-        (req.headers['x-employee-id'] as string | undefined) ||
-        user?.id ||
-        'system';
+      // 扣点对象：服务端内部回环调用取内部请求头里的用户；外部请求只认登录凭证里的身份，
+      // 不再接受请求体 / 请求头里自报的 userId（以前任何人都能把费用记到别人名下）
+      const userUuid: string = isInternalGatewayCall(req)
+        ? String(req.headers['x-user-uuid'] || 'system')
+        : user?.id;
+      if (!userUuid) {
+        return res.status(401).json({ success: false, error: { message: '请先登录后再生成', code: 'UNAUTHORIZED' } });
+      }
       const requestId = (req.headers['x-request-id'] as string) || `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       images = Array.isArray(images) ? images : [];
       let normalizedReferences;

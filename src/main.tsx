@@ -146,6 +146,10 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
 import './index.css';
+import { installAuthFetch } from './utils/authFetch';
+
+// 同源 /api 与 /v1* 请求自动带登录凭证（服务端要求会花钱的写请求必须登录）
+installAuthFetch();
 
 interface RootErrorBoundaryState {
   hasError: boolean;

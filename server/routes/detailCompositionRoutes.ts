@@ -18,7 +18,8 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-    let userUuid = (req.headers['x-user-uuid'] as string) || '';
+    // 只认凭证里的身份，不再回退到请求头自报的 x-user-uuid
+    let userUuid = req.user?.id || '';
 
     if (token && token.length > 20) {
       try {

@@ -8,6 +8,7 @@ import { resolveApiConfig } from '../ai/providerConfig';
 import { supabaseAdmin } from '../../src/lib/supabase';
 import { VideoSourceImageResolver } from './video/videoSourceImageResolver';
 import { persistAssetToDisk } from '../routes/canvasRoutes';
+import { internalGatewayHeaders } from '../middleware/apiGuard';
 
 const EDIT_MODELS = ['gpt-image-2.5-sunburst-c', 'gemini-nano-banana-2.1-preview'];
 /** 按要求整体修改画面：默认 GPT 2.6 Flare（产品保真、出图快），失败时回落 Nano Banana 2.1 */
@@ -161,7 +162,7 @@ async function callImageEdit(params: { model: string; prompt: string; image: Buf
   const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
   const res = await fetch(gatewayUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-uuid': params.userId },
+    headers: { 'Content-Type': 'application/json', ...internalGatewayHeaders(params.userId) },
     body: JSON.stringify({
       model: params.model,
       prompt: params.prompt,

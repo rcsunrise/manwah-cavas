@@ -64,7 +64,8 @@ async function requireStrictAuth(req: AuthenticatedRequest, res: Response, next:
   }
 
   const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
-  let userUuid = (req.headers['x-user-uuid'] as string) || '';
+  // 只认凭证里的身份（全局写请求守卫已校验过时直接用），不再回退到请求头自报的 x-user-uuid
+  let userUuid = (req as any).user?.id || '';
 
   if (token && token.length > 20) {
     try {
