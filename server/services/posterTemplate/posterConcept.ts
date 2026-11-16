@@ -2,7 +2,7 @@ import { createServerGenAI } from '../../utils/aiClient';
 import type { DetailTarget } from './detailCrop';
 import type { TitleSide } from './templateA';
 import { chatCompletionText } from './chatFallback';
-import { findSceneDirection, namesCollide, pickSceneDirection, SceneDirection } from './sceneDirections';
+import { findSceneDirection, namesCollide, pickSceneCandidates, SceneDirection } from './sceneDirections';
 import { CreativeAngle, findCreativeAngle, pickCreativeAngle } from './creativeAngles';
 
 /**
@@ -43,7 +43,7 @@ export interface PosterConcept {
   accentColor: string;
   titleSide: TitleSide;
   details: PosterDetailConcept[];
-  /** 本次采用的场景方向（见 sceneDirections.ts）；只有“奇观空间”角度才有 */
+  /** 本次采用的场景方向（见 sceneDirections.ts），由模型从候选里按卖点挑选 */
   sceneDirection?: string;
   /** 本次创意切入角度（见 creativeAngles.ts） */
   angle?: string;
@@ -73,8 +73,10 @@ export interface PosterConceptInput {
   planContext?: string;
   /** 同一产品已出过的概念（旧 → 新），用于避免重名、重复场景 */
   used?: UsedPosterConcept[];
-  /** 本次指定的场景方向；不传时按轮换自动选（只在奇观空间角度下使用） */
+  /** 本次指定的场景方向（指定了就只用它） */
   sceneDirection?: SceneDirection;
+  /** 给模型挑选的候选场景方向（不同类别）；不传时按轮换自动选 */
+  sceneCandidates?: SceneDirection[];
   /** 本次创意切入角度；不传时按轮换自动选 */
   angle?: CreativeAngle;
 }
@@ -111,33 +113,30 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
     input.angle
       ? `\n[本次创意切入角度（必须采用）]\n${input.angle.label}：${input.angle.brief}\n`
       : ''
-  }${
-    input.sceneDirection
-      ? `\n[本次场景方向（必须采用，命名、意象、道具都要和它呼应）]\n${input.sceneDirection.label}：${input.sceneDirection.brief}\n`
-      : ''
-  }${usedBlock(input.used)}
+  }${sceneBlock(input)}${usedBlock(input.used)}
 [版式（固定，不用你设计）]
 上方是产品主场景大图，左上角（或右上角）放标题区：两字命名 + 一句副标题 + 一行灵感小字；底部一栏三格，每格是一个产品部位的真实特写 + 标题 + 一句短说明。
 
-[怎么构思：先挖卖点，再按角度把卖点变成场景，最后起名]
-0. 挖卖点：看产品图和 DNA，找出这款产品最打动人的 1 个卖点（功能、坐感、材质、颜色、造型、适合的生活方式里选最突出、最具体的一个，如“电动头等舱躺姿”“米白头层真皮”“分段饱满靠背”）。整张海报只讲这一个卖点，场景要让人一眼联想到它。
-1. 场景：按上面的“创意切入角度”，从这个卖点推出场景。背景是这张海报的灵魂，不能只是“一间好看的客厅”，要说清：
-   - 主体环境：是什么地方、什么空间或自然环境，和卖点是什么关系。只有“奇观空间”角度才需要巨型建筑结构；其他角度用真实、具体、有生活或自然质感的环境，不要弧形穹顶、螺旋天井、舷窗这类奇观结构。
-   - 远景或纵深：空间尽头或窗外看到什么（不必每张都是海面、城市夜景、远山）。
-   - 配色：场景 2–3 个主色，说明和产品色是“呼应”还是“对比”。
-   - 时间与光线：明确时刻和主光方向，有明暗层次。
-   - 道具：和卖点同一套语言的道具（功能卖点配书、毛毯、投影光、星空；材质卖点配皮具、工具、织物；色彩卖点配同色系的自然物）。茶几不是必须的，可以是边几、托盘、矮凳、地面上的书，不要每张都是圆形石材茶几。
+[怎么构思：先挖卖点，再选大场景，再让整张图呼应名字]
+0. 挖卖点：看产品图和 DNA，找出这款产品最打动人的 1 个卖点（功能、坐感、材质、颜色、造型、情绪里选最突出、最具体的一个，如“电动头等舱躺姿”“米白头层真皮”“分段饱满靠背”）。
+1. 选场景：按“创意切入角度”，从上面的候选场景里挑一个和这个卖点最有关系的，并想清楚卖点和场景的联系（一句话能说出来）。
 2. 命名：两个汉字，有画面感和情绪，从卖点和场景出发。避开“云栖、栖云、云舒、暖阳”这类用滥了的词。
 3. 意象：名字对应的画面意象，一句话。
-4. 参考（学方法，不要照抄，也不要都往奇观建筑上靠）：
-   - 星眠（功能演绎）：取自电动躺与头枕 → 屋顶玻璃观星房，夜空银河，沙发半躺展开，羊毛毯与热茶
-   - 鞍语（材质溯源）：取自头层真皮 → 马术俱乐部鞍具房，深色木墙挂马鞍与缰绳，午后斜光照亮皮面
-   - 燕麦（色彩溯源）：取自米白色 → 晨雾中的燕麦田边木平台，暖白与麦金，逆光颗粒感
-   - 周末（生活时刻）：取自宽大坐深 → 周日早晨的家，阳光、报纸、咖啡、一只趴着的猫
-   - 沙纹（造型同构）：取自分段靠背的起伏 → 白色沙丘的风纹，与靠背节奏呼应，正午硬光
-   - 银弧（奇观空间）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
-5. 画面分三层：前景（地面、地毯边缘或道具）、中景（沙发）、远景（环境与风景）。光影和材质要像真实摄影。
-6. 标题压在画面一侧的上方：那里是天空、远景、墙面大块的光影或结构，明暗均匀、没有密集的小物件即可。
+4. 场景：这是一张大场景海报，背景是灵魂，必须开阔、壮观、有纵深，不能是封闭的室内房间或“一间好看的客厅”。从意象推出下面五样，缺一不可：
+   - 标志性主体：一个大尺度、一眼能记住的主体，占据画面上半部——可以是建筑结构（巨型弧形天井、连续拱廊、悬挑露台），也可以是壮阔的自然地貌（沙丘风纹、峡谷岩壁、冰川断面、层叠梯田、云海山尖、银河极光）。
+   - 远景：一直延伸到地平线或天空的风景，提供纵深。
+   - 配色：场景 2–3 个主色，说明和产品色是“呼应”还是“对比”。
+   - 时间与光线：明确时刻和主光方向（清晨逆光、正午天光、黄昏侧逆光、夜晚星光与暖灯），要有光斑、倒影、轮廓光这类光效。
+   - 道具呼应：边几或茶几（形状、材质随场景变化，不要每张都是圆形石材茶几）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言。
+5. 标杆案例（学方法，不要照抄）：
+   - 银弧（造型呼应）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
+   - 月弧（情绪意境）：取自弧形扶手与黑色皮面 → 月球基地全景窗、远处地球、石材圆几
+   - 星眠（功能演绎）：取自电动躺与头枕 → 沙漠营地夜晚，头顶银河拱桥，沙发半躺，脚边暖色地灯
+   - 沙纹（造型呼应）：取自分段靠背的起伏 → 白色沙丘的风纹延伸到地平线，正午硬光
+   - 赤岩（材质呼应）：取自焦糖色真皮的光泽 → 红岩峡谷流线岩壁，顶部光柱洒下
+   - 镜湖（色彩呼应）：取自米白色 → 天空之镜盐湖，倒映云朵，沙发如悬浮于天地之间
+6. 画面分三层：前景（地面、地毯边缘或道具，可有少量虚化的植物、水面、沙砾）、中景（沙发）、远景（标志性主体与风景）。可以大胆、可以超现实，但光影和材质要像真实摄影。
+7. 标题压在画面一侧的上方：那里是天空、远景或主体的大曲面，明暗均匀、没有密集的小物件即可，不要画成一面空墙。
 
 [细节三格]
 只能选产品上真实存在、图里看得见的部位（通常是扶手、靠背、沙发脚，也可以是侧面分割、金属饰条等），不要编造功能、参数、检测或材质承诺。
@@ -151,11 +150,12 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
   "subtitle": "副标题，8–12 字（硬性上限 12 字，含标点），用一个逗号分成两个短句，如“柔和之间，自有锋芒”",
   "inspiration": "灵感小字，12–20 字，如“灵感源于柔和弧面与未来建筑的对话”",
   "idea": "名字对应的意象，一句话",
-  "signature": "主体环境，20–50 字：是什么地方或空间、什么材质、在画面什么位置（奇观空间角度才写巨型结构）",
+  "sceneDirection": "从候选场景里选中的 id（如 white_dunes）",
+  "signature": "标志性主体，20–50 字：是什么建筑结构或自然地貌、什么材质、在画面什么位置、有多大",
   "vista": "远景，15–40 字",
   "palette": "场景配色，20–50 字：2–3 个主色 + 与产品色的关系（呼应或对比）",
   "lighting": "时间与光线，20–50 字：时刻、主光方向、光效",
-  "props": "道具呼应，30–70 字：和卖点同一语言的道具（边几或茶几、摆件、织物、地毯、一对同款抱枕的图案）",
+  "props": "道具呼应，30–70 字：边几或茶几（形状与材质）、摆件、地毯或地面、一对同款抱枕的图案",
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
   "packaging": "只看产品图：沙发上如果真实带有包装膜或品牌标识（例如底部透明包装膜上印着红蓝色品牌字样），用一句话写明位置、颜色和图案，如“沙发底部座位正面有透明包装膜，印红色飞机图标和蓝色 CHEERS 字样”；图里没有就输出空字符串 \\"\\"，不要猜、不要编",
   "stripColor": "#RRGGBB，海报底部细节栏的底色：夜景、星际等深色场景用与场景同色系的深色（如藏蓝 #14213A、炭黑 #1C1A19）；其余用暖白 #F7F3EE",
@@ -182,6 +182,15 @@ export function cutAtPunctuation(text: unknown, max: number, fallback = ''): str
   return head.join('');
 }
 
+function sceneBlock(input: PosterConceptInput): string {
+  if (input.sceneDirection) {
+    return `\n[本次场景方向（必须采用，命名、意象、道具都要和它呼应）]\n${input.sceneDirection.label}：${input.sceneDirection.brief}\n`;
+  }
+  const list = input.sceneCandidates || [];
+  if (list.length === 0) return '';
+  return `\n[候选场景（从中选一个和卖点最相关的，sceneDirection 填它的 id）]\n${list.map(d => `- ${d.id}｜${d.label}：${d.brief}`).join('\n')}\n`;
+}
+
 function usedBlock(used: UsedPosterConcept[] | undefined): string {
   const list = (used || []).filter(u => u?.name).slice(-8);
   if (list.length === 0) return '';
@@ -202,7 +211,7 @@ function usedBlock(used: UsedPosterConcept[] | undefined): string {
     ...lines,
     '命名不能重复，也不能是同样的字换个顺序或只换一个字（做过“云栖”就不能叫“栖云”“云憩”）；卖点尽量换一个（同一卖点也要换完全不同的表现）；意象、空间、光线、配色都要换。',
     elements.length ? `这些视觉元素已经用过，这次不要再作为画面主体：${elements.join('、')}。` : '',
-    '另外，下面这些已经被用滥，除非角度就是奇观空间，否则不要用：弧形穹顶/螺旋天井/弧形舷窗、落地窗外的海面落日或城市夜景、圆形石材茶几。',
+    '圆形石材茶几已经用得太多，这次换别的形状和材质。',
     ''
   ]
     .filter((line, i, arr) => line || i === 0 || i === arr.length - 1)
@@ -271,11 +280,12 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
 
   // 用户自己提了场景要求时不强加方向；否则按这款产品用过的方向轮换
   const used = (input.used || []).filter(u => u && typeof u.name === 'string' && u.name.trim());
-  // 先按这款产品用过的角度轮换出一个创意角度；只有“奇观空间”角度才再选具体场景方向
+  // 按这款产品用过的角度与场景轮换：角度决定从哪个卖点出发，候选场景来自最近没用过的类别，由模型按卖点挑一个
   const angle = input.angle || (input.hint ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
-  const direction =
-    input.sceneDirection ||
-    (angle?.id === 'spectacle' ? pickSceneDirection(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))) : undefined);
+  const direction = input.sceneDirection;
+  const candidates =
+    input.sceneCandidates ||
+    (direction || input.hint ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
 
   const imageParts: any[] = input.productImage?.data
     ? [{ inlineData: { mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') } }]
@@ -288,7 +298,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
     const avoid = collided
       ? [...used, { name: collided.name, idea: collided.idea, sceneDirection: collided.sceneDirection, angle: collided.angle, sellingPoint: collided.sellingPoint, keyElements: collided.keyElements }]
       : used;
-    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, angle }) }];
+    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }) }];
     let concept: PosterConcept | null = null;
     for (const model of CONCEPT_MODELS) {
       try {
@@ -313,7 +323,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       // gemini 原生通道全部不可用时，改走 chat/completions 的对话模型
       try {
         const fb = await chatCompletionText({
-          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, angle }),
+          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }),
           images: input.productImage?.data
             ? [{ mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') }]
             : [],
@@ -329,7 +339,10 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       }
     }
     if (!concept) break;
-    concept.sceneDirection = direction?.id;
+    // 模型选的方向必须在候选里；没选或选了别的，按第一个候选记
+    concept.sceneDirection =
+      direction?.id ||
+      (candidates?.some(c => c.id === concept!.sceneDirection) ? concept.sceneDirection : candidates?.[0]?.id);
     concept.angle = angle?.id;
     const clash = avoid.find(u => namesCollide(u.name, concept!.name));
     if (!clash) return concept;
@@ -356,7 +369,7 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): str
 
   const sceneLines = [
     concept.sellingPoint ? `要表现的卖点：${concept.sellingPoint}` : '',
-    concept.signature ? `${concept.angle && concept.angle !== 'spectacle' ? '主体环境' : '标志性空间结构'}：${concept.signature}` : '',
+    concept.signature ? `标志性主体：${concept.signature}` : '',
     concept.vista ? `远景：${concept.vista}` : '',
     concept.palette ? `配色：${concept.palette}` : '',
     concept.lighting ? `光线：${concept.lighting}` : '',
@@ -369,17 +382,13 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): str
 ${concept.scene}
 ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 [背景是这张图的重点]
-${
-    concept.angle && concept.angle !== 'spectacle'
-      ? '背景要把上面的卖点和主体环境讲清楚，一眼能看出是什么地方、什么时刻；真实、具体、有质感，有纵深和层次。不要画成奇观建筑（巨型弧形穹顶、螺旋天井、舷窗），也不要套用“落地窗外海面落日”的套路。'
-      : '背景不能是一面平墙或普通房间：标志性空间结构要大、要占据画面上半部，并向远处延伸出纵深；结构之外能看到远景。'
-  }
-画面分三层：前景（地面、地毯边缘或道具，可有少量虚化）、中景（沙发）、远景（环境与风景）。
+这是一张开阔的大场景海报：背景不能是一面平墙、封闭的室内房间或普通客厅。标志性主体（建筑结构或自然地貌）要大、要占据画面上半部，并向远处延伸出纵深；一直能看到地平线或天空。
+画面分三层：前景（地面、地毯边缘或道具，可有少量虚化的植物、水面、沙砾）、中景（沙发）、远景（标志性主体与风景）。
 色彩饱满、有主次和冷暖或明暗对比，不要整张图一个灰调；光线有方向、有层次，带光斑、倒影或轮廓光。
 
 [构图]
 横幅 16:9，广角镜头（约 24–28mm）、机位略低，空间显得开阔高大。
-参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。道具按[场景]描述摆放（不一定是茶几），沙发上摆一对同款抱枕。
+参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。前方有边几或茶几（按[场景]里的形状与材质），沙发下有地毯或与场景相配的地面，沙发上摆一对同款抱枕。
 画面${side}上方（约画面宽度 40%、高度 40% 的区域）后期要排版标题：这里是天空、远景或结构的大曲面，明暗均匀，不放植物、树枝、灯具、密集的小物件和强高光点（植物只能放在画面另一侧或前景角落）；但不要画成一面空墙。
 商业中画幅相机质感，材质和光影像真实摄影。
 
