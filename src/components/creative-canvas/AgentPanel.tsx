@@ -40,7 +40,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
-import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, LocalAssetItem } from '../../types/creativeCanvas';
+import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, AgentStitchClip, AgentStitchPicker, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
@@ -916,6 +916,86 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       .map(([n, j]) => ({ n, url: urlOf(j), assetVersionId: j.assetVersionId as string | undefined, prompt: String(j.prompt || '') }));
   };
 
+  // 所有已生成完成的视频（同一镜头重复生成的多个版本都列出来，让用户挑）
+  const collectAllClips = async (): Promise<AgentStitchClip[]> => {
+    const jobs = (await VideoGenerationService.fetchCanvasJobs(canvasId || '')) as any[];
+    const urlOf = (j: any): string => j.videoUrl || j.supabaseVideoUrl || j.playbackUrl || '';
+    const num = (j: any) => Number(String(j.shotId || '').match(/^shot-(\d+)/)?.[1] || 0);
+    return jobs
+      .filter(j => j.status === 'ready' && urlOf(j))
+      .sort((a, b) => num(a) - num(b) || Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .map(j => ({
+        id: String(j.id),
+        n: num(j),
+        url: urlOf(j),
+        assetVersionId: (j.assetVersionId as string | undefined) || undefined,
+        prompt: String(j.prompt || ''),
+        createdAt: j.createdAt as string | undefined
+      }));
+  };
+
+  const downloadVideoFile = async (url: string, name: string) => {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch {
+      window.open(url, '_blank');
+    }
+  };
+
+  // 选片卡的勾选与顺序：按消息 id 记录；没动过时默认“每个镜头取最新一条，按镜头序号排”
+  const [stitchPick, setStitchPick] = useState<Record<string, { order: string[]; transition: 'cut' | 'fade'; busy?: boolean; error?: string }>>({});
+  const defaultStitchOrder = (picker: AgentStitchPicker): string[] => {
+    const seen = new Set<number>();
+    const out: string[] = [];
+    picker.clips.forEach(c => {
+      const key = c.n > 0 ? c.n : -1 - out.length;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(c.id);
+      }
+    });
+    return out;
+  };
+  const stitchStateOf = (msgId: string, picker: AgentStitchPicker) =>
+    stitchPick[msgId] || { order: defaultStitchOrder(picker), transition: picker.transition || 'fade' };
+  const patchStitch = (msgId: string, picker: AgentStitchPicker, patch: Partial<{ order: string[]; transition: 'cut' | 'fade'; busy: boolean; error?: string }>) =>
+    setStitchPick(prev => ({ ...prev, [msgId]: { ...(prev[msgId] || stitchStateOf(msgId, picker)), ...patch } }));
+  const runPickedStitch = async (msgId: string, picker: AgentStitchPicker) => {
+    const st = stitchStateOf(msgId, picker);
+    const chosen = st.order.map(id => picker.clips.find(c => c.id === id)).filter(Boolean) as AgentStitchClip[];
+    if (chosen.length < 2) {
+      patchStitch(msgId, picker, { error: '至少勾选 2 段才能拼接' });
+      return;
+    }
+    patchStitch(msgId, picker, { busy: true, error: undefined });
+    try {
+      const film = await VideoGenerationService.stitchVideos({
+        canvasId: canvasId || '',
+        clips: chosen.map(c => ({ videoUrl: c.url, assetVersionId: c.assetVersionId })),
+        transition: st.transition
+      });
+      onPostVideoResult?.({
+        jobId: `stitch-${Date.now()}`,
+        videoUrl: film.videoUrl,
+        title: `成片 · ${film.clipCount} 个镜头`,
+        durationSeconds: film.durationSeconds
+      });
+      void downloadVideoFile(film.videoUrl, `MW_成片_${Date.now()}.mp4`);
+      patchStitch(msgId, picker, { busy: false });
+    } catch (err: any) {
+      patchStitch(msgId, picker, { busy: false, error: `拼接失败：${err?.message || '请稍后重试'}` });
+    }
+  };
+
   const prepareStitchCard = async (params?: AgentActionParams) => {
     if (!canvasId) {
       postAgent('当前画布还没有保存，暂时无法拼接成片。');
@@ -923,7 +1003,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     }
     postAgent('正在检查画布上已生成的镜头…');
     try {
-      const clips = await collectStitchClips();
+      const clips = await collectAllClips();
       if (clips.length < 2) {
         postAgent(
           clips.length === 1
@@ -933,20 +1013,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         );
         return;
       }
-      const transition = params?.stitchTransition === 'cut' ? 'cut' : 'fade';
-      postAgent('确认后开始拼接：', {
-        planCard: {
-          title: '拼接成片',
-          actionId: 'stitch_video',
-          params: { stitchTransition: transition },
-          status: 'pending',
-          items: [
-            { label: '镜头', value: `共 ${clips.length} 个，按镜头序号顺序，每个序号取最新一条` },
-            ...clips.map(c => ({ label: `镜头${c.n}`, value: c.prompt.replace(/\s+/g, ' ').slice(0, 40) || '（无提示词）' })),
-            { label: '转场', value: transition === 'fade' ? '淡入淡出' : '硬切' },
-            { label: '方式', value: '本地 ffmpeg 合成，不消耗生成点数，约 20 秒~2 分钟' }
-          ]
-        }
+      postAgent(`已生成 ${clips.length} 段视频。勾选要用的几段、用 ↑↓ 调整先后顺序，再点“拼接并下载”（本地合成，不消耗点数）：`, {
+        stitchPicker: { clips, transition: params?.stitchTransition === 'cut' ? 'cut' : 'fade' }
       });
     } catch (err: any) {
       postAgent(`读取镜头失败：${err?.message || '网络错误'}，请稍后重试。`);
@@ -983,6 +1051,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     switch (actionId) {
       case 'stitch_video':
         void prepareStitchCard(params);
+        return;
+      case 'group_lock':
+        // 把当前画布上的结果框成一组并锁定：之后的新项目 / 新会话排在旁边，互不读取
+        window.dispatchEvent(new CustomEvent('canvas:group-lock'));
         return;
       case 'upload_product':
         chatUploadInputRef.current?.click();
@@ -1240,6 +1312,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       case 'video_submit_all':
         // 视频面板在后台挂着，由它按导演方案逐镜提交
         window.dispatchEvent(new CustomEvent('video:submit-all'));
+        postAgent('已开始逐镜提交视频任务，生成需要几分钟，完成后会出现在画布和这里。镜头生成好了就可以挑选拼接：', {
+          clarifyCard: { question: '镜头生成完成后要拼接成片吗？', options: [{ label: '选镜头拼接下载', actionId: 'stitch_video' }] }
+        });
         return;
       case 'fabric_edit':
         onEditFabricPoster?.(params);
@@ -1301,6 +1376,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     : hasPlan
     ? [
         { label: '批量渲染分镜', actionId: 'render_all' },
+        { label: '成组锁定结果', actionId: 'group_lock' },
         { label: '模板 A 海报', actionId: 'template_poster' },
         { label: '面料海报', actionId: 'fabric_poster' },
         { label: '做全案海报', actionId: 'open_poster' },
@@ -1311,6 +1387,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         { label: '详情页企划', actionId: 'generate_plan' },
         { label: '模板 A 海报', actionId: 'template_poster' },
         { label: '面料海报', actionId: 'fabric_poster' },
+        { label: '成组锁定结果', actionId: 'group_lock' },
         { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
       ];
@@ -2897,7 +2974,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 setRefDocName?.(name);
                 setRefDocText?.(text);
               }}
-              onMakeTextilePoster={asset => runAgentAction('textile_poster', { textileMain: asset.path })}
+              onMakeTextilePoster={asset => {
+                window.dispatchEvent(new CustomEvent('canvas:fabric-main', { detail: { id: asset.id, name: asset.name, previewUrl: asset.previewUrl } }));
+                runAgentAction('textile_poster', { textileMain: asset.path });
+              }}
             />
 
             {/* Conversation Guidelines：对话刚开始时展示 */}
@@ -3220,6 +3300,70 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       </div>
                     )}
 
+                    {msg.stitchPicker && (() => {
+                      const picker = msg.stitchPicker!;
+                      const st = stitchStateOf(msg.id, picker);
+                      const chosenSet = new Set(st.order);
+                      const toggle = (id: string) =>
+                        patchStitch(msg.id, picker, { error: undefined, order: chosenSet.has(id) ? st.order.filter(x => x !== id) : [...st.order, id] });
+                      const move = (id: string, dir: -1 | 1) => {
+                        const i = st.order.indexOf(id);
+                        const j = i + dir;
+                        if (i < 0 || j < 0 || j >= st.order.length) return;
+                        const next = [...st.order];
+                        [next[i], next[j]] = [next[j], next[i]];
+                        patchStitch(msg.id, picker, { order: next });
+                      };
+                      // 先列已勾选的（按拼接顺序），再列没选的
+                      const selected = st.order.map(id => picker.clips.find(c => c.id === id)).filter(Boolean) as AgentStitchClip[];
+                      const rest = picker.clips.filter(c => !chosenSet.has(c.id));
+                      const row = (c: AgentStitchClip, idx: number) => (
+                        <div key={c.id} className={`flex items-center gap-2 p-1.5 rounded-lg border ${idx >= 0 ? 'border-[#B28C5A]/50 bg-white' : 'border-[#E5E0D8] bg-[#FAF8F5]'}`}>
+                          <input type="checkbox" checked={idx >= 0} onChange={() => toggle(c.id)} className="accent-[#B28C5A] cursor-pointer" disabled={st.busy} />
+                          <span className={`w-5 h-5 shrink-0 rounded-full text-[10px] font-bold flex items-center justify-center ${idx >= 0 ? 'bg-[#B28C5A] text-white' : 'bg-stone-200 text-stone-400'}`}>{idx >= 0 ? idx + 1 : '–'}</span>
+                          <video src={`${c.url}#t=0.1`} preload="metadata" muted playsInline className="w-16 h-10 rounded object-cover bg-black shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] font-bold text-stone-700">{c.n > 0 ? `镜头 ${c.n}` : '单条视频'}{c.createdAt ? <span className="ml-1 font-normal text-stone-400">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> : null}</div>
+                            <div className="text-[9px] text-stone-400 truncate">{c.prompt.replace(/\s+/g, ' ').slice(0, 48) || '（无提示词）'}</div>
+                          </div>
+                          {idx >= 0 && (
+                            <div className="flex flex-col shrink-0">
+                              <button type="button" disabled={st.busy || idx === 0} onClick={() => move(c.id, -1)} className="text-[10px] leading-none px-1 text-stone-500 hover:text-[#8C6F43] disabled:opacity-30 cursor-pointer" title="提前">▲</button>
+                              <button type="button" disabled={st.busy || idx === selected.length - 1} onClick={() => move(c.id, 1)} className="text-[10px] leading-none px-1 text-stone-500 hover:text-[#8C6F43] disabled:opacity-30 cursor-pointer" title="靠后">▼</button>
+                            </div>
+                          )}
+                          <a href={c.url} target="_blank" rel="noreferrer" className="text-[9px] text-[#8C6F43] shrink-0 hover:underline">预览</a>
+                        </div>
+                      );
+                      return (
+                        <div className="mt-2.5 rounded-xl border border-[#E5E0D8] bg-[#FAF8F5] p-2 space-y-1.5">
+                          {selected.map((c, i) => row(c, i))}
+                          {rest.length > 0 && <div className="text-[9px] text-stone-400 pt-1">未选用（同一镜头的其他版本或备选）</div>}
+                          {rest.map(c => row(c, -1))}
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <select
+                              value={st.transition}
+                              disabled={st.busy}
+                              onChange={e => patchStitch(msg.id, picker, { transition: e.target.value === 'cut' ? 'cut' : 'fade' })}
+                              className="text-[10px] bg-white border border-[#E5E0D8] rounded-lg px-2 py-1 outline-none cursor-pointer"
+                            >
+                              <option value="fade">淡入淡出转场</option>
+                              <option value="cut">硬切</option>
+                            </select>
+                            <button
+                              type="button"
+                              disabled={st.busy || selected.length < 2}
+                              onClick={() => void runPickedStitch(msg.id, picker)}
+                              className="px-3 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9C7A4D] disabled:opacity-50 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                            >
+                              {st.busy ? '拼接中…' : `拼接并下载（${selected.length} 段）`}
+                            </button>
+                            {st.error && <span className="text-[10px] text-rose-600">{st.error}</span>}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {msg.videoCard && (
                       <div className="mt-2.5 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#FAF8F5]">
                         <video
@@ -3250,7 +3394,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                               onClick={() => runAgentAction('stitch_video')}
                               className="px-2.5 py-1 rounded-lg border border-[#E5E0D8] hover:bg-white text-[#8C6F43] text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
                             >
-                              拼接全部镜头
+                              选镜头拼接
                             </button>
                           )}
                           <a

@@ -108,6 +108,7 @@ export default function CreativeCanvasPage() {
     selectAllNodes,
     clearSelection,
     deleteSelectedNodes,
+    groupNodesIntoFrame,
     duplicateSelectedNodes,
     addCustomNode,
 
@@ -833,6 +834,7 @@ export default function CreativeCanvasPage() {
               onSelectAll={selectAllNodes}
               onClearSelection={clearSelection}
               onDeleteSelected={deleteSelectedNodes}
+              onGroupNodes={() => groupNodesIntoFrame({ lock: true })}
               onDuplicateSelected={duplicateSelectedNodes}
               onAddCustomNode={addCustomNode}
               onUploadFile={handleUploadFile}

@@ -25,6 +25,8 @@ import { VideoCreationNode } from './video/VideoCreationNode';
 import { VideoGenerationNode } from './video/VideoGenerationNode';
 import { VideoResultNode } from './video/VideoResultNode';
 import { CanvasToolbar } from './CanvasToolbar';
+import { GroupFrameNode } from './GroupFrameNode';
+import { FabricMainNode } from './FabricMainNode';
 import { CheckSquare, Square, Trash2, Copy, X, Upload, Sparkles, Film, Type } from 'lucide-react';
 
 // 节点组件统一 memo 化（同一组件只包一次）：节点对象引用不变时跳过重渲染，拖拽时只重绘被拖动的节点
@@ -54,6 +56,8 @@ interface CanvasWorkspaceProps {
   onClearSelection?: () => void;
   onDeleteSelected?: () => void;
   onDuplicateSelected?: () => void;
+  /** 把选中的（没选就是全部未分组的）节点框成一组并锁定 */
+  onGroupNodes?: () => void;
   onAddCustomNode?: (kind: 'note' | 'scene' | 'prompt' | 'image') => void;
   onUploadFile?: (file: File) => void;
   onAutoLayoutNodes?: () => void;
@@ -84,6 +88,7 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   onClearSelection,
   onDeleteSelected,
   onDuplicateSelected,
+  onGroupNodes,
   onAddCustomNode,
   onUploadFile,
   onAutoLayoutNodes,
@@ -360,6 +365,8 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
       videoGenerationNode: VideoGenerationNode,
       videoResultNode: VideoResultNode,
       noteNode: NoteNode,
+      groupFrameNode: GroupFrameNode,
+      fabricMainNode: FabricMainNode,
       workflowStageGroupNode: WorkflowStageGroupNode,
       workflowStageGroup: WorkflowStageGroupNode,
       stageGroupNode: WorkflowStageGroupNode,
@@ -733,6 +740,7 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
           onClearSelection={onClearSelection}
           onDeleteSelected={onDeleteSelected}
           onDuplicateSelected={onDuplicateSelected}
+          onGroupNodes={onGroupNodes}
           onAddCustomNode={onAddCustomNode}
           onAutoLayoutNodes={onAutoLayoutNodes}
           onGrid3x3Layout={onGrid3x3Layout}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FolderOpen,
   RefreshCw,
@@ -59,6 +60,9 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResult, setSearchResult] = useState<LocalAssetSearchCardData | null>(null);
   const [isPanelExpanded, setIsPanelExpanded] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const [allKeyword, setAllKeyword] = useState('');
+  const [zoomIdx, setZoomIdx] = useState<number | null>(null);
 
   // 本机调试兜底：浏览器授权不可用时，让本地服务按路径直接读文件夹（云端部署没有这个入口）
   const [serverAvailable, setServerAvailable] = useState(false);
@@ -294,6 +298,13 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
   };
 
   const hasAnyActiveConnection = isBridgeOnline || isConnected;
+
+  // 刷新页面后文件夹连接会自动恢复，但素材列表是空的：连上后补一次默认列表
+  useEffect(() => {
+    if (isConnected && !searchResult && assetCount > 0) {
+      setSearchResult(localAssetService.searchAssets('', 'all', 6));
+    }
+  }, [isConnected, searchResult, assetCount]);
 
   return (
     <div className="bg-[#FAF8F5] rounded-2xl border border-[#E5E0D8] p-3 shadow-xs space-y-3">
@@ -548,7 +559,13 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[10px] text-stone-500 px-0.5">
                 <span>匹配到 {searchResult.matchedCount} 项素材</span>
-                <span className="text-[9px] text-[#B28C5A]">点击按钮直接上画布</span>
+                <button
+                  type="button"
+                  onClick={() => setShowAll(true)}
+                  className="text-[10px] font-bold text-[#B28C5A] hover:underline"
+                >
+                  查看全部大图 →
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-0.5">
@@ -640,6 +657,100 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
           ) : null}
         </div>
       )}
+      {showAll &&
+        createPortal(
+          <div className="fixed inset-0 z-[300] bg-black/50 flex items-center justify-center p-6" onClick={() => setShowAll(false)}>
+            <div
+              className="bg-[#FAF8F5] rounded-2xl w-full max-w-6xl h-[88vh] flex flex-col shadow-2xl border border-[#E5E0D8]"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E5E0D8]">
+                <h3 className="font-serif font-bold text-[#2C2A29] shrink-0">全部素材 · {dirName}</h3>
+                <input
+                  autoFocus
+                  value={allKeyword}
+                  onChange={e => setAllKeyword(e.target.value)}
+                  placeholder="按文件名筛选"
+                  className="flex-1 min-w-0 px-3 py-1.5 bg-white border border-[#E5E0D8] rounded-xl text-xs outline-none focus:border-[#B28C5A]"
+                />
+                <button type="button" onClick={() => setShowAll(false)} className="text-stone-400 hover:text-stone-700">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {(() => {
+                const list = localAssetService.searchAssets(allKeyword, 'image', 100000).assets;
+                return (
+                  <>
+                    <p className="px-5 py-2 text-[11px] text-stone-500">共 {list.length} 张图片 · 点缩略图放大预览（←→ 切换，Esc 关闭），挑好后点「设为主色 · 面料海报」</p>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-5 grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start">
+                      {list.map(asset => (
+                        <div key={asset.id} className="bg-white rounded-xl border border-[#E5E0D8] hover:border-[#B28C5A] p-2 space-y-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setZoomIdx(list.indexOf(asset))}
+                            className="block w-full aspect-square bg-stone-100 rounded-lg overflow-hidden cursor-zoom-in"
+                            title="点击放大预览"
+                          >
+                            {asset.previewUrl && <img src={asset.previewUrl} alt={asset.name} loading="lazy" className="w-full h-full object-contain" />}
+                          </button>
+                          <p className="text-[11px] font-bold text-[#2C2A29] truncate" title={asset.path}>{asset.name}</p>
+                          {onMakeTextilePoster && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAll(false);
+                                onMakeTextilePoster(asset);
+                              }}
+                              className="w-full py-1 bg-stone-800 hover:bg-stone-900 text-white rounded text-[10px] font-bold"
+                            >
+                              设为主色 · 面料海报
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {zoomIdx !== null && list[zoomIdx] && (() => {
+                      const z = list[zoomIdx];
+                      const big = z.serverUrl && z.serverUrl.includes('/api/local-folder/file') ? `${z.serverUrl}&w=1800` : z.serverUrl || z.previewUrl;
+                      const go = (d: number) => setZoomIdx((zoomIdx + d + list.length) % list.length);
+                      return (
+                        <div
+                          className="fixed inset-0 z-[310] bg-black/80 flex flex-col items-center justify-center p-6 gap-3"
+                          tabIndex={0}
+                          ref={el => el?.focus()}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') { e.stopPropagation(); setZoomIdx(null); }
+                            if (e.key === 'ArrowLeft') go(-1);
+                            if (e.key === 'ArrowRight') go(1);
+                          }}
+                          onClick={e => { e.stopPropagation(); setZoomIdx(null); }}
+                        >
+                          <img src={big} alt={z.name} className="max-w-full max-h-[78vh] object-contain rounded-lg shadow-2xl bg-white" onClick={e => e.stopPropagation()} />
+                          <div className="flex items-center gap-3 text-white text-sm" onClick={e => e.stopPropagation()}>
+                            <button type="button" onClick={() => go(-1)} className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25">← 上一张</button>
+                            <span className="font-mono">{z.name} · {zoomIdx + 1}/{list.length}</span>
+                            <button type="button" onClick={() => go(1)} className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25">下一张 →</button>
+                            {onMakeTextilePoster && (
+                              <button
+                                type="button"
+                                onClick={() => { setZoomIdx(null); setShowAll(false); onMakeTextilePoster(z); }}
+                                className="px-4 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9E7A4A] font-bold"
+                              >
+                                设为主色 · 面料海报
+                              </button>
+                            )}
+                            <button type="button" onClick={() => setZoomIdx(null)} className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25">关闭</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                );
+              })()}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

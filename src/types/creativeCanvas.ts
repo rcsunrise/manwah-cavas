@@ -52,6 +52,21 @@ export interface AgentImageCard {
   detail?: string;
 }
 
+export interface AgentStitchClip {
+  id: string;
+  /** 镜头序号（shot-N 的 N），0 表示不是分镜任务 */
+  n: number;
+  url: string;
+  assetVersionId?: string;
+  prompt: string;
+  createdAt?: string;
+}
+
+export interface AgentStitchPicker {
+  clips: AgentStitchClip[];
+  transition?: 'cut' | 'fade';
+}
+
 export interface AgentVideoCard {
   jobId: string;
   videoUrl: string;
@@ -92,6 +107,8 @@ export interface AgentMessage {
   suggestions?: AgentSuggestion[];
   /** 视频成片：任务完成后回传到对话 */
   videoCard?: AgentVideoCard;
+  /** 拼接选片卡：列出已生成的镜头，勾选并排序后拼接下载（仅当前会话内存里有） */
+  stitchPicker?: AgentStitchPicker;
   /** 海报/画面成图 */
   imageCard?: AgentImageCard;
   /** 用户随消息发送的图片 */
@@ -110,6 +127,7 @@ export type AgentActionId =
   | 'search_market'
   | 'open_video'
   | 'video_submit_all'
+  | 'group_lock'
   | 'open_poster'
   /** 模板海报（原型）：命名构思 → 主场景 → 细节裁切 + 排版 */
   | 'template_poster'
@@ -135,6 +153,14 @@ export type AgentActionId =
 export interface AgentActionParams {
   /** 面料色卡海报：版式（slant 斜切 / hex 六边形 / circle 圆形） */
   textileLayout?: 'slant' | 'hex' | 'circle';
+  /** 氛围图拼贴摆法变体（0 起；换一种组合 +1，只重新排版不扣点） */
+  textileMoodVariant?: number;
+  /** 重出氛围图时要求换人物/场景/机位 */
+  textileMoodVariation?: boolean;
+  /** 氛围图风格：cutout 人物抠图加白边压在拼贴上；collage 普通拼贴 */
+  textileMoodStyle?: 'collage' | 'cutout';
+  /** cutout 时用 AI 新出一张白底全身人物再抠（约 3000 点）；不填则从现有氛围图里抠 */
+  textileCutoutAi?: boolean;
   /** 主面料：本地素材里的文件名或其中的关键字（如 DSC_8837）；不填用对话里选中的那一张 */
   textileMain?: string;
   /** 按颜色选主面料（如“绿色”“藏青”）；textileMain 没给时用 */

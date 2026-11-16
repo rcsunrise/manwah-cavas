@@ -11,7 +11,7 @@ describe('posterRegenOptions', () => {
   });
   it('模板 A 只给再出一版；C 没有整套重出；非模板海报没有选项', () => {
     expect(posterRegenOptions({ template: 'A', productNodeId: 'p' })[0].actionId).toBe('template_poster');
-    expect(posterRegenOptions({ template: 'C' })).toEqual([]);
+    expect(posterRegenOptions({ template: 'C', layout: 'slant', moods: ['a'] }).map(o => o.label)).toEqual(['换成六边形排版', '换成圆形排版', '氛围图换一种组合', '人物抠图叠压（用现有氛围图）', '人物抠图叠压（AI 新出人物）', '重出氛围图（换人物场景）']);
     expect(posterRegenOptions(undefined)).toEqual([]);
   });
 });

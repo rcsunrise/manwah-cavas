@@ -375,14 +375,27 @@ router.post('/textile/concept', async (req: AuthenticatedRequest, res: Response)
 
 router.post('/textile/mood', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { concept: rawConcept, index, count, layout, mainColor, model, resolution } = req.body || {};
+    const { concept: rawConcept, index, count, layout, mainColor, model, resolution, variation, kind } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeTextileConcept(rawConcept, typeof mainColor === 'string' ? mainColor : undefined);
     const i = Number(index);
     if (!Number.isInteger(i) || i < 0 || i > 3) return res.status(400).json({ success: false, error: { message: 'index 无效' } });
     const total = Math.max(1, Math.min(4, Number(count) || 1));
+    if (kind === 'cutout') {
+      // 抠图用的人物：纯白无缝背景的全身像，方便后面干净地抠出来
+      const style = concept.moodPrompts[0] || '';
+      const cut = await fabricImage(req, {
+        prompt: `${style}。画面主体是一位时装模特的全身像，从头到脚完整入镜，站姿自然，服装与面料的色调协调；背景必须是纯白色（#FFFFFF）无缝影棚背景，没有任何道具、家具、地面投影和阴影，不要文字和水印；竖构图。`,
+        aspectRatio: '2:3',
+        model,
+        resolution
+      });
+      return res.json({ success: true, index: 0, kind: 'cutout', ...cut });
+    }
     const out = await fabricImage(req, {
-      prompt: concept.moodPrompts[i % concept.moodPrompts.length],
+      prompt:
+        concept.moodPrompts[i % concept.moodPrompts.length] +
+        (Number(variation) > 0 ? '。请换一个与常见构图明显不同的人物、场景和机位，色调仍与面料协调，不要出现文字和水印。' : ''),
       aspectRatio: textileMoodAspectFor(textileLayoutOf(layout), total, i),
       model,
       resolution
@@ -395,7 +408,7 @@ router.post('/textile/mood', async (req: AuthenticatedRequest, res: Response) =>
 
 router.post('/textile/compose', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { mainImage, heroImages, swatchImages, moodImages, layout, name, description, code, bgColor, outputScale } = req.body || {};
+    const { mainImage, heroImages, swatchImages, moodImages, layout, name, description, code, bgColor, outputScale, moodVariant, moodStyle, cutoutImage } = req.body || {};
     const main = await loadImage(mainImage, '主面料图');
     const heroAlternatives = await Promise.all((Array.isArray(heroImages) ? heroImages.slice(0, 3) : []).map((u: unknown, i: number) => loadImage(u, `同色面料图${i + 1}`)));
     const swatchList: unknown[] = Array.isArray(swatchImages) ? swatchImages.slice(0, TEXTILE_MAX_SWATCHES - 1) : [];
@@ -420,6 +433,7 @@ router.post('/textile/compose', async (req: AuthenticatedRequest, res: Response)
         }
       })
     );
+    const cutoutPerson = moodStyle === 'cutout' && isAllowedImageSource(cutoutImage) ? await loadImage(cutoutImage, '人物图') : undefined;
     const result = await composeTextilePoster({
       layout: textileLayoutOf(layout),
       main,
@@ -431,7 +445,10 @@ router.post('/textile/compose', async (req: AuthenticatedRequest, res: Response)
       description: typeof description === 'string' ? description.slice(0, 200) : '',
       code: typeof code === 'string' ? code.slice(0, 24) : '',
       bgColor: typeof bgColor === 'string' ? bgColor : undefined,
-      outputScale: Number(outputScale) === 2 ? 2 : 1
+      outputScale: Number(outputScale) === 2 ? 2 : 1,
+      moodVariant: Number.isFinite(Number(moodVariant)) ? Number(moodVariant) : 0,
+      moodStyle: moodStyle === 'cutout' ? 'cutout' : 'collage',
+      cutoutPerson
     });
     res.json({
       success: true,

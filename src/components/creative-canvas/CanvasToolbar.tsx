@@ -16,7 +16,8 @@ import {
   Image as ImageIcon,
   ChevronDown,
   X,
-  LayoutGrid
+  LayoutGrid,
+  Lock
 } from 'lucide-react';
 
 interface CanvasToolbarProps {
@@ -27,6 +28,7 @@ interface CanvasToolbarProps {
   onClearSelection?: () => void;
   onDeleteSelected?: () => void;
   onDuplicateSelected?: () => void;
+  onGroupNodes?: () => void;
   onAddCustomNode?: (kind: 'note' | 'scene' | 'prompt' | 'image') => void;
   onAutoLayoutNodes?: () => void;
   onGrid3x3Layout?: (selectedOnly?: boolean) => void;
@@ -41,6 +43,7 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   onClearSelection,
   onDeleteSelected,
   onDuplicateSelected,
+  onGroupNodes,
   onAddCustomNode,
   onAutoLayoutNodes,
   onGrid3x3Layout,
@@ -154,6 +157,17 @@ export const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-[#B28C5A]" />
             <span>自动对齐</span>
+          </button>
+        )}
+
+        {onGroupNodes && (
+          <button
+            onClick={onGroupNodes}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FAF8F5] hover:bg-[#F4EFE6] text-[#8C6F43] border border-[#E5E0D8] hover:border-[#B28C5A] active:scale-95 rounded-xl font-bold text-xs shadow-xs transition-all cursor-pointer"
+            title={selectedCount > 0 ? '把选中的节点框成一个分组并锁定' : '把画布上现有的结果框成一个分组并锁定，之后的新项目会排在它右边'}
+          >
+            <Lock className="w-3.5 h-3.5 text-[#B28C5A]" />
+            <span>{selectedCount > 0 ? '选中成组锁定' : '成组锁定'}</span>
           </button>
         )}
 

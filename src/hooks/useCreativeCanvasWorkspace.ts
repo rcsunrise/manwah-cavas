@@ -257,7 +257,27 @@ export function useCreativeCanvasWorkspace(
     if (hydrationState === 'ready' && !isRestoringRef.current) {
       hasUserMutationRef.current = true;
     }
-    onNodesChange(changes);
+    // 拖动没锁定的分组框时，框内节点跟着一起走
+    let all = changes;
+    if (Array.isArray(changes) && changes.some((c: any) => c.type === 'position' && c.position)) {
+      const extra: any[] = [];
+      const changedIds = new Set(changes.map((c: any) => c.id));
+      for (const c of changes) {
+        if (c.type !== 'position' || !c.position) continue;
+        const frame = nodesRef.current.find(n => n.id === c.id);
+        if (!frame || frame.type !== 'groupFrameNode' || (frame.data as any)?.locked) continue;
+        const dx = c.position.x - frame.position.x;
+        const dy = c.position.y - frame.position.y;
+        if (!dx && !dy) continue;
+        for (const mid of ((frame.data as any)?.memberIds || []) as string[]) {
+          if (changedIds.has(mid)) continue;
+          const m = nodesRef.current.find(n => n.id === mid);
+          if (m) extra.push({ type: 'position', id: mid, position: { x: m.position.x + dx, y: m.position.y + dy }, dragging: c.dragging });
+        }
+      }
+      if (extra.length) all = [...changes, ...extra];
+    }
+    onNodesChange(all);
   }, [hydrationState, onNodesChange]);
 
   const handleEdgesChange = useCallback((changes: any) => {
@@ -711,6 +731,16 @@ export function useCreativeCanvasWorkspace(
 
     const selectedNode = nodes.find(n => n.id === selectedNodeId);
     const activeAssetVersionId = (selectedNode?.data?.assetVersionId as string) || null;
+    // 本会话看不到：其它会话生成的结果、已锁定分组里的结果（产品图/DNA 等素材除外）；用户 @ 或选中的照常可见
+    const pointedIds = new Set<string>([...(options?.mentionedNodeIds || []), ...(selectedNodeId ? [selectedNodeId] : [])]);
+    const SHARED_TYPES = new Set(['productImageNode', 'productDnaNode', 'welcomeNode', 'noteNode', 'groupFrameNode']);
+    const sessionNodes = nodes.filter(n => {
+      if (pointedIds.has(n.id) || SHARED_TYPES.has(String(n.type))) return true;
+      const d = n.data as any;
+      if (d?.groupLocked) return false;
+      if (d?.conversationId && d.conversationId !== conv!.id) return false;
+      return true;
+    });
 
     const contextSnapshot: AgentContextSnapshot = {
       projectId: targetProjectId,
@@ -730,7 +760,7 @@ export function useCreativeCanvasWorkspace(
         dnaReady: uploadState === 'completed' || nodes.some(n => n.id === 'dna-node-1' || n.type === 'productDnaNode'),
         plan: agentRun?.plan,
         planSettings: { screenCount: planScreenCount, aspectRatio: planAspectRatio, model: planAgentModel },
-        nodes,
+        nodes: sessionNodes,
         mentionedNodeIds: options?.mentionedNodeIds,
         selectedSceneIndex,
         localFolder: localAssetService.isConnected()
@@ -740,7 +770,7 @@ export function useCreativeCanvasWorkspace(
             })()
           : null
       }),
-      videoNodes: collectVideoNodeRefs(nodes)
+      videoNodes: collectVideoNodeRefs(sessionNodes)
     };
 
     const userMsgId = `user-msg-${Date.now()}`;
@@ -1422,6 +1452,15 @@ export function useCreativeCanvasWorkspace(
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // 上传主图后是否自动提取产品 DNA（默认关；localStorage creative-canvas:auto-dna = '1' 打开）
+  const readAutoDnaPref = () => {
+    try {
+      return localStorage.getItem('creative-canvas:auto-dna') === '1';
+    } catch {
+      return false;
+    }
+  };
+
   // Upload file & handle pipeline
   const handleUploadFile = async (file: File) => {
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
@@ -1432,6 +1471,15 @@ export function useCreativeCanvasWorkspace(
 
     if (file.size > 20 * 1024 * 1024) {
       setErrorMessage('文件大小超出 20MB 限制。');
+      return;
+    }
+
+    // 原项目已成组锁定：不覆盖锁定的主产品图，新图作为新产品节点落在分组框旁边
+    const lockedMain = (nodesRef.current || nodes).find(n => n.id === 'img-node-1' && (n.data as any)?.groupLocked);
+    if (lockedMain) {
+      addUserMessage(`新增产品图：${file.name}`);
+      addAgentMessage('原项目已锁定，没有动它的主图。这张图作为新产品放在分组框右侧，可点它上面的「模板海报」等按钮单独开新项目。');
+      handleAddProductNode(file);
       return;
     }
 
@@ -1515,7 +1563,14 @@ export function useCreativeCanvasWorkspace(
           console.error('Failed to save project asset:', e);
         }
 
-        await performDnaExtraction(proj, b64);
+        if (readAutoDnaPref()) {
+          await performDnaExtraction(proj, b64);
+        } else {
+          // 默认不自动提取 DNA：只放图。做企划/点“重新分析”时才提取
+          setUploadState('completed');
+          setNodes(prev => prev.map(n => (n.id === 'img-node-1' ? { ...n, data: { ...(n.data as any), status: 'completed' } } : n)));
+          addAgentMessage('主图已放上画布，没有自动提取 DNA。做九宫格企划时会自动提取；想先看 DNA，点主图上的「重新分析」。');
+        }
       } else {
         setUploadState('error');
         setErrorMessage('创建项目容器失败');
@@ -1582,6 +1637,11 @@ export function useCreativeCanvasWorkspace(
     if (!proj) {
       setPlanError('无法初始化项目容器');
       return;
+    }
+    // 上传时没自动提取 DNA：做企划前补提一次
+    if (!activeDnaRef.current && uploadedBase64Ref.current) {
+      const raw = uploadedBase64Ref.current;
+      await performDnaExtraction(proj, raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`);
     }
 
     isPlanGeneratingRef.current = true;
@@ -3241,10 +3301,15 @@ export function useCreativeCanvasWorkspace(
   const handleEditFabricPoster = async (params?: AgentActionParams): Promise<boolean> => {
     const currentNodes = nodesRef.current || nodes;
     const fabricNodes = currentNodes.filter(n => n.id.startsWith('template-poster-b-') && (n.data as any)?.templatePoster?.template === 'B');
+    // 没点名时只在本会话、未锁定的海报里找最新一张；点名或选中的照常可改
+    const activeFabric = fabricNodes.filter(n => {
+      const d = n.data as any;
+      return !d?.groupLocked && (!d?.conversationId || d.conversationId === currentConversationRef.current?.id);
+    });
     const target =
       (params?.nodeId ? fabricNodes.find(n => n.id === params.nodeId) : undefined) ||
       (selectedNodeId ? fabricNodes.find(n => n.id === selectedNodeId) : undefined) ||
-      fabricNodes[fabricNodes.length - 1];
+      activeFabric[activeFabric.length - 1];
     if (!target) {
       addAgentMessage('画布上还没有面料海报，先点沙发图上的「面料海报」生成一张，再来修改。');
       return false;
@@ -3413,6 +3478,20 @@ export function useCreativeCanvasWorkspace(
     return { x: maxX + 60, y: minY + siblings * 460 };
   };
 
+  /** 选好主面料后在画布上放一个“主面料”节点（已有就更新），海报生成后从它连线到成品 */
+  const upsertFabricMainNode = (assetId: string, name: string, imageUrl?: string, state: 'pending' | 'running' | 'done' = 'pending') => {
+    const id = `fabric-main-${assetId}`;
+    hasUserMutationRef.current = true;
+    setNodes(prev => {
+      if (prev.some(n => n.id === id)) {
+        return prev.map(n => (n.id === id ? { ...n, data: { ...(n.data as any), name, imageUrl: imageUrl || (n.data as any).imageUrl, state } } : n));
+      }
+      const pos = textileNodePosition();
+      return [...prev, { id, type: 'fabricMainNode', position: pos, data: { name, imageUrl, state } } as Node];
+    });
+    return id;
+  };
+
   /** 挑配色面料：用户点名的按名字找；否则按主色从同一文件夹自动挑（颜色拉开、彼此协调）。找不到/有歧义时抛出可直接给用户看的话 */
   const pickTextileSwatches = async (
     main: LocalAssetItem,
@@ -3538,6 +3617,7 @@ export function useCreativeCanvasWorkspace(
 
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const fabricNodeId = upsertFabricMainNode(main.id, main.name, main.previewUrl, 'running');
     const taskId = addAgentMessage('', { taskCard: { title: `面料色卡海报 · ${main.name}`, status: 'running', detail: '1/4 读取面料颜色并挑选配色…' } });
     try {
       const swatchAssets = await pickTextileSwatches(main, params, params?.textileSwatchCount || 6, (done, total) =>
@@ -3582,6 +3662,15 @@ export function useCreativeCanvasWorkspace(
           else warnings.push(`第 ${i + 1} 张氛围图失败（已省略）：${(r.reason as any)?.message || ''}`);
         });
       }
+      let cutoutImage: string | undefined;
+      if (params?.textileMoodStyle === 'cutout' && params?.textileCutoutAi) {
+        finishTaskCard(taskId, 'running', '3/4 AI 生成白底全身人物（约 3000 点）并抠图…');
+        const r = await textilePostJson('/api/poster-templates/textile/mood', {
+          concept, index: 0, count: 1, layout, mainColor, kind: 'cutout',
+          model: selectedModel || undefined, resolution: selectedResolution || '2K'
+        });
+        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料海报抠图人物');
+      }
       finishTaskCard(taskId, 'running', '4/4 避开标签取面料、取底色并排版…');
 
       const name = params?.textileName || concept.name;
@@ -3596,7 +3685,10 @@ export function useCreativeCanvasWorkspace(
         name,
         description,
         code,
-        bgColor: params?.textileBg
+        bgColor: params?.textileBg,
+        moodVariant: params?.textileMoodVariant ?? 0,
+        moodStyle: params?.textileMoodStyle ?? 'collage',
+        cutoutImage
       });
       const [posterUrl, mainUrl, ...restUrls] = await Promise.all([
         persistGeneratedImage(composed.imageDataUrl, '面料色卡海报'),
@@ -3643,10 +3735,18 @@ export function useCreativeCanvasWorkspace(
               swatchNames: swatchAssets.map(a => a.name),
               swatchImages: swatchUrls,
               moods: moodUrls,
+              moodVariant: params?.textileMoodVariant ?? 0,
+              moodStyle: params?.textileMoodStyle ?? 'collage',
+              cutoutImage,
               concept
             }
           }
         } as Node
+      ]);
+      setNodes(prev => prev.map(n => (n.id === fabricNodeId ? { ...n, data: { ...(n.data as any), imageUrl: mainUrl, state: 'done' } } : n)));
+      setEdges(prev => [
+        ...prev,
+        { id: `edge-${fabricNodeId}-${resultNodeId}`, source: fabricNodeId, target: resultNodeId, animated: false, style: { stroke: '#B28C5A', strokeWidth: 2 } }
       ]);
       const all = [...warnings, ...(Array.isArray(composed.warnings) ? composed.warnings : [])];
       finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
@@ -3661,6 +3761,7 @@ export function useCreativeCanvasWorkspace(
       return true;
     } catch (err: any) {
       finishTaskCard(taskId, 'failed', err?.message || '面料海报生成失败');
+      setNodes(prev => prev.map(n => (n.id === fabricNodeId ? { ...n, data: { ...(n.data as any), state: 'pending' } } : n)));
       return false;
     } finally {
       templatePosterRunningRef.current.delete(lockKey);
@@ -3720,6 +3821,9 @@ export function useCreativeCanvasWorkspace(
       let description: string = params?.textileDesc ?? tp.description;
       const code: string = params?.textileCode ?? tp.code ?? '';
       let moods: string[] = [...(tp.moods || [])];
+      const moodVariant: number = params?.textileMoodVariant ?? tp.moodVariant ?? 0;
+      const moodStyle: 'collage' | 'cutout' = params?.textileMoodStyle ?? tp.moodStyle ?? 'collage';
+      let cutoutImage: string | undefined = tp.cutoutImage;
 
       if (newMain || params?.textileSwatches?.length || (params?.textileSwatchCount && params.textileSwatchCount - 1 > swatchImages.length)) {
         const main = newMain || localAssetService.getAssets().find(a => a.name === tp.mainName && a.type === 'image');
@@ -3763,7 +3867,7 @@ export function useCreativeCanvasWorkspace(
           Array.from({ length: params.textileMoods }, (_, i) =>
             retryOnce(() =>
               textilePostJson('/api/poster-templates/textile/mood', {
-                concept, index: i, count: params.textileMoods, layout, mainColor: tp.mainColor,
+                concept, index: i, count: params.textileMoods, layout, mainColor: tp.mainColor, variation: params.textileMoodVariation ? 1 : 0,
                 model: selectedModel || undefined, resolution: selectedResolution || '2K'
               }).then(r => persistGeneratedImage(r.imageDataUrl, '面料海报氛围图'))
             )
@@ -3775,6 +3879,14 @@ export function useCreativeCanvasWorkspace(
           else warnings.push(`第 ${i + 1} 张氛围图重出失败：${(r.reason as any)?.message || ''}`);
         });
         if (fresh.length) moods = fresh;
+      }
+      if (moodStyle === 'cutout' && params?.textileCutoutAi) {
+        finishTaskCard(taskId, 'running', 'AI 生成白底全身人物（约 3000 点）并抠图…');
+        const r = await textilePostJson('/api/poster-templates/textile/mood', {
+          concept, index: 0, count: 1, layout, mainColor: tp.mainColor, kind: 'cutout',
+          model: selectedModel || undefined, resolution: selectedResolution || '2K'
+        });
+        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料海报抠图人物');
       }
       finishTaskCard(taskId, 'running', '重新排版…');
 
@@ -3790,7 +3902,10 @@ export function useCreativeCanvasWorkspace(
         name,
         description,
         code,
-        bgColor: effectiveBg || undefined
+        bgColor: effectiveBg || undefined,
+        moodVariant,
+        moodStyle,
+        cutoutImage: moodStyle === 'cutout' ? cutoutImage : undefined
       });
       const posterUrl = await persistGeneratedImage(composed.imageDataUrl, '面料色卡海报');
 
@@ -3827,6 +3942,9 @@ export function useCreativeCanvasWorkspace(
               swatchNames,
               swatchImages,
               moods,
+              moodVariant,
+              moodStyle,
+              cutoutImage,
               concept
             }
           }
@@ -4348,7 +4466,10 @@ export function useCreativeCanvasWorkspace(
   const deleteSelectedNodes = useCallback(() => {
     hasUserMutationRef.current = true;
     setNodes(prev => {
-      const selectedIds = new Set(prev.filter(n => n.selected).map(n => n.id));
+      // 锁定分组里的节点和已锁定的分组框不能被删除，先解锁
+      const selectedIds = new Set(
+        prev.filter(n => n.selected && !(n.data as any)?.groupLocked && !(n.type === 'groupFrameNode' && (n.data as any)?.locked)).map(n => n.id)
+      );
       if (selectedIds.size === 0) return prev;
 
       setEdges(prevEdges =>
@@ -4358,6 +4479,92 @@ export function useCreativeCanvasWorkspace(
       return prev.filter(n => !selectedIds.has(n.id));
     });
   }, [setNodes, setEdges]);
+
+  // ===== 分组框：把一批结果框起来并可锁定；新结果、新会话的产物排到旁边 =====
+  const nodeBox = (n: Node) => ({
+    x: n.position.x,
+    y: n.position.y,
+    w: Number((n as any).measured?.width ?? n.width ?? 460),
+    h: Number((n as any).measured?.height ?? n.height ?? 620)
+  });
+
+  const groupNodesIntoFrame = useCallback((opts?: { lock?: boolean }) => {
+    const cur = nodesRef.current;
+    const grouped = new Set<string>(cur.filter(n => n.type === 'groupFrameNode').flatMap(n => ((n.data as any)?.memberIds || []) as string[]));
+    const pool = cur.filter(n => n.type !== 'groupFrameNode' && !grouped.has(n.id));
+    const picked = pool.filter(n => n.selected);
+    const members = picked.length > 0 ? picked : pool;
+    if (members.length === 0) {
+      addAgentMessage('没有可成组的节点（已经在分组里的不会重复加入）。');
+      return;
+    }
+    const boxes = members.map(nodeBox);
+    const PAD = 48;
+    const HEAD = 56;
+    const minX = Math.min(...boxes.map(b => b.x));
+    const minY = Math.min(...boxes.map(b => b.y));
+    const maxX = Math.max(...boxes.map(b => b.x + b.w));
+    const maxY = Math.max(...boxes.map(b => b.y + b.h));
+    const lock = opts?.lock !== false;
+    const id = `group-frame-${Date.now()}`;
+    const index = cur.filter(n => n.type === 'groupFrameNode').length + 1;
+    const frame: Node = {
+      id,
+      type: 'groupFrameNode',
+      position: { x: minX - PAD, y: minY - PAD - HEAD },
+      data: {
+        title: `项目 ${index} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        locked: lock,
+        memberIds: members.map(n => n.id),
+        frameW: Math.round(maxX - minX + PAD * 2),
+        frameH: Math.round(maxY - minY + PAD * 2 + HEAD),
+        conversationId: currentConversationRef.current?.id
+      }
+    } as Node;
+    const memberSet = new Set(members.map(n => n.id));
+    hasUserMutationRef.current = true;
+    setNodes(prev => [
+      ...prev.map(n => (memberSet.has(n.id) ? { ...n, selected: false, data: { ...(n.data as any), groupId: id, groupLocked: lock ? id : undefined } } : n)),
+      frame
+    ]);
+    addAgentMessage(
+      lock
+        ? `已把 ${members.length} 个节点成组并锁定。接下来在对话里做新项目，或新开会话，新结果会排在这个分组右边；需要用到这里的内容，用 @ 引用即可。`
+        : `已把 ${members.length} 个节点成组（未锁定，拖动分组框会带着里面的节点一起移动）。`
+    );
+  }, [setNodes]);
+
+  const toggleGroupFrameLock = useCallback((frameId: string) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev => {
+      const frame = prev.find(n => n.id === frameId);
+      if (!frame) return prev;
+      const lock = !(frame.data as any)?.locked;
+      const members = new Set<string>(((frame.data as any)?.memberIds || []) as string[]);
+      return prev.map(n => {
+        if (n.id === frameId) return { ...n, data: { ...(n.data as any), locked: lock } };
+        if (members.has(n.id)) return { ...n, data: { ...(n.data as any), groupLocked: lock ? frameId : undefined } };
+        return n;
+      });
+    });
+  }, [setNodes]);
+
+  const ungroupFrame = useCallback((frameId: string) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev => {
+      const frame = prev.find(n => n.id === frameId);
+      if (!frame) return prev;
+      const members = new Set<string>(((frame.data as any)?.memberIds || []) as string[]);
+      return prev
+        .filter(n => n.id !== frameId)
+        .map(n => (members.has(n.id) ? { ...n, data: { ...(n.data as any), groupId: undefined, groupLocked: undefined } } : n));
+    });
+  }, [setNodes]);
+
+  const renameGroupFrame = useCallback((frameId: string, title: string) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev => prev.map(n => (n.id === frameId ? { ...n, data: { ...(n.data as any), title } } : n)));
+  }, [setNodes]);
 
   const duplicateNodeById = useCallback((nodeId: string) => {
     hasUserMutationRef.current = true;
@@ -4512,6 +4719,9 @@ export function useCreativeCanvasWorkspace(
     handleEditFabricPoster,
     handleGenerateTextilePoster,
     handleEditTextilePoster,
+    renameGroupFrame,
+    toggleGroupFrameLock,
+    ungroupFrame,
     handleUploadToProductNode,
     handleClearProductNode,
     handleApproveSceneImage,
@@ -4638,7 +4848,22 @@ export function useCreativeCanvasWorkspace(
           data.fabricPosterRunning = templatePosterRunningIds.includes(`fabric:${node.id}`);
         }
 
-        return { ...node, data };
+        // 分组框：放在底层、尺寸由数据决定；锁定分组里的节点不可拖动不可删除
+        const frameExtra: Record<string, any> = {};
+        if (node.type === 'groupFrameNode') {
+          const memberCount = (((data as any).memberIds || []) as string[]).length;
+          (data as any).memberCount = memberCount;
+          (data as any).onRename = (t: string) => nodeActionsRef.current.renameGroupFrame(node.id, t);
+          (data as any).onToggleLock = () => nodeActionsRef.current.toggleGroupFrameLock(node.id);
+          (data as any).onUngroup = () => nodeActionsRef.current.ungroupFrame(node.id);
+          frameExtra.zIndex = -1;
+          frameExtra.draggable = !(data as any).locked;
+          frameExtra.style = { ...(node.style || {}), width: (data as any).frameW, height: (data as any).frameH };
+        } else if ((data as any).groupLocked) {
+          frameExtra.draggable = false;
+          frameExtra.deletable = false;
+        }
+        return { ...node, data, ...frameExtra };
       });
     },
     [
@@ -4667,6 +4892,68 @@ export function useCreativeCanvasWorkspace(
       return decorated;
     });
   }, [nodes, attachNodeHandlers, decoratedNodeCache]);
+
+  // 新生成的节点：1) 记下它属于哪个会话（会话之间的结果互不读取，要用就 @）；
+  // 2) 如果落在某个分组框里，整批平移到分组框右边，不叠在已锁定的结果上，也不一路往下排
+  const seenNodeIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (hydrationState !== 'ready') {
+      seenNodeIdsRef.current = null;
+      return;
+    }
+    if (!seenNodeIdsRef.current) {
+      seenNodeIdsRef.current = new Set(nodes.map(n => n.id));
+      return;
+    }
+    const seen = seenNodeIdsRef.current;
+    const fresh = nodes.filter(n => !seen.has(n.id));
+    if (fresh.length === 0) return;
+    fresh.forEach(n => seen.add(n.id));
+    const convId = currentConversationRef.current?.id;
+    const frames = nodes.filter(n => n.type === 'groupFrameNode');
+    const shifts = new Map<string, number>();
+    for (const f of frames) {
+      const fx = f.position.x;
+      const fy = f.position.y;
+      const fw = Number((f.data as any)?.frameW || 0);
+      const fh = Number((f.data as any)?.frameH || 0);
+      const members = new Set<string>(((f.data as any)?.memberIds || []) as string[]);
+      const inside = fresh.filter(
+        n => n.type !== 'groupFrameNode' && !members.has(n.id) && n.position.x >= fx - 20 && n.position.x <= fx + fw && n.position.y >= fy - 20 && n.position.y <= fy + fh
+      );
+      if (inside.length === 0) continue;
+      const delta = fx + fw + 120 - Math.min(...inside.map(n => n.position.x));
+      inside.forEach(n => shifts.set(n.id, Math.max(shifts.get(n.id) || 0, delta)));
+    }
+    const needStamp = fresh.some(n => n.type !== 'groupFrameNode' && convId && !(n.data as any)?.conversationId);
+    if (!needStamp && shifts.size === 0) return;
+    setNodes(prev =>
+      prev.map(n => {
+        if (!fresh.some(f => f.id === n.id) || n.type === 'groupFrameNode') return n;
+        const d = n.data as any;
+        const stamped = convId && !d?.conversationId ? { ...d, conversationId: convId } : d;
+        const dx = shifts.get(n.id) || 0;
+        return { ...n, data: stamped, position: dx ? { x: n.position.x + dx, y: n.position.y } : n.position };
+      })
+    );
+  }, [nodes, hydrationState, setNodes]);
+
+  // 素材列表里点“设为主色 · 面料海报”：先把主面料节点放上画布（确认前就可见）
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const d = (e as CustomEvent).detail as { id?: string; name?: string; previewUrl?: string } | undefined;
+      if (d?.id && d.name) upsertFabricMainNode(d.id, d.name, d.previewUrl, 'pending');
+    };
+    window.addEventListener('canvas:fabric-main', onPick);
+    return () => window.removeEventListener('canvas:fabric-main', onPick);
+  });
+
+  // 对话框的“成组锁定”入口通过事件触发
+  useEffect(() => {
+    const onGroup = () => groupNodesIntoFrame({ lock: true });
+    window.addEventListener('canvas:group-lock', onGroup);
+    return () => window.removeEventListener('canvas:group-lock', onGroup);
+  }, [groupNodesIntoFrame]);
 
   // 1. Initial Hydrate from Server API or LocalStorage
   useEffect(() => {
@@ -6144,6 +6431,7 @@ export function useCreativeCanvasWorkspace(
     handleEditFabricPoster,
     handleGenerateTextilePoster,
     handleEditTextilePoster,
+    groupNodesIntoFrame,
     handleAddProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,

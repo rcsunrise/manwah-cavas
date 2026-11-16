@@ -13,6 +13,8 @@ import { renderText } from './posterFonts';
 export const TEXTILE_SIZE = { width: 2000, height: 1414 } as const;
 export type TextileLayoutId = 'slant' | 'hex' | 'circle';
 export const TEXTILE_LAYOUT_IDS: TextileLayoutId[] = ['slant', 'hex', 'circle'];
+/** 氛围图用规整格子拼块的版式（竖框） */
+const usesMosaic = (l: TextileLayoutId) => l === 'hex';
 export const TEXTILE_MAX_SWATCHES = 6;
 
 export interface Rect {
@@ -139,10 +141,10 @@ const INSET_CANDIDATES: Record<'slant' | 'circle', number[][][]> = {
  *   hex（安贝儿）：竖框，规整的格子拼块（参考图就是格子拼贴）
  * avoid 是底图上人物所在的画布矩形。返回顺序就是绘制顺序。
  */
-export function moodCollage(layout: TextileLayoutId, count: number, avoid?: Rect[]): CollageRect[] {
+export function moodCollage(layout: TextileLayoutId, count: number, avoid?: Rect[], variant = 0): CollageRect[] {
   const frame = TEXTILE_LAYOUTS[layout].moodFrame;
   const n = Math.max(1, Math.min(4, count));
-  if (layout === 'hex') return mosaic(frame, n);
+  if (usesMosaic(layout)) return mosaic(frame, n, variant);
   const p = 6;
   const inner = { x: frame.x + p, y: frame.y + p, w: frame.w - p * 2, h: frame.h - p * 2 };
   const rel = (f: number[], k = 1): CollageRect => {
@@ -158,7 +160,9 @@ export function moodCollage(layout: TextileLayoutId, count: number, avoid?: Rect
     return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), inset: true };
   };
   const want = n - 1;
-  const cands = INSET_CANDIDATES[layout];
+  const all = INSET_CANDIDATES[layout as 'slant' | 'circle'];
+  const shift = ((variant % all.length) + all.length) % all.length;
+  const cands = [...all.slice(shift), ...all.slice(0, shift)];
   const people = (avoid || []).filter(a => a.w > 0 && a.h > 0);
   if (!people.length || want === 0) return [inner, ...cands[0].slice(0, want).map(f => rel(f))];
   // 人物框外扩一点，留出呼吸空间
@@ -202,6 +206,177 @@ export function moodCollage(layout: TextileLayoutId, count: number, avoid?: Rect
     rects = rects.filter((_, i) => i !== worst);
   }
   return [inner, ...rects];
+}
+
+/**
+ * 人物抠图（不依赖模型）：
+ *  - 图片本身带透明通道 → 直接用；
+ *  - 否则取四周边缘的主色当背景，从边缘泛洪（纯白影棚背景、素色秀场背景都行）；
+ *  - 边缘颜色太杂（真实街景/室内）→ 返回 null，调用方改用普通拼贴。
+ * box 是视觉模型框出的人物位置（归一化），给了就先裁到人物附近再抠。
+ * 返回裁掉空白边的 RGBA PNG。
+ */
+export async function cutoutPersonByBorder(input: Buffer, box?: PersonBox | null): Promise<Buffer | null> {
+  const base = await sharp(input, { failOn: 'none' }).rotate().png().toBuffer();
+  const meta0 = await sharp(base).metadata();
+  const sw = meta0.width || 0;
+  const sh = meta0.height || 0;
+  if (!sw || !sh) return null;
+  let img = sharp(base);
+  if (box) {
+    const gx = box.width * 0.06;
+    const gy = box.height * 0.04;
+    const l = Math.max(0, Math.floor((box.left - gx) * sw));
+    const t = Math.max(0, Math.floor((box.top - gy) * sh));
+    const r = Math.min(sw, Math.ceil((box.left + box.width + gx) * sw));
+    const b = Math.min(sh, Math.ceil((box.top + box.height + gy) * sh));
+    if (r - l > 16 && b - t > 16) img = img.extract({ left: l, top: t, width: r - l, height: b - t });
+  }
+  const { data: rgba, info } = await img
+    .resize({ width: 1500, height: 1500, fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const w = info.width;
+  const h = info.height;
+  const N = w * h;
+  const fg = new Uint8Array(N);
+  let hasAlpha = false;
+  for (let i = 0; i < N; i++) {
+    if (rgba[i * 4 + 3] < 250) {
+      hasAlpha = true;
+      break;
+    }
+  }
+  if (hasAlpha) {
+    for (let i = 0; i < N; i++) fg[i] = rgba[i * 4 + 3] > 40 ? 1 : 0;
+  } else {
+    const border: number[] = [];
+    for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
+    for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
+    const med = (c: number) => {
+      const v = border.map(i => rgba[i * 4 + c]).sort((a, b) => a - b);
+      return v[Math.floor(v.length / 2)];
+    };
+    const bgc = [med(0), med(1), med(2)];
+    const TOL = 46;
+    const near = (i: number) => Math.hypot(rgba[i * 4] - bgc[0], rgba[i * 4 + 1] - bgc[1], rgba[i * 4 + 2] - bgc[2]) < TOL;
+    const okShare = border.filter(near).length / border.length;
+    if (okShare < 0.72) return null; // 边缘不是素色背景
+    const bg = new Uint8Array(N);
+    const q = new Uint32Array(N);
+    let head = 0;
+    let tail = 0;
+    const push = (i: number) => {
+      if (!bg[i] && near(i)) {
+        bg[i] = 1;
+        q[tail++] = i;
+      }
+    };
+    border.forEach(push);
+    while (head < tail) {
+      const i = q[head++];
+      const x = i % w;
+      if (x > 0) push(i - 1);
+      if (x < w - 1) push(i + 1);
+      if (i >= w) push(i - w);
+      if (i < N - w) push(i + w);
+    }
+    for (let i = 0; i < N; i++) fg[i] = bg[i] ? 0 : 1;
+  }
+  // 只留最大的一块主体（去掉零星色块）
+  const label = new Int32Array(N);
+  let best = 0;
+  let bestId = 0;
+  let id = 0;
+  const stack = new Uint32Array(N);
+  for (let s0 = 0; s0 < N; s0++) {
+    if (!fg[s0] || label[s0]) continue;
+    id++;
+    let sp = 0;
+    let size = 0;
+    stack[sp++] = s0;
+    label[s0] = id;
+    while (sp) {
+      const i = stack[--sp];
+      size++;
+      const x = i % w;
+      const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i >= w ? i - w : -1, i < N - w ? i + w : -1];
+      for (const j of nb) {
+        if (j >= 0 && fg[j] && !label[j]) {
+          label[j] = id;
+          stack[sp++] = j;
+        }
+      }
+    }
+    if (size > best) {
+      best = size;
+      bestId = id;
+    }
+  }
+  const ratio = best / N;
+  if (ratio < 0.1 || ratio > 0.88) return null; // 抠出来太小/几乎整张图：不是干净的人物图
+  const alpha = Buffer.alloc(N);
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  for (let i = 0; i < N; i++) {
+    if (label[i] !== bestId) continue;
+    alpha[i] = 255;
+    const x = i % w;
+    const y = (i - x) / w;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  // 边缘柔化并略收一圈，去掉背景色的毛边
+  const soft = await sharp(alpha, { raw: { width: w, height: h, channels: 1 } }).blur(1.4).linear(3, -256).extractChannel(0).raw().toBuffer();
+  const out = Buffer.alloc(N * 4);
+  for (let i = 0; i < N; i++) {
+    out[i * 4] = rgba[i * 4];
+    out[i * 4 + 1] = rgba[i * 4 + 1];
+    out[i * 4 + 2] = rgba[i * 4 + 2];
+    out[i * 4 + 3] = soft[i];
+  }
+  const pad = 3;
+  const left = Math.max(0, minX - pad);
+  const top = Math.max(0, minY - pad);
+  return sharp(out, { raw: { width: w, height: h, channels: 4 } })
+    .extract({ left, top, width: Math.min(w - left, maxX - minX + 1 + pad * 2), height: Math.min(h - top, maxY - minY + 1 + pad * 2) })
+    .png()
+    .toBuffer();
+}
+
+/** 贴纸效果：抠好的人物 + 白色描边 + 柔和投影，返回带透明边距的 PNG 和边距 */
+export async function stickerizePerson(cutout: Buffer, w: number, h: number, outline: number, shadowAlpha = 0.34): Promise<{ buffer: Buffer; pad: number }> {
+  const pad = Math.round(outline * 2 + 22);
+  const person = await sharp(cutout).resize(Math.round(w), Math.round(h), { fit: 'fill' }).ensureAlpha().png().toBuffer();
+  const padded = await sharp(person).extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 255, g: 255, b: 255, alpha: 0 } }).png().toBuffer();
+  const W = Math.round(w) + pad * 2;
+  const H = Math.round(h) + pad * 2;
+  const alphaOnly = await sharp(padded).extractChannel(3).raw().toBuffer();
+  // 白边：把透明度向外“膨胀”outline 像素（模糊后取低阈值）
+  const dil = await sharp(alphaOnly, { raw: { width: W, height: H, channels: 1 } }).blur(Math.max(1, outline * 0.8)).threshold(14).blur(1.1).extractChannel(0).raw().toBuffer();
+  const white = await sharp({ create: { width: W, height: H, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .joinChannel(dil, { raw: { width: W, height: H, channels: 1 } })
+    .png()
+    .toBuffer();
+  const shadowA = await sharp(dil, { raw: { width: W, height: H, channels: 1 } }).blur(outline * 1.1).linear(shadowAlpha, 0).extractChannel(0).raw().toBuffer();
+  const shadow = await sharp({ create: { width: W, height: H, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+    .joinChannel(shadowA, { raw: { width: W, height: H, channels: 1 } })
+    .png()
+    .toBuffer();
+  const buffer = await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([
+      { input: shadow, left: 0, top: Math.round(outline * 0.7) },
+      { input: white, left: 0, top: 0 },
+      { input: padded, left: 0, top: 0 }
+    ])
+    .png()
+    .toBuffer();
+  return { buffer, pad };
 }
 
 /**
@@ -750,7 +925,7 @@ export function upscaleFactor(a: FabricAnalysis, outW: number, outH: number): nu
 /* ───────── 排版 ───────── */
 
 /** 氛围图拼块：在 frame 内按张数切分（竖框上下排，横框左右排） */
-export function mosaic(frame: Rect, count: number): Rect[] {
+export function mosaic(frame: Rect, count: number, variant = 0): Rect[] {
   const p = 6;
   const g = 6;
   const inner = { x: frame.x + p, y: frame.y + p, w: frame.w - p * 2, h: frame.h - p * 2 };
@@ -759,16 +934,25 @@ export function mosaic(frame: Rect, count: number): Rect[] {
   if (count <= 1) return [inner];
   if (count === 2) {
     if (tall) {
-      const [a, b] = half(inner.h, 0.58);
+      const [a, b] = half(inner.h, variant % 2 === 1 ? 0.42 : 0.58);
       return [{ ...inner, h: a }, { x: inner.x, y: inner.y + a + g, w: inner.w, h: b }];
     }
     const [a, b] = half(inner.w, 0.58);
     return [{ ...inner, w: a }, { x: inner.x + a + g, y: inner.y, w: b, h: inner.h }];
   }
+  const flip = variant % 2 === 1;
   if (count === 3) {
     if (tall) {
-      const [a, b] = half(inner.h, 0.6);
-      const [c, d] = half(inner.w);
+      const [a, b] = half(inner.h, flip ? 0.4 : 0.6);
+      const [c, d] = half(inner.w, flip ? 0.4 : 0.5);
+      if (flip) {
+        // 变体：上面两张小图，下面一张大图
+        return [
+          { x: inner.x, y: inner.y + a + g, w: inner.w, h: b },
+          { x: inner.x, y: inner.y, w: c, h: a },
+          { x: inner.x + c + g, y: inner.y, w: d, h: a }
+        ];
+      }
       return [
         { x: inner.x, y: inner.y, w: inner.w, h: a },
         { x: inner.x, y: inner.y + a + g, w: c, h: b },
@@ -783,8 +967,8 @@ export function mosaic(frame: Rect, count: number): Rect[] {
       { x: inner.x + a + g, y: inner.y + c + g, w: b, h: d }
     ];
   }
-  const [cw1, cw2] = half(inner.w);
-  const [rh1, rh2] = half(inner.h);
+  const [cw1, cw2] = half(inner.w, flip ? 0.42 : 0.5);
+  const [rh1, rh2] = half(inner.h, flip ? 0.6 : 0.5);
   return [
     { x: inner.x, y: inner.y, w: cw1, h: rh1 },
     { x: inner.x + cw1 + g, y: inner.y, w: cw2, h: rh1 },
@@ -829,6 +1013,12 @@ export interface TextilePosterInput {
   /** 指定底色（#RRGGBB）；不给就取自主面料 */
   bgColor?: string;
   outputScale?: 1 | 2;
+  /** 氛围图拼贴摆法变体（0 起，换一种组合时 +1） */
+  moodVariant?: number;
+  /** 氛围图风格：cutout 时人物抠图加白边压在拼贴上 */
+  moodStyle?: 'collage' | 'cutout';
+  /** 现成的人物图（白底/素色底/透明底均可）；不给就尝试从氛围图里抠 */
+  cutoutPerson?: Buffer;
 }
 
 export interface TextilePosterResult {
@@ -858,8 +1048,32 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
   const textColor = '#FFFFFF';
   const bandRgb = hexToRgb(darkenHex(bg, 0.6));
 
+  // 0) 人物抠图叠压（可选）：优先用给定的人物图，否则从人物最大的那张氛围图里抠
+  let cutoutBuf: Buffer | null = null;
+  let moodInputs: Buffer[] = input.moods.slice(0, 4);
+  let moodPersonsIn: Array<PersonBox | null> = input.moodPersons || [];
+  if (input.moodStyle === 'cutout') {
+    if (input.cutoutPerson) {
+      cutoutBuf = await cutoutPersonByBorder(input.cutoutPerson);
+      if (!cutoutBuf) warnings.push('人物图的背景不够干净，没抠出来，已改用普通拼贴');
+    } else {
+      const area = (b: PersonBox | null | undefined) => (b ? b.width * b.height : 0);
+      let pi = -1;
+      moodInputs.forEach((_, i) => {
+        if (area(moodPersonsIn[i]) > (pi >= 0 ? area(moodPersonsIn[pi]) : 0)) pi = i;
+      });
+      if (pi >= 0) {
+        cutoutBuf = await cutoutPersonByBorder(moodInputs[pi], moodPersonsIn[pi]);
+        if (cutoutBuf) {
+          moodInputs = moodInputs.filter((_, i) => i !== pi);
+          moodPersonsIn = moodPersonsIn.filter((_, i) => i !== pi);
+        } else warnings.push('氛围图的背景太杂，人物抠不干净，已改用普通拼贴；可以选「AI 新出人物」，会生成纯白底的全身人物再抠');
+      } else warnings.push('氛围图里没找到人物，已改用普通拼贴；可以选「AI 新出人物」');
+    }
+  }
+
   // 1) 氛围图拼块（白框）；没有氛围图时用面料特写代替，避免大块空白
-  let moodSources: Buffer[] = input.moods.slice(0, 4);
+  let moodSources: Buffer[] = moodInputs;
   if (moodSources.length === 0) {
     warnings.push('没有氛围图，左侧用面料特写代替；可以在对话里让我生成氛围图，或把喜欢的图发给我');
     // 特写要大而清晰：优先用干净区域最大的几张，不用只能放大才够尺寸的
@@ -880,16 +1094,22 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
   }
   // 有人物的图做底图（人物最大的那张），人物完整、不被小图压住
   // 面料特写代替氛围图时没有人物
-  let persons: Array<PersonBox | null> = moodSources.map((_, i) => (input.moods.length ? input.moodPersons?.[i] ?? null : null));
+  let persons: Array<PersonBox | null> = moodSources.map((_, i) => (moodInputs.length ? moodPersonsIn[i] ?? null : null));
   const baseIdx = persons.reduce((bi, b, i) => (b && (!persons[bi] || b.width * b.height > persons[bi]!.width * persons[bi]!.height) ? i : bi), 0);
   if (baseIdx > 0) {
     moodSources = [moodSources[baseIdx], ...moodSources.filter((_, i) => i !== baseIdx)];
     persons = [persons[baseIdx], ...persons.filter((_, i) => i !== baseIdx)];
   }
-  const baseRect = moodCollage(input.layout, 1)[0];
-  const base = input.layout === 'hex' ? null : await coverKeep(moodSources[0], baseRect.w * S, baseRect.h * S, persons[0]);
+  const mv = Math.max(0, Math.floor(Number(input.moodVariant) || 0));
+  const baseRect = moodCollage(input.layout, 1, undefined, mv)[0];
+  const base = usesMosaic(input.layout) || cutoutBuf ? null : await coverKeep(moodSources[0], baseRect.w * S, baseRect.h * S, persons[0]);
   const avoid = base?.person ? [{ x: baseRect.x + base.person.x / S, y: baseRect.y + base.person.y / S, w: base.person.w / S, h: base.person.h / S }] : [];
-  const frameRects = moodCollage(input.layout, moodSources.length, avoid);
+  // 抠图叠压：底下是规整的格子拼块（圆形版只用大圆右侧那一块），人物压在上面
+  const cutFrame = (() => {
+    const f = TEXTILE_LAYOUTS[input.layout].moodFrame;
+    return input.layout === 'circle' ? { x: f.x + f.w * 0.3, y: f.y, w: f.w * 0.7, h: f.h } : f;
+  })();
+  const frameRects = cutoutBuf ? mosaic(cutFrame, Math.max(1, Math.min(3, moodSources.length)), mv) : moodCollage(input.layout, moodSources.length, avoid, mv);
   // 并排拼贴时底图变窄了：按新格子重新裁一次（仍以人物为中心）
   const baseCell = frameRects[0];
   const baseImg = base && (baseCell.w !== baseRect.w || baseCell.x !== baseRect.x) ? (await coverKeep(moodSources[0], baseCell.w * S, baseCell.h * S, persons[0])).buffer : base?.buffer;
@@ -910,7 +1130,7 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
   });
   for (let i = 0; i < frameRects.length; i++) {
     const r = sc(frameRects[i]);
-    const inset = frameRects[i].inset;
+    const inset = (frameRects[i] as CollageRect).inset;
     if (inset) {
       // 叠放的小图：白边 + 柔和投影，压在大图上（参考图的拼贴手法）
       const b = 6 * S;
@@ -924,6 +1144,23 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
     }
     const img = i === 0 && baseImg ? baseImg : (await coverKeep(moodSources[i], r.w, r.h, persons[i])).buffer;
     layers.push({ input: img, left: Math.round(r.x), top: Math.round(r.y) });
+  }
+  if (cutoutBuf) {
+    // 人物压在拼块上：头和脚略微探出白框（参考图的做法），贴左下；变体奇数时往里挪一些
+    const meta = await sharp(cutoutBuf).metadata();
+    const aspect = (meta.width || 1) / (meta.height || 1);
+    const topY = Math.max(10, usedFrame.y - 34);
+    let ph = Math.min(usedFrame.h + 70, TEXTILE_SIZE.height - topY - 10);
+    let pw = ph * aspect;
+    const maxW = usedFrame.w * 0.62;
+    if (pw > maxW) {
+      pw = maxW;
+      ph = pw / aspect;
+    }
+    const px = usedFrame.x + usedFrame.w * (mv % 2 === 1 ? 0.3 : 0.05);
+    const py = Math.min(TEXTILE_SIZE.height - ph - 10, topY + (usedFrame.h + 70 - ph));
+    const st = await stickerizePerson(cutoutBuf, pw * S, ph * S, 12 * S);
+    layers.push({ input: st.buffer, left: Math.max(0, Math.round(px * S - st.pad)), top: Math.max(0, Math.round(py * S - st.pad)) });
   }
 
   // 2) 主面料：按外形裁成多边形/圆，放进包围盒（与画布求交）

@@ -139,6 +139,11 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
     if (moods.length) params.fabricMoods = moods;
   }
   if (raw.textileLayout === 'slant' || raw.textileLayout === 'hex' || raw.textileLayout === 'circle') params.textileLayout = raw.textileLayout;
+  const mv = Number(raw.textileMoodVariant);
+  if (raw.textileMoodVariant !== undefined && raw.textileMoodVariant !== null && Number.isInteger(mv) && mv >= 0 && mv <= 99) params.textileMoodVariant = mv;
+  if (raw.textileMoodVariation === true) params.textileMoodVariation = true;
+  if (raw.textileMoodStyle === 'cutout' || raw.textileMoodStyle === 'collage') params.textileMoodStyle = raw.textileMoodStyle;
+  if (raw.textileCutoutAi === true) params.textileCutoutAi = true;
   if (typeof raw.textileMain === 'string' && raw.textileMain.trim()) params.textileMain = raw.textileMain.trim().slice(0, 120);
   if (typeof raw.textileMainColor === 'string' && raw.textileMainColor.trim()) params.textileMainColor = raw.textileMainColor.trim().slice(0, 12);
   if (Array.isArray(raw.textileSwatches)) {
@@ -267,6 +272,9 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     const edit = actionId === 'textile_edit';
     if (params?.textileLayout) items.push({ label: edit ? '换版式' : '版式', value: TEXTILE_LAYOUT_LABELS[params.textileLayout] });
     else if (!edit) items.push({ label: '版式', value: '斜切版（可随时在对话里换成六边形版、圆形版）' });
+    if (params?.textileMoodVariant !== undefined) items.push({ label: '氛围图排布', value: '换一种拼贴组合（只重新排版）' });
+    if (params?.textileMoodStyle === 'cutout') items.push({ label: '氛围图风格', value: params.textileCutoutAi ? '人物抠图加白边压在拼贴上：AI 新出 1 张白底全身人物再抠图，约 3000 点' : '人物抠图加白边压在拼贴上：从现有氛围图里抠人物，不扣点（背景太杂会抠不出来）' });
+    else if (params?.textileMoodStyle === 'collage') items.push({ label: '氛围图风格', value: '恢复普通拼贴' });
     if (params?.textileMain) items.push({ label: '主面料', value: params.textileMain });
     else if (params?.textileMainColor) items.push({ label: '主面料', value: `文件夹里最接近「${params.textileMainColor}」的一款` });
     if (params?.textileSwatches?.length) items.push({ label: '配色面料', value: params.textileSwatches.join('、') });
