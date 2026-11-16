@@ -4,6 +4,7 @@ import { supabase, purgeInvalidSupabaseSession } from '../lib/supabase';
 import { User, Lock, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useQueryClient } from '@tanstack/react-query';
+import { purgeAccountCachesIfUserChanged } from '../utils/accountCache';
 
 export default function LoginPage() {
   const [employeeId, setEmployeeId] = useState('');
@@ -52,6 +53,8 @@ export default function LoginPage() {
           localStorage.setItem('token', data.session.access_token);
         }
         if (data?.user) {
+          // 换了账号：先清掉上一个账号留在本机的画布草稿/历史，避免串数据
+          await purgeAccountCachesIfUserChanged(data.user.id);
           localStorage.setItem('manwah_user', JSON.stringify(data.user));
         }
         // 登录成功跳转，强制刷新保障全局状态干净

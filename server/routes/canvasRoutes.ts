@@ -695,6 +695,13 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
       canvas = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
     }
 
+    // 画布属于别的账号时拒绝读取（管理员除外）；无归属/默认示例/自己的照常
+    if (canvas) {
+      const owner = canvas.user_id || canvas.created_by || null;
+      const open = !owner || owner === '00000000-0000-0000-0000-000000000001' || owner === user.id || user.role === 'admin';
+      if (!open) throw new AppError('无权访问该画布', 403, 'FORBIDDEN');
+    }
+
     if (!canvas) {
       const now = new Date().toISOString();
       canvas = {

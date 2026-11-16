@@ -471,6 +471,21 @@ class DBService {
     });
   }
 
+  /** 清空本机 IndexedDB 里的草稿 / 历史 / 个人模板（换账号登录时用，不动云端数据） */
+  async clearLocalCaches(): Promise<void> {
+    await this.init();
+    if (!this.db) return;
+    const db = this.db;
+    await Promise.all([STORE_DRAFTS, STORE_HISTORY, STORE_TEMPLATES].map(name => new Promise<void>((resolve) => {
+      try {
+        const tx = db.transaction(name, 'readwrite');
+        tx.objectStore(name).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      } catch { resolve(); }
+    })));
+  }
+
   // --- Stats ---
 
   async getStorageStats(): Promise<StorageStats> {

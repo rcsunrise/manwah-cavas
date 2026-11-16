@@ -18,6 +18,15 @@ router.use(optionalAuthenticateToken as any);
 
 const PROJECTS_DIR = path.join(process.cwd(), '.data', 'projects');
 
+/** 记录没有归属 / 是默认示例 / 属于当前账号 / 当前是管理员 → 可访问 */
+export function canAccessOwner(req: AuthenticatedRequest, ownerId?: string | null): boolean {
+  if (!ownerId) return true;
+  if (ownerId === '00000000-0000-0000-0000-000000000001') return true;
+  const user = req.user;
+  if (!user) return false;
+  return user.id === ownerId || user.role === 'admin';
+}
+
 function ensureProjectsDir() {
   try {
     if (!fs.existsSync(PROJECTS_DIR)) {
@@ -194,19 +203,21 @@ router.post('/', async (req: AuthenticatedRequest, res: Response, next: NextFunc
 router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const projectMap = new Map<string, any>();
+    const me = req.user?.id;
 
-    // 1. Load memory
+    // 1. Load memory（只取属于当前账号或无归属的）
     for (const p of inMemoryProjects.values()) {
-      projectMap.set(p.id, p);
+      const o = p?.user_id ?? p?.owner_id;
+      if (!o || o === me || o === DEFAULT_PROJECT_ID) projectMap.set(p.id, p);
     }
 
     if (!projectMap.has(DEFAULT_PROJECT_ID)) {
       projectMap.set(DEFAULT_PROJECT_ID, DEFAULT_PROJECT);
     }
 
-    // 2. Load from canonical creative_projects
+    // 2. Load from canonical creative_projects（按账号过滤，别列出别人的项目）
     try {
-      const dbProjects = await ProjectRepository.listProjects();
+      const dbProjects = await ProjectRepository.listProjects(me);
       for (const p of dbProjects) {
         projectMap.set(p.id, { ...(projectMap.get(p.id) || {}), ...p });
       }
@@ -354,15 +365,22 @@ router.get('/:projectId', async (req: AuthenticatedRequest, res: Response, next:
     const projectId = String(req.params.projectId);
 
     let project: any = inMemoryProjects.get(projectId) || null;
+    if (project && !canAccessOwner(req, project.user_id ?? project.owner_id)) {
+      throw new AppError('无权访问该项目', 403, 'FORBIDDEN');
+    }
+    let dbProj: any = null;
+    try {
+      dbProj = await ProjectRepository.getProjectById(projectId);
+    } catch (e) {}
+    if (dbProj && !canAccessOwner(req, dbProj.user_id ?? dbProj.owner_id)) {
+      throw new AppError('无权访问该项目', 403, 'FORBIDDEN');
+    }
     let assets: any[] = await lookupProjectAssets(projectId);
     let dna: any = await lookupProductDna(projectId);
 
-    try {
-      const dbProj = await ProjectRepository.getProjectById(projectId);
-      if (dbProj) {
-        project = { ...(project || {}), ...dbProj };
-      }
-    } catch (e) {}
+    if (dbProj) {
+      project = { ...(project || {}), ...dbProj };
+    }
 
     if (!project) {
       if (projectId === DEFAULT_PROJECT_ID) {
