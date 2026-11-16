@@ -44,16 +44,47 @@ function candidatesFor(role: PosterFontRole): FontCandidate[] {
 
 const resolvedCache = new Map<PosterFontRole, ResolvedFont>();
 
+/**
+ * Linux 兜底：Debian 不同版本 fonts-noto-cjk 的文件名不一样
+ * （bookworm 是 NotoSerifCJK-Regular.ttc，trixie 起是 NotoSerifCJK-VF.otf.ttc），
+ * 固定路径找不到时，扫一遍系统字体目录找思源/Noto CJK 文件。
+ */
+function scanSystemFonts(role: PosterFontRole): FontCandidate | null {
+  const roots = ['/usr/share/fonts', '/usr/local/share/fonts', '/app/fonts'];
+  const want = role === 'serif' ? /Noto\s*Serif.*(CJK|SC)|SourceHanSerif/i : /Noto\s*Sans.*(CJK|SC)|SourceHanSans/i;
+  const exts = /\.(ttc|otf|ttf)$/i;
+  const stack = [...roots];
+  let depth = 0;
+  while (stack.length && depth++ < 400) {
+    const dir = stack.pop()!;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) stack.push(full);
+      else if (exts.test(e.name) && want.test(e.name) && !/Mono/i.test(e.name)) {
+        return { file: full, family: role === 'serif' ? 'Noto Serif CJK SC' : 'Noto Sans CJK SC' };
+      }
+    }
+  }
+  return null;
+}
+
 export function resolvePosterFont(role: PosterFontRole): ResolvedFont {
   const cached = resolvedCache.get(role);
   if (cached) return cached;
-  const hit = candidatesFor(role).find(c => {
-    try {
-      return fs.existsSync(c.file);
-    } catch {
-      return false;
-    }
-  });
+  const hit =
+    candidatesFor(role).find(c => {
+      try {
+        return fs.existsSync(c.file);
+      } catch {
+        return false;
+      }
+    }) || scanSystemFonts(role);
   if (!hit) {
     throw new Error(
       `POSTER_FONT_NOT_FOUND: 找不到${role === 'serif' ? '宋体（思源宋体 / Noto Serif SC）' : '黑体（思源黑体 / Noto Sans SC）'}字体文件，` +

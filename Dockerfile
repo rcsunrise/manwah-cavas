@@ -32,6 +32,11 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 
+# 构建时确认宋体 / 黑体真的装上了；没装上就让构建失败，别等线上出海报报错才发现
+RUN find /usr/share/fonts -iname '*NotoSerifCJK*' | grep -q . \
+  && find /usr/share/fonts -iname '*NotoSansCJK*' | grep -q . \
+  && find /usr/share/fonts -iname '*NotoSerifCJK*' -o -iname '*NotoSansCJK*'
+
 # 仅安装生产运行依赖（减少镜像体积并提升安全水位）
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
