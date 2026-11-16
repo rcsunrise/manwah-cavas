@@ -48,6 +48,9 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
     if (!isHovered) return;
 
     const handlePaste = (e: ClipboardEvent) => {
+      const ae = document.activeElement;
+      // 光标在输入框里（比如对话框）时，粘贴归输入框，不拿来换主图
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.getAttribute('contenteditable') === 'true')) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
@@ -56,7 +59,12 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           if (file) {
             e.preventDefault();
             e.stopPropagation();
-            handleUploadFile(file);
+            if (nodeData?.imageUrl) {
+              // 已有主图：粘贴的图放进对话框当附件，不覆盖
+              window.dispatchEvent(new CustomEvent('canvas:chat-attach-image', { detail: file }));
+            } else {
+              handleUploadFile(file);
+            }
             break;
           }
         }

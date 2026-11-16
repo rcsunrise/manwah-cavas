@@ -299,7 +299,11 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   // Notice: Selection does not auto-jump viewport camera to maintain smooth user interaction
   // (fitView is reserved for explicit user actions such as reset or full overview)
 
+  const nodesForPasteRef = useRef(nodes);
+  nodesForPasteRef.current = nodes;
+
   // Global clipboard paste event listener (Ctrl+V) for uploading master image
+  // 主图已经有了：粘贴的图是拿来和智能体沟通的，放进对话输入框当附件，不再覆盖主图
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const activeElement = document.activeElement;
@@ -319,7 +323,12 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
           const file = items[i].getAsFile();
           if (file && onUploadFile) {
             e.preventDefault();
-            onUploadFile(file);
+            const hasMain = nodesForPasteRef.current?.some(n => n.id === 'img-node-1' && (n as any).data?.imageUrl);
+            if (hasMain) {
+              window.dispatchEvent(new CustomEvent('canvas:chat-attach-image', { detail: file }));
+            } else {
+              onUploadFile(file);
+            }
             break;
           }
         }

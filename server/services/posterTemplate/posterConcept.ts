@@ -72,7 +72,7 @@ const CONCEPT_MODELS = ['gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.6-flas
 const DEFAULT_DETAILS: PosterDetailConcept[] = [
   { key: 'armrest', locate: '沙发离镜头最近一侧的扶手（正面与顶部）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },
   { key: 'backrest', locate: '离镜头最近的一个座位的靠背，含缝线与分段结构', title: '分段式靠背', desc: '分区承托 · 柔和贴合' },
-  { key: 'foot', locate: '沙发底部离镜头最近、清晰可见的一个沙发脚，连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' }
+  { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' }
 ];
 
 function describeDna(dna: any): string {

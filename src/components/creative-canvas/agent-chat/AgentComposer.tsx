@@ -116,6 +116,17 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     }
     files.slice(0, Math.max(0, MAX_ATTACHMENTS - attachments.length)).forEach(addImage);
   };
+  // 画布上粘贴的图（主图已存在时）转进对话框当附件
+  const addImageRef = useRef(addImage);
+  addImageRef.current = addImage;
+  useEffect(() => {
+    const onAttach = (e: Event) => {
+      const f = (e as CustomEvent).detail;
+      if (f instanceof File) addImageRef.current(f);
+    };
+    window.addEventListener('canvas:chat-attach-image', onAttach);
+    return () => window.removeEventListener('canvas:chat-attach-image', onAttach);
+  }, []);
   const addsAsNewProduct = Boolean(hasProductImage && onAddProductImage);
   const setAsProductImage = (att: Attachment) => {
     if (addsAsNewProduct) onAddProductImage!(att.file);

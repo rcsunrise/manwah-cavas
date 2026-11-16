@@ -113,6 +113,16 @@ export async function locateDetails(
 ): Promise<{ details: LocatedDetail[]; warnings: string[] }> {
   const warnings: string[] = [];
   const found = new Map<string, NormBox>();
+  // 同一个部位可能给了多个候选（沙发脚会要 3 个，后面逐个检查有没有被挡）
+  const candidates = new Map<string, NormBox[]>();
+  const ingest = (items: any) => {
+    for (const item of Array.isArray(items) ? items : []) {
+      const box = boxFrom2d(item?.box_2d);
+      if (!box || typeof item?.key !== 'string') continue;
+      if (!found.has(item.key)) found.set(item.key, box);
+      candidates.set(item.key, [...(candidates.get(item.key) || []), box]);
+    }
+  };
 
   try {
     const { ai, isValidKey } = await createServerGenAI(userId);
@@ -126,7 +136,8 @@ ${list}
 1. 只框画面中那件主角沙发上的部位，不要框茶几、抱枕、摆件或其他家具。
 2. 同类部位有多个时（如左右两个扶手、多个沙发脚、多个座位的靠背），选完整露出、前面没有茶几/花瓶/摆件/抱枕遮挡的那一个；都没被挡时选离镜头最近、最清晰的。框里尽量不要带进茶几、摆件等其他物体。
 3. 这是给细节特写取景用的：框只包住这一个部位本身，带少量相邻结构即可；靠背、座垫这类横向连成一排的，只框其中一个座位，不要框整排。
-4. 只输出 JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
+4. 沙发脚（key="foot"）请给出 3 个候选框（同一个 key 重复 3 项，最好的放最前）：每个框里要能看到这只脚从沙发底座到地面的完整形状，框内不能出现茶几、地毯边、摆件、抱枕、人物或沙发其他部分挡住脚的情况；离镜头最近的脚常被前面的茶几挡住，宁可选两端或侧面完整露出的脚。
+5. 只输出 JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
 
     let lastErr: any = null;
     for (const model of VISION_MODELS) {
@@ -144,11 +155,7 @@ ${list}
         const text = String(response.text || '').replace(/```json|```/g, '');
         const match = text.match(/\[[\s\S]*\]/);
         if (!match) throw new Error('视觉模型未返回 JSON 数组');
-        const parsed = JSON.parse(match[0]);
-        for (const item of Array.isArray(parsed) ? parsed : []) {
-          const box = boxFrom2d(item?.box_2d);
-          if (box && typeof item?.key === 'string') found.set(item.key, box);
-        }
+        ingest(JSON.parse(match[0]));
         if (found.size > 0) break;
       } catch (err: any) {
         lastErr = err;
@@ -168,10 +175,7 @@ ${list}
         });
         const m = fb.text.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
         if (!m) throw new Error('视觉模型未返回 JSON 数组');
-        for (const item of JSON.parse(m[0])) {
-          const box = boxFrom2d(item?.box_2d);
-          if (box && typeof item?.key === 'string') found.set(item.key, box);
-        }
+        ingest(JSON.parse(m[0]));
         console.info(`[PosterDetailCrop] gemini 通道不可用，已改用 ${fb.model} 定位部位`);
       } catch (fbErr: any) {
         console.warn('[PosterDetailCrop] 对话模型兜底也失败:', fbErr?.message || fbErr);
@@ -180,6 +184,32 @@ ${list}
     }
   } catch (err: any) {
     warnings.push(`细节部位自动定位失败，已改用默认取景：${err?.message || err}`);
+  }
+
+  // 沙发脚：逐个候选裁出来让模型看有没有被挡，选第一个干净的
+  try {
+    const foot = candidates.get('foot');
+    if (foot && foot.length > 0) {
+      let picked: NormBox | null = null;
+      for (const box of foot.slice(0, 3)) {
+        const crop = await sharp(await cropDetail(image, box, 1.4)).resize(640, 640, { fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
+        const r = await chatCompletionText({
+          prompt:
+            '这是从沙发图里裁出的“沙发脚”特写。请判断：画面里能不能清楚看到一只完整的沙发脚（从底座到地面），且脚前面没有茶几、摆件、地毯边、人物、抱枕等东西遮挡？只回答 “是” 或 “否”。',
+          images: [{ mimeType: 'image/jpeg', data: crop.toString('base64') }],
+          temperature: 0,
+          userId
+        });
+        if (/^\s*是/.test(r.text)) {
+          picked = box;
+          break;
+        }
+      }
+      if (picked) found.set('foot', picked);
+      else if (foot.length > 0) warnings.push('沙发脚几个候选都有遮挡，已选第一个，可在再次生成里换取景');
+    }
+  } catch (err: any) {
+    console.warn('[PosterDetailCrop] 沙发脚遮挡检查失败（沿用第一个候选）:', err?.message || err);
   }
 
   const details = targets.map((t, i): LocatedDetail => {
