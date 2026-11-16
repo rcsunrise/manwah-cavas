@@ -29,6 +29,14 @@ export interface LocatedDetail {
 
 const VISION_MODELS = ['gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.6-flash'];
 
+/**
+ * gemini 通道没开通 / 额度用完时，每次定位都要先白等一轮失败（实测约 17 秒）才走对话模型。
+ * 记下通道不可用，10 分钟内直接走对话模型；过期后再试一次，通道恢复了自动切回。
+ */
+let geminiDownUntil = 0;
+const GEMINI_DOWN_MS = 10 * 60_000;
+const CHANNEL_DOWN_RE = /model_not_found|no available channel|unknown provider|quota|fetch failed/i;
+
 /** 视觉模型没给出结果时的保守取景（三人位沙发居中、正三分之四视角时大致可用） */
 const FALLBACK_BOXES: Record<string, NormBox> = {
   armrest: { left: 0.12, top: 0.38, width: 0.2, height: 0.3 },
@@ -140,7 +148,8 @@ ${list}
 5. 只输出 JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
 
     let lastErr: any = null;
-    for (const model of VISION_MODELS) {
+    const skipGemini = Date.now() < geminiDownUntil;
+    for (const model of skipGemini ? [] : VISION_MODELS) {
       try {
         const response = await ai.models.generateContent({
           model,
@@ -161,10 +170,13 @@ ${list}
         lastErr = err;
         console.warn(`[PosterDetailCrop] ${model} 定位部位失败:`, err?.message || err);
         // 通道不可用 / 网络不通时不再逐个等超时，直接走对话模型兜底
-        if (/model_not_found|no available channel|unknown provider|fetch failed/i.test(String(err?.message || err))) break;
+        if (CHANNEL_DOWN_RE.test(String(err?.message || err))) {
+          geminiDownUntil = Date.now() + GEMINI_DOWN_MS;
+          break;
+        }
       }
     }
-    if (found.size === 0 && lastErr) {
+    if (found.size === 0 && (lastErr || skipGemini)) {
       // gemini 原生通道不可用：改走 chat/completions 的对话模型
       try {
         const fb = await chatCompletionText({
@@ -180,7 +192,7 @@ ${list}
       } catch (fbErr: any) {
         console.warn('[PosterDetailCrop] 对话模型兜底也失败:', fbErr?.message || fbErr);
       }
-      if (found.size === 0) throw lastErr;
+      if (found.size === 0) throw lastErr || new Error('视觉模型暂不可用');
     }
   } catch (err: any) {
     warnings.push(`细节部位自动定位失败，已改用默认取景：${err?.message || err}`);
@@ -190,20 +202,30 @@ ${list}
   try {
     const foot = candidates.get('foot');
     if (foot && foot.length > 0) {
+      // 3 个候选同时检查（每次视觉调用约 10 秒，串行会多等半分钟）；只有 1 个候选时不用检查
       let picked: NormBox | null = null;
-      for (const box of foot.slice(0, 3)) {
-        const crop = await sharp(await cropDetail(image, box, 1.4)).resize(640, 640, { fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
-        const r = await chatCompletionText({
-          prompt:
-            '这是从沙发图里裁出的“沙发脚”特写。请判断：画面里能不能清楚看到一只完整的沙发脚（从底座到地面），且脚前面没有茶几、摆件、地毯边、人物、抱枕等东西遮挡？只回答 “是” 或 “否”。',
-          images: [{ mimeType: 'image/jpeg', data: crop.toString('base64') }],
-          temperature: 0,
-          userId
-        });
-        if (/^\s*是/.test(r.text)) {
-          picked = box;
-          break;
-        }
+      if (foot.length > 1) {
+        const verdicts = await Promise.all(
+          foot.slice(0, 3).map(async box => {
+            try {
+              const crop = await sharp(await cropDetail(image, box, 1.4)).resize(640, 640, { fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
+              const r = await chatCompletionText({
+                prompt:
+                  '这是从沙发图里裁出的“沙发脚”特写。请判断：画面里能不能清楚看到一只完整的沙发脚（从底座到地面），且脚前面没有茶几、摆件、地毯边、人物、抱枕等东西遮挡？只回答 “是” 或 “否”。',
+                images: [{ mimeType: 'image/jpeg', data: crop.toString('base64') }],
+                temperature: 0,
+                userId
+              });
+              return /^\s*是/.test(r.text);
+            } catch {
+              return false;
+            }
+          })
+        );
+        const idx = verdicts.findIndex(Boolean);
+        if (idx >= 0) picked = foot[idx];
+      } else {
+        picked = foot[0];
       }
       if (picked) found.set('foot', picked);
       else if (foot.length > 0) warnings.push('沙发脚几个候选都有遮挡，已选第一个，可在再次生成里换取景');

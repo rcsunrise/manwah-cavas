@@ -126,11 +126,12 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       deptId: req.headers['x-dept-id'] as string | undefined,
       timeoutMs: 300000
     });
-    const png = await sharp(image, { failOn: 'none' }).rotate().png().toBuffer();
-    const meta = await sharp(png).metadata();
+    // 主场景底图用高质量 JPEG 传输（PNG 约 3.7MB → JPEG 约 0.5MB）：浏览器下载、上传存储、排版时再下载，三趟都省
+    const jpg = await sharp(image, { failOn: 'none' }).rotate().jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer();
+    const meta = await sharp(jpg).metadata();
     res.json({
       success: true,
-      imageDataUrl: `data:image/png;base64,${png.toString('base64')}`,
+      imageDataUrl: `data:image/jpeg;base64,${jpg.toString('base64')}`,
       width: meta.width,
       height: meta.height,
       model: usedModel,
