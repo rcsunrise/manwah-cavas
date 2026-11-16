@@ -1069,6 +1069,15 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
     if (input.cutoutPerson) {
       cutoutBuf = await cutoutPersonByBorder(input.cutoutPerson);
       if (!cutoutBuf) warnings.push('人物图的背景不够干净，没抠出来，已改用普通拼贴');
+      else {
+        // 已有单独的人物了：拼贴底下不能再出现另一张人物照（否则同一画面两个人）。
+        // 先按视觉模型框出的人物去掉；没检测到时，按概念的顺序（第 1 张是时装大片）去掉第 1 张
+        const hasPerson = moodInputs.map((_, i) => Boolean(moodPersonsIn[i]));
+        let drop = hasPerson.some(Boolean) ? hasPerson : moodInputs.map((_, i) => i === 0 && moodInputs.length >= 3);
+        if (drop.every(Boolean)) drop = drop.map(() => false); // 不能全去掉
+        moodPersonsIn = moodPersonsIn.filter((_, i) => !drop[i]);
+        moodInputs = moodInputs.filter((_, i) => !drop[i]);
+      }
     } else {
       const area = (b: PersonBox | null | undefined) => (b ? b.width * b.height : 0);
       let pi = -1;
@@ -1172,7 +1181,7 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
     }
     const px = usedFrame.x + usedFrame.w * (mv % 2 === 1 ? 0.3 : 0.05);
     const py = Math.min(TEXTILE_SIZE.height - ph - 10, topY + (usedFrame.h + 70 - ph));
-    const st = await stickerizePerson(cutoutBuf, pw * S, ph * S, 12 * S);
+    const st = await stickerizePerson(cutoutBuf, pw * S, ph * S, 20 * S);
     layers.push({ input: st.buffer, left: Math.max(0, Math.round(px * S - st.pad)), top: Math.max(0, Math.round(py * S - st.pad)) });
   }
 
