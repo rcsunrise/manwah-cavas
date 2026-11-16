@@ -376,7 +376,7 @@ router.get('/router-status', optionalAuthenticateToken as any, async (req: Authe
       hasKey: Boolean(config.apiKey),
       source: config.source,
       supportedModels: {
-        spatial: ['gemini-3.8-flash', 'gemini-2.5-flash'],
+        spatial: ['gemini-3.6-flash'],
         aesthetic: ['gpt-4o', 'gpt-all']
       },
       logConsoleUrl: 'https://api.vectorengine.ai/console/log'

@@ -67,7 +67,8 @@ export interface PosterConceptInput {
   sceneDirection?: SceneDirection;
 }
 
-const CONCEPT_MODELS = ['gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.6-flash'];
+// 路由平台目前只开通 gemini-3.6-flash，放最前面省掉两次失败往返
+const CONCEPT_MODELS = ['gemini-3.6-flash'];
 
 const DEFAULT_DETAILS: PosterDetailConcept[] = [
   { key: 'armrest', locate: '沙发离镜头最近一侧的扶手（正面与顶部）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },

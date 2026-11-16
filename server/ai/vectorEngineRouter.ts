@@ -131,7 +131,7 @@ export async function deconstructPosterWithVectorEngine(
   const apiKey = config.apiKey || process.env.GEMINI_API_KEY || '';
   const baseUrl = config.baseUrl || 'https://api.vectorengine.ai';
 
-  let spatialModelUsed = 'gemini-3.8-flash';
+  let spatialModelUsed = 'gemini-3.6-flash';
   let spatialStartTime = Date.now();
   let textBlocks: SpatialTextBlock[] = [];
 
@@ -162,7 +162,7 @@ export async function deconstructPosterWithVectorEngine(
 }`;
 
   // LAYER 1: Spatial & Physical Grounding
-  const spatialModels = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+  const spatialModels = ['gemini-3.6-flash'];
   let layer1Success = false;
 
   // Custom fetch supporting VectorEngine gateway headers

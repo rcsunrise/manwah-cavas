@@ -1,7 +1,52 @@
 import { GoogleGenAI } from '@google/genai';
 import { isProviderKeyValid, resolveApiConfig } from '../ai/providerConfig';
+import { modelsToTry, TEXT_MODEL_TIMEOUT_MS } from '../ai/textModelChain';
 
 export { resolveApiConfig } from '../ai/providerConfig';
+
+/**
+ * 文本 / 识图调用统一走 TEXT_MODEL_CHAIN：代码里写的是 gemini-3.7/3.8/2.5-flash 等平台没开通的名字时，
+ * 自动改成可用模型按顺序兜底；每个模型限时，超时或失败换下一个。生图等其他模型不受影响。
+ */
+const modelDownUntil = new Map<string, number>();
+const MODEL_DOWN_MS = 2 * 60_000;
+
+function wrapWithModelChain(ai: GoogleGenAI) {
+  const models: any = (ai as any).models;
+  if (!models || models.__chainWrapped) return;
+  const original = models.generateContent.bind(models);
+  models.generateContent = async (params: any) => {
+    const tryList = modelsToTry(String(params?.model || ''));
+    if (tryList.length === 1) return original(params);
+    let lastErr: any;
+    // 最近失败过的模型先跳过（调用方自己还有一层循环时，避免同一个坏模型被反复等超时）；全在冷却就照常全试
+    const now = Date.now();
+    const healthy = tryList.filter(m => (modelDownUntil.get(m) || 0) <= now);
+    for (const model of healthy.length ? healthy : tryList) {
+      const controller = new AbortController();
+      const callerSignal: AbortSignal | undefined = params?.config?.abortSignal;
+      if (callerSignal?.aborted) throw callerSignal.reason ?? new Error('aborted');
+      const onAbort = () => controller.abort(callerSignal?.reason);
+      callerSignal?.addEventListener('abort', onAbort, { once: true });
+      const timer = setTimeout(() => controller.abort(new Error(`${model} 超时 ${TEXT_MODEL_TIMEOUT_MS}ms`)), TEXT_MODEL_TIMEOUT_MS);
+      try {
+        return await original({ ...params, model, config: { ...(params?.config || {}), abortSignal: controller.signal } });
+      } catch (err: any) {
+        lastErr = err;
+        if (callerSignal?.aborted) throw err;
+        if (controller.signal.aborted || /model_not_found|no available channel|fetch failed|timeout|超时|5\d\d/i.test(String(err?.message || err?.status || err))) {
+          modelDownUntil.set(model, Date.now() + MODEL_DOWN_MS);
+        }
+        console.warn(`[ModelChain] ${model}（请求 ${params?.model}）失败，换下一个:`, String(err?.message || err).slice(0, 200));
+      } finally {
+        clearTimeout(timer);
+        callerSignal?.removeEventListener('abort', onAbort);
+      }
+    }
+    throw lastErr;
+  };
+  models.__chainWrapped = true;
+}
 
 export async function createServerGenAI(userUuid: string = 'system') {
   // 1. 优先使用来自 Supabase (department_configs / profiles) 的第三方 API 路由底座
@@ -71,6 +116,7 @@ export async function createServerGenAI(userUuid: string = 'system') {
       };
     }
 
+    wrapWithModelChain(ai);
     return { ai, config, isValidKey: true };
   }
 

@@ -5,8 +5,9 @@ import { resolveApiConfig } from '../../ai/providerConfig';
 import { VideoSourceImageResolver } from './videoSourceImageResolver';
 
 const EXPAND_TIMEOUT_MS = 60_000;
-const DEFAULT_MODEL = 'gemini-3.7-flash';
-const ALLOWED_MODELS = new Set(['gemini-3.7-flash', 'gemini-3.8-flash', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-luna']);
+const DEFAULT_MODEL = 'gemini-3.6-flash';
+// 平台没开通 3.7/3.8/luna：选了它们的按 DEFAULT_MODEL（gemini-3.6-flash）走
+const ALLOWED_MODELS = new Set(['gemini-3.6-flash', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-5.6-sol', 'gemini-4-argon']);
 
 export interface VideoPromptExpandRequest {
   /** generate_video：直接作为单镜头视频提示词；product_showcase：作为交给 AI 导演的创意要求 */

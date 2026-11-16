@@ -21,7 +21,7 @@ export interface ConsistencyImages {
 }
 
 // 实测 3.7 带图请求常超时 / 断连，3.8、3.6 能稳定返回，所以 3.7 排最后
-const CONSISTENCY_VISION_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash'];
+const CONSISTENCY_VISION_MODELS = ['gemini-3.6-flash'];
 
 export async function evaluateProductConsistency(
   input: EvaluateProductConsistencyInput,

@@ -9,7 +9,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { createServerGenAI } from '../utils/aiClient';
 
-const CROP_MODEL = 'gemini-3.8-flash';
+const CROP_MODEL = 'gemini-3.6-flash';
 const CROP_TIMEOUT_MS = 30_000;
 const CACHE_DIR = path.join(process.cwd(), '.data', 'cache', 'identity-crops');
 

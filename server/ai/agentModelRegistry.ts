@@ -42,7 +42,7 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
   {
     id: 'gemini-3.7-flash',
     displayName: 'Gemini 3.7 Flash',
-    upstreamModel: 'gemini-3.7-flash',
+    upstreamModel: 'gemini-3.6-flash', // 平台未开通 3.7，实际走 3.6
     providerGroup: 'google_default',
     aliases: ['gemini-3.7-flash-thinking', 'google/gemini-3.7-flash', 'google/gemini-3.7-flash-thinking', 'gemini-2.5-flash', 'google/gemini-2.5-flash'],
     transport: 'gemini_native',
@@ -61,7 +61,7 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
   {
     id: 'gemini-3.8-flash',
     displayName: 'Gemini 3.8 Flash',
-    upstreamModel: 'gemini-3.8-flash',
+    upstreamModel: 'gemini-3.6-flash', // 平台未开通 3.8，实际走 3.6
     providerGroup: 'google_default',
     aliases: ['gemini-3.8-flash-thinking', 'google/gemini-3.8-flash', 'google/gemini-3.8-flash-thinking'],
     transport: 'gemini_native',
@@ -153,7 +153,7 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
   {
     id: 'gpt-5.6-luna',
     displayName: 'GPT-5.6 Luna',
-    upstreamModel: 'gpt-5.6-luna',
+    upstreamModel: 'gpt-6.1-sol', // 平台未开通 luna
     providerGroup: 'Codex专属',
     aliases: ['openai/gpt-5.6-luna'],
     transport: 'openai_responses',
@@ -172,7 +172,7 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
   {
     id: 'gpt-5.5',
     displayName: 'GPT-5.5',
-    upstreamModel: 'gpt-5.5',
+    upstreamModel: 'gpt-6.1-sol', // 平台未开通 5.5
     providerGroup: 'current_verified_group',
     aliases: ['openai/gpt-5.5'],
     transport: 'openai_responses',

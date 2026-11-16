@@ -347,7 +347,7 @@ router.post(['/:skuId/versions', '/skus/:skuId/versions', '/asset-skus/:skuId/ve
       product_dna_version_id,
       sourceNodeId,
       generationProvider = 'google',
-      generationModel = 'gemini-2.5-flash',
+      generationModel = 'gemini-3.6-flash',
       promptSnapshot = '',
       parameterSnapshot = {},
       imageBase64,

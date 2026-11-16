@@ -477,7 +477,7 @@ router.post(['/copy-skus/:skuId/versions', '/:skuId/versions'], async (req: Auth
       contentJson,
       sourceType = 'manual_edit',
       generationProvider = 'google',
-      generationModel = 'gemini-2.5-flash',
+      generationModel = 'gemini-3.6-flash',
       promptSnapshot = ''
     } = req.body || {};
 
@@ -774,7 +774,7 @@ router.post(['/copy/generate', '/generate'], async (req: AuthenticatedRequest, r
       productDnaVersionId,
       assetVersionId,
       customPrompt = '',
-      model = 'gemini-2.5-flash'
+      model = 'gemini-3.6-flash'
     } = req.body || {};
 
     if (!projectId || !canvasId || !sceneKey) {
@@ -1829,7 +1829,7 @@ router.post('/typography-specs/ai-optimize-slots', async (req: AuthenticatedRequ
 4. 直接输出精简后的纯文本文案，不要添加任何引言、解释、引号或 Markdown 格式。`;
 
           const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.6-flash',
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             config: {
               temperature: 0.3

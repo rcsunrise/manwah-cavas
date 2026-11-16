@@ -686,7 +686,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
   return prompt;
 }
 
-const DEFAULT_CHAT_MODEL = process.env.AGENT_TEXT_MODEL || 'gemini-3.7-flash';
+const DEFAULT_CHAT_MODEL = process.env.AGENT_TEXT_MODEL || 'gemini-3.6-flash';
 
 /** 本地兜底模板的“模型”标识：界面据此提示“模型不可用” */
 export const LOCAL_TEMPLATE_MODEL = 'agent-g-local-template';
@@ -1076,7 +1076,7 @@ ${userAttachment.text}` : userPrompt,
       }
 
       // GPT 通道不可用时回落到 Gemini 3.7 Flash（网关已不提供 2.5）
-      const geminiModel = isGptModel ? 'gemini-3.7-flash' : requestedModel;
+      const geminiModel = isGptModel ? 'gemini-3.6-flash' : requestedModel;
 
       const responseStream = await aiClient.models.generateContentStream({
         model: geminiModel,

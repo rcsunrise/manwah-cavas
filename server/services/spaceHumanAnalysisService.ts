@@ -1,3 +1,4 @@
+import { TEXT_MODEL_CHAIN, normalizeTextModel } from '../ai/textModelChain';
 // server/services/spaceHumanAnalysisService.ts
 // MANWAH Space Studio｜AI 模特资产卡视觉识别与 Model DNA 提炼引擎 V1.0
 import crypto from 'crypto';
@@ -11,7 +12,7 @@ export const AnalyzeModelCardRequestSchema = z.object({
   projectId: z.string().optional().default('manwah-space-default'),
   imageBase64: z.string().min(10, 'imageBase64 is required'),
   userNotes: z.string().optional(),
-  model: z.string().optional().default('gemini-3.7-flash')
+  model: z.string().optional().default('gemini-3.6-flash')
 });
 
 export interface AnalyzedModelCardResult {
@@ -42,7 +43,7 @@ export class SpaceHumanAnalysisService {
     input: z.infer<typeof AnalyzeModelCardRequestSchema>,
     userId: string = 'system'
   ): Promise<AnalyzedModelCardResult> {
-    const { projectId, imageBase64, userNotes, model = 'gemini-3.7-flash' } = input;
+    const { projectId, imageBase64, userNotes, model = 'gemini-3.6-flash' } = input;
     const modelUniqueId = `model-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
 
     // 1. 解析 Base64
@@ -229,18 +230,15 @@ ${userNotes ? `【用户特别说明】: ${userNotes}` : ''}
           }
         ];
 
-        const preferredModel = (model || '').trim() || 'gemini-3.7-flash';
+        const preferredModel = (model || '').trim() || 'gemini-3.6-flash';
         const normalizedPreferred =
           (preferredModel === 'gemini-4-argon' || preferredModel === 'argon' || preferredModel === 'gemini-4')
-            ? 'gemini-3.1-pro-preview'
-            : preferredModel;
+            ? 'gemini-4-argon'
+            : normalizeTextModel(preferredModel);
 
         const candidateModels = Array.from(new Set([
           normalizedPreferred,
-          'gemini-3.7-flash',
-          'gemini-3.8-flash',
-          'gemini-3.1-pro-preview',
-          'gemini-2.5-flash'
+          ...TEXT_MODEL_CHAIN
         ]));
 
         for (const modelToUse of candidateModels) {

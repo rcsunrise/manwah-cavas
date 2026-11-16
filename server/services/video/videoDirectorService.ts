@@ -197,15 +197,17 @@ export class VideoDirectorService {
 
     // Resolve model name
     const modelMap: Record<string, string> = {
-      'gemini-3.7-flash': 'gemini-3.7-flash',
-      'gemini-3.8-flash': 'gemini-3.8-flash',
+      'gemini-3.7-flash': 'gemini-3.6-flash',
+      'gemini-3.8-flash': 'gemini-3.6-flash',
       'gpt-6': 'gpt-6-astra',
       'gpt-6-astra': 'gpt-6-astra',
       'gpt-5.6': 'gpt-5.6-sol',
       'gpt-5.6-sol': 'gpt-5.6-sol',
-      'gpt-5.6-luna': 'gpt-5.6-luna'
+      'gpt-5.6-luna': 'gpt-6.1-sol',
+      'gemini-3.6-flash': 'gemini-3.6-flash',
+      'gpt-6.1-sol': 'gpt-6.1-sol'
     };
-    const targetModel = modelMap[directorModelKey || ''] || 'gemini-3.7-flash';
+    const targetModel = modelMap[directorModelKey || ''] || 'gemini-3.6-flash';
 
     // Aggregate focus points
     const activeFocusList: string[] = [];

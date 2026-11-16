@@ -29,6 +29,12 @@ export function detectProvider(baseUrl: string | null | undefined): ProviderName
   return 'vectorengine';
 }
 
+/**
+ * RouterHub 备用通道：月额度已用完，切过去只会多一轮失败，默认关闭。
+ * 充值后设环境变量 ROUTERHUB_FALLBACK=1 重新打开。
+ */
+export const ROUTERHUB_FALLBACK_ENABLED = process.env.ROUTERHUB_FALLBACK === '1';
+
 function normalizeConfig(
   row: any,
   deptId: string | null,
@@ -65,7 +71,8 @@ function normalizeConfig(
     deptId,
     provider,
     routingMode: row.routing_mode,
-    method1Key,
+    // 主 key 本身就是 method1Key 时不算备用；否则按开关决定是否保留备用 key
+    method1Key: ROUTERHUB_FALLBACK_ENABLED ? method1Key : null,
     source
   };
 }
@@ -200,7 +207,7 @@ export async function getFallbackConfig(
   deptId?: string | null,
   method1Key?: string | null
 ): Promise<ApiProviderConfig | null> {
-  if (isProviderKeyValid(method1Key)) {
+  if (ROUTERHUB_FALLBACK_ENABLED && isProviderKeyValid(method1Key)) {
     return {
       apiKey: method1Key,
       provider: 'routerhub',
@@ -218,7 +225,7 @@ export async function getFallbackConfig(
         .eq('id', deptId)
         .maybeSingle();
 
-      if (isProviderKeyValid(data?.method1_key)) {
+      if (ROUTERHUB_FALLBACK_ENABLED && isProviderKeyValid(data?.method1_key)) {
         return {
           apiKey: data.method1_key,
           provider: 'routerhub',
@@ -235,7 +242,7 @@ export async function getFallbackConfig(
   }
 
   const globalConfig = await getGlobalApiConfig();
-  if (globalConfig?.method1Key && isProviderKeyValid(globalConfig.method1Key)) {
+  if (ROUTERHUB_FALLBACK_ENABLED && globalConfig?.method1Key && isProviderKeyValid(globalConfig.method1Key)) {
     return {
       apiKey: globalConfig.method1Key,
       provider: 'routerhub',

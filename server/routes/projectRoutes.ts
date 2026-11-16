@@ -552,8 +552,6 @@ router.post('/:projectId/product-dna/extract', async (req: AuthenticatedRequest,
 
         const visionCandidateModels = [
           'gemini-3.6-flash',
-          'gemini-3.7-flash',
-          'gemini-2.5-flash',
           'gemini-3.1-flash-lite'
         ];
 

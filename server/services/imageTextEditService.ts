@@ -16,7 +16,7 @@ const INSTRUCTION_EDIT_MODELS = ['gpt-image-2.6-flare-c', 'gemini-nano-banana-2.
 const ATTEMPT_PLAN = [EDIT_MODELS[0], EDIT_MODELS[0], EDIT_MODELS[1]];
 /** 对齐后编辑带以外的平均灰度差上限；正常局部改字约 4~6，超过说明模型重新构图了整张图 */
 const MAX_ALIGN_ERR = 12;
-const OCR_MODEL = 'gemini-3.7-flash';
+const OCR_MODEL = 'gemini-3.6-flash';
 const MAX_EDGE = 2048;
 const ASSET_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'creative-canvas-assets';
 

@@ -27,7 +27,8 @@ export interface LocatedDetail {
   source: 'vision' | 'fallback';
 }
 
-const VISION_MODELS = ['gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.6-flash'];
+// 路由平台（TianToken）目前只开通了 gemini-3.6-flash，3.7/3.8 返回 model_not_found；放最前面，否则第一个失败就整条通道被标记不可用
+const VISION_MODELS = ['gemini-3.6-flash'];
 
 /**
  * gemini 通道没开通 / 额度用完时，每次定位都要先白等一轮失败（实测约 17 秒）才走对话模型。

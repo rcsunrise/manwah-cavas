@@ -5,7 +5,8 @@ import { resolveApiConfig } from '../../ai/providerConfig';
  * 改走 OpenAI 兼容的 /v1/chat/completions，依次尝试可用模型。
  * 网关侧 gemini 通道下线或额度用尽时，对话用的 gpt 模型通常仍可用。
  */
-export const CHAT_FALLBACK_MODELS = ['gpt-6-astra', 'gpt-5.6-sol'];
+// 实测（2026-11 识图框选）：gpt-6.1-sol 约 2.8 秒且准确，gpt-6-astra 约 9.4 秒，放最后
+export const CHAT_FALLBACK_MODELS = ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra'];
 
 export async function chatCompletionText(params: {
   prompt: string;

@@ -340,7 +340,7 @@ ${JSON.stringify(slots.map(s => ({
 5. 必须返回合法的 JSON 对象，包含 slots 数组，每个元素包含：slotKey, x, y, width, height, fontSize, fontWeight, color, textAlign ('left'|'center'|'right'), lineHeight, maxLines。不要输出任何 Markdown 以外的文字。`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           temperature: 0.2,

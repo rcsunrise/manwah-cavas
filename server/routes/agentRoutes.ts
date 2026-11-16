@@ -284,7 +284,7 @@ router.post('/search-market-reference', async (req: AuthenticatedRequest, res: R
 请基于最新搜索结果，提炼一份清晰条理、可直接供策划人员借鉴的高质量参考构思（包含推荐命名候选、色彩组合、场景建议与排版提示）。字数适中，结构清晰，重点明确。`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-3.6-flash',
       contents: [{ role: 'user', parts: [{ text: searchPrompt }] }],
       config: {
         tools: [{ googleSearch: {} }]
@@ -360,7 +360,7 @@ router.post('/:runId/generate-plan', async (req: AuthenticatedRequest, res: Resp
     } catch (error) {
       if (error instanceof AgentResponsesError) {
         console.warn('[AgentRoutes] Model compatibility warning, falling back to gemini-3.7-flash:', error.message);
-        const fallbackResolution = resolveAgentModelDetailed('gemini-3.7-flash');
+        const fallbackResolution = resolveAgentModelDetailed('gemini-3.6-flash');
         selectedModel = fallbackResolution.model;
         selectedEffort = 'low';
         safePreviousResponseId = undefined;
@@ -394,7 +394,7 @@ router.post('/:runId/generate-plan', async (req: AuthenticatedRequest, res: Resp
             
             console.log(`[AgentRoutes] 正在通过 VectorEngine 联网检索市场竞品与设计灵感: ${marketSearchQuery}`);
             const searchResponse = await ai.models.generateContent({
-              model: 'gemini-3.7-flash',
+              model: 'gemini-3.6-flash',
               contents: [{
                 role: 'user',
                 parts: [{
@@ -607,7 +607,7 @@ ${marketResearchText ? `\n[行业最新竞品与市场联网检索参考 (Vector
           let response: any;
           const geminiModelToUse = selectedModel.upstreamModel && selectedModel.upstreamModel.startsWith('gemini')
             ? selectedModel.upstreamModel
-            : 'gemini-3.7-flash';
+            : 'gemini-3.6-flash';
 
           try {
             response = await ai.models.generateContent({
@@ -635,7 +635,7 @@ ${marketResearchText ? `\n[行业最新竞品与市场联网检索参考 (Vector
             if (userParts.length > 1 && (geminiErr?.message?.includes('Base64') || geminiErr?.message?.includes('inline_data') || geminiErr?.status === 400)) {
               console.warn('[AgentRoutes] 风格参考图 Base64 解码异常，自动降级为纯文本提示生成全案分镜:', geminiErr?.message);
               response = await ai.models.generateContent({
-                model: 'gemini-3.7-flash',
+                model: 'gemini-3.6-flash',
                 contents: [{ role: 'user', parts: [{ text: promptText }] }],
                 config: {
                   responseMimeType: 'application/json',
@@ -771,7 +771,7 @@ router.post('/:runId/screens/:screenIndex/replan', async (req: AuthenticatedRequ
         };
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.7-flash',
+          model: 'gemini-3.6-flash',
           contents: [{ role: 'user', parts: [{ text: promptText }] }],
           config: {
             responseMimeType: 'application/json',

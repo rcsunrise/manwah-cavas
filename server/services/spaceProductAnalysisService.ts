@@ -1,3 +1,4 @@
+import { TEXT_MODEL_CHAIN, normalizeTextModel } from '../ai/textModelChain';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -560,15 +561,11 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           });
         }
 
-        // 优先使用用户选定模型，默认 gemini-3.7-flash，并配置高可用自动降级链路
-        const preferredModel = (input.model || '').trim() || 'gemini-3.7-flash';
+        // 优先使用用户选定模型，默认 gemini-3.6-flash，并配置高可用自动降级链路
+        const preferredModel = normalizeTextModel(input.model);
         const candidateModels = [
           preferredModel,
-          'gemini-3.7-flash',
-          'gemini-3.8-flash',
-          'gemini-3.1-pro-preview',
-          'gemini-2.5-flash',
-          'gemini-2.0-flash'
+          ...TEXT_MODEL_CHAIN
         ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
         let responseText = '';
@@ -1206,15 +1203,11 @@ ${userNotes ? `【用户特别补充说明】: ${userNotes}` : ''}
           });
         }
 
-        // 优先使用用户选定模型，默认 gemini-3.7-flash，配置高可用平滑降级链路
-        const preferredModel = (input.model || '').trim() || 'gemini-3.7-flash';
+        // 优先使用用户选定模型，默认 gemini-3.6-flash，配置高可用平滑降级链路
+        const preferredModel = normalizeTextModel(input.model);
         const candidateModels = [
           preferredModel,
-          'gemini-3.7-flash',
-          'gemini-3.8-flash',
-          'gemini-3.1-pro-preview',
-          'gemini-2.5-flash',
-          'gemini-2.0-flash'
+          ...TEXT_MODEL_CHAIN
         ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
         for (const m of candidateModels) {
