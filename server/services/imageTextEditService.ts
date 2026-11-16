@@ -157,7 +157,7 @@ export function closestAspectRatio(W: number, H: number): string {
   return best;
 }
 
-async function callImageEdit(params: { model: string; prompt: string; image: Buffer; mask?: Buffer; userId: string; aspectRatio: string }): Promise<Buffer> {
+async function callImageEdit(params: { model: string; prompt: string; image: Buffer; mask?: Buffer; userId: string; aspectRatio: string; timeoutMs?: number }): Promise<Buffer> {
   const gatewayUrl = `http://127.0.0.1:${process.env.PORT || 3000}/api/gateway/generate-image`;
   const res = await fetch(gatewayUrl, {
     method: 'POST',
@@ -173,7 +173,7 @@ async function callImageEdit(params: { model: string; prompt: string; image: Buf
       userUuid: params.userId,
       userId: params.userId
     }),
-    signal: AbortSignal.timeout(240_000)
+    signal: AbortSignal.timeout(params.timeoutMs ?? 240_000)
   });
   const data: any = await res.json();
   if (!res.ok || data.error || data.success === false) {
@@ -470,10 +470,17 @@ export async function editImageByInstruction(input: { imageUrl: string; instruct
 
   let lastError: any = null;
   let attempts = 0;
-  for (const model of INSTRUCTION_EDIT_MODELS) {
+  // Cloud Run 单次请求最多 300 秒：两个模型总共不能超过，否则前端只会收到 504「upstream request timeout」。
+  // 第一个模型最多给 170 秒，剩下的时间留给备用模型；剩余不足 40 秒就不再试了。
+  const startedAt = Date.now();
+  const BUDGET_MS = 270_000;
+  for (const [i, model] of INSTRUCTION_EDIT_MODELS.entries()) {
+    const remaining = BUDGET_MS - (Date.now() - startedAt);
+    if (remaining < 40_000) break;
     attempts++;
+    const timeoutMs = i === 0 && INSTRUCTION_EDIT_MODELS.length > 1 ? Math.min(170_000, remaining - 20_000) : remaining - 20_000;
     try {
-      const edited = await callImageEdit({ model, prompt, image: base, userId, aspectRatio });
+      const edited = await callImageEdit({ model, prompt, image: base, userId, aspectRatio, timeoutMs });
       // 统一回原尺寸，便于在画布上与原图对比
       const resized = await sharp(edited).resize(W, H, { fit: 'cover' }).png().toBuffer();
       const saved = await saveResultImage(resized);
@@ -483,5 +490,10 @@ export async function editImageByInstruction(input: { imageUrl: string; instruct
       console.warn(`[ImageInstructionEdit] ${model} attempt failed:`, err?.message || err);
     }
   }
-  throw lastError || new Error('修改失败，请稍后重试');
+  const timedOut = /timeout|aborted|TimeoutError/i.test(String(lastError?.message || lastError?.name || ''));
+  throw lastError
+    ? timedOut
+      ? new Error('图片模型响应太慢（超过 4 分钟），这次没有改成。请稍后重试；如果连续超时，可能是网关繁忙。')
+      : lastError
+    : new Error('修改失败，请稍后重试');
 }
