@@ -82,7 +82,12 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
           .map((u: any) => ({
             name: String(u.name).slice(0, 8),
             idea: typeof u.idea === 'string' ? u.idea.slice(0, 80) : undefined,
-            sceneDirection: typeof u.sceneDirection === 'string' ? u.sceneDirection.slice(0, 40) : undefined
+            sceneDirection: typeof u.sceneDirection === 'string' ? u.sceneDirection.slice(0, 40) : undefined,
+            angle: typeof u.angle === 'string' ? u.angle.slice(0, 40) : undefined,
+            sellingPoint: typeof u.sellingPoint === 'string' ? u.sellingPoint.slice(0, 60) : undefined,
+            keyElements: Array.isArray(u.keyElements)
+              ? u.keyElements.filter((x: any) => typeof x === 'string').slice(0, 5).map((x: string) => x.slice(0, 16))
+              : undefined
           }))
       : [];
     let product: { data: string; mimeType: string } | undefined;

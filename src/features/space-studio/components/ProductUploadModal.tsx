@@ -52,41 +52,35 @@ export interface VisionAnalysisModelOption {
   description: string;
 }
 
+// 只列路由平台实际开通的模型（2026-11 实测：同一识图框选任务 3.6 Flash 1.8 秒、GPT-6.1 Sol 2.8 秒、Gemini 4 Argon 2.6 秒）
 export const VISION_ANALYSIS_MODELS: VisionAnalysisModelOption[] = [
   {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    badge: '默认推荐 · 极速推理',
-    tag: '⚡ 极速推理',
-    description: '思考链视觉自校准，三维尺寸与微观材质深度推导，2~3秒极速返回'
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    badge: '默认推荐 · 最快',
+    tag: '⚡ 极速识别',
+    description: '看图准、返回最快，适合日常单品录入与材质识别'
   },
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    badge: '空间感知进阶',
-    tag: '🚀 空间感知',
-    description: '增强型微观皮质纹理、金属五金反光感知与空间层次拆解'
+    id: 'gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
+    badge: '推理更强',
+    tag: '🧠 强推理',
+    description: 'OpenAI 新一代多模态，材质工艺研判与文案描述更细'
   },
   {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 4 (Argon) / 3.1 Pro',
-    badge: '空间几何旗舰',
+    id: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    badge: '空间几何',
     tag: '💎 空间切片',
-    description: '原生 2D/3D 空间视觉接地 (Visual Grounding)，多家具坐标框毫米级贴合切片'
+    description: '空间定位与多家具框选，偶有响应慢'
   },
   {
     id: 'gpt-5.6-sol',
-    name: 'GPT Sol (5.6)',
-    badge: '商业企划全案',
-    tag: '👑 商业企划',
-    description: 'OpenAI 旗舰推理多模态，奢华材质工艺研判与工业级全案文案描述天花板'
-  },
-  {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    badge: '极速轻量备用',
-    tag: '⏱️ 秒级响应',
-    description: '经典秒级轻量模型，适合单品常规快速录入'
+    name: 'GPT-5.6 Sol',
+    badge: '稳定备用',
+    tag: '👑 稳定',
+    description: 'OpenAI 旗舰基础模型，细节严密'
   }
 ];
 
@@ -143,9 +137,9 @@ export const ProductUploadModal: React.FC<ProductUploadModalProps> = ({
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [userNotes, setUserNotes] = useState<string>('');
 
-  // 视觉读数模型选择状态（默认 Gemini 3.7 Flash，记住本地偏好）
+  // 视觉读数模型选择状态（默认 Gemini 3.6 Flash，记住本地偏好）
   const [analysisModel, setAnalysisModel] = useState<string>(() => {
-    return localStorage.getItem('manwah_truth_engine_model') || 'gemini-3.7-flash';
+    return localStorage.getItem('manwah_truth_engine_model') || 'gemini-3.6-flash';
   });
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState<boolean>(false);
   const currentModelConfig = VISION_ANALYSIS_MODELS.find(m => m.id === analysisModel) || VISION_ANALYSIS_MODELS[0];
@@ -1720,7 +1714,7 @@ interface CanvasDraftPayload {
                 type="button"
                 onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 transition text-xs font-bold cursor-pointer shadow-2xs"
-                title="切换视觉识别与多要素解构多模态模型 (当前默认: Gemini 3.7 Flash)"
+                title="切换视觉识别与多要素解构多模态模型 (当前默认: Gemini 3.6 Flash)"
               >
                 <Cpu className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span className="font-mono text-xs">{currentModelConfig.name}</span>

@@ -1347,9 +1347,8 @@ export function useCreativeCanvasWorkspace(
           'Content-Type': 'application/json',
           ...authHeaders
         },
-        body: JSON.stringify({
-          imageBase64List: [base64]
-        })
+        // 图片是 http(s) 地址时走 images，服务端下载；base64 走 imageBase64List
+        body: JSON.stringify(/^https?:\/\//i.test(base64) ? { images: [base64] } : { imageBase64List: [base64] })
       });
 
       const data = await parseJsonResponse<{ success?: boolean; productDna?: ProductVisualDNA; error?: string; message?: string }>(res);
@@ -1614,10 +1613,21 @@ export function useCreativeCanvasWorkspace(
     addAgentMessage('已成功移除产品主图，您可以随时重新上传。');
   };
 
-  const handleReanalyze = () => {
-    if (activeProject && uploadedBase64) {
-      performDnaExtraction(activeProject, uploadedBase64);
+  // 重新分析：内存里没有上传时的 base64（刷新页面后从云端恢复的主图只有 URL）时，改用主图节点上的图片地址，
+  // 服务端会下载；以前这里直接 return，点了没有任何反应
+  const handleReanalyze = async () => {
+    const mainNode = nodesRef.current.find(n => n.id === 'img-node-1' || n.id === 'product-image-node-1' || n.type === 'productImageNode');
+    const image = uploadedBase64 || uploadedBase64Ref.current || (mainNode?.data as any)?.imageUrl || '';
+    if (!image) {
+      addAgentMessage('请先上传产品主图，再进行 DNA 分析。');
+      return;
     }
+    const proj = activeProject || (await getOrCreateProject());
+    if (!proj) {
+      addAgentMessage('❌ 无法初始化项目，DNA 分析未开始，请刷新页面后重试。');
+      return;
+    }
+    performDnaExtraction(proj, image);
   };
 
   handleUploadFileRef.current = handleUploadFile;
@@ -1652,13 +1662,13 @@ export function useCreativeCanvasWorkspace(
     setIsPlanGenerating(true);
     setPlanError(null);
     const modelDisplayName =
-      planAgentModel === 'gemini-3.7-flash'
-        ? 'Gemini 3.7 Flash'
-        : planAgentModel === 'gemini-3.8-flash'
-        ? 'Gemini 3.8 Flash'
-        : planAgentModel === 'gpt-6'
-        ? 'GPT-6 Astra'
-        : planAgentModel;
+      ({
+        'gemini-3.6-flash': 'Gemini 3.6 Flash',
+        'gemini-3.7-flash': 'Gemini 3.6 Flash',
+        'gemini-3.8-flash': 'Gemini 3.6 Flash',
+        'gpt-6.1-sol': 'GPT-6.1 Sol',
+        'gpt-6': 'GPT-6 Astra'
+      } as Record<string, string>)[planAgentModel] || planAgentModel;
     finishPlanTask('cancelled');
     planTaskMsgIdRef.current = addAgentMessage('', {
       taskCard: {
@@ -3020,7 +3030,7 @@ export function useCreativeCanvasWorkspace(
       })
       .map(n => {
         const c = (n.data as any).templatePoster.concept;
-        return { name: c.name, idea: c.idea, sceneDirection: c.sceneDirection };
+        return { name: c.name, idea: c.idea, sceneDirection: c.sceneDirection, angle: c.angle, sellingPoint: c.sellingPoint, keyElements: c.keyElements };
       });
     // 企划也只属于主产品图
     const isMainProduct = isMainProductNodeId(productKey);

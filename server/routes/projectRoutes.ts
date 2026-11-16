@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 // server/routes/projectRoutes.ts
 import { Router, Response, NextFunction } from 'express';
 import { supabaseAdmin } from '../../src/lib/supabase';
@@ -539,6 +540,20 @@ router.post('/:projectId/product-dna/extract', async (req: AuthenticatedRequest,
                 }
               });
             }
+          } else if (typeof img === 'string' && /^https?:\/\//i.test(img)) {
+            // 刷新页面后主图只剩云端地址：下载下来再交给视觉模型（以前会被当成 base64 原样塞进去，模型直接报错）
+            try {
+              const r = await fetch(img, { signal: AbortSignal.timeout(20_000) });
+              const buf = Buffer.from(await r.arrayBuffer());
+              if (r.ok && buf.length > 0 && buf.length <= 20 * 1024 * 1024) {
+                const mimeType = (r.headers.get('content-type') || 'image/jpeg').split(';')[0];
+                parts.push({ inlineData: { mimeType: mimeType.startsWith('image/') ? mimeType : 'image/jpeg', data: buf.toString('base64') } });
+              } else {
+                console.warn(`[ProjectRoutes] 主图下载失败或过大: HTTP ${r.status}, ${buf.length} bytes`);
+              }
+            } catch (dlErr: any) {
+              console.warn('[ProjectRoutes] 主图下载失败:', dlErr?.message || dlErr);
+            }
           } else if (typeof img === 'string' && img.length > 100) {
             // Assume it's raw base64
             parts.push({
@@ -550,10 +565,33 @@ router.post('/:projectId/product-dna/extract', async (req: AuthenticatedRequest,
           }
         }
 
-        const visionCandidateModels = [
-          'gemini-3.6-flash',
-          'gemini-3.1-flash-lite'
-        ];
+        // 原图直接送（如 2MB 的截图 PNG）模型要一分多钟；缩到长边 1536 的 JPEG，识别够用且快得多
+        for (const part of parts) {
+          if (!part?.inlineData?.data) continue;
+          try {
+            const small = await sharp(Buffer.from(part.inlineData.data, 'base64'), { failOn: 'none' })
+              .rotate()
+              .resize(1536, 1536, { fit: 'inside', withoutEnlargement: true })
+              .flatten({ background: '#ffffff' })
+              .jpeg({ quality: 85 })
+              .toBuffer();
+            part.inlineData = { mimeType: 'image/jpeg', data: small.toString('base64') };
+          } catch (resizeErr: any) {
+            console.warn('[ProjectRoutes] 主图压缩失败，按原图发送:', resizeErr?.message || resizeErr);
+          }
+        }
+
+        // 主图一张都没读到：别让模型对着纯文字“分析”出一份假 DNA
+        if (parts.length < 2) {
+          return res.status(400).json({
+            success: false,
+            error: '没能读取到产品主图，请重新上传主图后再分析。',
+            message: 'no image parts'
+          });
+        }
+
+        // gemini-3.6-flash 不可用时，createServerGenAI 会按 TEXT_MODEL_CHAIN 自动换 gpt-6.1-sol / gemini-4-argon
+        const visionCandidateModels = ['gemini-3.6-flash'];
 
         let lastVisionError: any = null;
         for (const candidateModel of visionCandidateModels) {

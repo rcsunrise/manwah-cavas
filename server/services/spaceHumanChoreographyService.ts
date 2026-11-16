@@ -1,3 +1,4 @@
+import { normalizeTextModel } from '../ai/textModelChain';
 // server/services/spaceHumanChoreographyService.ts
 // MANWAH Space Studio｜AI 多模态人物编排构思与角色资产匹配引擎 V1.0
 import { z } from 'zod';
@@ -22,7 +23,8 @@ export type ChoreographyFootrestState = 'extended' | 'retracted';
 // 实测（2026-11-03，两张 1280px 图）：3.8 Flash 21s、3.1 Pro 24s、2.5 Flash 25s、3.7 Flash 34s；
 // 3.8 Flash 识别最细，默认用它，3.1 Pro 备用
 export const DEFAULT_CHOREOGRAPHY_MODEL = 'gemini-3.6-flash';
-const BACKUP_CHOREOGRAPHY_MODEL = 'gemini-3.1-pro-preview';
+// 平台没有 gemini-3.1-pro-preview；备用改为实测可用的 gpt-6.1-sol
+const BACKUP_CHOREOGRAPHY_MODEL = 'gpt-6.1-sol';
 const MODEL_TIMEOUT_MS = 90_000;
 // 原图直接送模型会大幅拖慢识别（之前 45 秒超时的主因），识别座位与人物 1280px 足够
 const MAX_IMAGE_EDGE = 1280;
@@ -183,9 +185,9 @@ export class SpaceHumanChoreographyService {
       if (ai && isValidKey) {
         const preferredModel = (model || '').trim() || DEFAULT_CHOREOGRAPHY_MODEL;
         const normalizedPreferred =
-          (preferredModel === 'gemini-4-argon' || preferredModel === 'argon' || preferredModel === 'gemini-4')
-            ? 'gemini-3.1-pro-preview'
-            : preferredModel;
+          (preferredModel === 'argon' || preferredModel === 'gemini-4')
+            ? 'gemini-4-argon'
+            : normalizeTextModel(preferredModel);
         const backupModel = normalizedPreferred === BACKUP_CHOREOGRAPHY_MODEL ? DEFAULT_CHOREOGRAPHY_MODEL : BACKUP_CHOREOGRAPHY_MODEL;
         const candidateModels = [normalizedPreferred, backupModel];
 

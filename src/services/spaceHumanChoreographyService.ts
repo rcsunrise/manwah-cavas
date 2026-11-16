@@ -112,7 +112,7 @@ export class SpaceHumanChoreographyClientService {
         referenceImageBase64: payload.referenceImageBase64,
         characterCount: payload.characterCount,
         furnitureInventory: payload.furnitureInventory,
-        model: payload.model || 'gemini-3.8-flash',
+        model: payload.model || 'gemini-3.6-flash',
         availableModels: (payload.availableModels || []).map(m => ({
           id: m.id,
           name: m.name,

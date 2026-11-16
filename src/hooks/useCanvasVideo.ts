@@ -74,7 +74,8 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       } catch {
         // quiet fallback
       }
-      return VideoGenerationService.nextJobsPollDelay(hasActiveJob);
+      // 有进行中任务时用户闲置也继续拉，等结果；空闲画布闲置 2 分钟后停
+      return { delay: VideoGenerationService.nextJobsPollDelay(hasActiveJob), evenIfIdle: hasActiveJob };
     }, 3_000);
 
     return () => {

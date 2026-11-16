@@ -93,11 +93,10 @@ const SHOT_TYPE_LABELS: Record<VideoShotType, string> = {
 };
 
 const DIRECTOR_MODELS = [
-  { key: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', desc: 'Google 旗舰多模态 · 精准视觉运镜', tag: '推荐首选' },
-  { key: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', desc: 'Google 新一代超高速多模态', tag: '极速出片' },
+  { key: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', desc: 'Google 多模态 · 看图准、速度最快', tag: '推荐首选' },
+  { key: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', desc: 'OpenAI 新一代 · 推理强、速度快', tag: '极速出片' },
   { key: 'gpt-6-astra', name: 'GPT-6 Astra', desc: 'OpenAI 旗舰强推理 · 影视级叙事', tag: '强推理' },
   { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', desc: 'OpenAI 旗舰基础模型 · 细节严密', tag: '稳定' },
-  { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', desc: 'OpenAI 轻量高性价比模型', tag: '高性价比' }
 ];
 
 interface PersistedPanelState {
@@ -274,7 +273,7 @@ export const VideoCreationPanel: React.FC<VideoCreationPanelProps> = ({
   const [aiFocusPoints, setAiFocusPoints] = useState<string[]>([]);
 
   // Director LLM Model
-  const [selectedDirectorModel, setSelectedDirectorModel] = useState<string>('gemini-3.7-flash');
+  const [selectedDirectorModel, setSelectedDirectorModel] = useState<string>('gemini-3.6-flash');
 
   // Video Synthesis Model & Settings
   const [selectedModelKey, setSelectedModelKey] = useState<string>(defaultModelKey);

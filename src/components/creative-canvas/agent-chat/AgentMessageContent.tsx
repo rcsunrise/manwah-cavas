@@ -5,10 +5,15 @@ const MODEL_LABELS: Record<string, string> = {
   'gpt-6': 'GPT-6 Astra',
   'gpt-6-astra': 'GPT-6 Astra',
   'gpt-5.6-sol': 'GPT-5.6 Sol',
-  'gpt-5.5': 'GPT-5.5',
-  'gemini-2.5-flash': 'Gemini 2.5 Flash',
-  'gemini-3.7-flash': 'Gemini 3.7 Flash',
-  'gemini-3.8-flash': 'Gemini 3.8 Flash'
+  'gpt-6.1-sol': 'GPT-6.1 Sol',
+  'gemini-3.6-flash': 'Gemini 3.6 Flash',
+  'gemini-4-argon': 'Gemini 4 Argon',
+  // 旧会话里记录的模型名：平台没开通，实际跑的是 3.6 / 6.1 Sol
+  'gpt-5.5': 'GPT-6.1 Sol',
+  'gpt-5.6-luna': 'GPT-6.1 Sol',
+  'gemini-2.5-flash': 'Gemini 3.6 Flash',
+  'gemini-3.7-flash': 'Gemini 3.6 Flash',
+  'gemini-3.8-flash': 'Gemini 3.6 Flash'
 };
 
 /** 与服务端 LOCAL_TEMPLATE_MODEL 保持一致 */

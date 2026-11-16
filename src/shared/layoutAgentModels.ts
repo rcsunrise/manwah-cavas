@@ -7,8 +7,7 @@ export interface LayoutAgentModel {
 }
 
 export const LAYOUT_AGENT_MODELS: LayoutAgentModel[] = [
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', hint: '推荐 · 联网来源最多', transport: 'gemini_native' },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', hint: '备用 · 较慢', transport: 'gemini_native' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', hint: '推荐 · 最快', transport: 'gemini_native' },
   { id: 'gpt-5.6-sol', label: 'GPT 5.6 Sol', hint: 'OpenAI 通道 · 来源较少', transport: 'openai_responses' }
 ];
 

@@ -3,6 +3,7 @@ import type { DetailTarget } from './detailCrop';
 import type { TitleSide } from './templateA';
 import { chatCompletionText } from './chatFallback';
 import { findSceneDirection, namesCollide, pickSceneDirection, SceneDirection } from './sceneDirections';
+import { CreativeAngle, findCreativeAngle, pickCreativeAngle } from './creativeAngles';
 
 /**
  * 海报概念：命名 → 意象 → 场景 / 道具 / 配色 → 细节部位 → 文案。
@@ -42,15 +43,24 @@ export interface PosterConcept {
   accentColor: string;
   titleSide: TitleSide;
   details: PosterDetailConcept[];
-  /** 本次采用的场景方向（见 sceneDirections.ts）；用户自己给了场景要求时为空 */
+  /** 本次采用的场景方向（见 sceneDirections.ts）；只有“奇观空间”角度才有 */
   sceneDirection?: string;
+  /** 本次创意切入角度（见 creativeAngles.ts） */
+  angle?: string;
+  /** 这张海报围绕的产品卖点，一句话 */
+  sellingPoint?: string;
+  /** 画面的主要视觉元素（3–5 个名词），给下一张避免重复 */
+  keyElements?: string[];
 }
 
-/** 同一产品已经出过的海报概念：新概念要避开这些命名与场景 */
+/** 同一产品已经出过的海报概念：新概念要避开这些命名、角度、卖点与视觉元素 */
 export interface UsedPosterConcept {
   name: string;
   idea?: string;
   sceneDirection?: string;
+  angle?: string;
+  sellingPoint?: string;
+  keyElements?: string[];
 }
 
 export interface PosterConceptInput {
@@ -63,8 +73,10 @@ export interface PosterConceptInput {
   planContext?: string;
   /** 同一产品已出过的概念（旧 → 新），用于避免重名、重复场景 */
   used?: UsedPosterConcept[];
-  /** 本次指定的场景方向；不传时按轮换自动选 */
+  /** 本次指定的场景方向；不传时按轮换自动选（只在奇观空间角度下使用） */
   sceneDirection?: SceneDirection;
+  /** 本次创意切入角度；不传时按轮换自动选 */
+  angle?: CreativeAngle;
 }
 
 // 路由平台目前只开通 gemini-3.6-flash，放最前面省掉两次失败往返
@@ -96,6 +108,10 @@ export function buildConceptPrompt(input: PosterConceptInput): string {
 ${describeDna(input.dna)}
 ${input.productImage ? '（DNA 可能是旧的或不准：颜色、材质、结构凡与产品图不一致的，一律以产品图为准，文案里的颜色词也要按图里真实看到的颜色写。）' : ''}
 ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${input.hint ? `\n[用户要求，优先满足]\n${input.hint}\n` : ''}${
+    input.angle
+      ? `\n[本次创意切入角度（必须采用）]\n${input.angle.label}：${input.angle.brief}\n`
+      : ''
+  }${
     input.sceneDirection
       ? `\n[本次场景方向（必须采用，命名、意象、道具都要和它呼应）]\n${input.sceneDirection.label}：${input.sceneDirection.brief}\n`
       : ''
@@ -103,24 +119,25 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
 [版式（固定，不用你设计）]
 上方是产品主场景大图，左上角（或右上角）放标题区：两字命名 + 一句副标题 + 一行灵感小字；底部一栏三格，每格是一个产品部位的真实特写 + 标题 + 一句短说明。
 
-[怎么构思：先有名字，再让整张图呼应名字]
-1. 命名：两个汉字，有画面感和情绪，从产品最突出的造型、颜色或材质出发，并和场景方向呼应。避开“云栖、栖云、云舒、暖阳”这类用滥了的词。
-2. 意象：名字对应的画面意象，一句话。
-3. 场景：背景是这张海报的灵魂，不能只是“一间好看的客厅”。从意象推出下面五样，缺一不可：
-   - 标志性空间结构：一个大尺度、一眼能记住的造型，占据画面上半部（巨型螺旋天井、环形灯带穹顶、流动的拱形薄壳、连续拱廊、弧形全景舷窗、悬挑的崖顶露台……）。不要平墙、不要普通方盒子房间。
-   - 远景：结构之外能看到的风景（云海、海面落日、城市夜景、雪山湖泊、月面与地球……），提供纵深。
-   - 配色：场景 2–3 个主色，并说明和产品色是“呼应”还是“对比”。例：焦糖色沙发配铜色墙面 + 银色金属 + 蓝天（呼应 + 冷暖对比）；棕色沙发配蓝灰空间与暮色天空（对比）；黑色沙发配暖金灯光与冷白月面（明暗对比）。色彩要饱满、有主次，不要整张图一个灰调。
-   - 时间与光线：明确时刻和主光方向（清晨逆光、正午天光、黄昏侧逆光、夜晚灯带与城市光），要有明暗层次和光斑、倒影、轮廓光这类光效。
-   - 道具呼应：茶几的形状和材质、一件雕塑或摆件、地毯、一对同款抱枕的图案，都要和名字或结构同一套造型语言（弧形结构配弧形茶几与弧线雕塑）。
-4. 标杆案例（学方法，不要照抄）：
-   - 银弧：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几、弧形金属雕塑
-   - 月弧：取自弧形扶手与黑色皮面 → 月球基地全景窗、远处地球、石材圆几、黑金拱形纹样抱枕
-   - 昼梦：取自柔软披覆的扶手 → 流动白纱般的拱形结构、水面与云海、浅色石材平台
-   - 弧光：取自弧线与皮革光泽 → 夜晚都市江景、环形灯带建筑、扭曲金属茶几
-   - 湖岚：取自米白色调 → 湖畔山崖露台、晨曦薄雾、石材圆几
-   - 栖谷：取自两种面料拼接 → 山谷落地窗、日落湖面、石材圆几、暖光
-5. 画面分三层：前景（茶几、地毯边缘，可有少量虚化的植物或水面）、中景（沙发）、远景（标志性结构与风景）。可以大胆、可以超现实，但光影和材质要像真实摄影。
-6. 标题压在画面一侧的上方：那里不要画成一面空墙，而是天空、远景或结构的大曲面，只要明暗均匀、没有密集的小物件即可。
+[怎么构思：先挖卖点，再按角度把卖点变成场景，最后起名]
+0. 挖卖点：看产品图和 DNA，找出这款产品最打动人的 1 个卖点（功能、坐感、材质、颜色、造型、适合的生活方式里选最突出、最具体的一个，如“电动头等舱躺姿”“米白头层真皮”“分段饱满靠背”）。整张海报只讲这一个卖点，场景要让人一眼联想到它。
+1. 场景：按上面的“创意切入角度”，从这个卖点推出场景。背景是这张海报的灵魂，不能只是“一间好看的客厅”，要说清：
+   - 主体环境：是什么地方、什么空间或自然环境，和卖点是什么关系。只有“奇观空间”角度才需要巨型建筑结构；其他角度用真实、具体、有生活或自然质感的环境，不要弧形穹顶、螺旋天井、舷窗这类奇观结构。
+   - 远景或纵深：空间尽头或窗外看到什么（不必每张都是海面、城市夜景、远山）。
+   - 配色：场景 2–3 个主色，说明和产品色是“呼应”还是“对比”。
+   - 时间与光线：明确时刻和主光方向，有明暗层次。
+   - 道具：和卖点同一套语言的道具（功能卖点配书、毛毯、投影光、星空；材质卖点配皮具、工具、织物；色彩卖点配同色系的自然物）。茶几不是必须的，可以是边几、托盘、矮凳、地面上的书，不要每张都是圆形石材茶几。
+2. 命名：两个汉字，有画面感和情绪，从卖点和场景出发。避开“云栖、栖云、云舒、暖阳”这类用滥了的词。
+3. 意象：名字对应的画面意象，一句话。
+4. 参考（学方法，不要照抄，也不要都往奇观建筑上靠）：
+   - 星眠（功能演绎）：取自电动躺与头枕 → 屋顶玻璃观星房，夜空银河，沙发半躺展开，羊毛毯与热茶
+   - 鞍语（材质溯源）：取自头层真皮 → 马术俱乐部鞍具房，深色木墙挂马鞍与缰绳，午后斜光照亮皮面
+   - 燕麦（色彩溯源）：取自米白色 → 晨雾中的燕麦田边木平台，暖白与麦金，逆光颗粒感
+   - 周末（生活时刻）：取自宽大坐深 → 周日早晨的家，阳光、报纸、咖啡、一只趴着的猫
+   - 沙纹（造型同构）：取自分段靠背的起伏 → 白色沙丘的风纹，与靠背节奏呼应，正午硬光
+   - 银弧（奇观空间）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
+5. 画面分三层：前景（地面、地毯边缘或道具）、中景（沙发）、远景（环境与风景）。光影和材质要像真实摄影。
+6. 标题压在画面一侧的上方：那里是天空、远景、墙面大块的光影或结构，明暗均匀、没有密集的小物件即可。
 
 [细节三格]
 只能选产品上真实存在、图里看得见的部位（通常是扶手、靠背、沙发脚，也可以是侧面分割、金属饰条等），不要编造功能、参数、检测或材质承诺。
@@ -128,15 +145,17 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
 [输出]
 只输出一个 JSON 对象，不要 Markdown、不要解释：
 {
+  "sellingPoint": "这张海报讲的卖点，一句话，如“电动头等舱躺姿，一键半躺看星空”",
+  "keyElements": ["画面主要视觉元素 3–5 个名词，如 玻璃观星房、银河、羊毛毯"],
   "name": "两个汉字",
   "subtitle": "副标题，8–12 字（硬性上限 12 字，含标点），用一个逗号分成两个短句，如“柔和之间，自有锋芒”",
   "inspiration": "灵感小字，12–20 字，如“灵感源于柔和弧面与未来建筑的对话”",
   "idea": "名字对应的意象，一句话",
-  "signature": "标志性空间结构，20–50 字：是什么造型、什么材质、在画面什么位置、有多大",
+  "signature": "主体环境，20–50 字：是什么地方或空间、什么材质、在画面什么位置（奇观空间角度才写巨型结构）",
   "vista": "远景，15–40 字",
   "palette": "场景配色，20–50 字：2–3 个主色 + 与产品色的关系（呼应或对比）",
   "lighting": "时间与光线，20–50 字：时刻、主光方向、光效",
-  "props": "道具呼应，30–70 字：茶几（形状与材质）、雕塑或摆件、地毯、一对同款抱枕的图案",
+  "props": "道具呼应，30–70 字：和卖点同一语言的道具（边几或茶几、摆件、织物、地毯、一对同款抱枕的图案）",
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
   "packaging": "只看产品图：沙发上如果真实带有包装膜或品牌标识（例如底部透明包装膜上印着红蓝色品牌字样），用一句话写明位置、颜色和图案，如“沙发底部座位正面有透明包装膜，印红色飞机图标和蓝色 CHEERS 字样”；图里没有就输出空字符串 \\"\\"，不要猜、不要编",
   "stripColor": "#RRGGBB，海报底部细节栏的底色：夜景、星际等深色场景用与场景同色系的深色（如藏蓝 #14213A、炭黑 #1C1A19）；其余用暖白 #F7F3EE",
@@ -167,10 +186,27 @@ function usedBlock(used: UsedPosterConcept[] | undefined): string {
   const list = (used || []).filter(u => u?.name).slice(-8);
   if (list.length === 0) return '';
   const lines = list.map(u => {
-    const dir = findSceneDirection(u.sceneDirection);
-    return `- ${u.name}${dir ? `（${dir.label}）` : ''}${u.idea ? `：${u.idea}` : ''}`;
+    const tags = [findCreativeAngle(u.angle)?.label, findSceneDirection(u.sceneDirection)?.label].filter(Boolean).join(' · ');
+    return [
+      `- ${u.name}${tags ? `（${tags}）` : ''}${u.idea ? `：${u.idea}` : ''}`,
+      u.sellingPoint ? `卖点：${u.sellingPoint}` : '',
+      u.keyElements?.length ? `元素：${u.keyElements.join('、')}` : ''
+    ]
+      .filter(Boolean)
+      .join('；');
   });
-  return `\n[这款产品已经做过的海报，这次必须明显不同]\n${lines.join('\n')}\n命名不能重复，也不能是同样的字换个顺序或只换一个字（做过“云栖”就不能叫“栖云”“云憩”）；意象、空间、光线和道具都要换一个思路。\n`;
+  const elements = Array.from(new Set(list.flatMap(u => u.keyElements || []))).slice(0, 24);
+  return [
+    '',
+    '[这款产品已经做过的海报，这次必须明显不同]',
+    ...lines,
+    '命名不能重复，也不能是同样的字换个顺序或只换一个字（做过“云栖”就不能叫“栖云”“云憩”）；卖点尽量换一个（同一卖点也要换完全不同的表现）；意象、空间、光线、配色都要换。',
+    elements.length ? `这些视觉元素已经用过，这次不要再作为画面主体：${elements.join('、')}。` : '',
+    '另外，下面这些已经被用滥，除非角度就是奇观空间，否则不要用：弧形穹顶/螺旋天井/弧形舷窗、落地窗外的海面落日或城市夜景、圆形石材茶几。',
+    ''
+  ]
+    .filter((line, i, arr) => line || i === 0 || i === arr.length - 1)
+    .join('\n');
 }
 
 function cut(text: unknown, max: number, fallback = ''): string {
@@ -220,7 +256,12 @@ export function sanitizeConcept(raw: any): PosterConcept {
     accentColor: typeof raw?.accentColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.accentColor.trim()) ? raw.accentColor.trim() : '#A8743F',
     titleSide: raw?.titleSide === 'right' ? 'right' : 'left',
     details,
-    sceneDirection: findSceneDirection(raw?.sceneDirection)?.id
+    sceneDirection: findSceneDirection(raw?.sceneDirection)?.id,
+    angle: findCreativeAngle(raw?.angle)?.id,
+    sellingPoint: cut(raw?.sellingPoint, 40, ''),
+    keyElements: Array.isArray(raw?.keyElements)
+      ? raw.keyElements.filter((x: any) => typeof x === 'string' && x.trim()).slice(0, 5).map((x: string) => cut(x, 12))
+      : []
   };
 }
 
@@ -230,9 +271,11 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
 
   // 用户自己提了场景要求时不强加方向；否则按这款产品用过的方向轮换
   const used = (input.used || []).filter(u => u && typeof u.name === 'string' && u.name.trim());
+  // 先按这款产品用过的角度轮换出一个创意角度；只有“奇观空间”角度才再选具体场景方向
+  const angle = input.angle || (input.hint ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
   const direction =
     input.sceneDirection ||
-    (input.hint ? undefined : pickSceneDirection(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
+    (angle?.id === 'spectacle' ? pickSceneDirection(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))) : undefined);
 
   const imageParts: any[] = input.productImage?.data
     ? [{ inlineData: { mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') } }]
@@ -242,8 +285,10 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
   let collided: PosterConcept | null = null;
   // 撞名时把撞到的名字也列进“已做过”再试一次；仍撞名就接受，不让整个流程失败
   for (let attempt = 0; attempt < 2; attempt++) {
-    const avoid = collided ? [...used, { name: collided.name, idea: collided.idea, sceneDirection: collided.sceneDirection }] : used;
-    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction }) }];
+    const avoid = collided
+      ? [...used, { name: collided.name, idea: collided.idea, sceneDirection: collided.sceneDirection, angle: collided.angle, sellingPoint: collided.sellingPoint, keyElements: collided.keyElements }]
+      : used;
+    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, angle }) }];
     let concept: PosterConcept | null = null;
     for (const model of CONCEPT_MODELS) {
       try {
@@ -268,7 +313,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       // gemini 原生通道全部不可用时，改走 chat/completions 的对话模型
       try {
         const fb = await chatCompletionText({
-          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction }),
+          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, angle }),
           images: input.productImage?.data
             ? [{ mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') }]
             : [],
@@ -285,6 +330,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
     }
     if (!concept) break;
     concept.sceneDirection = direction?.id;
+    concept.angle = angle?.id;
     const clash = avoid.find(u => namesCollide(u.name, concept!.name));
     if (!clash) return concept;
     console.warn(`[PosterConcept] 命名「${concept.name}」与已做过的「${clash.name}」重复，重新构思`);
@@ -309,7 +355,8 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): str
   }
 
   const sceneLines = [
-    concept.signature ? `标志性空间结构：${concept.signature}` : '',
+    concept.sellingPoint ? `要表现的卖点：${concept.sellingPoint}` : '',
+    concept.signature ? `${concept.angle && concept.angle !== 'spectacle' ? '主体环境' : '标志性空间结构'}：${concept.signature}` : '',
     concept.vista ? `远景：${concept.vista}` : '',
     concept.palette ? `配色：${concept.palette}` : '',
     concept.lighting ? `光线：${concept.lighting}` : '',
@@ -322,13 +369,17 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): str
 ${concept.scene}
 ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 [背景是这张图的重点]
-背景不能是一面平墙或普通房间：标志性空间结构要大、要占据画面上半部，并向远处延伸出纵深；结构之外能看到远景。
-画面分三层：前景（茶几与地毯，可有少量虚化的植物、水面或台阶）、中景（沙发）、远景（结构与风景）。
+${
+    concept.angle && concept.angle !== 'spectacle'
+      ? '背景要把上面的卖点和主体环境讲清楚，一眼能看出是什么地方、什么时刻；真实、具体、有质感，有纵深和层次。不要画成奇观建筑（巨型弧形穹顶、螺旋天井、舷窗），也不要套用“落地窗外海面落日”的套路。'
+      : '背景不能是一面平墙或普通房间：标志性空间结构要大、要占据画面上半部，并向远处延伸出纵深；结构之外能看到远景。'
+  }
+画面分三层：前景（地面、地毯边缘或道具，可有少量虚化）、中景（沙发）、远景（环境与风景）。
 色彩饱满、有主次和冷暖或明暗对比，不要整张图一个灰调；光线有方向、有层次，带光斑、倒影或轮廓光。
 
 [构图]
 横幅 16:9，广角镜头（约 24–28mm）、机位略低，空间显得开阔高大。
-参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。前方有茶几，沙发下有地毯，沙发上摆一对同款抱枕。
+参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。道具按[场景]描述摆放（不一定是茶几），沙发上摆一对同款抱枕。
 画面${side}上方（约画面宽度 40%、高度 40% 的区域）后期要排版标题：这里是天空、远景或结构的大曲面，明暗均匀，不放植物、树枝、灯具、密集的小物件和强高光点（植物只能放在画面另一侧或前景角落）；但不要画成一面空墙。
 商业中画幅相机质感，材质和光影像真实摄影。
 

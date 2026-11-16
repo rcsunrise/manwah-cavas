@@ -40,37 +40,24 @@ export interface AgentModelResolutionResult {
 
 export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
   {
-    id: 'gemini-3.7-flash',
-    displayName: 'Gemini 3.7 Flash',
-    upstreamModel: 'gemini-3.6-flash', // 平台未开通 3.7，实际走 3.6
+    id: 'gemini-3.6-flash',
+    displayName: 'Gemini 3.6 Flash',
+    upstreamModel: 'gemini-3.6-flash',
     providerGroup: 'google_default',
-    aliases: ['gemini-3.7-flash-thinking', 'google/gemini-3.7-flash', 'google/gemini-3.7-flash-thinking', 'gemini-2.5-flash', 'google/gemini-2.5-flash'],
+    // 路由平台只开通了 3.6；旧的 3.7 / 3.8 / 2.5 选项（已存的偏好、历史请求）都按别名落到这里
+    aliases: [
+      'google/gemini-3.6-flash',
+      'gemini-3.7-flash', 'gemini-3.7-flash-thinking', 'google/gemini-3.7-flash', 'google/gemini-3.7-flash-thinking',
+      'gemini-3.8-flash', 'gemini-3.8-flash-thinking', 'google/gemini-3.8-flash', 'google/gemini-3.8-flash-thinking',
+      'gemini-2.5-flash', 'google/gemini-2.5-flash'
+    ],
     transport: 'gemini_native',
     providers: ['routerhub', 'vectorengine', 'tiantoken'],
     structuredOutput: true,
     previousResponseId: false,
     reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high'],
     capabilities: {
-      displayName: 'Gemini 3.7 Flash',
-      chatCompletions: true,
-      responses: true,
-      verificationStatus: 'verified',
-      providerGroup: 'google_default'
-    }
-  },
-  {
-    id: 'gemini-3.8-flash',
-    displayName: 'Gemini 3.8 Flash',
-    upstreamModel: 'gemini-3.6-flash', // 平台未开通 3.8，实际走 3.6
-    providerGroup: 'google_default',
-    aliases: ['gemini-3.8-flash-thinking', 'google/gemini-3.8-flash', 'google/gemini-3.8-flash-thinking'],
-    transport: 'gemini_native',
-    providers: ['routerhub', 'vectorengine', 'tiantoken'],
-    structuredOutput: true,
-    previousResponseId: false,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high'],
-    capabilities: {
-      displayName: 'Gemini 3.8 Flash',
+      displayName: 'Gemini 3.6 Flash',
       chatCompletions: true,
       responses: true,
       verificationStatus: 'verified',
@@ -151,49 +138,23 @@ export const AGENT_MODEL_REGISTRY: AgentModelCapability[] = [
     }
   },
   {
-    id: 'gpt-5.6-luna',
-    displayName: 'GPT-5.6 Luna',
-    upstreamModel: 'gpt-6.1-sol', // 平台未开通 luna
+    id: 'gpt-6.1-sol',
+    displayName: 'GPT-6.1 Sol',
+    upstreamModel: 'gpt-6.1-sol',
     providerGroup: 'Codex专属',
-    aliases: ['openai/gpt-5.6-luna'],
+    // 平台没有 gpt-5.6-luna / gpt-5.5，旧选项按别名落到这里
+    aliases: ['openai/gpt-6.1-sol', 'gpt-5.6-luna', 'openai/gpt-5.6-luna', 'gpt-5.5', 'openai/gpt-5.5'],
     transport: 'openai_responses',
     providers: ['routerhub', 'vectorengine', 'tiantoken'],
     structuredOutput: true,
     previousResponseId: false,
     reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
     capabilities: {
-      displayName: 'GPT-5.6 Luna',
-      chatCompletions: 'pending_verification',
-      responses: 'pending_verification',
-      verificationStatus: 'pending_verification',
-      providerGroup: 'Codex专属'
-    }
-  },
-  {
-    id: 'gpt-5.5',
-    displayName: 'GPT-5.5',
-    upstreamModel: 'gpt-6.1-sol', // 平台未开通 5.5
-    providerGroup: 'current_verified_group',
-    aliases: ['openai/gpt-5.5'],
-    transport: 'openai_responses',
-    providers: ['routerhub', 'vectorengine', 'tiantoken'],
-    structuredOutput: true,
-    previousResponseId: true,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
-    capabilities: {
-      displayName: 'GPT-5.5',
+      displayName: 'GPT-6.1 Sol',
       chatCompletions: true,
       responses: true,
       verificationStatus: 'verified',
-      providerGroup: 'current_verified_group'
-    },
-    billing: {
-      billingSource: 'vectorengine_internal_reference',
-      billingMode: 'blended_total_tokens',
-      usdPerMillionTotalTokens: 4,
-      currency: 'USD',
-      unit: 'per_1m_tokens',
-      internalReferencePrice: 4
+      providerGroup: 'Codex专属'
     }
   }
 ];

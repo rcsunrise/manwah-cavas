@@ -1581,8 +1581,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             title="选择 Agent G 思考与推理模型"
           >
             <option value="gpt-6">👑 GPT-6 Astra</option>
-            <option value="gemini-3.8-flash">🧠 Gemini 3.8 Flash</option>
-            <option value="gemini-3.7-flash">⚡ Gemini 3.7 Flash</option>
+            <option value="gpt-6.1-sol">🧠 GPT-6.1 Sol</option>
+            <option value="gemini-3.6-flash">⚡ Gemini 3.6 Flash</option>
           </select>
 
           {conversationsList.length > 0 && onSelectConversation && (
@@ -2280,8 +2280,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       className="w-full rounded-lg border border-[#E5E0D8] bg-white px-2 py-2 text-[10px] text-[#2C2A29] outline-none focus:border-[#B28C5A]"
                     >
                       <option value="gpt-6">GPT-6（旗舰全模态 Astra·最强全案企划）</option>
-                      <option value="gemini-3.8-flash">Gemini 3.8 Flash（新一代·推理更强）</option>
-                      <option value="gemini-3.7-flash">Gemini 3.7 Flash（混合推理·速度快）</option>
+                      <option value="gpt-6.1-sol">GPT-6.1 Sol（推理强·速度快）</option>
+                      <option value="gemini-3.6-flash">Gemini 3.6 Flash（最快·看图准）</option>
                     </select>
                   </label>
                   <label className="space-y-1">

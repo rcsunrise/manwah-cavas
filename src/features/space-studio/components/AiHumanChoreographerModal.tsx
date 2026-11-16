@@ -35,35 +35,28 @@ import {
   mapStudioSlotsToAssignments
 } from '../data/choreographyPresets';
 
-// 排序与说明来自 2026-11-03 实测（当前镜头图 + 人物参考图，1280px）
+// 只列路由平台实际开通的模型（2026-11-16 起 3.7 / 3.8 / 2.5 / 3.1 Pro 均不可用）
 export const CHOREOGRAPHY_MODELS = [
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    badge: '默认推荐 · 最快最细',
-    tag: '⚡ 默认 · 约 20 秒',
-    description: '识别人物身份、座位、手持物和视线互动最完整'
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    badge: '默认推荐 · 最快',
+    tag: '⚡ 默认',
+    description: '识别人物身份、座位、手持物和视线互动，返回最快'
   },
   {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
-    badge: '备用 · 稳定',
-    tag: '💎 约 25 秒',
-    description: '座位判断准确，动作描述偏简短'
+    id: 'gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
+    badge: '推理更强',
+    tag: '🧠 备用',
+    description: '动作与互动描述更细，速度稍慢'
   },
   {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    badge: '描述细腻',
-    tag: '约 35 秒',
-    description: '描述细腻，但响应最慢'
-  },
-  {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    badge: '轻量',
-    tag: '约 25 秒',
-    description: '动作描述过于简略，脚托状态偶有误判，不建议'
+    id: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    badge: '空间判断',
+    tag: '💎 备用',
+    description: '座位与空间关系判断准，偶有响应慢'
   }
 ];
 

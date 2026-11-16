@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { startVisibilityPoll } from '../visibilityPoll';
+import { startVisibilityPoll, __markUserActivity, __setLastActivity } from '../visibilityPoll';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 
 function fakeDocument(state: 'visible' | 'hidden') {
+  __setLastActivity(Date.now());
   const listeners: Array<() => void> = [];
   const doc: any = {
     visibilityState: state,
@@ -43,6 +44,39 @@ describe('startVisibilityPoll', () => {
     doc.fire();
     await vi.advanceTimersByTimeAsync(0);
     expect(tick).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
+
+describe('用户闲置', () => {
+  it('超过 2 分钟没操作就停，一有操作立即拉', async () => {
+    vi.useFakeTimers();
+    fakeDocument('visible');
+    __setLastActivity(Date.now());
+    const tick = vi.fn(async () => 30_000);
+    const stop = startVisibilityPoll(tick);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    // 0、30、60、90、120 秒各一次；之后闲置不再拉
+    expect(tick.mock.calls.length).toBeLessThanOrEqual(5);
+    const before = tick.mock.calls.length;
+    __markUserActivity();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tick.mock.calls.length).toBe(before + 1);
+    stop();
+  });
+
+  it('evenIfIdle 时闲置也继续拉（视频任务进行中）', async () => {
+    vi.useFakeTimers();
+    fakeDocument('visible');
+    __setLastActivity(Date.now() - 10 * 60_000);
+    const tick = vi.fn(async () => ({ delay: 3_000, evenIfIdle: true }));
+    const stop = startVisibilityPoll(tick);
+    // 第一次跑之前还不知道有任务：闲置时第一次也会被跳过，所以先模拟一次操作
+    __markUserActivity();
+    await vi.advanceTimersByTimeAsync(0);
+    __setLastActivity(Date.now() - 10 * 60_000);
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(tick.mock.calls.length).toBeGreaterThanOrEqual(4);
     stop();
   });
 });
