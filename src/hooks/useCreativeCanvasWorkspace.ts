@@ -1991,6 +1991,7 @@ export function useCreativeCanvasWorkspace(
       return;
     }
     const targetTitle = (target.data as any)?.title || (target.data as any)?.screenTitle || '目标图片';
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: {
         title: `修改图中文字：${params.oldText ? `「${params.oldText}」→` : ''}「${newText}」`,
@@ -2073,6 +2074,7 @@ export function useCreativeCanvasWorkspace(
       return;
     }
     const targetTitle = (target.data as any)?.title || (target.data as any)?.screenTitle || '目标画面';
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: `修改画面：${instruction.slice(0, 24)}${instruction.length > 24 ? '…' : ''}`, status: 'running', detail: `${targetTitle} · 产品保持不变，约 1 分钟` }
     });
@@ -2318,6 +2320,7 @@ export function useCreativeCanvasWorkspace(
     prompt: string;
     model: string;
     version?: number;
+    durationMs?: number;
   }) => {
     const screenIndex = detail.parentSceneIndex || 1;
     const currentNodes = nodesRef.current || nodes;
@@ -2361,6 +2364,7 @@ export function useCreativeCanvasWorkspace(
         model: detail.model || 'gpt-image-2-c',
         provider: detail.model?.includes('gpt') ? 'openai' : 'google',
         generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        generationDurationMs: detail.durationMs,
         version: versionNum,
         activeVersionCode: versionCode,
         parentVersionId: parentNode?.id || `scene-${screenIndex}`,
@@ -2420,6 +2424,7 @@ export function useCreativeCanvasWorkspace(
       console.warn(`第 ${screenIndex} 屏图片生成正在进行中，忽略重复触发`);
       return false;
     }
+    const sceneGenStartedAt = Date.now();
 
     // 「生成带字海报」统一走模板 A：文本模型先构思名字与文案 → 无字场景图 → 后端真实字体排版 + 细节裁切。
     // 不再让图像模型自己画字。批量生成（fromBatch）按屏排队、版式各异，仍走原链路；纯净底图也不受影响。
@@ -2823,6 +2828,7 @@ export function useCreativeCanvasWorkspace(
               model: result.actualModel || modelToUse,
               provider: result.provider || (isGpt ? 'openai' : 'google'),
               generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              generationDurationMs: Date.now() - sceneGenStartedAt,
               version,
               reviewStatus: 'pendingReview',
               prompt: fullPrompt,
@@ -3044,6 +3050,7 @@ export function useCreativeCanvasWorkspace(
     templatePosterRunningRef.current.add(productKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const taskTitle = productNodes.length > 1 ? `模板 A 海报 · ${productLabel}` : '模板 A 海报';
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: taskTitle, status: 'running', detail: '1/3 构思命名、场景与细节文案…' }
     });
@@ -3106,6 +3113,7 @@ export function useCreativeCanvasWorkspace(
             aspectRatio: '4:3',
             model: hero.model,
             generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
             version: 1,
             reviewStatus: 'pendingReview',
             prompt: hero.prompt,
@@ -3194,6 +3202,7 @@ export function useCreativeCanvasWorkspace(
 
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: productNodes.length > 1 ? `面料海报 · ${productLabel}` : '沙发面料海报', status: 'running', detail: '1/3 构思皮革色、抱枕图案与氛围照…' }
     });
@@ -3268,6 +3277,7 @@ export function useCreativeCanvasWorkspace(
             dimensions: `${composed.width}x${composed.height}`,
             aspectRatio: '3:2',
             generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
             version: 1,
             reviewStatus: 'pendingReview',
             templatePoster: { template: 'B', productNodeId: productKey, concept, layout, code, label, details: composed.details, assets: { sofa: sofaR.value, pillow: pillowR.status === 'fulfilled' ? pillowR.value : null, moods: moodImages } }
@@ -3357,6 +3367,7 @@ export function useCreativeCanvasWorkspace(
 
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: '修改面料海报', status: 'running', detail: regenCount ? `重出 ${regenCount} 张图（每张扣点），其余沿用已有素材…` : '沿用已有素材重新排版…' }
     });
@@ -3422,6 +3433,7 @@ export function useCreativeCanvasWorkspace(
             screenTitle: code || (target.data as any).screenTitle,
             dimensions: `${composed.width}x${composed.height}`,
             generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
             version,
             reviewStatus: 'pendingReview',
             templatePoster: {
@@ -3632,6 +3644,7 @@ export function useCreativeCanvasWorkspace(
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const fabricNodeId = upsertFabricMainNode(main.id, main.name, main.previewUrl, 'running');
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', { taskCard: { title: `面料色卡海报 · ${main.name}`, status: 'running', detail: '1/4 读取面料颜色并挑选配色…' } });
     try {
       const swatchAssets = await pickTextileSwatches(main, params, params?.textileSwatchCount || 6, (done, total) =>
@@ -3732,6 +3745,7 @@ export function useCreativeCanvasWorkspace(
             dimensions: `${composed.width}x${composed.height}`,
             aspectRatio: '4:3',
             generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
             version: 1,
             reviewStatus: 'pendingReview',
             templatePoster: {
@@ -3819,6 +3833,7 @@ export function useCreativeCanvasWorkspace(
 
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: '修改面料色卡海报', status: 'running', detail: params?.textileMoods ? `重出 ${params.textileMoods} 张氛围图（每张扣点），其余沿用…` : '沿用已有面料重新排版…' }
     });
@@ -3939,6 +3954,7 @@ export function useCreativeCanvasWorkspace(
             rawImageUrl: posterUrl,
             dimensions: `${composed.width}x${composed.height}`,
             generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
             version,
             reviewStatus: 'pendingReview',
             templatePoster: {

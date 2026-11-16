@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { openImageLightbox } from './ImageLightbox';
 import {
   Sparkles,
   Send,
@@ -3045,9 +3046,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     {msg.images && msg.images.length > 0 && (
                       <div className={`flex flex-wrap gap-1.5 ${msg.text ? 'mb-2' : ''}`}>
                         {msg.images.map(url => (
-                          <a key={url} href={url} target="_blank" rel="noreferrer" className="block">
+                          <button key={url} type="button" onClick={() => openImageLightbox(url, '图片')} title="查看大图" className="block cursor-zoom-in">
                             <img src={url} alt="" className="w-24 h-24 object-cover rounded-lg border border-white/20" />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -3190,9 +3191,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
                     {msg.imageCard && (
                       <div className="mt-2.5 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#FAF8F5]">
-                        <a href={msg.imageCard.imageUrl} target="_blank" rel="noreferrer" title="查看大图" className="block bg-white">
+                        <button
+                          type="button"
+                          onClick={() => openImageLightbox(msg.imageCard!.imageUrl, msg.imageCard!.title || '成图')}
+                          title="查看大图"
+                          className="block w-full bg-white cursor-zoom-in"
+                        >
                           <img src={msg.imageCard.imageUrl} alt={msg.imageCard.title || '成图'} className="w-full max-h-80 object-contain" />
-                        </a>
+                        </button>
                         <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2">
                           <button
                             type="button"

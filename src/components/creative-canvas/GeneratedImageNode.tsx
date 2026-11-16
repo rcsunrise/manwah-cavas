@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { formatDuration } from '../../utils/taskTiming';
 import { createPortal } from 'react-dom';
 import { Handle, Position, NodeResizer, useReactFlow, useStore } from '@xyflow/react';
 import {
@@ -168,6 +169,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
     model: string;
     action: 'add_new_node' | 'replace_current';
     maskPreviewUrl?: string;
+    durationMs?: number;
   }) => {
     if (result.action === 'replace_current') {
       const oldVersion: GeneratedImageNodeVersion = {
@@ -189,7 +191,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
         activeVersionCode: nextVerCode,
         versionHistory: [...(data.versionHistory || []), oldVersion],
         prompt: `${data.prompt || ''}\n[局部重绘]: ${result.prompt}`,
-        model: result.model
+        model: result.model,
+        generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        generationDurationMs: result.durationMs
       });
     } else {
       window.dispatchEvent(
@@ -203,6 +207,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
             newImageUrl: result.imageUrl,
             prompt: result.prompt,
             model: result.model,
+            durationMs: result.durationMs,
             version: (data.version || 1) + 1
           }
         })
@@ -715,6 +720,11 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                   </span>
                 )}
                 <span>{generatedAt || '刚刚'}</span>
+                {typeof (data as any).generationDurationMs === 'number' && (data as any).generationDurationMs > 0 && (
+                  <span className="text-[#8C6F43] font-bold" title="从开始生成到出图的用时">
+                    · 用时 {formatDuration((data as any).generationDurationMs)}
+                  </span>
+                )}
               </div>
             </div>
 

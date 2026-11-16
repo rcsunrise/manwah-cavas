@@ -1,4 +1,5 @@
 import React from 'react';
+import { ImageLightboxHost } from '../../components/creative-canvas/ImageLightbox';
 import { startVisibilityPoll } from '../../utils/visibilityPoll';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
@@ -792,6 +793,7 @@ export default function CreativeCanvasPage() {
 
   return (
     <div className="w-screen h-screen h-[100dvh] flex flex-col bg-[#FAF8F5] overflow-hidden fixed inset-0 z-50">
+      <ImageLightboxHost />
       <WorkflowHeader
         workspaceName={workspaceId ? `企划空间 #${workspaceId}` : '新建立体视觉企划案'}
         saveStatus={saveStatus}

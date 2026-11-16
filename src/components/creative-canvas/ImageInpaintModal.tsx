@@ -46,6 +46,8 @@ export interface ImageInpaintModalProps {
     model: string;
     action: 'add_new_node' | 'replace_current';
     maskPreviewUrl?: string;
+    /** 这次重绘从点击到出图的用时（毫秒） */
+    durationMs?: number;
   }) => void;
 }
 
@@ -89,6 +91,7 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
 
   // Generation & Results state
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [genDurationMs, setGenDurationMs] = useState<number | undefined>(undefined);
   const [genError, setGenError] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [comparePosition, setComparePosition] = useState<number>(50); // 0-100 for slider
@@ -415,6 +418,8 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
 
     setIsGenerating(true);
     setGenError(null);
+    setGenDurationMs(undefined);
+    const genStartedAt = Date.now();
 
     try {
       // Build inpainting prompt
@@ -494,6 +499,7 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
       }
 
       setGeneratedImageUrl(extractedUrl);
+      setGenDurationMs(Date.now() - genStartedAt);
     } catch (err: any) {
       console.error('Inpainting failed:', err);
       setGenError(err?.message || '局部重绘请求异常，请检查网络或更换模型重试');
@@ -966,6 +972,7 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
                         imageUrl: generatedImageUrl,
                         prompt: prompt || '局部重绘',
                         model: modelToUse,
+                        durationMs: genDurationMs,
                         action: 'add_new_node'
                       });
                       onClose();
@@ -984,6 +991,7 @@ export const ImageInpaintModal: React.FC<ImageInpaintModalProps> = ({
                         imageUrl: generatedImageUrl,
                         prompt: prompt || '局部重绘',
                         model: modelToUse,
+                        durationMs: genDurationMs,
                         action: 'replace_current'
                       });
                       onClose();

@@ -8,6 +8,7 @@ import {
   AgentTaskCard
 } from '../../../types/creativeCanvas';
 import { formatDuration } from '../../../utils/taskTiming';
+import { openImageLightbox } from '../ImageLightbox';
 
 interface AgentMessageCardsProps {
   message: AgentMessage;
@@ -182,9 +183,14 @@ const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
       {card.detail && <p className="text-[10px] text-stone-500 leading-relaxed">{card.detail}</p>}
       <TaskTimingView card={card} />
       {card.status === 'done' && card.resultImageUrl && (
-        <a href={card.resultImageUrl} target="_blank" rel="noreferrer" className="block mt-1.5 rounded-lg overflow-hidden border border-[#E5E0D8] bg-white" title="查看大图">
+        <button
+          type="button"
+          onClick={() => openImageLightbox(card.resultImageUrl!, card.title)}
+          className="block w-full mt-1.5 rounded-lg overflow-hidden border border-[#E5E0D8] bg-white cursor-zoom-in"
+          title="查看大图"
+        >
           <img src={card.resultImageUrl} alt="结果图" className="w-full max-h-56 object-contain" />
-        </a>
+        </button>
       )}
       {card.status === 'done' && card.locate && (
         <button
