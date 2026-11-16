@@ -249,6 +249,12 @@ export interface AgentTaskCard {
   locate?: AgentLocateTarget;
   /** 结果图（在对话里直接展示） */
   resultImageUrl?: string;
+  /** 生成耗时统计（毫秒时间戳），见 src/utils/taskTiming.ts */
+  startedAt?: number;
+  stepStartedAt?: number;
+  finishedAt?: number;
+  /** 各步骤耗时 */
+  steps?: { label: string; ms: number }[];
 }
 
 /** 画布定位目标：优先按节点 id，其次按节点类型 + 屏号查找 */

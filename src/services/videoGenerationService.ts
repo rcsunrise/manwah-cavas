@@ -17,6 +17,9 @@ export interface VideoConfigResponse {
   };
 }
 
+const CANVAS_JOBS_REUSE_MS = 2_000;
+const canvasJobsCache = new Map<string, { promise: Promise<VideoJob[]>; at: number; pending: boolean }>();
+
 export class VideoGenerationService {
   /**
    * Fetch configured video capabilities and storage status
@@ -170,12 +173,37 @@ export class VideoGenerationService {
    * Lists all video jobs for a canvas
    */
   public static async fetchCanvasJobs(canvasId: string): Promise<VideoJob[]> {
-    const res = await fetch(`/api/canvases/${canvasId}/video-jobs`);
-    if (!res.ok) {
-      throw new Error(`Failed to fetch canvas video jobs (${res.status})`);
+    // 同一画布有多处在拉（画布页 + 视频面板 + 对话面板）：合并成一个请求，结果 2 秒内复用
+    const cached = canvasJobsCache.get(canvasId);
+    if (cached && (cached.pending || Date.now() - cached.at < CANVAS_JOBS_REUSE_MS)) return cached.promise;
+    const promise = (async () => {
+      const res = await fetch(`/api/canvases/${canvasId}/video-jobs`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch canvas video jobs (${res.status})`);
+      }
+      const data = await res.json();
+      return (data.jobs || []) as VideoJob[];
+    })();
+    const entry = { promise, at: Date.now(), pending: true };
+    canvasJobsCache.set(canvasId, entry);
+    try {
+      const jobs = await promise;
+      entry.at = Date.now();
+      return jobs;
+    } catch (err) {
+      canvasJobsCache.delete(canvasId);
+      throw err;
+    } finally {
+      entry.pending = false;
     }
-    const data = await res.json();
-    return data.jobs || [];
+  }
+
+  /**
+   * 画布视频任务的兜底轮询间隔（主要靠 SSE 推送）：
+   * 有进行中任务 3 秒；空闲 60 秒；页面在后台时不拉，回到前台立即拉一次。
+   */
+  public static nextJobsPollDelay(hasActiveJob: boolean): number {
+    return hasActiveJob ? 3_000 : 60_000;
   }
 
   /**

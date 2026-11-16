@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { startVisibilityPoll } from '../../utils/visibilityPoll';
 import { createPortal } from 'react-dom';
 import {
   FolderOpen,
@@ -133,9 +134,11 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
 
   useEffect(() => {
     updateLocalState();
-    checkBridgeStatus();
-    const timer = setInterval(checkBridgeStatus, 10000);
-    return () => clearInterval(timer);
+    // 设备在线状态 30 秒一查；页面在后台不查，回到前台立即查一次
+    return startVisibilityPoll(async () => {
+      await checkBridgeStatus();
+      return 30_000;
+    });
   }, [updateLocalState, checkBridgeStatus]);
 
   // Handle Authorize via browser API

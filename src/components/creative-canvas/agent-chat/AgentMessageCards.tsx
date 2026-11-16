@@ -1,5 +1,5 @@
-import React from 'react';
-import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight, Crosshair } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight, Crosshair, Timer } from 'lucide-react';
 import {
   AgentActionOption,
   AgentClarifyCard,
@@ -7,6 +7,7 @@ import {
   AgentPlanCard,
   AgentTaskCard
 } from '../../../types/creativeCanvas';
+import { formatDuration } from '../../../utils/taskTiming';
 
 interface AgentMessageCardsProps {
   message: AgentMessage;
@@ -120,6 +121,48 @@ const PlanCardView: React.FC<{
   </div>
 );
 
+/** 生成耗时：执行中每秒刷新“已用 / 本步”，结束后显示总耗时与各步骤耗时 */
+const TaskTimingView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
+  const running = card.status === 'running';
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running || !card.startedAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [running, card.startedAt]);
+  if (!card.startedAt) return null;
+
+  const total = (running ? now : card.finishedAt ?? now) - card.startedAt;
+  const steps = card.steps || [];
+  return (
+    <div className="pt-1 space-y-0.5">
+      <div className="flex items-center gap-1 text-[10px] font-mono tabular-nums text-stone-500">
+        <Timer className="w-3 h-3 shrink-0" />
+        {running ? (
+          <span>
+            已用 {formatDuration(total)}
+            {steps.length > 0 && card.stepStartedAt ? ` · 本步 ${formatDuration(now - card.stepStartedAt)}` : ''}
+          </span>
+        ) : (
+          <span className="font-bold text-stone-600">
+            {card.status === 'done' ? '总耗时' : '耗时'} {formatDuration(total)}
+          </span>
+        )}
+      </div>
+      {steps.length > 1 && (
+        <ul className="pl-4 space-y-0.5">
+          {steps.map((s, i) => (
+            <li key={i} className="flex items-baseline justify-between gap-2 text-[10px] text-stone-400">
+              <span className="truncate">{s.label}</span>
+              <span className="shrink-0 font-mono tabular-nums">{formatDuration(s.ms)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
   const meta = {
     running: { icon: <Loader2 className="w-3.5 h-3.5 animate-spin text-[#B28C5A]" />, label: '执行中', tone: 'bg-amber-50 text-amber-700' },
@@ -137,6 +180,7 @@ const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
         <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold ${meta.tone}`}>{meta.label}</span>
       </div>
       {card.detail && <p className="text-[10px] text-stone-500 leading-relaxed">{card.detail}</p>}
+      <TaskTimingView card={card} />
       {card.status === 'done' && card.resultImageUrl && (
         <a href={card.resultImageUrl} target="_blank" rel="noreferrer" className="block mt-1.5 rounded-lg overflow-hidden border border-[#E5E0D8] bg-white" title="查看大图">
           <img src={card.resultImageUrl} alt="结果图" className="w-full max-h-56 object-contain" />

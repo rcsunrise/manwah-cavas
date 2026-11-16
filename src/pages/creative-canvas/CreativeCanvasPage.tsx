@@ -1,4 +1,5 @@
 import React from 'react';
+import { startVisibilityPoll } from '../../utils/visibilityPoll';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ReactFlowProvider } from '@xyflow/react';
 import { WorkflowHeader } from '../../components/creative-canvas/WorkflowHeader';
@@ -544,12 +545,8 @@ export default function CreativeCanvasPage() {
       );
     };
 
-    // 1. Initial sync & polling fallback to guarantee updates even if SSE drops.
-    // 有进行中的任务时 2.5s 轮询一次；没有时退到 15s，避免空转请求
-    let cancelled = false;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const syncActiveJobs = async () => {
+    // 1. 首次同步 + 兜底轮询（SSE 断了也能拿到更新）：有进行中任务 3 秒，空闲 60 秒，页面在后台不拉
+    const stopPoll = startVisibilityPoll(async () => {
       let hasActiveJob = false;
       try {
         const jobs = await VideoGenerationService.fetchCanvasJobs(effectiveCanvasId);
@@ -562,12 +559,8 @@ export default function CreativeCanvasPage() {
       } catch (e) {
         // quiet fallback
       }
-      if (!cancelled) {
-        pollTimer = setTimeout(syncActiveJobs, hasActiveJob ? 2500 : 15000);
-      }
-    };
-
-    syncActiveJobs();
+      return VideoGenerationService.nextJobsPollDelay(hasActiveJob);
+    });
 
     // 2. SSE subscription for instantaneous push updates
     const unsubscribe = VideoGenerationService.subscribeVideoEvents(effectiveCanvasId, (updatedJob: any) => {
@@ -575,9 +568,8 @@ export default function CreativeCanvasPage() {
     });
 
     return () => {
-      cancelled = true;
       unsubscribe();
-      if (pollTimer) clearTimeout(pollTimer);
+      stopPoll();
     };
   }, [effectiveCanvasId, setNodes, setEdges]);
 

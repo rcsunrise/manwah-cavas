@@ -19,6 +19,7 @@ import { logCanvasDiagnostic } from '../utils/canvasDiagnostic';
 import { getAuthHeaders } from '../utils/apiUtils';
 import { localAssetService } from '../services/localAssetService';
 import { buildCanvasSummary, collectVideoNodeRefs, extractAgentActions, stripAgentActions } from '../utils/agentActionProtocol';
+import { advanceTaskTiming, startTaskTiming } from '../utils/taskTiming';
 
 // 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
 const DNA_NEXT_STEPS: AgentSuggestion[] = [
@@ -473,7 +474,8 @@ export function useCreativeCanvasWorkspace(
         sender: 'agent',
         text,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        ...extras
+        ...extras,
+        ...(extras?.taskCard ? { taskCard: startTaskTiming(extras.taskCard) } : {})
       }
     ]);
     return id;
@@ -498,7 +500,9 @@ export function useCreativeCanvasWorkspace(
     if (!id) return;
     setMessages(prev =>
       prev.map(m =>
-        m.id === id && m.taskCard ? { ...m, taskCard: { ...m.taskCard, status, detail: detail ?? m.taskCard.detail, locate, ...extra } } : m
+        m.id === id && m.taskCard
+          ? { ...m, taskCard: advanceTaskTiming(m.taskCard, { ...m.taskCard, status, detail: detail ?? m.taskCard.detail, locate, ...extra }) }
+          : m
       )
     );
   }, []);

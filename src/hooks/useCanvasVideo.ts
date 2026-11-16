@@ -1,5 +1,6 @@
 // src/hooks/useCanvasVideo.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { startVisibilityPoll } from '../utils/visibilityPoll';
 import {
   VideoCapability,
   VideoDirectorPlan,
@@ -61,10 +62,8 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
       });
     });
 
-    // Active Jobs fallback polling：有进行中任务 2.5s，否则 15s
-    let cancelled = false;
-    let pollTimer: ReturnType<typeof setTimeout> | null = null;
-    const poll = async () => {
+    // 兜底轮询（主要靠 SSE）：有进行中任务 3 秒，空闲 60 秒，页面在后台不拉
+    const stopPoll = startVisibilityPoll(async () => {
       let hasActiveJob = false;
       try {
         const currentJobs = await VideoGenerationService.fetchCanvasJobs(canvasId);
@@ -72,19 +71,15 @@ export function useCanvasVideo(canvasId: string, enabled = true) {
           setJobs(currentJobs);
           hasActiveJob = currentJobs.some(j => ACTIVE_VIDEO_JOB_STATUSES.has(j.status));
         }
-      } catch (pollErr) {
+      } catch {
         // quiet fallback
       }
-      if (!cancelled) {
-        pollTimer = setTimeout(poll, hasActiveJob ? 2500 : 15000);
-      }
-    };
-    pollTimer = setTimeout(poll, 2500);
+      return VideoGenerationService.nextJobsPollDelay(hasActiveJob);
+    }, 3_000);
 
     return () => {
-      cancelled = true;
       unsubscribe();
-      if (pollTimer) clearTimeout(pollTimer);
+      stopPoll();
     };
   }, [canvasId, enabled]);
 
