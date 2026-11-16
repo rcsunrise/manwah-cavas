@@ -259,7 +259,8 @@ export async function cutoutPersonByBorder(input: Buffer, box?: PersonBox | null
       return v[Math.floor(v.length / 2)];
     };
     const bgc = [med(0), med(1), med(2)];
-    const TOL = 46;
+    // 纯白影棚底：地面的浅灰投影也算背景（容差放大）；其它素色底用较小容差，避免吃进人物
+    const TOL = Math.min(bgc[0], bgc[1], bgc[2]) >= 235 ? 72 : 46;
     const near = (i: number) => Math.hypot(rgba[i * 4] - bgc[0], rgba[i * 4 + 1] - bgc[1], rgba[i * 4 + 2] - bgc[2]) < TOL;
     const okShare = border.filter(near).length / border.length;
     if (okShare < 0.72) return null; // 边缘不是素色背景
@@ -314,15 +315,27 @@ export async function cutoutPersonByBorder(input: Buffer, box?: PersonBox | null
       bestId = id;
     }
   }
-  const ratio = best / N;
-  if (ratio < 0.1 || ratio > 0.88) return null; // 抠出来太小/几乎整张图：不是干净的人物图
+  // 头发/手提包/围巾等可能和主体断开：保留不小的几块（≥ 最大块的 4%），只去掉零星碎点
+  const sizes = new Int32Array(id + 1);
+  for (let i = 0; i < N; i++) if (label[i]) sizes[label[i]]++;
+  const keep = new Uint8Array(id + 1);
+  let keptTotal = 0;
+  for (let k = 1; k <= id; k++) {
+    if (sizes[k] >= best * 0.04) {
+      keep[k] = 1;
+      keptTotal += sizes[k];
+    }
+  }
+  const ratio = keptTotal / N;
+  // 人物只占画面的一部分：抠出来占了大半张图，说明背景（墙/地面/渐变光影）也被当成了主体，抠不干净
+  if (ratio < 0.08 || ratio > 0.6) return null;
   const alpha = Buffer.alloc(N);
   let minX = w;
   let minY = h;
   let maxX = -1;
   let maxY = -1;
   for (let i = 0; i < N; i++) {
-    if (label[i] !== bestId) continue;
+    if (!label[i] || !keep[label[i]]) continue;
     alpha[i] = 255;
     const x = i % w;
     const y = (i - x) / w;
