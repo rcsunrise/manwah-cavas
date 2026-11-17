@@ -24,7 +24,7 @@ import { advanceTaskTiming, startTaskTiming } from '../utils/taskTiming';
 // 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
 const DNA_NEXT_STEPS: AgentSuggestion[] = [
   { label: '详情页企划', actionId: 'generate_plan' },
-  { label: '面料海报', actionId: 'fabric_poster' },
+  { label: '氛围海报', actionId: 'fabric_poster' },
   { label: '联网查竞品', actionId: 'search_market' },
   { label: '做视频分镜', actionId: 'open_video' }
 ];
@@ -794,7 +794,7 @@ export function useCreativeCanvasWorkspace(
 
     // Agent G Execution Interceptor: Autonomous 4:3 Poster Layout from Local Assets
     // 面料海报 / 色卡海报 / 模板海报有自己的动作（由智能体提议确认卡片），不走这个写死的 2650 本地素材拦截
-    const isNamedTemplatePoster = /(面料|色卡|配色|模板\s*[A-C]|模板海报|产品海报|4\s*[/:：比]\s*3)/i.test(trimmed);
+    const isNamedTemplatePoster = /(面料|色卡|配色|氛围海报|模板\s*[A-C]|模板海报|产品海报|4\s*[/:：比]\s*3)/i.test(trimmed);
     const isPosterLayoutIntent =
       !isNamedTemplatePoster &&
       (/(制作|生成|排版|设计|排一套|做一张|创建|自动制作).*(海报|4:3|四比三|版面)/i.test(trimmed) ||
@@ -3170,7 +3170,7 @@ export function useCreativeCanvasWorkspace(
       (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
       (productNodes.length === 1 ? productNodes[0] : undefined);
     if (!productNode && productNodes.length > 1) {
-      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做面料海报的那一张，或直接点沙发图上的「面料海报」按钮。`);
+      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做氛围海报的那一张，或直接点沙发图上的「氛围海报」按钮。`);
       return false;
     }
     let productImage = (productNode?.data?.imageUrl as string) || '';
@@ -3179,14 +3179,14 @@ export function useCreativeCanvasWorkspace(
       if (raw) productImage = raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`;
     }
     if (!productImage) {
-      addAgentMessage('❌ 还没有沙发图，请先上传沙发图再生成面料海报。');
+      addAgentMessage('❌ 还没有沙发图，请先上传沙发图再生成氛围海报。');
       return false;
     }
     const productKey = productNode?.id || 'img-node-1';
     const lockKey = `fabric:${productKey}`;
     const productLabel = (productNode?.data?.fileName as string) || '沙发图';
     if (templatePosterRunningRef.current.has(lockKey)) {
-      addAgentMessage(`「${productLabel}」的面料海报正在生成中，请等这一张完成后再试。`);
+      addAgentMessage(`「${productLabel}」的氛围海报正在生成中，请等这一张完成后再试。`);
       return false;
     }
 
@@ -3204,7 +3204,7 @@ export function useCreativeCanvasWorkspace(
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
-      taskCard: { title: productNodes.length > 1 ? `面料海报 · ${productLabel}` : '沙发面料海报', status: 'running', detail: '1/3 构思皮革色、抱枕图案与氛围照…' }
+      taskCard: { title: productNodes.length > 1 ? `氛围海报 · ${productLabel}` : '氛围海报', status: 'running', detail: '1/3 构思皮革色、抱枕图案与氛围照…' }
     });
     const postJson = async (url: string, body: any) => {
       const headers = await getAuthHeaders();
@@ -3213,7 +3213,7 @@ export function useCreativeCanvasWorkspace(
       if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
       return json;
     };
-    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '面料海报');
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '氛围海报');
     const model = selectedModel || undefined;
     const resolution = selectedResolution || '2K';
 
@@ -3267,9 +3267,9 @@ export function useCreativeCanvasWorkspace(
           position: findFreePosterSlot(prev, { x: basePos.x + 460, y: basePos.y }),
           data: {
             sceneIndex: 0,
-            screenTitle: code || '沙发面料海报',
+            screenTitle: code || '氛围海报',
             coreSellingPoint: concept.leatherName,
-            themeTitle: '沙发面料海报',
+            themeTitle: '氛围海报',
             withText: true,
             imageUrl: posterUrl,
             rawImageUrl: posterUrl,
@@ -3294,7 +3294,7 @@ export function useCreativeCanvasWorkspace(
             target: resultNodeId,
             sourceHandle: 'source',
             targetHandle: 'target',
-            label: '面料海报',
+            label: '氛围海报',
             labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
             labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
             style: { stroke: '#B28C5A', strokeWidth: 2 }
@@ -3305,7 +3305,7 @@ export function useCreativeCanvasWorkspace(
       finishTaskCard(taskId, 'done', warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
-        title: `面料海报 · ${code || concept.leatherName}`,
+        title: `氛围海报 · ${code || concept.leatherName}`,
         nodeId: resultNodeId,
         withText: true,
         source: 'poster',
@@ -3313,7 +3313,7 @@ export function useCreativeCanvasWorkspace(
       });
       return true;
     } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '面料海报生成失败');
+      finishTaskCard(taskId, 'failed', err?.message || '氛围海报生成失败');
       return false;
     } finally {
       templatePosterRunningRef.current.delete(lockKey);
@@ -3335,12 +3335,12 @@ export function useCreativeCanvasWorkspace(
       (selectedNodeId ? fabricNodes.find(n => n.id === selectedNodeId) : undefined) ||
       activeFabric[activeFabric.length - 1];
     if (!target) {
-      addAgentMessage('画布上还没有面料海报，先点沙发图上的「面料海报」生成一张，再来修改。');
+      addAgentMessage('画布上还没有氛围海报，先点沙发图上的「氛围海报」生成一张，再来修改。');
       return false;
     }
     const lockKey = `fabric-edit:${target.id}`;
     if (templatePosterRunningRef.current.has(lockKey)) {
-      addAgentMessage('这张面料海报正在修改中，请等它完成。');
+      addAgentMessage('这张氛围海报正在修改中，请等它完成。');
       return false;
     }
     const tp = (target.data as any).templatePoster;
@@ -3369,7 +3369,7 @@ export function useCreativeCanvasWorkspace(
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
-      taskCard: { title: '修改面料海报', status: 'running', detail: regenCount ? `重出 ${regenCount} 张图（每张扣点），其余沿用已有素材…` : '沿用已有素材重新排版…' }
+      taskCard: { title: '修改氛围海报', status: 'running', detail: regenCount ? `重出 ${regenCount} 张图（每张扣点），其余沿用已有素材…` : '沿用已有素材重新排版…' }
     });
     const postJson = async (url: string, body: any) => {
       const headers = await getAuthHeaders();
@@ -3378,7 +3378,7 @@ export function useCreativeCanvasWorkspace(
       if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
       return json;
     };
-    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '面料海报');
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '氛围海报');
     const retryOnce = <T,>(fn: () => Promise<T>) => fn().catch(() => fn());
     const model = selectedModel || undefined;
     const resolution = selectedResolution || '2K';
@@ -3468,7 +3468,7 @@ export function useCreativeCanvasWorkspace(
       finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，修改版已加入画布', { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
-        title: `面料海报 · ${code || concept.leatherName} · v${version}`,
+        title: `氛围海报 · ${code || concept.leatherName} · v${version}`,
         nodeId: resultNodeId,
         withText: true,
         source: 'poster',
@@ -3476,7 +3476,7 @@ export function useCreativeCanvasWorkspace(
       });
       return true;
     } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '修改面料海报失败');
+      finishTaskCard(taskId, 'failed', err?.message || '修改氛围海报失败');
       return false;
     } finally {
       templatePosterRunningRef.current.delete(lockKey);
@@ -3617,7 +3617,7 @@ export function useCreativeCanvasWorkspace(
         addAgentMessage(
           r.ambiguous.length
             ? `「${params.textileMain}」匹配到多张：${r.ambiguous.map(a => a.name).join('、')}，请说具体的文件名。`
-            : `在「${localAssetService.getDirectoryName()}」里没找到「${params.textileMain}」，请在素材列表里点「设为主色 · 面料海报」，或告诉我准确的文件名。`
+            : `在「${localAssetService.getDirectoryName()}」里没找到「${params.textileMain}」，请在素材列表里点「设为主色 · 面料色卡海报」，或告诉我准确的文件名。`
         );
         return false;
       }
@@ -3626,17 +3626,17 @@ export function useCreativeCanvasWorkspace(
     if (!main && params?.textileMainColor) {
       main = (await findMainByColorName(params.textileMainColor)) || undefined;
       if (!main) {
-        addAgentMessage(`没认出「${params.textileMainColor}」是什么颜色，请点「设为主色 · 面料海报」选一张，或告诉我文件名。`);
+        addAgentMessage(`没认出「${params.textileMainColor}」是什么颜色，请点「设为主色 · 面料色卡海报」选一张，或告诉我文件名。`);
         return false;
       }
     }
     if (!main) {
-      addAgentMessage('先选一款面料做主色：在上方素材列表里点「设为主色 · 面料海报」，或告诉我文件名。');
+      addAgentMessage('先选一款面料做主色：在上方素材列表里点「设为主色 · 面料色卡海报」，或告诉我文件名。');
       return false;
     }
     const lockKey = `textile:${main.id}`;
     if (templatePosterRunningRef.current.has(lockKey)) {
-      addAgentMessage(`「${main.name}」的面料海报正在生成中，请等它完成。`);
+      addAgentMessage(`「${main.name}」的面料色卡海报正在生成中，请等它完成。`);
       return false;
     }
     const layout: 'slant' | 'hex' | 'circle' = params?.textileLayout || 'slant';
@@ -3680,7 +3680,7 @@ export function useCreativeCanvasWorkspace(
               textilePostJson('/api/poster-templates/textile/mood', {
                 concept, index: i, count: moodCount, layout, mainColor,
                 model: selectedModel || undefined, resolution: selectedResolution || '2K'
-              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料海报氛围图'))
+              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料色卡海报氛围图'))
             )
           )
         );
@@ -3696,7 +3696,7 @@ export function useCreativeCanvasWorkspace(
           concept, index: 0, count: 1, layout, mainColor, kind: 'cutout',
           model: selectedModel || undefined, resolution: selectedResolution || '2K'
         });
-        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料海报抠图人物');
+        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料色卡海报抠图人物');
       }
       finishTaskCard(taskId, 'running', '4/4 避开标签取面料、取底色并排版…');
 
@@ -3780,7 +3780,7 @@ export function useCreativeCanvasWorkspace(
       finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
-        title: `面料海报 · ${name}`,
+        title: `面料色卡海报 · ${name}`,
         nodeId: resultNodeId,
         withText: true,
         source: 'poster',
@@ -3788,7 +3788,7 @@ export function useCreativeCanvasWorkspace(
       });
       return true;
     } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '面料海报生成失败');
+      finishTaskCard(taskId, 'failed', err?.message || '面料色卡海报生成失败');
       setNodes(prev => prev.map(n => (n.id === fabricNodeId ? { ...n, data: { ...(n.data as any), state: 'pending' } } : n)));
       return false;
     } finally {
@@ -3807,12 +3807,12 @@ export function useCreativeCanvasWorkspace(
       (selectedNodeId ? textileNodes.find(n => n.id === selectedNodeId) : undefined) ||
       textileNodes[textileNodes.length - 1];
     if (!target) {
-      addAgentMessage('画布上还没有面料色卡海报，先在素材列表里点「设为主色 · 面料海报」生成一张，再来修改。');
+      addAgentMessage('画布上还没有面料色卡海报，先在素材列表里点「设为主色 · 面料色卡海报」生成一张，再来修改。');
       return false;
     }
     const lockKey = `textile-edit:${target.id}`;
     if (templatePosterRunningRef.current.has(lockKey)) {
-      addAgentMessage('这张面料海报正在修改中，请等它完成。');
+      addAgentMessage('这张面料色卡海报正在修改中，请等它完成。');
       return false;
     }
     const tp = (target.data as any).templatePoster;
@@ -3898,7 +3898,7 @@ export function useCreativeCanvasWorkspace(
               textilePostJson('/api/poster-templates/textile/mood', {
                 concept, index: i, count: params.textileMoods, layout, mainColor: tp.mainColor, variation: params.textileMoodVariation ? 1 : 0,
                 model: selectedModel || undefined, resolution: selectedResolution || '2K'
-              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料海报氛围图'))
+              }).then(r => persistGeneratedImage(r.imageDataUrl, '面料色卡海报氛围图'))
             )
           )
         );
@@ -3915,7 +3915,7 @@ export function useCreativeCanvasWorkspace(
           concept, index: 0, count: 1, layout, mainColor: tp.mainColor, kind: 'cutout',
           model: selectedModel || undefined, resolution: selectedResolution || '2K'
         });
-        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料海报抠图人物');
+        cutoutImage = await persistGeneratedImage(r.imageDataUrl, '面料色卡海报抠图人物');
       }
       finishTaskCard(taskId, 'running', '重新排版…');
 
@@ -3998,7 +3998,7 @@ export function useCreativeCanvasWorkspace(
       finishTaskCard(taskId, 'done', all.length ? `已完成，${all.join('；')}` : '已完成，修改版已加入画布', { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
-        title: `面料海报 · ${name} · v${version}`,
+        title: `面料色卡海报 · ${name} · v${version}`,
         nodeId: resultNodeId,
         withText: true,
         source: 'poster',
@@ -4006,7 +4006,7 @@ export function useCreativeCanvasWorkspace(
       });
       return true;
     } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '修改面料海报失败');
+      finishTaskCard(taskId, 'failed', err?.message || '修改面料色卡海报失败');
       return false;
     } finally {
       templatePosterRunningRef.current.delete(lockKey);

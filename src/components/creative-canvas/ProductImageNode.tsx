@@ -283,11 +283,11 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
                   e.stopPropagation();
                   nodeData.onFabricPoster?.();
                 }}
-                title="用这张沙发图生成沙发面料海报：白底沙发 + 抱枕 + 氛围照拼贴 + 圆形细节与面料色卡（出 5~6 张图，扣点）"
+                title="用这张沙发图生成氛围海报：白底沙发 + 抱枕 + 氛围照拼贴 + 圆形细节与面料色卡（出 5~6 张图，扣点）"
                 className="nodrag flex items-center gap-1 text-[#8C6F43] font-bold px-2 py-1 rounded-md border border-[#B28C5A]/50 hover:bg-[#FAF6EF] disabled:opacity-60 disabled:cursor-wait transition-all whitespace-nowrap"
               >
                 {nodeData.fabricPosterRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                <span>{nodeData.fabricPosterRunning ? '面料海报生成中' : '面料海报'}</span>
+                <span>{nodeData.fabricPosterRunning ? '氛围海报生成中' : '氛围海报'}</span>
               </button>
             )}
             {nodeData?.imageUrl && nodeData?.onReanalyze && (

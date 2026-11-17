@@ -233,7 +233,7 @@ router.post('/fabric/concept', async (req: AuthenticatedRequest, res: Response) 
     const { concept, fromModel } = await generateFabricConcept(buf, typeof hint === 'string' ? hint : undefined, userIdOf(req), usedIds);
     res.json({ success: true, concept, fromModel });
   } catch (err: any) {
-    sendError(res, err, '生成面料海报概念失败');
+    sendError(res, err, '生成氛围海报概念失败');
   }
 });
 
@@ -379,7 +379,7 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       warnings
     });
   } catch (err: any) {
-    sendError(res, err, '面料海报合成失败');
+    sendError(res, err, '氛围海报合成失败');
   }
 });
 
@@ -400,7 +400,7 @@ router.post('/textile/concept', async (req: AuthenticatedRequest, res: Response)
     );
     res.json({ success: true, concept, fromModel, mainColor, bgColor: deriveBackground(mainColor) });
   } catch (err: any) {
-    sendError(res, err, '生成面料海报文案失败');
+    sendError(res, err, '生成面料色卡海报文案失败');
   }
 });
 
@@ -492,7 +492,7 @@ router.post('/textile/compose', async (req: AuthenticatedRequest, res: Response)
       warnings: result.warnings
     });
   } catch (err: any) {
-    sendError(res, err, '面料海报合成失败');
+    sendError(res, err, '面料色卡海报合成失败');
   }
 });
 

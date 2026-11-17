@@ -1221,9 +1221,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'fabric_edit':
         // 重出图要扣点，先出确认卡片；只改文字/大小的也走卡片，让用户看到改了什么
-        postAgent('确认后开始修改面料海报：', {
+        postAgent('确认后开始修改氛围海报：', {
           planCard: {
-            title: '修改面料海报',
+            title: '修改氛围海报',
             actionId: 'fabric_edit',
             params: params || {},
             status: 'pending',
@@ -1233,9 +1233,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'fabric_poster':
         // 一次要出 5~6 张图、每张扣点，先出确认卡片再开始
-        postAgent('确认后开始生成沙发面料海报：', {
+        postAgent('确认后开始生成氛围海报：', {
           planCard: {
-            title: '生成沙发面料海报',
+            title: '生成氛围海报',
             actionId: 'fabric_poster',
             params: params || {},
             status: 'pending',
@@ -1379,7 +1379,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         { label: '批量渲染分镜', actionId: 'render_all' },
         { label: '成组锁定结果', actionId: 'group_lock' },
         { label: '4/3 产品海报', actionId: 'template_poster' },
-        { label: '面料海报', actionId: 'fabric_poster' },
+        { label: '氛围海报', actionId: 'fabric_poster' },
         { label: '做全案海报', actionId: 'open_poster' },
         { label: '做视频分镜', actionId: 'open_video' },
         { label: '重做详情页企划', actionId: 'generate_plan' }
@@ -1387,7 +1387,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     : [
         { label: '详情页企划', actionId: 'generate_plan' },
         { label: '4/3 产品海报', actionId: 'template_poster' },
-        { label: '面料海报', actionId: 'fabric_poster' },
+        { label: '氛围海报', actionId: 'fabric_poster' },
         { label: '成组锁定结果', actionId: 'group_lock' },
         { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
@@ -3293,7 +3293,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setRegenMenuFor(null);
-                                  composeAboutNode(msg.imageCard!.nodeId!, `修改这张${kind}（${(msg.imageCard!.title || '').replace(/^面料海报 · |^模板 A · |^4\/3 产品海报 · /, '')}）：`);
+                                  composeAboutNode(msg.imageCard!.nodeId!, `修改这张${kind}（${(msg.imageCard!.title || '').replace(/^面料海报 · |^氛围海报 · |^模板 A · |^4\/3 产品海报 · /, '')}）：`);
                                 }}
                                 className="w-full text-left px-2.5 py-1.5 rounded-lg border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] text-[10px] cursor-pointer"
                               >

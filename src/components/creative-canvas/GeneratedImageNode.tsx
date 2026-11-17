@@ -59,7 +59,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
   const [showRegenMenu, setShowRegenMenu] = useState(false);
   const templateKind = (data as any).templatePoster?.template as string | undefined;
   const regenOptions = isTemplatePoster ? posterRegenOptions((data as any).templatePoster) : [];
-  const posterTitleLabel = `${templateKind === 'B' ? '面料海报' : templateKind === 'C' ? '面料色卡' : '4/3 产品海报'} · `;
+  const posterTitleLabel = `${templateKind === 'B' ? '氛围海报' : templateKind === 'C' ? '面料色卡' : '4/3 产品海报'} · `;
 
   // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
   const [imgRetry, setImgRetry] = React.useState(0);

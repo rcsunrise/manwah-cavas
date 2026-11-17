@@ -91,8 +91,8 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   open_poster: '打开全案海报',
   template_poster: '生成4/3 产品海报',
   stitch_video: '拼接成片',
-  fabric_poster: '生成沙发面料海报',
-  fabric_edit: '修改面料海报',
+  fabric_poster: '生成氛围海报',
+  fabric_edit: '修改氛围海报',
   textile_poster: '生成面料色卡海报',
   textile_edit: '修改面料色卡海报'
 };
@@ -371,7 +371,7 @@ export function buildCanvasSummary(input: {
       });
       return `${n.id}（版式${tp.layout === 'hero3' ? '2' : '1'}；${slots.join('、')}；${tp.assets?.pillow ? '有抱枕' : '无抱枕'}；型号${tp.code || '无'}）`;
     });
-    lines.push(`- 画布上的沙发面料海报（可用 fabric_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
+    lines.push(`- 画布上的氛围海报（可用 fabric_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
   }
 
   if (localFolder && localFolder.imageCount > 0) {

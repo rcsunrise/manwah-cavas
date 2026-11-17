@@ -12,7 +12,7 @@ export interface PosterRegenOption {
   params: AgentActionParams;
 }
 
-export const POSTER_KIND_NAME: Record<string, string> = { A: '4/3 产品海报', B: '沙发面料海报', C: '面料色卡海报' };
+export const POSTER_KIND_NAME: Record<string, string> = { A: '4/3 产品海报', B: '氛围海报', C: '面料色卡海报' };
 
 /**
  * 模板海报的“再次生成”候选。模板海报不是企划屏的出图结果，不能走“纯净底图”那条再生成。

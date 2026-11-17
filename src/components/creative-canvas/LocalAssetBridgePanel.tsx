@@ -646,7 +646,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
                         className="w-full py-1 bg-stone-800 hover:bg-stone-900 text-white rounded text-[9px] font-bold transition-colors whitespace-nowrap"
                         title="以这块面料为主色，自动配色，生成面料色卡海报（三种版式可在对话里切换）"
                       >
-                        设为主色 · 面料海报
+                        设为主色 · 面料色卡海报
                       </button>
                     )}
                   </div>
@@ -684,7 +684,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
                 const list = localAssetService.searchAssets(allKeyword, 'image', 100000).assets;
                 return (
                   <>
-                    <p className="px-5 py-2 text-[11px] text-stone-500">共 {list.length} 张图片 · 点缩略图放大预览（←→ 切换，Esc 关闭），挑好后点「设为主色 · 面料海报」</p>
+                    <p className="px-5 py-2 text-[11px] text-stone-500">共 {list.length} 张图片 · 点缩略图放大预览（←→ 切换，Esc 关闭），挑好后点「设为主色 · 面料色卡海报」</p>
                     <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-5 grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 content-start">
                       {list.map(asset => (
                         <div key={asset.id} className="bg-white rounded-xl border border-[#E5E0D8] hover:border-[#B28C5A] p-2 space-y-1.5">
@@ -706,7 +706,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
                               }}
                               className="w-full py-1 bg-stone-800 hover:bg-stone-900 text-white rounded text-[10px] font-bold"
                             >
-                              设为主色 · 面料海报
+                              设为主色 · 面料色卡海报
                             </button>
                           )}
                         </div>
@@ -739,7 +739,7 @@ export const LocalAssetBridgePanel: React.FC<LocalAssetBridgePanelProps> = ({
                                 onClick={() => { setZoomIdx(null); setShowAll(false); onMakeTextilePoster(z); }}
                                 className="px-4 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9E7A4A] font-bold"
                               >
-                                设为主色 · 面料海报
+                                设为主色 · 面料色卡海报
                               </button>
                             )}
                             <button type="button" onClick={() => setZoomIdx(null)} className="px-3 py-1 rounded-lg bg-white/15 hover:bg-white/25">关闭</button>
