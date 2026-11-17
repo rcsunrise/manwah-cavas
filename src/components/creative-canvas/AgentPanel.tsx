@@ -1371,25 +1371,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     };
   }, []);
 
-  // 输入框上方的快捷任务：随工作流阶段变化
-  const quickActions: AgentActionOption[] = !chatHasDna
+  // 输入框上方的快捷任务：有产品图就显示（海报和视频分镜只需要产品图，不用等 DNA 分析完；
+  // 以前要等 DNA 节点出来，上传后要过好一会儿才出现）
+  const hasProductImage =
+    chatHasDna ||
+    uploadState === 'analyzing' ||
+    nodes.some(n => (n.type === 'productImageNode' || n.type === 'productImage') && Boolean((n.data as any)?.imageUrl));
+  const quickActions: AgentActionOption[] = !hasProductImage
     ? [{ label: '上传产品主图', actionId: 'upload_product' }]
-    : hasPlan
-    ? [
-        { label: '批量渲染分镜', actionId: 'render_all' },
-        { label: '成组锁定结果', actionId: 'group_lock' },
-        { label: '4/3 产品海报', actionId: 'template_poster' },
-        { label: '氛围海报', actionId: 'fabric_poster' },
-        { label: '做全案海报', actionId: 'open_poster' },
-        { label: '做视频分镜', actionId: 'open_video' },
-        { label: '重做详情页企划', actionId: 'generate_plan' }
-      ]
     : [
-        { label: '详情页企划', actionId: 'generate_plan' },
         { label: '4/3 产品海报', actionId: 'template_poster' },
         { label: '氛围海报', actionId: 'fabric_poster' },
-        { label: '成组锁定结果', actionId: 'group_lock' },
-        { label: '联网查竞品', actionId: 'search_market' },
         { label: '做视频分镜', actionId: 'open_video' }
       ];
 

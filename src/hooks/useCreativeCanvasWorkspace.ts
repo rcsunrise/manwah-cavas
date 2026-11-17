@@ -23,9 +23,8 @@ import { advanceTaskTiming, startTaskTiming } from '../utils/taskTiming';
 
 // 对话中“下一步可做”的建议动作：DNA 提取完成后 / 企划生成完成后
 const DNA_NEXT_STEPS: AgentSuggestion[] = [
-  { label: '详情页企划', actionId: 'generate_plan' },
+  { label: '4/3 产品海报', actionId: 'template_poster' },
   { label: '氛围海报', actionId: 'fabric_poster' },
-  { label: '联网查竞品', actionId: 'search_market' },
   { label: '做视频分镜', actionId: 'open_video' }
 ];
 
