@@ -53,7 +53,28 @@ interface OcrLine {
 
 interface Rect { left: number; top: number; width: number; height: number }
 
-const normalizeText = (s: string) => s.replace(/[\s·・•.,，。、:：!！?？'"“”‘’「」『』()（）\-—_]/g, '');
+const SEPARATOR_CHARS = `\\s·・•.,，。、:：!！?？'"“”‘’「」『』()（）\\-—_`;
+const normalizeText = (s: string) => s.replace(new RegExp(`[${SEPARATOR_CHARS}]`, 'g'), '');
+
+/**
+ * 在 OCR 识别出的整行里把原文换成新文字，容忍分隔符差异：
+ * 画布数据里写“饱满弧面 · 柔和收边”（U+00B7），图上识别出来常是“饱满弧面 • 柔和收边”（U+2022），
+ * 直接 String.replace 找不到，结果“改成自己”（2026-11-17 线上 3 处全部白改、白扣费）。
+ * 返回 null 表示这一行里定位不到原文。
+ */
+export function replaceLoose(line: string, oldText: string, newText: string): string | null {
+  if (line.includes(oldText)) return line.replace(oldText, newText);
+  const normLine = normalizeText(line);
+  const normOld = normalizeText(oldText);
+  if (!normOld) return null;
+  if (normLine === normOld) return newText; // 整行就是原文：直接换成新文字
+  // 原文的每个有效字符之间允许夹任意分隔符
+  const sep = `[${SEPARATOR_CHARS}]*`;
+  const pattern = [...normOld].map(ch => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(sep);
+  const m = line.match(new RegExp(pattern));
+  if (!m || m.index === undefined) return null;
+  return line.slice(0, m.index) + newText + line.slice(m.index + m[0].length);
+}
 
 /**
  * newText 看起来是“修改要求”而不是“要写进图里的文字”：
@@ -453,7 +474,14 @@ export async function editImageText(input: ImageTextEditInput): Promise<ImageTex
   if (!target) {
     throw new Error(`图中没有找到文字「${oldText}」，识别到的文字有：${lines.map(l => `「${l.text}」`).join('、')}`);
   }
-  const expectedLine = oldText ? target.text.replace(oldText, newText) : newText;
+  const expectedLine = oldText ? replaceLoose(target.text, oldText, newText) : newText;
+  if (expectedLine === null) {
+    throw new Error(`在「${target.text}」里没法定位原文「${oldText}」，本次没有调用生图模型，未扣费`);
+  }
+  // 改完和原来一样（多半是原文没对上）：不能把“改成自己”交给生图模型，白扣费还显示“已校验”
+  if (normalizeText(expectedLine) === normalizeText(target.text)) {
+    throw new Error(`「${target.text}」改完和原来一样，没有需要修改的内容，本次没有调用生图模型，未扣费`);
+  }
   const rect = computeEditRect(target, lines, expectedLine, W, H);
 
   // 遮罩（OpenAI 约定：透明 = 允许修改）；Gemini 系列作为提示图使用

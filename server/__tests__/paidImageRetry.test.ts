@@ -119,3 +119,24 @@ describe('OCR 输出被硬换行（2026-11-17 线上 Expected , or } at position
     expect(lines[0].right).toBe(353);
   });
 });
+
+describe('改字时原文与图上文字的分隔符不同', () => {
+  it('画布写 ·（U+00B7），图上识别为 •（U+2022）：整行替换为新文字', async () => {
+    const { replaceLoose } = await import('../services/imageTextEditService');
+    // 2026-11-17 线上：直接 replace 找不到原文，结果“改成自己”
+    expect(replaceLoose('饱满弧面 • 柔和收边', '饱满弧面 · 柔和收边', '弧线轻拥，安放倦意')).toBe('弧线轻拥，安放倦意');
+    expect(replaceLoose('上下分段·线条有序', '上下分段 · 线条有序', '细处有韵，触见质感')).toBe('细处有韵，触见质感');
+  });
+
+  it('原文只是行内一部分时，保留前后文字', async () => {
+    const { replaceLoose } = await import('../services/imageTextEditService');
+    expect(replaceLoose('岩抱 • 山岩环抱', '山岩环抱', '柔软在侧')).toBe('岩抱 • 柔软在侧');
+    expect(replaceLoose('新品：饱满弧面•柔和收边 限定', '饱满弧面 · 柔和收边', '弧线轻拥')).toBe('新品：弧线轻拥 限定');
+  });
+
+  it('定位不到原文返回 null', async () => {
+    const { replaceLoose } = await import('../services/imageTextEditService');
+    expect(replaceLoose('纤细高脚', '黑色脚身', 'X')).toBeNull();
+    expect(replaceLoose('纤细高脚', '···', 'X')).toBeNull();
+  });
+});
