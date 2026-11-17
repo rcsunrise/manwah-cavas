@@ -1,6 +1,7 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import sharp from 'sharp';
+import type { Metadata } from 'sharp';
 import { ProviderError } from './providerError';
 import type { NormalizedImageReference } from './imageRequest';
 
@@ -153,7 +154,7 @@ export async function resolveAndValidateImage(
   if (explicitDeclared && explicitDeclared !== mimeType) {
     throw new ProviderError('参考图声明的 MIME 与真实文件内容不一致。', 'invalid_image_input', 400, false);
   }
-  let metadata: sharp.Metadata;
+  let metadata: Metadata;
   try {
     metadata = await sharp(buffer, { failOn: 'error' }).metadata();
   } catch {

@@ -1,5 +1,6 @@
 // server/services/detailRenderService.ts
 import sharp from 'sharp';
+import type { Gravity, OverlayOptions } from 'sharp';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -237,7 +238,7 @@ export async function loadImageBufferForAsset(
   );
 }
 
-export function resolveSharpPosition(focalPoint?: { x: number; y: number }): sharp.Gravity | string {
+export function resolveSharpPosition(focalPoint?: { x: number; y: number }): Gravity | string {
   if (!focalPoint) return 'center';
   const { x, y } = focalPoint;
   if (y < 0.33) {
@@ -313,7 +314,7 @@ export async function renderDetailCompositionBitmap(
     }
   });
 
-  const compositeInputs: sharp.OverlayOptions[] = [];
+  const compositeInputs: OverlayOptions[] = [];
 
   // 2. Render Image Layers
   const imageLayers = Array.isArray(composition.imageLayers) && composition.imageLayers.length > 0
@@ -436,7 +437,7 @@ export async function renderScreenToBitmapBuffer(
   const width = POSTER_SPEC.width;
   const height = POSTER_SPEC.height;
 
-  const compositeInputs: sharp.OverlayOptions[] = [];
+  const compositeInputs: OverlayOptions[] = [];
 
   const rawBuf = await loadImageBufferForAsset(
     composition.imageLayers?.[0]?.objectKey,

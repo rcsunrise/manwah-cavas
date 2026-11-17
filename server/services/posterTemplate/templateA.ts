@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import type { OverlayOptions } from 'sharp';
 import { renderText, RenderedText, TextStyle } from './posterFonts';
 
 /**
@@ -260,7 +261,7 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
   const inspiration = (input.title.inspiration || '').trim();
   if (inspiration) blocks.push({ text: inspiration, style: inspirationStyle, gapBefore: 22 });
 
-  const overlays: sharp.OverlayOptions[] = [];
+  const overlays: OverlayOptions[] = [];
   const alignX = (width: number) => (titleSide === 'left' ? marginX : W - marginX - width);
   const titleTop = Math.round(HERO_H * 0.09);
   const productGap = 40 * S;
@@ -270,7 +271,7 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
    * narrow=true 时与产品纵向重叠的行收窄换行（产品太高、上方放不下时的退路）。
    */
   const layoutTitle = async (scale: number, narrow: boolean) => {
-    const layers: sharp.OverlayOptions[] = [];
+    const layers: OverlayOptions[] = [];
     let cursorY = titleTop;
     for (const block of blocks) {
       cursorY += Math.round(block.gapBefore * scale * S);

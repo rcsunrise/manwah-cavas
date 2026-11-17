@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import type { OverlayOptions } from 'sharp';
 import { renderText } from './posterFonts';
 
 /**
@@ -389,7 +390,7 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
   const L = FABRIC_LAYOUTS[input.layout];
   const W = FABRIC_SIZE.width * S;
   const H = FABRIC_SIZE.height * S;
-  const layers: sharp.OverlayOptions[] = [];
+  const layers: OverlayOptions[] = [];
   const sc = (r: Rect): Rect => ({ x: r.x * S, y: r.y * S, w: r.w * S, h: r.h * S });
 
   // 1) 氛围照

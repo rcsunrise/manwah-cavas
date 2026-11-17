@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import type { OverlayOptions, Sharp } from 'sharp';
 import { renderText } from './posterFonts';
 
 /**
@@ -871,7 +872,7 @@ export async function textureFill(input: Buffer, a: FabricAnalysis, outW: number
   const sCover = Math.max(W / width, H / height);
   // 区域够大：直接按目标尺度裁；不够大：在 sCover/maxZoomOut ~ sCover 之间取最接近目标的
   const s = sTarget >= sCover ? sTarget : Math.max(sTarget, sCover / maxZoomOut);
-  const finish = (p: sharp.Sharp) => p.sharpen({ sigma: 0.8, m1: 0.7, m2: 1.6 }).linear(1.06, -128 * 0.06).png().toBuffer();
+  const finish = (p: Sharp) => p.sharpen({ sigma: 0.8, m1: 0.7, m2: 1.6 }).linear(1.06, -128 * 0.06).png().toBuffer();
   if (s >= sCover) {
     const cw = Math.min(width, Math.round(W / s));
     const ch = Math.min(height, Math.round(H / s));
@@ -1050,7 +1051,7 @@ export async function composeTextilePoster(input: TextilePosterInput): Promise<T
   const W = TEXTILE_SIZE.width * S;
   const H = TEXTILE_SIZE.height * S;
   const warnings: string[] = [];
-  const layers: sharp.OverlayOptions[] = [];
+  const layers: OverlayOptions[] = [];
   const sc = (r: Rect): Rect => ({ x: r.x * S, y: r.y * S, w: r.w * S, h: r.h * S });
   const at = (x: number, y: number) => ({ left: Math.round(x * S), top: Math.round(y * S) });
 
@@ -1333,6 +1334,6 @@ export function swatchSlotsFor(layout: TextileLayoutId, count: number): Array<{ 
 }
 
 /** sharp 的叠加层不能有负偏移；本版式里的叠加层都在画布内，这里只做兜底 */
-function clampLayer(l: sharp.OverlayOptions, W: number, H: number): sharp.OverlayOptions {
+function clampLayer(l: OverlayOptions, W: number, H: number): OverlayOptions {
   return { ...l, left: Math.max(0, Math.min(W - 1, l.left || 0)), top: Math.max(0, Math.min(H - 1, l.top || 0)) };
 }
