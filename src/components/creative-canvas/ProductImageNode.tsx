@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { ProductImageNodeData } from '../../types/creativeCanvas';
+import { toThumbnailUrl } from '../../utils/thumbnailUrl';
 
 export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = data as unknown as ProductImageNodeData;
@@ -23,12 +24,20 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [imgRetry, setImgRetry] = useState(0);
+  // 节点里显示缩略图，缩略图出错退回原图；“放大”弹窗仍用原图
+  const [useThumb, setUseThumb] = useState(true);
   // 换图后重新加载；存储网络抖动时自动重试一次，避免一次失败就永远显示成空的上传框
   React.useEffect(() => {
     setImgError(false);
     setImgRetry(0);
+    setUseThumb(true);
   }, [nodeData?.imageUrl]);
+  const nodeDisplayUrl = nodeData?.imageUrl && useThumb ? toThumbnailUrl(nodeData.imageUrl) : nodeData?.imageUrl;
   const handleImgError = () => {
+    if (useThumb && nodeDisplayUrl !== nodeData?.imageUrl) {
+      setUseThumb(false);
+      return;
+    }
     if (imgRetry < 1) {
       setTimeout(() => setImgRetry(r => r + 1), 1500);
     } else {
@@ -177,7 +186,7 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           <div className="relative w-full h-48 bg-stone-900/5 rounded-xl overflow-hidden border border-[#E5E0D8]/80 group flex items-center justify-center">
             <img
               key={imgRetry}
-              src={nodeData.imageUrl}
+              src={nodeDisplayUrl}
               alt={nodeData.fileName || 'Product Image'}
               className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-102"
               onError={handleImgError}

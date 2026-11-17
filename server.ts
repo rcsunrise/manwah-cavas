@@ -13,6 +13,8 @@ import agentRoutes from './server/routes/agentRoutes';
 import agentConversationRoutes from './server/routes/agentConversationRoutes';
 import imageTextEditRoutes from './server/routes/imageTextEditRoutes';
 import canvasRoutes from './server/routes/canvasRoutes';
+import thumbnailRoutes from './server/routes/thumbnailRoutes';
+import { PAID_RETRY_MAX_ELAPSED_MS } from './server/lib/transientNetwork';
 import assetRoutes from './server/routes/assetRoutes';
 import productDnaRoutes from './server/routes/productDnaRoutes';
 import copyRoutes from './server/routes/copyRoutes';
@@ -390,6 +392,8 @@ async function startServer() {
   app.use('/api/agent', agentConversationRoutes);
   app.use('/api/image-text-edit', imageTextEditRoutes);
   app.use('/api/agent', agentRoutes);
+  // 画布缩略图：服务端取原图缩成 WebP，用户网络只传几十 KB
+  app.use('/api/thumb', thumbnailRoutes);
   app.use('/api/canvases', canvasRoutes);
   app.use('/api/creative-canvases', canvasRoutes);
   app.use('/api/canvases', layoutManifestRoutes);
@@ -1458,10 +1462,23 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
         };
 
         let result;
+        let attemptStartedAt = Date.now();
         try {
           result = await executeRequestForModel();
         } catch (firstAttemptErr: any) {
           const normalizedFirst = normalizeProviderError(firstAttemptErr, { provider: currentProvider, model: registeredModel.id });
+          const firstElapsedMs = Date.now() - attemptStartedAt;
+          if (
+            normalizedFirst.category === 'upstream_unavailable' &&
+            normalizedFirst.upstreamStatus === undefined &&
+            firstElapsedMs >= PAID_RETRY_MAX_ELAPSED_MS
+          ) {
+            // 等了很久才断：对方多半已经在出图并计费，重发 = 再付一次钱，直接报错交给上层决定
+            console.warn(
+              `[Gateway] ${registeredModel.id} connection dropped after ${(firstElapsedMs / 1000).toFixed(1)}s; not resending (upstream may already be generating and billing)`
+            );
+            throw firstAttemptErr;
+          }
           if (normalizedFirst.category === 'invalid_upstream_response' && normalizedFirst.retryable) {
             fileLog(`[OpenAI Proxy Debug] Retrying ${registeredModel.id} once after empty upstream image response...`);
             await new Promise((r) => setTimeout(r, 800));
@@ -1473,6 +1490,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
             for (const delayMs of [1500, 4000]) {
               console.warn(`[Gateway] ${registeredModel.id} network error (${normalizedFirst.message}), retrying in ${delayMs}ms...`);
               await new Promise((r) => setTimeout(r, delayMs));
+              attemptStartedAt = Date.now();
               try {
                 result = await executeRequestForModel();
                 lastErr = undefined;
@@ -1481,6 +1499,8 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                 lastErr = retryErr;
                 const n = normalizeProviderError(retryErr, { provider: currentProvider, model: registeredModel.id });
                 if (!(n.category === 'upstream_unavailable' && n.upstreamStatus === undefined)) break;
+                // 这次重发也是等了很久才断：不再继续重发
+                if (Date.now() - attemptStartedAt >= PAID_RETRY_MAX_ELAPSED_MS) break;
               }
             }
             if (lastErr) throw lastErr;

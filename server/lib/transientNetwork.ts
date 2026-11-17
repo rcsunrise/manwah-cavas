@@ -13,6 +13,17 @@ export function isTransientNetworkError(err: unknown): boolean {
   return TRANSIENT_RE.test(parts || String(err));
 }
 
+/**
+ * 收费的生图请求能不能重发：只有很快就断（连不上、复用到坏连接）才重发。
+ * 请求发出后等了很久才断，对方多半已经收到并在出图、照样计费——重发就是再付一次钱。
+ * 实测：Sunburst 出图 46–86 秒，本机代理约 60 秒掐断等待中的连接，3 次重发被对方计费 3 次但一张图都没收到。
+ */
+export const PAID_RETRY_MAX_ELAPSED_MS = 15_000;
+
+export function shouldRetryPaidRequest(err: unknown, elapsedMs: number): boolean {
+  return elapsedMs < PAID_RETRY_MAX_ELAPSED_MS && isTransientNetworkError(err);
+}
+
 /** 重试前稍等一下，让代理把坏连接清掉 */
 export function transientBackoff(attempt: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 600 * (attempt + 1)));

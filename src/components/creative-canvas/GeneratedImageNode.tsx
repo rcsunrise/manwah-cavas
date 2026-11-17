@@ -35,6 +35,7 @@ import { NodeTextEditor } from './NodeTextEditor';
 import { PosterDownloadModal } from './PosterDownloadModal';
 import { ImageInpaintModal } from './ImageInpaintModal';
 import { downloadHighResImage } from '../../utils/downloadUtils';
+import { fetchOriginalSize, isThumbnailable, toThumbnailUrl } from '../../utils/thumbnailUrl';
 import { downloadPosterImage } from '../../utils/posterExportHelper';
 import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
 
@@ -63,10 +64,13 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
 
   // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
   const [imgRetry, setImgRetry] = React.useState(0);
+  // 画布上先显示缩略图（几十 KB），缩略图出错就退回原图；放大/编辑/下载仍用原图
+  const [useThumb, setUseThumb] = React.useState(true);
 
   React.useEffect(() => {
     setImgError(false);
     setImgRetry(0);
+    setUseThumb(true);
   }, [data.imageUrl]);
   const [showConsistencyPanel, setShowConsistencyPanel] = useState(false);
   const [showCompositionModal, setShowCompositionModal] = useState(false);
@@ -292,8 +296,19 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
     }
   };
 
+  const showingThumb = useThumb && isThumbnailable(imageUrl);
+  const displayUrl = showingThumb ? toThumbnailUrl(imageUrl) : imageUrl;
+
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
+    if (showingThumb) {
+      // 缩略图的 naturalWidth 不是原图尺寸；OCR 坐标和版本记录要原图真实尺寸
+      const loadedFor = imageUrl;
+      fetchOriginalSize(imageUrl).then(size => {
+        if (size && loadedFor === data.imageUrl) setNaturalSize(size);
+      });
+      return;
+    }
     if (img.naturalWidth > 0 && img.naturalHeight > 0) {
       setNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
     }
@@ -579,13 +594,17 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
             {!imgError && imageUrl ? (
               <>
                 <img
-                  src={imgRetry > 0 && !imageUrl.startsWith('data:') ? `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}r=${imgRetry}` : imageUrl}
+                  src={imgRetry > 0 && !imageUrl.startsWith('data:') ? `${displayUrl}${displayUrl.includes('?') ? '&' : '?'}r=${imgRetry}` : displayUrl}
                   alt={`分镜 #${sceneIndex} ${screenTitle}`}
                   className="w-full h-full object-contain transition-transform duration-300"
                   draggable={false}
                   referrerPolicy="no-referrer"
                   onLoad={handleImageLoad}
                   onError={() => {
+                    if (showingThumb) {
+                      setUseThumb(false);
+                      return;
+                    }
                     if (imgRetry < 1 && !imageUrl.startsWith('data:')) {
                       setTimeout(() => setImgRetry(c => (c < 1 ? c + 1 : c)), 1500);
                     } else {

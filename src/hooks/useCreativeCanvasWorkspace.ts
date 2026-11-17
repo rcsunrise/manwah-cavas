@@ -3,6 +3,7 @@ import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
 import { LocalAssetItem } from '../types/creativeCanvas';
 import { deltaE, findAssetByKeyword, pickBestSource, pickPaletteSwatches, textileColorTarget } from '../utils/textilePalette';
+import { compressImageForUpload } from '../utils/imageCompress';
 import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard, AgentActionParams } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { confirmDialog } from '../utils/confirmDialog';
@@ -554,6 +555,8 @@ export function useCreativeCanvasWorkspace(
 
   // 对话里粘贴/拖入的图片：先传到存储拿到地址，随消息发给智能体（不再直接当产品主图做 DNA）
   const uploadChatImage = useCallback(async (file: File): Promise<string> => {
+    // 上传前在浏览器里缩到长边 2560，手机原图从几 MB 降到几百 KB，网络差时上传快很多
+    file = await compressImageForUpload(file);
     if (file.size > 20 * 1024 * 1024) throw new Error('图片超过 20MB');
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -1477,6 +1480,9 @@ export function useCreativeCanvasWorkspace(
       return;
     }
 
+    // 上传前压缩（长边 2560、JPEG 0.9；带透明的 PNG 保留 PNG），压缩后再查大小
+    file = await compressImageForUpload(file);
+
     if (file.size > 20 * 1024 * 1024) {
       setErrorMessage('文件大小超出 20MB 限制。');
       return;
@@ -1979,9 +1985,21 @@ export function useCreativeCanvasWorkspace(
    * 对话改字：修改画布图片中已有的文字（如海报标题），只重绘文字区域。
    * 结果作为新版本节点放在原图右侧并连线，原图保留。
    */
-  const handleEditImageText = async (params: { newText?: string; oldText?: string; nodeId?: string }) => {
-    const newText = params.newText?.trim();
-    if (!newText) return;
+  const handleEditImageText = async (params: {
+    newText?: string;
+    oldText?: string;
+    nodeId?: string;
+    /** 一次改多行（如底部三格描述）：逐行依次改，后一行在前一行的结果上继续改 */
+    textEdits?: Array<{ oldText?: string; newText?: string }>;
+  }) => {
+    const edits = (Array.isArray(params.textEdits) && params.textEdits.length > 0
+      ? params.textEdits
+      : [{ oldText: params.oldText, newText: params.newText }]
+    )
+      .map(e => ({ oldText: typeof e?.oldText === 'string' ? e.oldText.trim() || undefined : undefined, newText: String(e?.newText || '').trim() }))
+      .filter(e => e.newText)
+      .slice(0, 6);
+    if (edits.length === 0) return;
     const currentNodes = nodesRef.current;
     const hasImage = (n: Node | undefined) => typeof (n?.data as any)?.imageUrl === 'string' && Boolean((n?.data as any)?.imageUrl);
     // 目标图：显式指定 → 当前选中 → 最近一张带文字的生成图 → 最近一张生成图 → 画布上任意一张图（如产品主图）
@@ -1996,72 +2014,102 @@ export function useCreativeCanvasWorkspace(
       return;
     }
     const targetTitle = (target.data as any)?.title || (target.data as any)?.screenTitle || '目标图片';
-    const taskStartedAt = Date.now();
+    const editLabel = (e: { oldText?: string; newText: string }) => `${e.oldText ? `「${e.oldText}」→` : ''}「${e.newText}」`;
     const taskId = addAgentMessage('', {
       taskCard: {
-        title: `修改图中文字：${params.oldText ? `「${params.oldText}」→` : ''}「${newText}」`,
+        title: edits.length === 1 ? `修改图中文字：${editLabel(edits[0])}` : `修改图中文字：共 ${edits.length} 处`,
         status: 'running',
-        detail: `${targetTitle} · GPT 2.5 Sunburst 局部重绘，约 1 分钟`
+        detail: `${targetTitle} · GPT 2.5 Sunburst 局部重绘，每处约 1 分钟`
       }
     });
-    try {
-      const authHeaders = await getAuthHeaders();
-      const res = await fetch('/api/image-text-edit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ imageUrl: (target.data as any).imageUrl, newText, oldText: params.oldText })
-      });
-      const json = await parseJsonResponse<{ success?: boolean; data?: any; error?: string }>(res);
-      if (!res.ok || !json.success || !json.data) throw new Error(json.error || `改字失败 (HTTP ${res.status})`);
-      const result = json.data;
 
-      const newNodeId = `text-edit-${Date.now()}`;
-      const sourceWidth = Number((target as any).width || (target.style as any)?.width || 380);
-      setNodes(prev => [
-        ...prev.map(n => ({ ...n, selected: false })),
-        {
-          ...target,
-          id: newNodeId,
-          selected: true,
-          position: { x: target.position.x + sourceWidth + 60, y: target.position.y },
-          data: {
-            ...(target.data as any),
-            imageUrl: result.imageUrl,
-            title: `${targetTitle} · 改字`,
-            textEditedFrom: target.id,
-            textEdit: { from: result.originalLine, to: result.expectedLine, model: result.model, verified: result.verified }
-          }
-        }
-      ]);
-      setEdges(prev => [
-        ...prev,
-        {
-          id: `edge-text-edit-${target.id}-${newNodeId}`,
-          source: target.id,
-          target: newNodeId,
-          animated: false,
-          style: { stroke: '#B28C5A', strokeWidth: 1.5, strokeDasharray: '4 3' }
-        }
-      ]);
-      hasUserMutationRef.current = true;
-
-      const modelLabel = /sunburst/.test(result.model || '') ? 'GPT 2.5 Sunburst' : result.model === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1';
-      const editDetail = result.verified
-        ? `「${result.originalLine}」→「${result.expectedLine}」 · ${modelLabel} · 已逐字校验，画面其余部分保持原图`
-        : `⚠️ 逐字校验未通过（识别为「${result.recognizedLine || '无法识别'}」），请放大核对文字 · ${modelLabel}`;
-      finishTaskCard(taskId, 'done', editDetail, { nodeId: newNodeId });
-      postImageResultToChat({
-        imageUrl: result.imageUrl,
-        title: `${targetTitle} · 改字`,
-        nodeId: newNodeId,
-        sceneIndex: (target.data as any)?.sceneIndex,
-        withText: true,
-        source: 'text_edit',
-        detail: editDetail
-      });
-    } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '改字失败');
+    // 逐行改：每一行都在上一行的结果上改，最后只放一张成品到画布
+    let currentImageUrl: string = (target.data as any).imageUrl;
+    const done: Array<{ originalLine: string; expectedLine: string; model: string; verified: boolean; recognizedLine?: string }> = [];
+    let failure: string | null = null;
+    for (const [i, edit] of edits.entries()) {
+      if (edits.length > 1) {
+        // 只更新进度文字，状态保持“进行中”
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === taskId && m.taskCard
+              ? { ...m, taskCard: { ...m.taskCard, detail: `${targetTitle} · 第 ${i + 1}/${edits.length} 处：${editLabel(edit)}` } }
+              : m
+          )
+        );
+      }
+      try {
+        const authHeaders = await getAuthHeaders();
+        const res = await fetch('/api/image-text-edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders },
+          body: JSON.stringify({ imageUrl: currentImageUrl, newText: edit.newText, oldText: edit.oldText })
+        });
+        const json = await parseJsonResponse<{ success?: boolean; data?: any; error?: string }>(res);
+        if (!res.ok || !json.success || !json.data) throw new Error(json.error || `改字失败 (HTTP ${res.status})`);
+        currentImageUrl = json.data.imageUrl;
+        done.push(json.data);
+      } catch (err: any) {
+        failure = `${edits.length > 1 ? `第 ${i + 1} 处${editLabel(edit)}：` : ''}${err?.message || '改字失败'}`;
+        break;
+      }
     }
+
+    if (done.length === 0) {
+      finishTaskCard(taskId, 'failed', failure || '改字失败');
+      return;
+    }
+
+    const newNodeId = `text-edit-${Date.now()}`;
+    const sourceWidth = Number((target as any).width || (target.style as any)?.width || 380);
+    const last = done[done.length - 1];
+    setNodes(prev => [
+      ...prev.map(n => ({ ...n, selected: false })),
+      {
+        ...target,
+        id: newNodeId,
+        selected: true,
+        position: { x: target.position.x + sourceWidth + 60, y: target.position.y },
+        data: {
+          ...(target.data as any),
+          imageUrl: currentImageUrl,
+          title: `${targetTitle} · 改字`,
+          textEditedFrom: target.id,
+          textEdit: { from: last.originalLine, to: last.expectedLine, model: last.model, verified: done.every(d => d.verified) },
+          ...(done.length > 1 ? { textEdits: done.map(d => ({ from: d.originalLine, to: d.expectedLine, model: d.model, verified: d.verified })) } : {})
+        }
+      }
+    ]);
+    setEdges(prev => [
+      ...prev,
+      {
+        id: `edge-text-edit-${target.id}-${newNodeId}`,
+        source: target.id,
+        target: newNodeId,
+        animated: false,
+        style: { stroke: '#B28C5A', strokeWidth: 1.5, strokeDasharray: '4 3' }
+      }
+    ]);
+    hasUserMutationRef.current = true;
+
+    const modelLabel = (m: string) => (/sunburst/.test(m || '') ? 'GPT 2.5 Sunburst' : m === 'gemini-3-pro-image' ? 'Gemini 3 Pro' : 'Nano Banana 2.1');
+    const lineDetail = (d: (typeof done)[number]) =>
+      d.verified
+        ? `「${d.originalLine}」→「${d.expectedLine}」 · ${modelLabel(d.model)} · 已逐字校验`
+        : `⚠️「${d.originalLine}」→「${d.expectedLine}」逐字校验未通过（识别为「${d.recognizedLine || '无法识别'}」），请放大核对 · ${modelLabel(d.model)}`;
+    let editDetail = done.map(lineDetail).join('\n');
+    if (done.length === 1 && last.verified) editDetail += '，画面其余部分保持原图';
+    if (failure) editDetail += `\n未完成：${failure}（已完成的部分保留在新图里）`;
+    finishTaskCard(taskId, failure ? 'failed' : 'done', editDetail, { nodeId: newNodeId });
+    postImageResultToChat({
+      imageUrl: currentImageUrl,
+      title: `${targetTitle} · 改字`,
+      nodeId: newNodeId,
+      sceneIndex: (target.data as any)?.sceneIndex,
+      withText: true,
+      source: 'text_edit',
+      detail: editDetail
+    });
   };
 
   // 按对话里的要求修改一张已生成的画面（换背景、调光线等），结果作为新版本节点接在原图后面，并回传到对话
@@ -2924,6 +2972,8 @@ export function useCreativeCanvasWorkspace(
       setNodes(prev => prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n)));
     patch({ status: 'uploading', fileName: file.name, errorMsg: undefined });
     try {
+      // 先压缩，尺寸和大小都按实际上传的文件记
+      file = await compressImageForUpload(file);
       const url = await uploadChatImage(file);
       // 尺寸从本地文件读：存储地址在网络抖动时可能迟迟不返回，不能让节点一直卡在上传中
       const dimensions = await new Promise<{ width: number; height: number }>(resolve => {

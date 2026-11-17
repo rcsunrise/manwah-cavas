@@ -78,7 +78,12 @@ interface AgentPanelProps {
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
   onOpenVideoPanel?: (brief?: Pick<AgentActionParams, 'videoBrief' | 'focusPoints' | 'videoMode' | 'videoStyle' | 'videoShots' | 'videoRatio' | 'referenceImageUrl'> & { chat?: boolean }) => void;
   /** 修改画布图片中的文字（局部重绘） */
-  onEditImageText?: (params: { newText?: string; oldText?: string; nodeId?: string }) => void;
+  onEditImageText?: (params: {
+    newText?: string;
+    oldText?: string;
+    nodeId?: string;
+    textEdits?: Array<{ oldText?: string; newText: string }>;
+  }) => void;
   /** 按对话要求修改画面（换背景、调光线等） */
   onEditImage?: (params: { instruction?: string; nodeId?: string }) => void;
 
@@ -1134,7 +1139,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       }
       case 'edit_image_text': {
-        if (!params?.newText) {
+        if (!params?.newText && !params?.textEdits?.length) {
           postAgent('请告诉我要把文字改成什么。');
           return;
         }

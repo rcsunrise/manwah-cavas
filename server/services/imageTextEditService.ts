@@ -55,6 +55,24 @@ interface Rect { left: number; top: number; width: number; height: number }
 
 const normalizeText = (s: string) => s.replace(/[\s·・•.,，。、:：!！?？'"“”‘’「」『』()（）\-—_]/g, '');
 
+/**
+ * newText 看起来是“修改要求”而不是“要写进图里的文字”：
+ * 例如“底部三格细节图描述从左到右分别替换为：A；B；C。仅替换底部三处描述”。
+ * 这种直接当新文字去改，逐字校验永远通不过，会把重试和换模型全部跑一遍（每次都扣费），
+ * 而且没给原文时会改到主标题上。必须在调用任何收费模型之前拦下。
+ */
+const INSTRUCTION_WORDS_RE =
+  /替换为|替换成|改为|改成|换成|分别|从左到右|从右到左|从上到下|仅替换|只替换|保持不变|保留原|其余不变|请把|请将|帮我/;
+export function looksLikeEditInstruction(newText: string): boolean {
+  const t = newText.trim();
+  if (INSTRUCTION_WORDS_RE.test(t)) return true;
+  if (t.length > 40) return true;
+  // 多段用分号隔开：一次要改好几处
+  const segments = t.split(/[；;]/).filter(x => x.trim()).length;
+  if (segments >= 3 || (segments === 2 && t.length > 20)) return true;
+  return false;
+}
+
 function isNetworkError(err: any): boolean {
   const text = `${err?.message || ''} ${err?.cause?.code || ''}`;
   return /fetch failed|ECONNRESET|ETIMEDOUT|socket|UND_ERR|timeout/i.test(text);
@@ -364,6 +382,12 @@ async function saveResultImage(image: Buffer): Promise<{ imageUrl: string; objec
 export async function editImageText(input: ImageTextEditInput): Promise<ImageTextEditResult> {
   const newText = input.newText?.trim();
   if (!newText) throw new Error('缺少要改成的文字');
+  if (looksLikeEditInstruction(newText)) {
+    throw new Error(
+      '“改图中文字”一次只改一行：newText 要填改成的那一行文字本身，并用 oldText 指明被替换的原文。' +
+        '要改多处请逐行分别修改；要按描述调整画面请用整体修改。本次没有调用生图模型，未扣费。'
+    );
+  }
   const userId = input.userId || 'system';
 
   const { buffer: rawBuffer } = await VideoSourceImageResolver.loadImageBuffer(input.imageUrl);

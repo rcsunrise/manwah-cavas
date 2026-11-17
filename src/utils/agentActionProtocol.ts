@@ -176,6 +176,16 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.keywords === 'string' && raw.keywords.trim()) params.keywords = raw.keywords.trim().slice(0, 100);
   if (typeof raw.newText === 'string' && raw.newText.trim()) params.newText = raw.newText.trim().slice(0, 60);
   if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
+  if (Array.isArray(raw.textEdits)) {
+    const textEdits = raw.textEdits
+      .filter((e: any) => e && typeof e.newText === 'string' && e.newText.trim())
+      .slice(0, 6)
+      .map((e: any) => ({
+        newText: String(e.newText).trim().slice(0, 60),
+        ...(typeof e.oldText === 'string' && e.oldText.trim() ? { oldText: e.oldText.trim().slice(0, 60) } : {})
+      }));
+    if (textEdits.length > 0) params.textEdits = textEdits;
+  }
   if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) params.nodeId = raw.nodeId.trim().slice(0, 120);
   if (typeof raw.imageUrl === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(raw.imageUrl.trim())) params.imageUrl = raw.imageUrl.trim().slice(0, 2000);
   if (typeof raw.instruction === 'string' && raw.instruction.trim()) params.instruction = raw.instruction.trim().slice(0, 300);
@@ -235,6 +245,9 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   if (params?.keywords) items.push({ label: '关键词', value: params.keywords });
   if (params?.oldText) items.push({ label: '原文', value: `「${params.oldText}」` });
   if (params?.newText) items.push({ label: '改为', value: `「${params.newText}」` });
+  params?.textEdits?.forEach((e, i) =>
+    items.push({ label: `第 ${i + 1} 处`, value: `${e.oldText ? `「${e.oldText}」→` : ''}「${e.newText}」` })
+  );
   if (params?.hint) items.push({ label: '要求', value: params.hint });
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
@@ -374,6 +387,21 @@ export function buildCanvasSummary(input: {
     lines.push(`- 画布上的氛围海报（可用 fabric_edit 修改，nodeId 用前面的 id）：${desc.join('；')}`);
   }
 
+  // 4/3 产品海报（模板 A）：列出图上的文字，改字时 oldText 才有据可查
+  const productPosters = nodes.filter(n => n?.data?.templatePoster?.template === 'A').slice(-4);
+  if (productPosters.length > 0) {
+    const desc = productPosters.map(n => {
+      const c = n.data.templatePoster.concept || {};
+      const details = (Array.isArray(c.details) ? c.details : [])
+        .slice(0, 3)
+        .map((d: any, k: number) => `第${k + 1}格标题「${d?.title || ''}」描述「${d?.desc || ''}」`)
+        .join('、');
+      const edited = n.data.textEditedFrom ? '；此图改过字，文字以图上为准' : '';
+      return `${n.id}（主标题「${c.name || ''}」；副标题「${c.subtitle || ''}」${details ? `；底部从左到右：${details}` : ''}${edited}）`;
+    });
+    lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文）：${desc.join('；')}`);
+  }
+
   if (localFolder && localFolder.imageCount > 0) {
     const more = localFolder.imageCount > localFolder.names.length ? `……共 ${localFolder.imageCount} 张` : '';
     lines.push(`- 已授权本地素材文件夹「${localFolder.dirName}」：${localFolder.imageCount} 张图片，文件名如 ${localFolder.names.join('、')}${more}（可用 textile_poster 以其中一款为主色做面料色卡海报，textileMain 填文件名）`);
@@ -500,7 +528,7 @@ function extractAgentActionsRaw(text: string): Pick<AgentMessage, 'text' | 'clar
     const actionId: AgentActionId = payload.plan.actionId;
     const params = normalizeParams(payload.plan.params);
     // 单屏操作必须指明是哪一屏；改字必须给出新文字
-    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText) || (actionId === 'set_product_image' && !params?.imageUrl) || (actionId === 'edit_image' && !params?.instruction)) {
+    if (((actionId === 'replan_screen' || actionId === 'render_screen') && !params?.screenIndex) || (actionId === 'edit_image_text' && !params?.newText && !params?.textEdits?.length) || (actionId === 'set_product_image' && !params?.imageUrl) || (actionId === 'edit_image' && !params?.instruction)) {
       // 缺少关键参数时不出计划卡，正文里模型通常已说明
     } else {
       result.planCard = {

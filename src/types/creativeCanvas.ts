@@ -202,6 +202,8 @@ export interface AgentActionParams {
   /** 修改图中文字：要改成的文字 / 被替换的原文 / 目标图片节点 */
   newText?: string;
   oldText?: string;
+  /** edit_image_text 一次改多行：每项一行，逐行依次修改 */
+  textEdits?: Array<{ oldText?: string; newText: string }>;
   nodeId?: string;
   /** 打开视频创作：对话中商定的视频创意要求（填入面板的创意描述，交给 AI 导演） */
   videoBrief?: string;

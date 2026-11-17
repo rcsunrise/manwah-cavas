@@ -1,5 +1,6 @@
 import React from 'react';
 import { Handle, NodeProps, Position } from '@xyflow/react';
+import { toThumbnailUrl } from '../../utils/thumbnailUrl';
 
 export interface FabricMainNodeData {
   name?: string;
@@ -13,6 +14,9 @@ const STATE_TEXT: Record<string, string> = { pending: '待确认', running: '生
 /** 面料色卡海报的“主面料”节点：选好主色后立刻出现在画布上，生成的海报从它连出。 */
 export const FabricMainNode: React.FC<NodeProps> = ({ data, selected }) => {
   const d = data as unknown as FabricMainNodeData;
+  const [useThumb, setUseThumb] = React.useState(true);
+  React.useEffect(() => setUseThumb(true), [d.imageUrl]);
+  const src = d.imageUrl && useThumb ? toThumbnailUrl(d.imageUrl, 512) : d.imageUrl;
   return (
     <div
       className={`w-[260px] rounded-2xl bg-white border shadow-sm p-3 space-y-2 ${
@@ -27,7 +31,15 @@ export const FabricMainNode: React.FC<NodeProps> = ({ data, selected }) => {
         </span>
       </div>
       <div className="aspect-[4/3] rounded-xl bg-stone-100 overflow-hidden">
-        {d.imageUrl && <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" draggable={false} />}
+        {src && (
+          <img
+            src={src}
+            alt={d.name}
+            className="w-full h-full object-cover"
+            draggable={false}
+            onError={() => useThumb && src !== d.imageUrl && setUseThumb(false)}
+          />
+        )}
       </div>
       <p className="text-[11px] font-mono text-stone-600 truncate" title={d.name}>
         {d.name}
