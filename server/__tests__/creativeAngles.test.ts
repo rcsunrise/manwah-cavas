@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CREATIVE_ANGLES, pickCreativeAngle } from '../services/posterTemplate/creativeAngles';
 import { findSceneDirection, pickSceneCandidates, SCENE_DIRECTIONS } from '../services/posterTemplate/sceneDirections';
-import { buildConceptPrompt, sanitizeConcept } from '../services/posterTemplate/posterConcept';
+import { buildConceptPrompt, buildTemplateAHeroPrompt, sanitizeConcept } from '../services/posterTemplate/posterConcept';
 
 describe('创意角度轮换', () => {
   it('优先选没用过的角度', () => {
@@ -67,5 +67,26 @@ describe('海报概念 prompt', () => {
     expect(c.sceneDirection).toBe('salt_mirror');
     expect(c.sellingPoint).toBe('米白真皮');
     expect(c.keyElements).toEqual(['盐湖', '倒影']);
+  });
+});
+
+describe('参考图', () => {
+  it('有参考图时构思按参考图来，不再给候选场景', () => {
+    const prompt = buildConceptPrompt({
+      productImage: { data: 'x', mimeType: 'image/jpeg' },
+      referenceImage: { data: 'y', mimeType: 'image/jpeg' },
+      used: []
+    });
+    expect(prompt).toContain('[参考图（最重要，必须照着它来）]');
+    expect(prompt).toContain('第二张图是用户给的参考海报');
+    expect(prompt).not.toContain('[候选场景');
+  });
+
+  it('主场景提示词带参考图段落，且要求不照搬参考图里的家具和文字', () => {
+    const c = sanitizeConcept({ name: '极昼', scene: '冰川与极光' });
+    const withRef = buildTemplateAHeroPrompt(c, undefined, { hasReference: true });
+    expect(withRef).toContain('[参考图]');
+    expect(withRef).toContain('不要画进来');
+    expect(buildTemplateAHeroPrompt(c)).not.toContain('[参考图]');
   });
 });

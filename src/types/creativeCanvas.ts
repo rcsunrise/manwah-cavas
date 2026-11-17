@@ -215,7 +215,7 @@ export interface AgentActionParams {
   videoShots?: { title: string; durationSeconds: number; camera?: string; content: string }[];
   /** 视频画面比例，如 16:9 / 9:16 / 1:1 / 4:3 / 3:4 */
   videoRatio?: string;
-  /** 视频参考图（对话里用户发的图片地址）；不填时用画布产品主图 */
+  /** 参考图（对话里用户发的图片地址）：视频参考图（不填时用画布产品主图）；4/3 产品海报的场景参考（主场景按它出图，版式仍按 4/3） */
   referenceImageUrl?: string;
 }
 

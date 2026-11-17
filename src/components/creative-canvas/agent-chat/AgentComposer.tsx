@@ -197,6 +197,34 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     setAttachments([]);
   };
 
+  // 点“4/3 产品海报”时，输入框里已上传的图当作参考图、@ 的产品图当作要做海报的产品、剩下的文字当补充要求
+  const runQuickAction = (action: AgentActionOption) => {
+    if (action.actionId === 'template_poster' && readyImageUrls.length > 0 && !attachmentsUploading) {
+      const trimmed = text.trim();
+      const active = mentions.filter(m => trimmed.includes(`@${m.title}`));
+      const product = active.find(m => /^产品(主)?图/.test(m.title));
+      let hint = trimmed;
+      for (const m of active) hint = hint.split(`@${m.title}`).join(' ');
+      hint = hint.replace(/\s+/g, ' ').trim();
+      onQuickAction({
+        ...action,
+        params: {
+          ...(action.params || {}),
+          referenceImageUrl: readyImageUrls[0],
+          ...(product ? { nodeId: product.id } : {}),
+          ...(hint ? { hint: hint.slice(0, 300) } : {})
+        }
+      });
+      setText('');
+      setMentions([]);
+      setMentionQuery(null);
+      attachments.forEach(a => URL.revokeObjectURL(a.previewUrl));
+      setAttachments([]);
+      return;
+    }
+    onQuickAction(action);
+  };
+
   // 粘贴 / 拖入图片：和 + 按钮一样上传为产品主图；纯文字粘贴照常进入输入框
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const imageFiles = (files: FileList | DataTransferItemList | null | undefined): File[] => {
@@ -265,7 +293,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
             <button
               key={action.label}
               type="button"
-              onClick={() => onQuickAction(action)}
+              onClick={() => runQuickAction(action)}
               disabled={isStreaming}
               className="shrink-0 px-2.5 py-1 rounded-lg border border-[#E5E0D8] bg-white hover:border-[#B28C5A] hover:text-[#8C6F43] text-[11px] font-bold text-stone-700 transition-colors disabled:opacity-50 cursor-pointer"
             >

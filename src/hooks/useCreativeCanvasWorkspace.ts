@@ -538,14 +538,16 @@ export function useCreativeCanvasWorkspace(
     }
   }, [workspaceIdParam, addAgentMessage, fetchDnaVersions]);
 
-  const addUserMessage = useCallback((text: string) => {
+  // images：随消息显示的图片（上传的产品图在对话里也能看到、点开放大）
+  const addUserMessage = useCallback((text: string, images?: string[]) => {
     setMessages(prev => [
       ...prev,
       {
         id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         sender: 'user',
         text,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ...(images && images.length > 0 ? { images } : {})
       }
     ]);
   }, []);
@@ -1479,7 +1481,6 @@ export function useCreativeCanvasWorkspace(
     // 原项目已成组锁定：不覆盖锁定的主产品图，新图作为新产品节点落在分组框旁边
     const lockedMain = (nodesRef.current || nodes).find(n => n.id === 'img-node-1' && (n.data as any)?.groupLocked);
     if (lockedMain) {
-      addUserMessage(`新增产品图：${file.name}`);
       addAgentMessage('原项目已锁定，没有动它的主图。这张图作为新产品放在分组框右侧，可点它上面的「4/3 产品海报」等按钮单独开新项目。');
       handleAddProductNode(file);
       return;
@@ -1487,7 +1488,8 @@ export function useCreativeCanvasWorkspace(
 
     setUploadState('uploading');
     setErrorMessage(null);
-    addUserMessage(`上传产品主图：${file.name}`);
+    // 本地预览地址：对话里马上能看到这张图，不用等上传到存储
+    addUserMessage(`上传产品主图：${file.name}`, [URL.createObjectURL(file)]);
 
     const formattedSize = formatFileSize(file.size);
 
@@ -2913,6 +2915,7 @@ export function useCreativeCanvasWorkspace(
   const handleUploadToProductNode = async (nodeId: string, file: File) => {
     if (!file.type.startsWith('image/')) return;
     hasUserMutationRef.current = true;
+    addUserMessage(`新增产品图：${file.name}`, [URL.createObjectURL(file)]);
     const patch = (data: Record<string, unknown>) =>
       setNodes(prev => prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n)));
     patch({ status: 'uploading', fileName: file.name, errorMsg: undefined });
@@ -3050,8 +3053,13 @@ export function useCreativeCanvasWorkspace(
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const taskTitle = productNodes.length > 1 ? `4/3 产品海报 · ${productLabel}` : '4/3 产品海报';
     const taskStartedAt = Date.now();
+    const referenceImage = params?.referenceImageUrl || undefined;
     const taskId = addAgentMessage('', {
-      taskCard: { title: taskTitle, status: 'running', detail: '1/3 构思命名、场景与细节文案…' }
+      taskCard: {
+        title: referenceImage ? `${taskTitle}（按参考图）` : taskTitle,
+        status: 'running',
+        detail: referenceImage ? '1/3 读参考图的场景与氛围，构思命名和细节文案…' : '1/3 构思命名、场景与细节文案…'
+      }
     });
     const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
 
@@ -3071,6 +3079,7 @@ export function useCreativeCanvasWorkspace(
     try {
       const { concept } = await postJson('/api/poster-templates/concept', {
         productImage,
+        referenceImage,
         dna,
         hint: params?.hint,
         planContext,
@@ -3081,6 +3090,7 @@ export function useCreativeCanvasWorkspace(
       const hero = await postJson('/api/poster-templates/template-a/hero', {
         concept,
         productImage,
+        referenceImage,
         dna,
         model: selectedModel || undefined,
         resolution: templateA4K ? '4K' : (selectedResolution || '2K')
@@ -3116,7 +3126,7 @@ export function useCreativeCanvasWorkspace(
             version: 1,
             reviewStatus: 'pendingReview',
             prompt: hero.prompt,
-            templatePoster: { template: 'A', productNodeId: productKey, concept, details: composed.details, layout: composed.layout }
+            templatePoster: { template: 'A', productNodeId: productKey, concept, details: composed.details, layout: composed.layout, ...(referenceImage ? { referenceImageUrl: referenceImage } : {}) }
           }
         };
         return [...prev, posterNode];

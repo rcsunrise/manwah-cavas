@@ -417,7 +417,7 @@ export function buildCanvasSummary(input: {
   if (imageNodes.length > 0) {
     const desc = imageNodes.map(n => {
       const d = n.data || {};
-      const title = d.title || d.screenTitle || d.label || '图片';
+      const title = d.title || d.screenTitle || d.label || (n?.type === 'productImageNode' ? `产品图${d.fileName ? ` · ${d.fileName}` : ''}` : '图片');
       const flags = [d.withText ? '含文字' : '', Number.isInteger(d.sceneIndex) ? `第${d.sceneIndex}屏` : ''].filter(Boolean).join('/');
       return `${n.id}「${title}」${flags ? `(${flags})` : ''}`;
     });
@@ -439,7 +439,7 @@ export function buildCanvasSummary(input: {
       .filter(Boolean)
       .map(n => {
         const d = n.data || {};
-        const title = d.title || d.label || d.screenTitle || n.id;
+        const title = d.title || d.label || d.screenTitle || (n?.type === 'productImageNode' && d.fileName ? `产品图 · ${d.fileName}` : n.id);
         return Number.isInteger(d.screenIndex) ? `${title}（第${d.screenIndex}屏）` : title;
       });
     if (titles.length > 0) lines.push(`- 用户本条消息引用的画布素材：${titles.join('、')}`);

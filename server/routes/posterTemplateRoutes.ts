@@ -73,7 +73,7 @@ function sendError(res: Response, err: any, fallback: string) {
 
 router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { productImage, dna, hint, planContext, used } = req.body || {};
+    const { productImage, referenceImage, dna, hint, planContext, used } = req.body || {};
     // 同一产品已出过的海报（只取需要的字段，最多 12 条）
     const usedConcepts: UsedPosterConcept[] = Array.isArray(used)
       ? used
@@ -96,10 +96,18 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
       const small = await sharp(buf, { failOn: 'none' }).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
       product = { data: small.toString('base64'), mimeType: 'image/jpeg' };
     }
+    // 参考海报 / 参考图：构思时按它的场景与氛围来（版式仍是 4/3 固定版式）
+    let reference: { data: string; mimeType: string } | undefined;
+    if (referenceImage) {
+      const buf = await loadImage(referenceImage, '参考图');
+      const small = await sharp(buf, { failOn: 'none' }).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      reference = { data: small.toString('base64'), mimeType: 'image/jpeg' };
+    }
     const concept = await generatePosterConcept(
       {
         dna,
         productImage: product,
+        referenceImage: reference,
         hint: typeof hint === 'string' ? hint.slice(0, 500) : undefined,
         planContext: typeof planContext === 'string' ? planContext.slice(0, 1500) : undefined,
         used: usedConcepts
@@ -114,17 +122,26 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
 
 router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { concept: rawConcept, productImage, dna, model, resolution } = req.body || {};
+    const { concept: rawConcept, productImage, referenceImage, dna, model, resolution } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeConcept(rawConcept);
     const product = await loadImage(productImage, '产品图');
     const productJpeg = await sharp(product, { failOn: 'none' }).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
-    const prompt = buildTemplateAHeroPrompt(concept, dna);
+    // 参考图作为第二张图交给生图模型，只参考场景、光线、配色与氛围
+    let referenceJpeg: Buffer | undefined;
+    if (referenceImage) {
+      const ref = await loadImage(referenceImage, '参考图');
+      referenceJpeg = await sharp(ref, { failOn: 'none' }).rotate().resize(1536, 1536, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    }
+    const prompt = buildTemplateAHeroPrompt(concept, dna, { hasReference: Boolean(referenceJpeg) });
     const usedModel = typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_HERO_MODEL;
     const image = await requestGatewayImage({
       prompt,
       model: usedModel,
-      images: [{ data: `data:image/jpeg;base64,${productJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' }],
+      images: [
+        { data: `data:image/jpeg;base64,${productJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' },
+        ...(referenceJpeg ? [{ data: `data:image/jpeg;base64,${referenceJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' }] : [])
+      ],
       aspectRatio: '16:9',
       resolution: resolution === '1K' || resolution === '4K' ? resolution : '2K',
       userId: userIdOf(req),

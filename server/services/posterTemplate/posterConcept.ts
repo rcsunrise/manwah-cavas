@@ -67,6 +67,8 @@ export interface PosterConceptInput {
   dna?: any;
   /** 产品图（data URL 或纯 base64），让模型看得到真实造型 */
   productImage?: { data: string; mimeType: string };
+  /** 用户给的参考海报 / 参考图：场景、光线、配色、氛围按它来，版式仍按 4/3 固定版式 */
+  referenceImage?: { data: string; mimeType: string };
   /** 用户补充要求，如“偏未来感”“用湖景” */
   hint?: string;
   /** 已有企划的主题或卖点，作为参考 */
@@ -183,6 +185,16 @@ export function cutAtPunctuation(text: unknown, max: number, fallback = ''): str
 }
 
 function sceneBlock(input: PosterConceptInput): string {
+  if (input.referenceImage) {
+    return [
+      '',
+      '[参考图（最重要，必须照着它来）]',
+      `${input.productImage ? '第二张图' : '附上的图'}是用户给的参考海报 / 参考图。主场景要按它来：空间与地貌、远景、构图与机位、时间与光线、配色、氛围、道具风格都尽量贴近参考图，让人一眼看出是照着它做的。`,
+      '但只学场景和氛围：参考图里的沙发 / 家具、文字、Logo、排版一律不要照搬，画面里唯一的沙发是第一张图的产品；命名与文案按这款产品和参考图的意境重新构思。',
+      '下面关于“候选场景”“创意角度”“避开已做过的元素”的要求，与参考图冲突时以参考图为准。',
+      ''
+    ].join('\n');
+  }
   if (input.sceneDirection) {
     return `\n[本次场景方向（必须采用，命名、意象、道具都要和它呼应）]\n${input.sceneDirection.label}：${input.sceneDirection.brief}\n`;
   }
@@ -281,15 +293,15 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
   // 用户自己提了场景要求时不强加方向；否则按这款产品用过的方向轮换
   const used = (input.used || []).filter(u => u && typeof u.name === 'string' && u.name.trim());
   // 按这款产品用过的角度与场景轮换：角度决定从哪个卖点出发，候选场景来自最近没用过的类别，由模型按卖点挑一个
-  const angle = input.angle || (input.hint ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
+  const angle = input.angle || (input.hint || input.referenceImage ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
   const direction = input.sceneDirection;
   const candidates =
     input.sceneCandidates ||
-    (direction || input.hint ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
+    (direction || input.hint || input.referenceImage ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
 
-  const imageParts: any[] = input.productImage?.data
-    ? [{ inlineData: { mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') } }]
-    : [];
+  const imageParts: any[] = [input.productImage, input.referenceImage]
+    .filter((img): img is { data: string; mimeType: string } => Boolean(img?.data))
+    .map(img => ({ inlineData: { mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') } }));
 
   let lastErr: any = null;
   let collided: PosterConcept | null = null;
@@ -324,9 +336,9 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       try {
         const fb = await chatCompletionText({
           prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }),
-          images: input.productImage?.data
-            ? [{ mimeType: input.productImage.mimeType || 'image/jpeg', data: input.productImage.data.replace(/^data:[^;]+;base64,/, '') }]
-            : [],
+          images: [input.productImage, input.referenceImage]
+            .filter((img): img is { data: string; mimeType: string } => Boolean(img?.data))
+            .map(img => ({ mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') })),
           temperature: 1,
           userId
         });
@@ -354,7 +366,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
 }
 
 /** 模板 A 主场景的出图提示词：只画主场景，给标题留白，不画文字和细节小窗 */
-export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): string {
+export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any, opts: { hasReference?: boolean } = {}): string {
   const side = concept.titleSide === 'right' ? '右' : '左';
   const other = concept.titleSide === 'right' ? '左' : '右';
   const dnaLines: string[] = [];
@@ -378,7 +390,15 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any): str
 
   return `高端家具品牌商业海报的主场景摄影，主题「${concept.name}」：${concept.idea}
 
-[场景]
+${
+    opts.hasReference
+      ? `[参考图]
+第二张图是用户给的参考图：场景按它来——空间与地貌、远景、构图与机位、时间与光线、配色、氛围、道具风格都尽量贴近它。
+只学场景：参考图里的沙发 / 家具、人物、文字、Logo、排版和边框一律不要画进来；画面里唯一的沙发是第一张图的产品。
+
+`
+      : ''
+  }[场景]
 ${concept.scene}
 ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 [背景是这张图的重点]
