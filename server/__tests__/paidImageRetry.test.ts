@@ -87,3 +87,22 @@ describe('edit_image_text 一次改多处', () => {
     expect(summary).toContain('第3格标题「坐垫」');
   });
 });
+
+describe('OCR 返回的 JSON 宽松解析', () => {
+  it('字符串里带原始换行/制表符也能解析（2026-11-17 线上 Bad control character）', async () => {
+    const { extractOcrLines, parseLooseJson } = await import('../services/imageTextEditService');
+    const bad = '```json\n{"lines":[{"text":"饱满弧面\t柔和收边\n","left":200,"top":896,"right":318,"bottom":915}]}\n```';
+    expect(() => JSON.parse(bad.slice(bad.indexOf('{'), bad.lastIndexOf('}') + 1))).toThrow();
+    const lines = extractOcrLines(bad);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].text.replace(/\s/g, '')).toBe('饱满弧面柔和收边');
+    expect(parseLooseJson('{"a":1}')).toEqual({ a: 1 });
+    expect(() => parseLooseJson('not json')).toThrow();
+  });
+
+  it('没有 JSON 或没有 lines 时返回空数组', async () => {
+    const { extractOcrLines } = await import('../services/imageTextEditService');
+    expect(extractOcrLines('图里没有文字')).toEqual([]);
+    expect(extractOcrLines('{"foo":1}')).toEqual([]);
+  });
+});

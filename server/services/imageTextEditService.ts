@@ -92,6 +92,28 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   throw lastErr;
 }
 
+/**
+ * 宽松解析 JSON：先按标准解析；失败时把控制字符（U+0000–U+001F）换成空格再试。
+ * 结构里的换行/缩进换成空格不影响含义；字符串里误带的换行、制表符等也就变成空格。
+ */
+export function parseLooseJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch (first) {
+    const cleaned = text.replace(/[\u0000-\u001F]/g, ' ');
+    if (cleaned === text) throw first;
+    return JSON.parse(cleaned);
+  }
+}
+
+/** 从模型回答里取出 OCR 行：容忍 ```json 代码块、前后说明文字和控制字符 */
+export function extractOcrLines(content: string): any[] {
+  const match = content.match(/\{[\s\S]*\}/);
+  if (!match) return [];
+  const lines = parseLooseJson(match[0])?.lines;
+  return Array.isArray(lines) ? lines : [];
+}
+
 /** 视觉模型 OCR；strict 模式要求逐字照抄、不纠正错别字（用于校验） */
 async function ocrLines(image: Buffer, strict = false): Promise<Array<{ text: string; box: number[] }>> {
   const config = await resolveApiConfig('system');
@@ -102,31 +124,45 @@ async function ocrLines(image: Buffer, strict = false): Promise<Array<{ text: st
     ? '逐字照抄图片中的文字，严格按看到的字形输出：不要纠正错别字、不要根据语义猜测，看不清或字形不规范的字用"？"代替。只输出 JSON：{"lines":[{"text":"原文","left":0,"top":0,"right":0,"bottom":0}]}，坐标归一化到 0~1000。'
     : '识别图片中所有排版文字（海报标题、副标题、卖点文案等，忽略画中画、书本、屏幕上的小字）。只输出 JSON：{"lines":[{"text":"原文","left":0,"top":0,"right":0,"bottom":0}]}，left/right 为该行文字左右边缘的横坐标，top/bottom 为上下边缘的纵坐标，均归一化到 0~1000（横坐标相对图片宽度，纵坐标相对图片高度）。';
 
-  const json: any = await withRetry(async () => {
-    const res = await fetch(`${base}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OCR_MODEL,
-        temperature: 0,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: instruction },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${small.toString('base64')}` } }
-          ]
-        }]
-      }),
-      signal: AbortSignal.timeout(120_000)
+  const callOnce = () =>
+    withRetry(async () => {
+      const res = await fetch(`${base}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: OCR_MODEL,
+          temperature: 0,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: instruction },
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${small.toString('base64')}` } }
+            ]
+          }]
+        }),
+        signal: AbortSignal.timeout(120_000)
+      });
+      if (!res.ok) throw new Error(`OCR 请求失败 HTTP ${res.status}`);
+      return parseLooseJson(await res.text());
     });
-    if (!res.ok) throw new Error(`OCR 请求失败 HTTP ${res.status}`);
-    return res.json();
-  });
-  const content: string = json?.choices?.[0]?.message?.content || '';
-  const match = content.match(/\{[\s\S]*\}/);
-  if (!match) return [];
-  const lines = JSON.parse(match[0]).lines || [];
-  return lines
+
+  // 模型偶尔在 JSON 字符串里输出原始控制字符（2026-11-17 线上 “Bad control character in string literal”），
+  // 宽松解析仍失败就再识别一次（只是便宜的文本模型，生图还没开始）
+  let lines: any[] | null = null;
+  for (let attempt = 1; attempt <= 2 && !lines; attempt++) {
+    try {
+      const json: any = await callOnce();
+      lines = extractOcrLines(json?.choices?.[0]?.message?.content || '');
+    } catch (err: any) {
+      if (attempt === 2 || !/JSON|control character|Unexpected token/i.test(err?.message || '')) {
+        throw /JSON|control character|Unexpected token/i.test(err?.message || '')
+          ? new Error('文字识别结果格式异常，请重试（还没有调用生图模型，未扣生图费用）')
+          : err;
+      }
+      console.warn('[ImageTextEdit] OCR 返回无法解析，重试一次:', err?.message);
+    }
+  }
+  return (lines || [])
     .map((l: any) => ({ text: String(l.text || ''), box: [Number(l.left), Number(l.top), Number(l.right), Number(l.bottom)] }))
     .filter((l: any) => l.text && l.box.every((v: number) => Number.isFinite(v)));
 }
