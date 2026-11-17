@@ -106,3 +106,16 @@ describe('OCR 返回的 JSON 宽松解析', () => {
     expect(extractOcrLines('{"foo":1}')).toEqual([]);
   });
 });
+
+describe('OCR 输出被硬换行（2026-11-17 线上 Expected , or } at position 261）', () => {
+  it('换行插在数字和文字中间时，删掉换行即可还原', async () => {
+    const { extractOcrLines } = await import('../services/imageTextEditService');
+    // 实际抓到的返回片段：换行把 201 折成 20⏎1，把文案折成两段
+    const wrapped =
+      '{"lines":[{"text":"灵感源于圆弧扶手与峡谷岩壁\n的环抱姿态","left": 69, "top": 236, "right": \n353, "bottom": 257},{"text":"圆弧扶手","left": 20\n1, "top": 846, "right": 283, "bottom": 878},{"text":"饱\n满弧面 • 柔和收边","left": 200, "top": 896, "right": 318, "bottom": 915}]}';
+    const lines = extractOcrLines(wrapped);
+    expect(lines.map((l: any) => l.text)).toEqual(['灵感源于圆弧扶手与峡谷岩壁的环抱姿态', '圆弧扶手', '饱满弧面 • 柔和收边']);
+    expect(lines[1].left).toBe(201);
+    expect(lines[0].right).toBe(353);
+  });
+});

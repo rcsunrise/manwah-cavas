@@ -93,16 +93,25 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 }
 
 /**
- * 宽松解析 JSON：先按标准解析；失败时把控制字符（U+0000–U+001F）换成空格再试。
- * 结构里的换行/缩进换成空格不影响含义；字符串里误带的换行、制表符等也就变成空格。
+ * 宽松解析 JSON。OCR 模型（经 tiantoken 的 gemini-3.6-flash）有时把输出按固定宽度硬换行，
+ * 换行符会插在字符串、甚至数字中间（如 "left": 20⏎1、"峡谷岩壁⏎的环抱姿态"），标准解析报
+ * “Bad control character” 或 “Expected ',' or '}'”。依次尝试：原样 → 删掉控制字符（还原被折断的
+ * 数字和文字）→ 控制字符换空格。
  */
 export function parseLooseJson(text: string): any {
   try {
     return JSON.parse(text);
   } catch (first) {
-    const cleaned = text.replace(/[\u0000-\u001F]/g, ' ');
-    if (cleaned === text) throw first;
-    return JSON.parse(cleaned);
+    for (const replacement of ['', ' ']) {
+      const cleaned = text.replace(/[\u0000-\u001F]/g, replacement);
+      if (cleaned === text) break;
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        // 换下一种
+      }
+    }
+    throw first;
   }
 }
 
