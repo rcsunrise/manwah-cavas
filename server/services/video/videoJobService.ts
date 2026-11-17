@@ -69,16 +69,42 @@ export class VideoJobService {
     return VideoJobService.instance;
   }
 
+  private saveTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * 落盘：1 秒内的多次状态变化合并成一次写入。
+   * 以前每次状态变化都把全部任务（含 base64 源图）缩进格式化整份重写，
+   * 文件涨到 140MB，频繁轮询时内存被反复生成的大字符串打满，服务崩溃。
+   */
   private saveToDisk(): void {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.flushToDisk();
+    }, 1000);
+    this.saveTimer.unref?.();
+  }
+
+  /** 写盘用的精简版任务：base64 源图只在提交前有用，不写盘（内存里的原对象不动） */
+  private static slimJob(job: VideoJob): VideoJob {
+    const src = (job as any).sourceImageUrl;
+    if (typeof src === 'string' && src.startsWith('data:')) {
+      return { ...job, sourceImageUrl: null } as VideoJob;
+    }
+    return job;
+  }
+
+  private flushToDisk(): void {
     try {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
       const data = {
-        jobs: Array.from(this.jobs.entries()),
-        idempotencyStore: Array.from(this.idempotencyStore.entries())
+        jobs: Array.from(this.jobs.entries(), ([id, job]) => [id, VideoJobService.slimJob(job)]),
+        // 幂等记录只存任务 id 和请求哈希，不再整份复制任务
+        idempotencyStore: Array.from(this.idempotencyStore.entries(), ([key, rec]) => [key, { jobId: rec.job?.id, requestHash: rec.requestHash }])
       };
-      fs.writeFileSync(STORAGE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+      fs.writeFileSync(STORAGE_FILE, JSON.stringify(data), 'utf-8');
     } catch (err) {
       console.error('[VideoJobService] Failed to save jobs to disk:', err);
     }
@@ -89,9 +115,24 @@ export class VideoJobService {
       if (fs.existsSync(STORAGE_FILE)) {
         const raw = fs.readFileSync(STORAGE_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (parsed.jobs) this.jobs = new Map(parsed.jobs);
-        if (parsed.idempotencyStore) this.idempotencyStore = new Map(parsed.idempotencyStore);
+        if (parsed.jobs) {
+          this.jobs = new Map(
+            (parsed.jobs as Array<[string, VideoJob]>).map(([id, job]) => [id, VideoJobService.slimJob(job)])
+          );
+        }
+        if (parsed.idempotencyStore) {
+          // 新格式 { jobId, requestHash }；旧格式 { job, requestHash }（job 是整份复制）都指回同一个任务对象
+          const entries: Array<[string, { job: VideoJob; requestHash: string }]> = [];
+          for (const [key, rec] of parsed.idempotencyStore as Array<[string, any]>) {
+            const jobId = rec?.jobId || rec?.job?.id;
+            const job = jobId ? this.jobs.get(jobId) : undefined;
+            if (job) entries.push([key, { job, requestHash: rec.requestHash }]);
+          }
+          this.idempotencyStore = new Map(entries);
+        }
         console.log(`[VideoJobService] Restored ${this.jobs.size} video jobs from disk.`);
+        // 旧文件里有 base64 源图和整份复制的幂等记录：读完立即按精简格式重写（140MB → 几百 KB）
+        if (raw.length > 5 * 1024 * 1024) this.flushToDisk();
       }
     } catch (err) {
       console.error('[VideoJobService] Failed to load video jobs from disk:', err);

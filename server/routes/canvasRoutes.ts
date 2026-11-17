@@ -8,6 +8,7 @@ import { isValidUuid, toValidUuid } from '../lib/uuid';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { approxStringBytes, BoundedCache } from '../lib/boundedCache';
 
 // Start revision finalizer worker
 revisionFinalizer.start(3000);
@@ -29,7 +30,13 @@ const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'creative
 // In-memory Repositories with Disk Persistence
 const inMemoryCanvases = new Map<string, any>();
 const inMemoryRevisions = new Map<string, any[]>();
-const canvasAssetStore = new Map<string, { objectKey: string; mimeType: string; dataUrl: string; createdAt: string }>();
+const MAX_MEMORY_REVISIONS = 30;
+// 画布图片的内存缓存：按字节封顶（默认 200MB，可用 CANVAS_ASSET_CACHE_MB 调整），磁盘上 .data/canvas_assets 还有一份。
+// 以前是普通 Map，读写过的图永久留在内存里，服务跑久了内存打满崩溃。
+const canvasAssetStore = new BoundedCache<{ objectKey: string; mimeType: string; dataUrl: string; createdAt: string }>(
+  Math.max(32, Number(process.env.CANVAS_ASSET_CACHE_MB) || 200) * 1024 * 1024,
+  a => approxStringBytes(a?.dataUrl)
+);
 
 const CANVASES_DIR = path.join(process.cwd(), '.data', 'canvases');
 const REVISIONS_DIR = path.join(process.cwd(), '.data', 'revisions');
@@ -86,6 +93,7 @@ function loadCanvasesFromDisk() {
           if (!list.some((r: any) => r.id === rev.id)) {
             list.push(rev);
             list.sort((a, b) => (b.revision_number || 0) - (a.revision_number || 0));
+            if (list.length > MAX_MEMORY_REVISIONS) list.length = MAX_MEMORY_REVISIONS;
             inMemoryRevisions.set(rev.canvas_id, list);
           }
         }
@@ -199,7 +207,8 @@ export function getAssetFromStore(objectKey: string): { objectKey: string; mimeT
 // ===== 内嵌图片外置：节点里的 data:image 大图上传到存储，草稿里只留 URL =====
 // 一张 3MB 主图被多个节点引用时，草稿会膨胀到近 10MB，云端保存超时、浏览器本地备份超出配额，画布就再也存不上了。
 const INLINE_IMAGE_MIN_CHARS = 32 * 1024;
-const inlineImageUrlCache = new Map<string, string>();
+// 内嵌图片 hash → 存储地址；只存短字符串，按条数封顶
+const inlineImageUrlCache = new BoundedCache<string>(Number.MAX_SAFE_INTEGER, () => 1, 5000);
 
 function inlineImageKey(dataUrl: string): { hash: string; mime: string; ext: string } {
   const mime = (dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,/i)?.[1] || 'image/png').toLowerCase();
@@ -1176,6 +1185,8 @@ router.post('/:canvasId/revisions', async (req: AuthenticatedRequest, res: Respo
     const currentMemRevs = inMemoryRevisions.get(canvasId) || [];
     currentMemRevs.unshift(revisionRecord);
     currentMemRevs.sort((a, b) => (b.revision_number || 0) - (a.revision_number || 0));
+    // 内存里每个画布只留最近 30 个版本（完整的版本记录在云端和 .data/revisions 里）
+    if (currentMemRevs.length > MAX_MEMORY_REVISIONS) currentMemRevs.length = MAX_MEMORY_REVISIONS;
     inMemoryRevisions.set(canvasId, currentMemRevs);
     if (rawId !== canvasId) inMemoryRevisions.set(rawId, currentMemRevs);
     inMemoryRevisions.set(`canvas_${projectId}`, currentMemRevs);

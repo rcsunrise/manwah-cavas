@@ -9,6 +9,7 @@ import sharp from 'sharp';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { approxStringBytes, BoundedCache } from '../lib/boundedCache';
 
 const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
@@ -23,7 +24,11 @@ const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'creative
 // In-memory fallback repositories
 const inMemorySkus = new Map<string, any>();
 const inMemoryVersions = new Map<string, any[]>();
-const assetDiskStore = new Map<string, { objectKey: string; mimeType: string; dataUrl: string }>();
+// SKU 图片的内存缓存：按字节封顶（默认 100MB），磁盘上 .data/asset_sku_files 还有一份
+const assetDiskStore = new BoundedCache<{ objectKey: string; mimeType: string; dataUrl: string }>(
+  Math.max(16, Number(process.env.SKU_ASSET_CACHE_MB) || 100) * 1024 * 1024,
+  a => approxStringBytes(a?.dataUrl)
+);
 
 // Persistent Assets Directory
 const ASSETS_DIR = path.join(process.cwd(), '.data', 'asset_sku_files');

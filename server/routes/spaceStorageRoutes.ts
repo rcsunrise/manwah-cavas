@@ -7,6 +7,7 @@ import path from 'path';
 import sharp from 'sharp';
 import { GcsAssetStorage } from '../services/storage/gcsAssetStorage';
 import { SpaceImageGenerationService } from '../services/spaceImageGenerationService';
+import crypto from 'crypto';
 
 const router = Router();
 const storage = GcsAssetStorage.getInstance();
@@ -730,6 +731,139 @@ router.post('/styles/sync', async (req: Request, res: Response) => {
   }
 });
 
+
+/**
+ * 快照瘦身：把快照里的内联 base64 大图（产品主图、参考图、场景档案原图等）存成文件，快照里只留同源地址。
+ * 同一张图按内容哈希只存一份（以前同一张 3MB 产品图在快照里重复三遍），快照从几 MB~几十 MB 降到百 KB 级。
+ * 地址格式 /api/space/storage/local-file?key=…，前端显示、服务端出图解析（spaceImageGenerationService）都已支持。
+ * 本地文件同步写入（storage.put 第一步就同步写本地热缓存），云端上传在后台进行，不拖慢保存。
+ */
+const INLINE_IMAGE_MIN_CHARS = 20_000;
+const INLINE_DATA_URL_RE = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/;
+
+function safeProjectSegment(projectId: string): string {
+  return String(projectId || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'unknown';
+}
+
+export function externalizeSnapshotImages(projectId: string, root: any): { replaced: number; bytes: number } {
+  const stats = { replaced: 0, bytes: 0 };
+  const seen = new Map<string, string>(); // 同一个 base64 字符串只处理一次
+  const visit = (node: any, depth: number) => {
+    if (!node || typeof node !== 'object' || depth > 40) return;
+    const keys = Array.isArray(node) ? node.map((_: any, i: number) => i) : Object.keys(node);
+    for (const k of keys as any[]) {
+      const v = node[k];
+      if (typeof v === 'string') {
+        if (v.length < INLINE_IMAGE_MIN_CHARS || !v.startsWith('data:image/')) continue;
+        const cached = seen.get(v);
+        if (cached) {
+          node[k] = cached;
+          stats.replaced++;
+          continue;
+        }
+        const m = v.match(INLINE_DATA_URL_RE);
+        if (!m) continue;
+        try {
+          const buf = Buffer.from(m[2], 'base64');
+          if (buf.length === 0) continue;
+          const mime = m[1].toLowerCase();
+          const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+          const hash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 24);
+          const key = `projects/${safeProjectSegment(projectId)}/inline/${hash}.${ext}`;
+          const localPath = path.join(process.cwd(), '.data', 'space-storage', key);
+          if (!fs.existsSync(localPath)) {
+            // put 第一步同步写本地热缓存，之后的云端上传在后台完成
+            void storage.put({ bucketType: 'source', objectKey: key, buffer: buf, contentType: mime }).catch((err: any) =>
+              console.warn('[spaceStorageRoutes] inline image cloud upload notice:', err?.message || err)
+            );
+          }
+          const url = `/api/space/storage/local-file?key=${encodeURIComponent(key)}`;
+          seen.set(v, url);
+          node[k] = url;
+          stats.replaced++;
+          stats.bytes += v.length;
+        } catch (err: any) {
+          console.warn('[spaceStorageRoutes] externalize inline image failed (kept inline):', err?.message || err);
+        }
+      } else if (v && typeof v === 'object') {
+        visit(v, depth + 1);
+      }
+    }
+  };
+  visit(root, 0);
+  return stats;
+}
+
+/** 本机没有云端凭据（不在 Cloud Run、也没配密钥文件）时，云端备份必然失败，直接跳过，只存本地 */
+function cloudBackupAvailable(): boolean {
+  return Boolean(process.env.K_SERVICE || process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.GCS_KEY_FILE);
+}
+
+/**
+ * 工程快照的云端备份：同一工程同时只跑一个备份，备份期间来的新快照只保留最新一份，跑完再备份一次。
+ * 以前每次保存都起一个后台任务，每个都持有整份快照（几十 MB）再解析、再缩进序列化后上传；
+ * 上传 Supabase 卡住或失败时，任务越堆越多，几分钟就把 Node 内存打满（8GB 也只撑了 19 分钟）。
+ */
+const snapshotBackupState = new Map<string, { running: boolean; next: string | null }>();
+
+function scheduleSnapshotBackup(projectId: string, jsonStr: string) {
+  if (!cloudBackupAvailable()) return;
+  const state = snapshotBackupState.get(projectId) || { running: false, next: null };
+  snapshotBackupState.set(projectId, state);
+  if (state.running) {
+    state.next = jsonStr; // 只留最新的一份，中间版本丢掉（本地磁盘已经写了最新版）
+    return;
+  }
+  state.running = true;
+  void (async () => {
+    let current: string | null = jsonStr;
+    while (current) {
+      try {
+        await backupSnapshotNow(projectId, current);
+      } catch (bgErr: any) {
+        console.warn('[spaceStorageRoutes] Snapshot cloud backup notice:', bgErr?.message);
+      }
+      current = state.next;
+      state.next = null;
+    }
+    state.running = false;
+    snapshotBackupState.delete(projectId);
+  })();
+}
+
+async function backupSnapshotNow(projectId: string, jsonStr: string) {
+  // 只解析一次：先把内联的产品参考图存到对象存储，再把快照里的 base64 换成同源地址后上传
+  const compactPayload = JSON.parse(jsonStr);
+  for (const prod of compactPayload?.products || []) {
+    for (const ref of prod?.referenceImages || []) {
+      if (ref?.objectKey && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
+        const existing = await storage.getBuffer(ref.objectKey, 'source');
+        if (!existing || existing.length === 0) {
+          const b64Match = ref.publicUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (b64Match) {
+            const rawBuf = Buffer.from(b64Match[2], 'base64');
+            const finalBuf = ref.objectKey.endsWith('.webp') ? await sharp(rawBuf).webp({ quality: 92 }).toBuffer() : rawBuf;
+            await storage.put({
+              bucketType: 'source',
+              objectKey: ref.objectKey,
+              buffer: finalBuf,
+              contentType: ref.objectKey.endsWith('.webp') ? 'image/webp' : b64Match[1]
+            });
+          }
+        }
+        ref.publicUrl = `/api/space/storage/local-file?key=${encodeURIComponent(ref.objectKey)}`;
+      }
+    }
+  }
+  await storage.put({
+    bucketType: 'generated',
+    objectKey: `projects/snapshots/${projectId}.json`,
+    buffer: Buffer.from(JSON.stringify(compactPayload), 'utf-8'),
+    contentType: 'application/json',
+    metadata: { projectId, updatedAt: new Date().toISOString() }
+  });
+}
+
 /**
  * POST /api/space/storage/projects/snapshot
  * 将摄影画册作业快照持久化备份至服务端磁盘 .data/space-projects/ 及云存储 (GCS / Supabase Storage)
@@ -745,56 +879,16 @@ router.post('/projects/snapshot', async (req: Request, res: Response) => {
       fs.mkdirSync(projectsDir, { recursive: true });
     }
     const filePath = path.join(projectsDir, `${payload.projectId}.json`);
-    const jsonStr = JSON.stringify(payload, null, 2);
+    // 内联大图存成文件、快照只留地址（同一张图只存一份）
+    const slim = externalizeSnapshotImages(String(payload.projectId), payload);
+    if (slim.replaced > 0) {
+      console.info(`[spaceStorageRoutes] snapshot ${payload.projectId}: externalized ${slim.replaced} inline images (${(slim.bytes / 1e6).toFixed(1)}MB)`);
+    }
+    const jsonStr = JSON.stringify(payload);
     fs.writeFileSync(filePath, jsonStr, 'utf-8');
 
-    // 异步持久化快照与内联产品参考图至云端存储，防止无状态容器重启丢失
-    (async () => {
-      try {
-        for (const prod of payload?.products || []) {
-          for (const ref of prod?.referenceImages || []) {
-            if (ref?.objectKey && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
-              const existing = await storage.getBuffer(ref.objectKey, 'source');
-              if (!existing || existing.length === 0) {
-                const b64Match = ref.publicUrl.match(/^data:([^;]+);base64,(.+)$/);
-                if (b64Match) {
-                  const rawBuf = Buffer.from(b64Match[2], 'base64');
-                  const finalBuf = ref.objectKey.endsWith('.webp')
-                    ? await sharp(rawBuf).webp({ quality: 92 }).toBuffer()
-                    : rawBuf;
-                  await storage.put({
-                    bucketType: 'source',
-                    objectKey: ref.objectKey,
-                    buffer: finalBuf,
-                    contentType: ref.objectKey.endsWith('.webp') ? 'image/webp' : b64Match[1]
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        // 云端快照剔除数兆字节的内联 base64，改用已持久化的 objectKey 同源代理地址，确保毫秒级同步
-        const compactPayload = JSON.parse(jsonStr);
-        for (const prod of compactPayload?.products || []) {
-          for (const ref of prod?.referenceImages || []) {
-            if (ref?.objectKey && typeof ref?.publicUrl === 'string' && ref.publicUrl.startsWith('data:image/')) {
-              ref.publicUrl = `/api/space/storage/local-file?key=${encodeURIComponent(ref.objectKey)}`;
-            }
-          }
-        }
-
-        await storage.put({
-          bucketType: 'generated',
-          objectKey: `projects/snapshots/${payload.projectId}.json`,
-          buffer: Buffer.from(JSON.stringify(compactPayload, null, 2), 'utf-8'),
-          contentType: 'application/json',
-          metadata: { projectId: String(payload.projectId), updatedAt: new Date().toISOString() }
-        });
-      } catch (bgErr: any) {
-        console.warn('[spaceStorageRoutes] Snapshot cloud backup notice:', bgErr?.message);
-      }
-    })();
+    // 异步持久化快照与内联产品参考图至云端存储（同一工程同时只跑一个，见 scheduleSnapshotBackup）
+    scheduleSnapshotBackup(String(payload.projectId), jsonStr);
 
     return res.json({ success: true, projectId: payload.projectId, path: filePath });
   } catch (error: any) {
@@ -813,17 +907,28 @@ router.get('/projects/snapshot/:projectId', async (req: Request, res: Response) 
     const filePath = path.join(projectsDir, `${projectId}.json`);
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      return res.json({ success: true, data: JSON.parse(raw) });
+      const parsed = JSON.parse(raw);
+      // 旧快照里还嵌着 base64 大图：读的时候顺手瘦身并回写，以后保存、读取都快
+      if (raw.length > 1_000_000 && raw.includes('data:image/')) {
+        const slim = externalizeSnapshotImages(String(projectId), parsed);
+        if (slim.replaced > 0) {
+          try {
+            fs.writeFileSync(filePath, JSON.stringify(parsed), 'utf-8');
+            console.info(`[spaceStorageRoutes] migrated snapshot ${projectId}: externalized ${slim.replaced} inline images (${(slim.bytes / 1e6).toFixed(1)}MB)`);
+          } catch {}
+        }
+      }
+      return res.json({ success: true, data: parsed });
     }
 
     // 若容器本地无缓存，尝试从云端存储恢复快照
     const cloudBuf = await storage.getBuffer(`projects/snapshots/${projectId}.json`, 'generated');
     if (cloudBuf && cloudBuf.length > 2) {
-      const raw = cloudBuf.toString('utf-8');
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(cloudBuf.toString('utf-8'));
+      externalizeSnapshotImages(String(projectId), parsed);
       try {
         if (!fs.existsSync(projectsDir)) fs.mkdirSync(projectsDir, { recursive: true });
-        fs.writeFileSync(filePath, raw, 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(parsed), 'utf-8');
       } catch {}
       return res.json({ success: true, data: parsed });
     }
