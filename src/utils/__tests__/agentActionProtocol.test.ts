@@ -250,3 +250,21 @@ describe('面料色卡海报的氛围图参数', () => {
     expect(JSON.stringify(r.planCard?.items)).toContain('不扣点');
   });
 });
+
+describe('extractAgentActions · 漏掉闭合标签', () => {
+  const block = '{"plan":{"actionId":"edit_image_text","params":{"nodeId":"template-poster-a-1","oldText":"极澜","newText":"栖境"},"title":"修改标题"}}';
+
+  it('模型漏写 </agent_actions> 时，JSON 完整仍然出确认卡片，不再出“生成确认卡片”重试按钮', () => {
+    const r = extractAgentActions(`确认后将把标题改为「栖境」。\n<agent_actions>${block}`);
+    expect(r.planCard?.actionId).toBe('edit_image_text');
+    expect(r.planCard?.params?.newText).toBe('栖境');
+    expect(r.text).toBe('确认后将把标题改为「栖境」。');
+    expect((r.suggestions || []).map(s => s.label)).not.toContain('生成确认卡片');
+  });
+
+  it('JSON 不完整（流式输出到一半）时不出卡片，正文不带动作块', () => {
+    const r = extractAgentActions(`确认后将把标题改为「栖境」。\n<agent_actions>{"plan":{"actionId":"edit_image_text","par`);
+    expect(r.planCard).toBeUndefined();
+    expect(r.text).not.toContain('agent_actions');
+  });
+});

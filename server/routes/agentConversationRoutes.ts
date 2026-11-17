@@ -621,6 +621,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 【动作协议】：
 当用户的意图可以落到下列动作时，在回复正文之后附加一个动作块（只能有一个，放在最后，必须是合法 JSON）：
 <agent_actions>{"plan": {...}} 或 {"clarify": {...}}，可同时带 "suggestions": [...]</agent_actions>
+（动作块必须以 </agent_actions> 结尾，不要漏掉闭合标签；JSON 必须完整。）
 
 可用动作 actionId 与参数：
 - generate_plan：生成/重新生成电商详情页（海报）企划，产出的是静态海报分镜，不是视频。params: screenCount(1~12), aspectRatio("4:3"/"3:4"/"1:1"/"9:16"/"16:9"), hint(策划要点)
@@ -641,6 +642,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - goto_setup / goto_render：切到企划配置 / 渲染引擎设置
 - edit_image：按要求修改一张已生成的海报/画面（换背景、调光线色调、改氛围、加减道具、调整留白等），产品本身保持不变，结果作为新版本。params: instruction(必填，具体修改要求，中文 10~120 字), nodeId(目标图片节点 id；用户 @ 引用或选中了图片、或画布状态里有明确目标时填写；不填则改最近一张生成图)
 - edit_image_text：修改图片里已有的文字（如海报标题、卖点文案），只重绘文字区域，产品与画面不变。params: newText(必填，改成的文字), oldText(要被替换的原文；替换整行主标题时可省略), nodeId(目标图片节点 id；用户 @ 引用了图片或画布状态里有明确目标时填写)
+  注意：用户给的“新文字”如果本身是一句要求（如“换成其他主题”“换个名字”“改个好听点的”“随便改改”），不要把这句话原样当成新标题；先自己构思 2–3 个贴合海报画面与产品的候选标题，用 clarify 让用户挑一个（选项的 prompt 写成“把标题改成：xxx”），用户想整体换主题时提议 template_poster 重新构思一张。
 
 三种结构：
 1. plan：明确要执行某个动作时使用，界面会显示“确认执行”卡片。

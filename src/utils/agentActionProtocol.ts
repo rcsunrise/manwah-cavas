@@ -465,9 +465,11 @@ export function extractAgentActions(text: string): Pick<AgentMessage, 'text' | '
 function extractAgentActionsRaw(text: string): Pick<AgentMessage, 'text' | 'clarifyCard' | 'planCard' | 'suggestions'> {
   const start = text.indexOf(OPEN_TAG);
   if (start < 0) return { text };
-  const end = text.indexOf(CLOSE_TAG, start);
+  const closeAt = text.indexOf(CLOSE_TAG, start);
   const visible = text.slice(0, start).trimEnd();
-  if (end < 0) return { text: visible };
+  // 有的模型（如 GPT-6 Astra）写完 JSON 就结束、漏掉闭合标签：按到结尾解析，JSON 完整就照常出卡片；
+  // 以前直接丢弃，用户点“生成确认卡片”重试也一直出不来卡片
+  const end = closeAt < 0 ? text.length : closeAt;
 
   let payload: any;
   try {
