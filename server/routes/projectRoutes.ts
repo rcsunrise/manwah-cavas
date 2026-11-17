@@ -9,12 +9,57 @@ import { ProductVisualDNA } from '../../src/types';
 import { ProjectRepository } from '../repositories/projectRepository';
 import { ProductDnaRepository } from '../repositories/productDnaRepository';
 import { AssetRepository } from '../repositories/assetRepository';
-import { isValidUuid, newUuid, requireUuid } from '../lib/uuid';
+import { isValidUuid, newUuid, requireUuid, toValidUuid } from '../lib/uuid';
 import { persistAssetToDisk } from './canvasRoutes';
 import fs from 'fs';
 import path from 'path';
 
 const router = Router();
+
+/**
+ * 默认示例项目（0000…0001）不再是所有人共用的：它的画布归谁，就只有谁（和管理员）能看到、能用。
+ * 画布归属存在 creative_canvases.user_id；查一次缓存 60 秒。
+ */
+let defaultOwnerCache: { owner: string | null; at: number } | null = null;
+export async function defaultProjectOwner(): Promise<string | null> {
+  if (defaultOwnerCache && Date.now() - defaultOwnerCache.at < 60_000) return defaultOwnerCache.owner;
+  let owner: string | null = null;
+  try {
+    const { data } = await supabaseAdmin
+      .from('creative_canvases')
+      .select('user_id')
+      .eq('id', toValidUuid(`canvas_${DEFAULT_PROJECT_ID_FOR_GUARD}`))
+      .maybeSingle();
+    owner = (data as any)?.user_id || null;
+  } catch {
+    owner = null;
+  }
+  defaultOwnerCache = { owner, at: Date.now() };
+  return owner;
+}
+
+/** 当前账号能不能使用默认示例项目：画布归属本人或管理员；没人认领时只有管理员能用 */
+export async function canUseDefaultProject(req: AuthenticatedRequest): Promise<boolean> {
+  const user = req.user;
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  const owner = await defaultProjectOwner();
+  return !!owner && owner === user.id;
+}
+
+const DEFAULT_PROJECT_ID_FOR_GUARD = '00000000-0000-0000-0000-000000000001';
+
+// 任何带默认项目 id 的接口（项目详情、DNA、素材、DNA 提取……）先检查权限
+router.param('projectId', async (req: any, res, next, projectId) => {
+  try {
+    if (String(projectId) === DEFAULT_PROJECT_ID_FOR_GUARD && !(await canUseDefaultProject(req))) {
+      return res.status(403).json({ success: false, error: { message: '无权访问该项目', code: 'FORBIDDEN' } });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 router.use(optionalAuthenticateToken as any);
 
 const PROJECTS_DIR = path.join(process.cwd(), '.data', 'projects');
@@ -22,7 +67,7 @@ const PROJECTS_DIR = path.join(process.cwd(), '.data', 'projects');
 /** 记录没有归属 / 是默认示例 / 属于当前账号 / 当前是管理员 → 可访问 */
 export function canAccessOwner(req: AuthenticatedRequest, ownerId?: string | null): boolean {
   if (!ownerId) return true;
-  if (ownerId === '00000000-0000-0000-0000-000000000001') return true;
+  // 以前归属于测试身份（0000…0001）的数据对所有人开放，上线后不再有“所有人共用”的数据
   const user = req.user;
   if (!user) return false;
   return user.id === ownerId || user.role === 'admin';
@@ -208,12 +253,14 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
 
     // 1. Load memory（只取属于当前账号或无归属的）
     for (const p of inMemoryProjects.values()) {
+      if (p?.id === DEFAULT_PROJECT_ID) continue; // 默认示例项目单独按归属判断
       const o = p?.user_id ?? p?.owner_id;
-      if (!o || o === me || o === DEFAULT_PROJECT_ID) projectMap.set(p.id, p);
+      if (!o || o === me) projectMap.set(p.id, p);
     }
 
-    if (!projectMap.has(DEFAULT_PROJECT_ID)) {
-      projectMap.set(DEFAULT_PROJECT_ID, DEFAULT_PROJECT);
+    // 默认示例项目只出现在它的画布归属人（和管理员）的列表里，不再塞进每个人的列表
+    if (await canUseDefaultProject(req)) {
+      projectMap.set(DEFAULT_PROJECT_ID, inMemoryProjects.get(DEFAULT_PROJECT_ID) || DEFAULT_PROJECT);
     }
 
     // 2. Load from canonical creative_projects（按账号过滤，别列出别人的项目）

@@ -611,6 +611,8 @@ router.post('/', async (req: AuthenticatedRequest, res: Response, next: NextFunc
     if (!projectId) {
       throw new AppError('projectId 不能为空', 400, 'BAD_REQUEST');
     }
+    // 用别人项目的 id 新建会把别人的画布覆盖掉并转到自己名下：先查归属
+    await assertCanvasAccess(req, String(projectId));
 
     const canvasId = `canvas_${projectId}`;
     const now = new Date().toISOString();
@@ -661,9 +663,45 @@ router.post('/', async (req: AuthenticatedRequest, res: Response, next: NextFunc
 });
 
 // 2. Get Canvas by ID or Project ID
+
+/**
+ * 画布归属检查：画布有主人时，只有主人和管理员能读写；没有主人的旧画布照常（第一次保存时归给保存的人）。
+ * 以前只有读取检查归属，保存、版本、恢复都不检查，而且每次保存都会把 user_id 改成保存的人。
+ */
+async function findCanvasOwner(rawId: string): Promise<string | null> {
+  const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
+  const projectId = rawId.startsWith('canvas_') ? rawId.replace('canvas_', '') : rawId;
+  try {
+    const validCanvasUuid = isValidUuid(rawId) ? rawId : toValidUuid(canvasId);
+    const validProjUuid = isValidUuid(projectId) ? projectId : toValidUuid(projectId);
+    const { data } = await supabaseAdmin
+      .from('creative_canvases')
+      .select('user_id')
+      .or(`id.eq.${validCanvasUuid},project_id.eq.${validProjUuid}`)
+      .limit(1);
+    const owner = (data as any)?.[0]?.user_id;
+    if (owner) return owner;
+  } catch {
+    // 查询失败时按内存兜底
+  }
+  const mem = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
+  return mem?.user_id || mem?.created_by || null;
+}
+
+async function assertCanvasAccess(req: AuthenticatedRequest, rawId: string): Promise<string | null> {
+  const user = req.user;
+  if (!user) throw new AppError('请先登录', 401, 'UNAUTHORIZED');
+  const owner = await findCanvasOwner(rawId);
+  if (owner && owner !== user.id && user.role !== 'admin') {
+    throw new AppError('无权访问该画布', 403, 'FORBIDDEN');
+  }
+  return owner;
+}
+
 router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const user = req.user!;
+    if (!req.user) throw new AppError('请先登录', 401, 'UNAUTHORIZED');
+    const user = req.user;
     const rawId = String(req.params.canvasId);
     const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
     const projectId = rawId.startsWith('canvas_') ? rawId.replace('canvas_', '') : rawId;
@@ -695,10 +733,10 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
       canvas = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
     }
 
-    // 画布属于别的账号时拒绝读取（管理员除外）；无归属/默认示例/自己的照常
+    // 画布属于别的账号时拒绝读取（管理员除外）；无归属的旧画布、自己的照常
     if (canvas) {
       const owner = canvas.user_id || canvas.created_by || null;
-      const open = !owner || owner === '00000000-0000-0000-0000-000000000001' || owner === user.id || user.role === 'admin';
+      const open = !owner || owner === user.id || user.role === 'admin';
       if (!open) throw new AppError('无权访问该画布', 403, 'FORBIDDEN');
     }
 
@@ -786,6 +824,7 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
  */
 router.post('/:canvasId/inline-images', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    await assertCanvasAccess(req, String(req.params.canvasId));
     const dataUrl = String(req.body?.dataUrl || '');
     if (!/^data:image\/[a-z0-9.+-]+;base64,/i.test(dataUrl) || dataUrl.length > 40 * 1024 * 1024) {
       return res.status(400).json({ success: false, error: { message: 'dataUrl must be a base64 image', code: 'INVALID_INLINE_IMAGE' } });
@@ -799,8 +838,9 @@ router.post('/:canvasId/inline-images', async (req: AuthenticatedRequest, res: R
 
 router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const user = req.user!;
     const rawId = String(req.params.canvasId);
+    const currentOwner = await assertCanvasAccess(req, rawId);
+    const user = req.user!;
     const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
     const projectId = rawId.startsWith('canvas_') ? rawId.replace('canvas_', '') : rawId;
 
@@ -876,7 +916,8 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
         project_id: projectId,
         canvas_name: canvasName || '主视觉九屏画布',
         canvas_status: 'active',
-        created_by: userId,
+        // 保留原主人（管理员帮忙保存不会把画布转到自己名下）；没主人的旧画布归给保存的人
+        created_by: currentOwner || userId,
         ...updatePayload
       });
 
@@ -936,6 +977,7 @@ router.patch('/:canvasId/draft', async (req: AuthenticatedRequest, res: Response
 // C4A-4: Decoupled snapshot creation (P95 < 1.5s, no image uploads/downloads)
 router.post('/:canvasId/revisions', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    await assertCanvasAccess(req, String(req.params.canvasId));
     const user = req.user!;
     const rawId = String(req.params.canvasId);
     const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
@@ -1252,6 +1294,11 @@ router.get('/:canvasId/revisions', async (req: AuthenticatedRequest, res: Respon
 // 5.5 DELETE Immutable Revision Record (DELETE /api/canvases/:canvasId/revisions/:revisionId)
 router.delete('/:canvasId/revisions/:revisionId', async (req: AuthenticatedRequest, res: Response) => {
   try {
+    try {
+      await assertCanvasAccess(req, String(req.params.canvasId));
+    } catch (accessErr: any) {
+      return res.status(accessErr?.statusCode || accessErr?.status || 403).json({ success: false, error: accessErr?.message || '无权访问该画布' });
+    }
     const rawId = String(req.params.canvasId);
     const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
     const revisionId = String(req.params.revisionId);
@@ -1275,6 +1322,7 @@ router.delete('/:canvasId/revisions/:revisionId', async (req: AuthenticatedReque
 // 6. Restore Canvas from Immutable Revision as a new Working Draft
 router.post('/:canvasId/restore/:revisionId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    await assertCanvasAccess(req, String(req.params.canvasId));
     const user = req.user!;
     const rawId = String(req.params.canvasId);
     const canvasId = rawId.startsWith('canvas_') ? rawId : `canvas_${rawId}`;
