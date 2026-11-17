@@ -411,7 +411,7 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
             className="mt-0.5 accent-[#B28C5A]"
           />
           <span className="text-[10px] leading-snug">
-            <span className="font-bold text-stone-600">模板 A 成品 4K（4096×3072）</span>
+            <span className="font-bold text-stone-600">4/3 产品海报成品 4K（4096×3072）</span>
             <span className="block text-stone-400">默认关（成品 2048×1536）。开启后主场景按 4K 生成，更慢、可能更耗点。</span>
           </span>
         </label>
@@ -1378,7 +1378,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     ? [
         { label: '批量渲染分镜', actionId: 'render_all' },
         { label: '成组锁定结果', actionId: 'group_lock' },
-        { label: '模板 A 海报', actionId: 'template_poster' },
+        { label: '4/3 产品海报', actionId: 'template_poster' },
         { label: '面料海报', actionId: 'fabric_poster' },
         { label: '做全案海报', actionId: 'open_poster' },
         { label: '做视频分镜', actionId: 'open_video' },
@@ -1386,7 +1386,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       ]
     : [
         { label: '详情页企划', actionId: 'generate_plan' },
-        { label: '模板 A 海报', actionId: 'template_poster' },
+        { label: '4/3 产品海报', actionId: 'template_poster' },
         { label: '面料海报', actionId: 'fabric_poster' },
         { label: '成组锁定结果', actionId: 'group_lock' },
         { label: '联网查竞品', actionId: 'search_market' },
@@ -2309,8 +2309,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       className="mt-0.5 accent-[#B28C5A]"
                     />
                     <span className="text-[10px] leading-snug">
-                      <span className="font-bold text-stone-600">模板 A 海报成品 4K（4096×3072）</span>
-                      <span className="block text-stone-400">默认关（成品 2048×1536）。开启后「模板 A 海报」的主场景按 4K 生成，更慢、可能更耗点。</span>
+                      <span className="font-bold text-stone-600">4/3 产品海报成品 4K（4096×3072）</span>
+                      <span className="block text-stone-400">默认关（成品 2048×1536）。开启后「4/3 产品海报」的主场景按 4K 生成，更慢、可能更耗点。</span>
                     </span>
                   </label>
                 )}
@@ -3293,7 +3293,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                                 type="button"
                                 onClick={() => {
                                   setRegenMenuFor(null);
-                                  composeAboutNode(msg.imageCard!.nodeId!, `修改这张${kind}（${(msg.imageCard!.title || '').replace(/^面料海报 · |^模板 A · /, '')}）：`);
+                                  composeAboutNode(msg.imageCard!.nodeId!, `修改这张${kind}（${(msg.imageCard!.title || '').replace(/^面料海报 · |^模板 A · |^4\/3 产品海报 · /, '')}）：`);
                                 }}
                                 className="w-full text-left px-2.5 py-1.5 rounded-lg border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] text-[10px] cursor-pointer"
                               >

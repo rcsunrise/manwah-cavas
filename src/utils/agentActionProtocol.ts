@@ -89,7 +89,7 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   set_product_image: '设为产品主图并提取 DNA',
   edit_image: '修改海报画面',
   open_poster: '打开全案海报',
-  template_poster: '生成模板 A 海报',
+  template_poster: '生成4/3 产品海报',
   stitch_video: '拼接成片',
   fabric_poster: '生成沙发面料海报',
   fabric_edit: '修改面料海报',

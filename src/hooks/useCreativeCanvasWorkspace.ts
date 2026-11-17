@@ -794,7 +794,7 @@ export function useCreativeCanvasWorkspace(
 
     // Agent G Execution Interceptor: Autonomous 4:3 Poster Layout from Local Assets
     // 面料海报 / 色卡海报 / 模板海报有自己的动作（由智能体提议确认卡片），不走这个写死的 2650 本地素材拦截
-    const isNamedTemplatePoster = /(面料|色卡|配色|模板\s*[A-C]|模板海报)/i.test(trimmed);
+    const isNamedTemplatePoster = /(面料|色卡|配色|模板\s*[A-C]|模板海报|产品海报|4\s*[/:：比]\s*3)/i.test(trimmed);
     const isPosterLayoutIntent =
       !isNamedTemplatePoster &&
       (/(制作|生成|排版|设计|排一套|做一张|创建|自动制作).*(海报|4:3|四比三|版面)/i.test(trimmed) ||
@@ -1481,7 +1481,7 @@ export function useCreativeCanvasWorkspace(
     const lockedMain = (nodesRef.current || nodes).find(n => n.id === 'img-node-1' && (n.data as any)?.groupLocked);
     if (lockedMain) {
       addUserMessage(`新增产品图：${file.name}`);
-      addAgentMessage('原项目已锁定，没有动它的主图。这张图作为新产品放在分组框右侧，可点它上面的「模板海报」等按钮单独开新项目。');
+      addAgentMessage('原项目已锁定，没有动它的主图。这张图作为新产品放在分组框右侧，可点它上面的「4/3 产品海报」等按钮单独开新项目。');
       handleAddProductNode(file);
       return;
     }
@@ -3004,7 +3004,7 @@ export function useCreativeCanvasWorkspace(
       (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
       (productNodes.length === 1 ? productNodes[0] : undefined);
     if (!productNode && productNodes.length > 1) {
-      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做海报的那一张，或直接点产品图上的「模板海报」按钮。`);
+      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做海报的那一张，或直接点产品图上的「4/3 产品海报」按钮。`);
       return false;
     }
     let productImage = (productNode?.data?.imageUrl as string) || '';
@@ -3013,13 +3013,13 @@ export function useCreativeCanvasWorkspace(
       if (raw) productImage = raw.startsWith('data:') ? raw : `data:image/jpeg;base64,${raw}`;
     }
     if (!productImage) {
-      addAgentMessage('❌ 还没有产品主图，请先上传产品图再生成模板海报。');
+      addAgentMessage('❌ 还没有产品主图，请先上传产品图再生成4/3 产品海报。');
       return false;
     }
     const productKey = productNode?.id || 'img-node-1';
     const productLabel = (productNode?.data?.fileName as string) || '产品图';
     if (templatePosterRunningRef.current.has(productKey)) {
-      addAgentMessage(`「${productLabel}」的模板海报正在生成中，请等这一张完成后再试；其他产品图可以同时生成。`);
+      addAgentMessage(`「${productLabel}」的4/3 产品海报正在生成中，请等这一张完成后再试；其他产品图可以同时生成。`);
       return false;
     }
 
@@ -3049,7 +3049,7 @@ export function useCreativeCanvasWorkspace(
 
     templatePosterRunningRef.current.add(productKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
-    const taskTitle = productNodes.length > 1 ? `模板 A 海报 · ${productLabel}` : '模板 A 海报';
+    const taskTitle = productNodes.length > 1 ? `4/3 产品海报 · ${productLabel}` : '4/3 产品海报';
     const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
       taskCard: { title: taskTitle, status: 'running', detail: '1/3 构思命名、场景与细节文案…' }
@@ -3067,7 +3067,7 @@ export function useCreativeCanvasWorkspace(
       if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
       return json;
     };
-    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '模板 A 海报');
+    const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '4/3 产品海报');
 
     try {
       const { concept } = await postJson('/api/poster-templates/concept', {
@@ -3131,7 +3131,7 @@ export function useCreativeCanvasWorkspace(
             target: resultNodeId,
             sourceHandle: 'source',
             targetHandle: 'target',
-            label: '模板 A 海报',
+            label: '4/3 产品海报',
             labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
             labelBgStyle: { fill: '#FAF6EF', rx: 4, ry: 4 },
             style: { stroke: '#B28C5A', strokeWidth: 2 }
@@ -3143,7 +3143,7 @@ export function useCreativeCanvasWorkspace(
       finishTaskCard(taskId, 'done', warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
-        title: `模板 A · ${concept.name}`,
+        title: `4/3 产品海报 · ${concept.name}`,
         nodeId: resultNodeId,
         withText: true,
         source: 'poster',
@@ -3151,7 +3151,7 @@ export function useCreativeCanvasWorkspace(
       });
       return true;
     } catch (err: any) {
-      finishTaskCard(taskId, 'failed', err?.message || '模板海报生成失败');
+      finishTaskCard(taskId, 'failed', err?.message || '4/3 产品海报生成失败');
       return false;
     } finally {
       templatePosterRunningRef.current.delete(productKey);

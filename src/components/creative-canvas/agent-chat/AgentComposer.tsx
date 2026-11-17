@@ -315,7 +315,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
                     type="button"
                     onClick={() => setAsProductImage(att)}
                     className="w-full py-1 text-[9px] font-bold text-[#8C6F43] hover:bg-[#F9F5EF] border-t border-[#E5E0D8] cursor-pointer"
-                    title={addsAsNewProduct ? '在画布上新增一个产品图节点，可单独生成模板海报（不替换主产品图）' : '设为画布上的产品主图并提取产品 DNA'}
+                    title={addsAsNewProduct ? '在画布上新增一个产品图节点，可单独生成4/3 产品海报（不替换主产品图）' : '设为画布上的产品主图并提取产品 DNA'}
                   >
                     {addsAsNewProduct ? '加为新产品' : '设为产品主图'}
                   </button>

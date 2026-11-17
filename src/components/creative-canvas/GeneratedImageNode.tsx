@@ -59,7 +59,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
   const [showRegenMenu, setShowRegenMenu] = useState(false);
   const templateKind = (data as any).templatePoster?.template as string | undefined;
   const regenOptions = isTemplatePoster ? posterRegenOptions((data as any).templatePoster) : [];
-  const posterTitleLabel = `${templateKind === 'B' ? '面料海报' : templateKind === 'C' ? '面料色卡' : '模板 A'} · `;
+  const posterTitleLabel = `${templateKind === 'B' ? '面料海报' : templateKind === 'C' ? '面料色卡' : '4/3 产品海报'} · `;
 
   // 加载失败先自动重试一次（给网络抖动 / 云端刚写完留余地），仍失败才显示提示与手动重试
   const [imgRetry, setImgRetry] = React.useState(0);
@@ -704,9 +704,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
           {/* Action Footer */}
           <div className="p-2.5 bg-[#FAF8F5] border-t border-[#E5E0D8]/60 space-y-2">
             <div className="flex items-center justify-between text-[10px] text-stone-500">
-              <span className="truncate max-w-[130px] font-medium" title={isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}>
+              <span className="truncate max-w-[130px] font-medium" title={isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^(模板 A|4\/3 产品海报) · /, '')}` : screenTitle}>
                 {/* 旧节点的 screenTitle 已带“模板 A · ”前缀，先去掉再统一加，避免重复；面料海报用自己的前缀 */}
-                {isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^模板 A · /, '')}` : screenTitle}
+                {isTemplatePoster ? `${posterTitleLabel}${screenTitle.replace(/^(模板 A|4\/3 产品海报) · /, '')}` : screenTitle}
               </span>
               <div className="flex items-center gap-1 font-mono">
                 {data.productDnaVersionCode && (
@@ -750,7 +750,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                     setShowRegenMenu(false);
                     const kind = POSTER_KIND_NAME[templateKind || 'A'] || '海报';
                     window.dispatchEvent(
-                      new CustomEvent(AGENT_COMPOSE_EVENT, { detail: { nodeId: id, text: `修改这张${kind}（${screenTitle.replace(/^模板 A · /, '')}）：` } })
+                      new CustomEvent(AGENT_COMPOSE_EVENT, { detail: { nodeId: id, text: `修改这张${kind}（${screenTitle.replace(/^(模板 A|4\/3 产品海报) · /, '')}）：` } })
                     );
                   }}
                   className="w-full text-left px-2 py-1 rounded-md hover:bg-[#F2EDE4] text-[10px] text-stone-700"
@@ -808,7 +808,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                     setShowRegenMenu(v => !v);
                   }}
                   className="py-1 px-1.5 rounded-lg text-[10px] font-bold bg-[#FAF8F5] hover:bg-[#F2EDE4] text-[#8C6F43] border border-[#B28C5A]/30 flex items-center justify-center gap-1 transition-all"
-                  title="模板海报的再次生成：整套重出，或引用到对话里改局部"
+                  title="4/3 产品海报的再次生成：整套重出，或引用到对话里改局部"
                 >
                   <RefreshCw className="w-3 h-3 text-[#B28C5A]" />
                   <span>再次生成</span>

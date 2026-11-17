@@ -254,11 +254,12 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
         )}
 
         {/* Footer Info & Actions */}
-        <div className="mt-3 pt-2.5 border-t border-[#E5E0D8]/40 flex items-center justify-between text-[10px] text-stone-500">
-          <span className="text-stone-400">
+        <div className="mt-3 pt-2.5 border-t border-[#E5E0D8]/40 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-[10px] text-stone-500">
+          <span className="text-stone-400 whitespace-nowrap">
             {nodeData?.uploadedAt ? `上传时间：${nodeData.uploadedAt}` : '支持拖拽/粘贴图片'}
           </span>
-          <div className="flex items-center gap-1.5">
+          {/* 按钮整颗换行，不在字中间断开（以前节点窄时会挤成“模板海/报”竖排） */}
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             {nodeData?.imageUrl && nodeData?.onTemplatePoster && (
               <button
                 type="button"
@@ -267,11 +268,11 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
                   e.stopPropagation();
                   nodeData.onTemplatePoster?.();
                 }}
-                title="用这张产品图生成模板 A 海报（多张产品图可同时生成）"
-                className="nodrag flex items-center gap-1 text-white font-bold px-2 py-1 rounded-md bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-60 disabled:cursor-wait transition-all"
+                title="用这张产品图生成4/3 产品海报（多张产品图可同时生成）"
+                className="nodrag flex items-center gap-1 text-white font-bold px-2 py-1 rounded-md bg-[#B28C5A] hover:bg-[#9E7A4A] disabled:opacity-60 disabled:cursor-wait transition-all whitespace-nowrap"
               >
                 {nodeData.templatePosterRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                <span>{nodeData.templatePosterRunning ? '海报生成中' : '模板海报'}</span>
+                <span>{nodeData.templatePosterRunning ? '海报生成中' : '4/3 产品海报'}</span>
               </button>
             )}
             {nodeData?.imageUrl && nodeData?.onFabricPoster && (
@@ -296,7 +297,7 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
                   e.stopPropagation();
                   nodeData.onReanalyze?.();
                 }}
-                className="flex items-center gap-1 text-[#B28C5A] hover:text-[#9E7A4A] font-bold px-2 py-1 rounded-md bg-[#F9F5EF] hover:bg-[#F2EBDC] transition-all"
+                className="flex items-center gap-1 text-[#B28C5A] hover:text-[#9E7A4A] font-bold px-2 py-1 rounded-md bg-[#F9F5EF] hover:bg-[#F2EBDC] transition-all whitespace-nowrap"
               >
                 <RotateCw className="w-3 h-3" />
                 <span>重新分析</span>
