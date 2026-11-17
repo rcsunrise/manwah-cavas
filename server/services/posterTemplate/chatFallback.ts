@@ -1,4 +1,5 @@
 import { resolveApiConfig } from '../../ai/providerConfig';
+import { isTransientNetworkError, transientBackoff } from '../../lib/transientNetwork';
 
 /**
  * 模板 A 的文本/视觉调用兜底：gemini 原生通道（generateContent）全部失败时，
@@ -28,12 +29,23 @@ export async function chatCompletionText(params: {
   let lastErr: any = null;
   for (const model of params.models || CHAT_FALLBACK_MODELS) {
     try {
-      const res = await fetch(`${base}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, temperature: params.temperature ?? 0.7, max_tokens: 4096, messages: [{ role: 'user', content }] }),
-        signal: AbortSignal.timeout(params.timeoutMs ?? 120_000)
-      });
+      const send = () =>
+        fetch(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, temperature: params.temperature ?? 0.7, max_tokens: 4096, messages: [{ role: 'user', content }] }),
+          signal: AbortSignal.timeout(params.timeoutMs ?? 120_000)
+        });
+      // 网络断连先用新连接重试同一个模型一次
+      let res: Response;
+      try {
+        res = await send();
+      } catch (netErr: any) {
+        if (!isTransientNetworkError(netErr)) throw netErr;
+        console.warn(`[PosterChatFallback] ${model} 网络断连，重试一次:`, netErr?.message || netErr);
+        await transientBackoff(0);
+        res = await send();
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
       const json: any = await res.json();
       const text = String(json?.choices?.[0]?.message?.content || '');
