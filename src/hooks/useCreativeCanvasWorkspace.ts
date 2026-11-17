@@ -589,7 +589,11 @@ export function useCreativeCanvasWorkspace(
         const json = await res.json().catch(() => null);
         const url = res.ok && json?.url ? String(json.url) : '';
         if (/^https?:\/\//i.test(url)) return url;
-        if (url) localFallback = url; // 服务端云端没传上，退回了本机地址
+        if (url) {
+          // 服务端已经重试过云端上传，退回了本机地址；不再把整张图重传（每次都要等上传超时）
+          localFallback = url;
+          break;
+        }
       } catch {
         // 网络抖动，下面重试
       }

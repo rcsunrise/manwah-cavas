@@ -1,4 +1,5 @@
 import { Router, Response, NextFunction } from 'express';
+import { isTransientNetworkError, transientBackoff } from '../lib/transientNetwork';
 import { supabaseAdmin } from '../../src/lib/supabase';
 import { AuthenticatedRequest, AppError } from '../types';
 import { optionalAuthenticateToken } from '../middleware/auth';
@@ -111,22 +112,28 @@ async function uploadToSupabaseStorage(objectKey: string, base64DataStr: string,
   const buffer = Buffer.from(cleanB64, 'base64');
 
   let uploadSuccess = false;
-  try {
-    const { error } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(objectKey, buffer, {
-        contentType: mimeType,
-        upsert: true
-      });
-    if (!error) {
-      uploadSuccess = true;
-    } else {
-      console.warn(`[SupabaseStorage] Notice during upload to bucket ${bucket}:`, error.message);
-      uploadSuccess = false;
+  // 网络断连（连接超时 / 被掐断）在这里重试一次；前端拿到本机兜底地址后不再整张重传
+  for (let attempt = 0; attempt < 2 && !uploadSuccess; attempt++) {
+    let failure: any = null;
+    try {
+      const { error } = await supabaseAdmin.storage
+        .from(bucket)
+        .upload(objectKey, buffer, {
+          contentType: mimeType,
+          upsert: true
+        });
+      if (!error) {
+        uploadSuccess = true;
+      } else {
+        failure = error;
+        console.warn(`[SupabaseStorage] Notice during upload to bucket ${bucket}:`, error.message);
+      }
+    } catch (err: any) {
+      failure = err;
+      console.warn(`[SupabaseStorage] Exception uploading asset ${objectKey}:`, err?.message);
     }
-  } catch (err: any) {
-    console.warn(`[SupabaseStorage] Exception uploading asset ${objectKey}:`, err?.message);
-    uploadSuccess = false;
+    if (!uploadSuccess && (attempt > 0 || !isTransientNetworkError(failure))) break;
+    if (!uploadSuccess) await transientBackoff(attempt);
   }
 
   let publicUrl = `/api/canvases/assets/${objectKey}`;

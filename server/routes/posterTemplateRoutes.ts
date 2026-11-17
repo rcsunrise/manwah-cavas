@@ -236,9 +236,10 @@ async function fabricImage(
     deptId: req.headers['x-dept-id'] as string | undefined,
     timeoutMs: 300000
   });
-  const png = await sharp(image, { failOn: 'none' }).rotate().png().toBuffer();
-  const meta = await sharp(png).metadata();
-  return { imageDataUrl: `data:image/png;base64,${png.toString('base64')}`, width: meta.width, height: meta.height, model };
+  // 高质量 JPEG（不做色度抽样，白底抠图边缘不受影响）：PNG 一张 6–9MB，上传、回传、排版读入都慢；JPEG 约小 5–10 倍
+  const jpg = await sharp(image, { failOn: 'none' }).rotate().flatten({ background: '#ffffff' }).jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: true }).toBuffer();
+  const meta = await sharp(jpg).metadata();
+  return { imageDataUrl: `data:image/jpeg;base64,${jpg.toString('base64')}`, width: meta.width, height: meta.height, model };
 }
 
 router.post('/fabric/concept', async (req: AuthenticatedRequest, res: Response) => {

@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { chatCompletionText } from './chatFallback';
+import { CHAT_FALLBACK_MODELS, chatCompletionText } from './chatFallback';
 import { createServerGenAI } from '../../utils/aiClient';
 
 /**
@@ -29,6 +29,13 @@ export interface LocatedDetail {
 
 // 路由平台（TianToken）目前只开通了 gemini-3.6-flash，3.7/3.8 返回 model_not_found；放最前面，否则第一个失败就整条通道被标记不可用
 const VISION_MODELS = ['gemini-3.6-flash'];
+
+/**
+ * 框选定位先用 gpt-6.1-sol（实测 3–11 秒），gemini-3.6-flash 同样的请求要 45–80 秒，排版一次要定位好几轮。
+ * gpt 失败时再走 gemini，最后才用其他对话模型。
+ */
+export const FAST_VISION_MODELS = ['gpt-6.1-sol'];
+const FAST_VISION_TIMEOUT_MS = 45_000;
 
 /**
  * gemini 通道没开通 / 额度用完时，每次定位都要先白等一轮失败（实测约 17 秒）才走对话模型。
@@ -149,7 +156,28 @@ ${list}
 5. 只输出 JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
 
     let lastErr: any = null;
-    const skipGemini = Date.now() < geminiDownUntil;
+    const parseArray = (text: string) => {
+      const m = String(text || '').replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
+      if (!m) throw new Error('视觉模型未返回 JSON 数组');
+      return JSON.parse(m[0]);
+    };
+    // 1) 快的对话模型先定位
+    try {
+      const fast = await chatCompletionText({
+        prompt,
+        images: [{ mimeType: 'image/jpeg', data: small.toString('base64') }],
+        temperature: 0.1,
+        userId,
+        models: FAST_VISION_MODELS,
+        timeoutMs: FAST_VISION_TIMEOUT_MS
+      });
+      ingest(parseArray(fast.text));
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[PosterDetailCrop] ${FAST_VISION_MODELS.join('/')} 定位部位失败，改用 gemini:`, err?.message || err);
+    }
+    // 2) gemini 兜底
+    const skipGemini = found.size > 0 || Date.now() < geminiDownUntil;
     for (const model of skipGemini ? [] : VISION_MODELS) {
       try {
         const response = await ai.models.generateContent({
@@ -177,14 +205,15 @@ ${list}
         }
       }
     }
-    if (found.size === 0 && (lastErr || skipGemini)) {
-      // gemini 原生通道不可用：改走 chat/completions 的对话模型
+    if (found.size === 0) {
+      // 3) gemini 也不行：其余对话模型兜底
       try {
         const fb = await chatCompletionText({
           prompt,
           images: [{ mimeType: 'image/jpeg', data: small.toString('base64') }],
           temperature: 0.1,
-          userId
+          userId,
+          models: CHAT_FALLBACK_MODELS.filter(m => !FAST_VISION_MODELS.includes(m))
         });
         const m = fb.text.replace(/```json|```/g, '').match(/\[[\s\S]*\]/);
         if (!m) throw new Error('视觉模型未返回 JSON 数组');
