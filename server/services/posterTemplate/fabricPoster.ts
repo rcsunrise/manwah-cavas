@@ -370,6 +370,8 @@ export interface FabricPosterInput {
   label: string;
   /** 最右侧座位的座面（可以坐的水平面），相对裁剪后沙发图的 0~1 比例；有了它抱枕就落在座面上，没有就按版式比例放 */
   seat?: { x: number; y: number; w: number; h: number };
+  /** 最右侧座位“靠背与座垫交界折缝”的中心点（相对裁剪后沙发图 0~1）；有了它抱枕底边就落在折缝上，比座面框更准 */
+  seatCrease?: { x: number; y: number };
   /** 抱枕大小倍数，1 为按沙发宽度 22% 的基准；默认 0.8（参考图里抱枕都比较小，且两个大幅重叠） */
   pillowScale?: number;
   outputScale?: 1 | 2;
@@ -430,6 +432,13 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
       cx = s.x + s.w * 0.45;
       bottom = s.y + s.h * 0.42;
       pw = Math.min(pw, s.w * 0.75);
+    }
+    // 折缝更准：座面框有时连座垫前立面一起框进来（抱枕就会偏低、悬在座垫中间），
+    // 折缝就是抱枕靠着靠背时底边该落的位置；底边略压过折缝一点点，看起来是坐进去而不是悬着
+    // 折缝框常常只框到座位的一端，水平位置仍取座面框（座位中间略偏内侧），高度取折缝
+    if (input.seatCrease) {
+      if (!input.seat) cx = input.seatCrease.x * sofaW;
+      bottom = input.seatCrease.y * sofaH + pw * ratio * 0.08;
     }
     // 底边那一行：从水平中心向两侧找出连续的沙发实体范围；底边下面不是沙发就往上抬
     let by = Math.min(sofaH - 2, Math.max(2, Math.round(bottom)));

@@ -5,7 +5,7 @@ import { optionalAuthenticateToken } from '../middleware/auth';
 import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept } from '../services/posterTemplate/posterConcept';
-import { cropDetail, locateDetails } from '../services/posterTemplate/detailCrop';
+import { cropDetail, locateDetails, refineDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT } from '../services/posterTemplate/templateA';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
 import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
@@ -300,17 +300,29 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
 
     // 细节与色卡都取自沙发本体（在沙发图上定位，不带抱枕）
     const SEAT_KEY = '__seat';
-    const { details: located, warnings } = await locateDetails(
+    const CREASE_KEY = '__crease';
+    const detailTargets = concept.details.map(d => ({ key: d.key, locate: d.locate }));
+    const { details: firstPass, warnings } = await locateDetails(
       sofaRaw,
       [
-        ...concept.details.map(d => ({ key: d.key, locate: d.locate })),
-        { key: SEAT_KEY, locate: '沙发最右侧那个座位的座面（人坐的那块水平面，只框座垫上表面，不要框靠背、扶手和座垫前侧的竖直立面）' }
+        ...detailTargets,
+        { key: SEAT_KEY, locate: '沙发最右侧那个座位的座面（人坐的那块水平面，只框座垫上表面，不要框靠背、扶手和座垫前侧的竖直立面）' },
+        {
+          key: CREASE_KEY,
+          locate: '沙发最右侧那个座位上，靠背底部与座垫后缘相接的那条折缝（抱枕靠着靠背放时底边落在这里）；只框这条交界线附近的一个扁长窄条，不要框整个靠背或座垫'
+        }
       ],
       userIdOf(req)
     );
-    const circles = await Promise.all(
-      located.filter(d => d.key !== SEAT_KEY).map(d => cropDetail(sofaRaw, d.box, 1))
+    // 细节格二次精定位：近景里再框一次，避免部位落在圆形特写边上
+    const refined = await refineDetails(
+      sofaRaw,
+      firstPass.filter(d => d.key !== SEAT_KEY && d.key !== CREASE_KEY),
+      detailTargets,
+      userIdOf(req)
     );
+    const located = [...refined, ...firstPass.filter(d => d.key === SEAT_KEY || d.key === CREASE_KEY)];
+    const circles = await Promise.all(refined.map(d => cropDetail(sofaRaw, d.box, 1)));
     // 皮革色卡：在沙发抠图上找最平的一块（避开缝线和接缝），去掉明暗后做纯平底色
     const leather = await flattenSwatch(await flattestSquare(sofa));
     const pillowSwatch = pillows ? await centerSquare(pillows, 0.4) : undefined;
@@ -330,10 +342,23 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
           })()
         : undefined;
 
+    // 靠背与座垫的折缝：取框中心，换算到裁剪后沙发图的 0~1 坐标；抱枕底边落在这里
+    const creaseLoc = located.find(d => d.key === CREASE_KEY);
+    const crease =
+      creaseLoc && creaseLoc.source === 'vision'
+        ? (() => {
+            const cx = (creaseLoc.box.left + creaseLoc.box.width / 2) * sofaBox.srcWidth - sofaBox.left;
+            const cy = (creaseLoc.box.top + creaseLoc.box.height / 2) * sofaBox.srcHeight - sofaBox.top;
+            const p = { x: cx / sofaBox.width, y: cy / sofaBox.height };
+            return p.x > 0.3 && p.x < 1 && p.y > 0.1 && p.y < 0.9 ? p : undefined;
+          })()
+        : undefined;
+
     const result = await composeFabricPoster({
       layout,
       sofa,
       seat,
+      seatCrease: crease,
       pillows,
       photos,
       circles,
@@ -349,7 +374,7 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       width: result.width,
       height: result.height,
       layout: result.layout,
-      details: located.filter(d => d.key !== SEAT_KEY),
+      details: located.filter(d => d.key !== SEAT_KEY && d.key !== CREASE_KEY),
       seat: seat || null,
       warnings
     });

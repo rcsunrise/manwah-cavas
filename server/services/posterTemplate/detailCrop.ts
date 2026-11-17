@@ -244,6 +244,76 @@ ${list}
   return { details, warnings };
 }
 
+/**
+ * 把框放大成正方形区域（以框中心为中心、边长取框较长边的 scale 倍），并限制在图内。返回归一化坐标。
+ */
+export function expandToSquare(box: NormBox, imageWidth: number, imageHeight: number, scale = 1.8): NormBox {
+  const cx = (box.left + box.width / 2) * imageWidth;
+  const cy = (box.top + box.height / 2) * imageHeight;
+  let side = Math.max(box.width * imageWidth, box.height * imageHeight) * scale;
+  side = Math.min(side, imageWidth, imageHeight);
+  const left = Math.min(Math.max(0, cx - side / 2), imageWidth - side);
+  const top = Math.min(Math.max(0, cy - side / 2), imageHeight - side);
+  return { left: left / imageWidth, top: top / imageHeight, width: side / imageWidth, height: side / imageHeight };
+}
+
+/** 区域内的相对框 → 整图归一化坐标 */
+export function mapBoxFromRegion(inner: NormBox, region: NormBox): NormBox {
+  return {
+    left: region.left + inner.left * region.width,
+    top: region.top + inner.top * region.height,
+    width: inner.width * region.width,
+    height: inner.height * region.height
+  };
+}
+
+/**
+ * 二次精定位：第一次在整张图上框的部位常常偏大（比如“沙发脚连同上方侧板转角”框成一大块），
+ * 按框中心裁出来部位会落在边上。这里把第一次的框周围放大裁出来，让视觉模型在近景里再框一次，
+ * 只要新框落在区域内就采用；失败或没找到就保留原框。
+ */
+export async function refineDetails(
+  image: Buffer,
+  located: LocatedDetail[],
+  targets: DetailTarget[],
+  userId = 'system'
+): Promise<LocatedDetail[]> {
+  const meta = await sharp(image, { failOn: 'none' }).rotate().metadata();
+  const width = meta.autoOrient?.width || meta.width || 0;
+  const height = meta.autoOrient?.height || meta.height || 0;
+  if (!width || !height) return located;
+  return Promise.all(
+    located.map(async d => {
+      const target = targets.find(t => t.key === d.key);
+      if (!target || d.source !== 'vision') return d;
+      try {
+        const region = expandToSquare(d.box, width, height);
+        const rect = {
+          left: Math.round(region.left * width),
+          top: Math.round(region.top * height),
+          width: Math.max(1, Math.round(region.width * width)),
+          height: Math.max(1, Math.round(region.height * height))
+        };
+        rect.width = Math.min(rect.width, width - rect.left);
+        rect.height = Math.min(rect.height, height - rect.top);
+        const crop = await sharp(image, { failOn: 'none' }).rotate().extract(rect).png().toBuffer();
+        const { details } = await locateDetails(
+          crop,
+          [{ key: d.key, locate: `${target.locate}。这是局部放大图：只框这个部位本身，框要紧贴部位，不要带上周围的空白背景和其他部位。` }],
+          userId
+        );
+        const inner = details[0];
+        if (!inner || inner.source !== 'vision') return d;
+        // 几乎是一个点的框多半是误判，保留原框；沙发脚这类细长部位面积本来就小，不按面积判断
+        if (inner.box.width < 0.02 || inner.box.height < 0.02) return d;
+        return { ...d, box: mapBoxFromRegion(inner.box, region) };
+      } catch {
+        return d;
+      }
+    })
+  );
+}
+
 export async function cropDetail(image: Buffer, box: NormBox, aspect: number): Promise<Buffer> {
   const meta = await sharp(image, { failOn: 'none' }).rotate().metadata();
   const width = meta.autoOrient?.width || meta.width || 0;
