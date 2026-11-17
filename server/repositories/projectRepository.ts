@@ -27,9 +27,9 @@ export class ProjectRepository {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (userId && isValidUuid(userId)) {
-        query = query.eq('user_id', userId);
-      }
+      // 没有用户 id 时一律返回空：以前不加过滤，未登录就能列出所有人的项目
+      if (!userId || !isValidUuid(userId)) return [];
+      query = query.eq('user_id', userId);
 
       const { data, error } = await query;
       if (error) {

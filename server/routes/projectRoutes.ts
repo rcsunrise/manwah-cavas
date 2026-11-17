@@ -250,6 +250,8 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
   try {
     const projectMap = new Map<string, any>();
     const me = req.user?.id;
+    // 未登录不列任何项目（以前会返回全部人的项目标题和 id）
+    if (!me) return res.json({ success: true, projects: [] });
 
     // 1. Load memory（只取属于当前账号或无归属的）
     for (const p of inMemoryProjects.values()) {
