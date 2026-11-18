@@ -154,7 +154,7 @@ function hintBlock(hint: string | undefined): string {
     '落实方式：',
     '- 命名：用户规定了字数或命名方式（如“四字以内”“参考顾家、乐至宝的产品命名，如赫兹、云舒”）就照做，名字要贴合沙发和场景；用户举的例子只是风格参考，不要直接用。',
     '- 用户点名要展示的部位（如“完整扶手”“拉点分段式靠背”“沙发角”），底部三格就是这几个部位，顺序按用户说的；要求“完整”的部位，locate 里写明整个部位都要框进去。',
-    '- 用户给了设计 / 工艺解读要求时，desc 不再限于两个短语：写 20–36 字（硬性上限 36 字，写完整的句子，不要写到一半），具体解读这个部位的造型和工艺（如包覆方式、缝线、拉点、分段、弧度、脚的材质与形状），只写图里看得见的，不编参数。',
+    '- 用户给了设计 / 工艺解读要求时，desc 不再限于两个短语：写 20–32 字的一句话（硬性上限 32 字，含标点；一句写完，用句号结尾，不要“不仅…还…”“…的同时…”这种长句），具体解读这个部位的造型和工艺（如包覆方式、缝线、拉点、分段、弧度、脚的材质与形状），只写图里看得见的，不编参数。',
     '- 用户对场景、色调、道具、抱枕的要求（如“两个相同的带图案抱枕”）都要写进 scene / props。',
     ''
   ].join('\n');
@@ -246,6 +246,28 @@ export function cutAtPunctuation(text: unknown, max: number, fallback = ''): str
   return head.join('');
 }
 
+/**
+ * 细节说明超长时优先在句末（。；！？）断开；只能在逗号处断时，去掉断下来后还挂着的半截连接词
+ * （“…的同时”“不仅…”），避免海报上出现半句话。最后补一个句号。
+ */
+export function cutDetailDesc(text: unknown, max: number, fallback = ''): string {
+  const s = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+  if (!s) return fallback;
+  const chars = Array.from(s);
+  if (chars.length <= max) return s;
+  const head = chars.slice(0, max);
+  for (let i = head.length - 1; i >= Math.floor(max / 3); i--) {
+    if ('。；！？'.includes(head[i])) return head.slice(0, i).join('') + '。';
+  }
+  let cut = cutAtPunctuation(s, max, fallback);
+  // 断在逗号后，最后一小句若是“…的同时 / 不仅… / 并且…”这种没说完的连接，整句去掉
+  const clauses = cut.split(/[，,]/);
+  if (clauses.length > 1 && /(的同时|同时|不仅|并且|而且|以及|既|让|使)$|^(不仅|并且|而且|同时)/.test(clauses[clauses.length - 1])) {
+    cut = clauses.slice(0, -1).join('，');
+  }
+  return cut.replace(/[，,、；]$/, '') + '。';
+}
+
 function sceneBlock(input: PosterConceptInput): string {
   if (input.referenceImage) {
     return [
@@ -312,7 +334,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
             key,
             locate: cut(d.locate, 80, fallback.locate),
             title: cut(d.title, 7, fallback.title),
-            desc: cutAtPunctuation(d.desc, 40, fallback.desc),
+            desc: cutDetailDesc(d.desc, 40, fallback.desc),
             ...(Number.isInteger(photo) && photo > 0 && photo <= 8 ? { photo } : {})
           };
         })

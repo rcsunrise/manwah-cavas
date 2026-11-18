@@ -95,3 +95,13 @@ describe('出图后的提示词标签', () => {
     expect(posterPromptTags({ template: 'B' })).toEqual([]);
   });
 });
+
+import { cutDetailDesc } from '../services/posterTemplate/posterConcept';
+describe('细节说明不出现半句话', () => {
+  it('在逗号处截断时去掉挂着的半截连接词，并补句号', () => {
+    const d = cutDetailDesc('采用精工锻造的柱状金属脚，表面呈现哑光银色光泽，稳固支撑结构的同时，也为整体造型增添了轻盈感与现代气息', 40);
+    expect(d).toBe('采用精工锻造的柱状金属脚，表面呈现哑光银色光泽。');
+    expect(cutDetailDesc('圆润包覆 · 分割缝线', 40)).toBe('圆润包覆 · 分割缝线');
+    expect(cutDetailDesc('靠背以拉点工艺分为上下两区。精准贴合人体脊椎曲线，久坐不累，同时还带来更柔软的坐感体验和包裹感受', 40)).toBe('靠背以拉点工艺分为上下两区。');
+  });
+});
