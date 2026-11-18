@@ -55,6 +55,23 @@ export function isAllowedImageSource(input: unknown): input is string {
   }
 }
 
+/** 用户随消息附的图（最多 4 张）：按需缩放成 JPEG；读不了的跳过但保留位置，序号和概念里的 photo 对得上 */
+const MAX_ATTACHMENTS = 4;
+async function loadAttachments(input: unknown, maxEdge: number, quality: number): Promise<Array<Buffer | null>> {
+  const list = Array.isArray(input) ? input.filter(x => typeof x === 'string' && x).slice(0, MAX_ATTACHMENTS) : [];
+  return Promise.all(
+    list.map(async (src, i) => {
+      try {
+        const buf = await loadImage(src, `附图${i + 1}`);
+        return await sharp(buf, { failOn: 'none' }).rotate().resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality, chromaSubsampling: '4:4:4' }).toBuffer();
+      } catch (err: any) {
+        console.warn(`[PosterTemplate] 附图${i + 1} 读取失败，跳过:`, err?.message || err);
+        return null;
+      }
+    })
+  );
+}
+
 async function loadImage(input: unknown, label: string): Promise<Buffer> {
   if (!isAllowedImageSource(input)) {
     const err: any = new Error(`${label}地址无效或不在允许范围内`);
@@ -108,7 +125,8 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
         dna,
         productImage: product,
         referenceImage: reference,
-        hint: typeof hint === 'string' ? hint.slice(0, 500) : undefined,
+        attachments: (await loadAttachments(req.body?.attachments, 1280, 85)).map(b => ({ data: b ? b.toString('base64') : '', mimeType: 'image/jpeg' })),
+        hint: typeof hint === 'string' ? hint.slice(0, 1500) : undefined,
         planContext: typeof planContext === 'string' ? planContext.slice(0, 1500) : undefined,
         used: usedConcepts
       },
@@ -122,9 +140,14 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
 
 router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { concept: rawConcept, productImage, referenceImage, dna, model, resolution } = req.body || {};
+    const { concept: rawConcept, productImage, referenceImage, dna, model, resolution, attachments } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeConcept(rawConcept);
+    // 用户附图按概念里判断的用途分：场景参考 / 产品细节实拍（帮生图还原造型与面料）
+    const attachmentBufs = await loadAttachments(attachments, 2048, 92);
+    const roles = concept.attachmentRoles || [];
+    const sceneAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && roles[i] === 'scene');
+    const detailAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && (roles[i] === 'detail' || roles[i] === 'product'));
     const product = await loadImage(productImage, '产品图');
     const productJpeg = await sharp(product, { failOn: 'none' }).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
     // 参考图作为第二张图交给生图模型，只参考场景、光线、配色与氛围
@@ -133,14 +156,19 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       const ref = await loadImage(referenceImage, '参考图');
       referenceJpeg = await sharp(ref, { failOn: 'none' }).rotate().resize(1536, 1536, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     }
-    const prompt = buildTemplateAHeroPrompt(concept, dna, { hasReference: Boolean(referenceJpeg) });
+    const prompt = buildTemplateAHeroPrompt(concept, dna, {
+      hasReference: Boolean(referenceJpeg) || sceneAttachments.length > 0,
+      detailPhotos: detailAttachments.length
+    });
     const usedModel = typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_HERO_MODEL;
     const image = await requestGatewayImage({
       prompt,
       model: usedModel,
       images: [
         { data: `data:image/jpeg;base64,${productJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' },
-        ...(referenceJpeg ? [{ data: `data:image/jpeg;base64,${referenceJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' }] : [])
+        ...(referenceJpeg ? [{ data: `data:image/jpeg;base64,${referenceJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' }] : []),
+        ...sceneAttachments.map(b => ({ data: `data:image/jpeg;base64,${b.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' })),
+        ...detailAttachments.map(b => ({ data: `data:image/jpeg;base64,${b.toString('base64')}`, mimeType: 'image/jpeg', role: 'material_reference' }))
       ],
       aspectRatio: '16:9',
       resolution: resolution === '1K' || resolution === '4K' ? resolution : '2K',
@@ -166,10 +194,11 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
 
 router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { heroImage, concept: rawConcept, outputScale } = req.body || {};
+    const { heroImage, concept: rawConcept, outputScale, attachments } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeConcept(rawConcept);
     const hero = await loadImage(heroImage, '主场景底图');
+    const attachmentBufs = await loadAttachments(attachments, 2048, 92);
 
     // 同一次视觉调用里顺带框出产品整体，排版时标题避开它
     const PRODUCT_KEY = '__product';
@@ -183,7 +212,28 @@ router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Respon
     );
     const productLocated = allLocated.find(d => d.key === PRODUCT_KEY);
     const located = allLocated.filter(d => d.key !== PRODUCT_KEY);
-    const crops = await Promise.all(located.map(d => cropDetail(hero, d.box, TEMPLATE_A_DETAIL_ASPECT)));
+    const crops = await Promise.all(
+      located.map(async (d, i) => {
+        // 用户补拍了这个部位：细节格直接用实拍（在实拍里框出部位再裁，框不出就整张居中裁），比从生成图里裁更真实
+        const spec = concept.details[i];
+        const role = spec?.photo ? (concept.attachmentRoles || [])[spec.photo - 1] : undefined;
+        const photo = spec?.photo && role !== 'scene' && role !== 'ignore' ? attachmentBufs[spec.photo - 1] : null;
+        if (photo) {
+          try {
+            const { details } = await locateDetails(photo, [{ key: spec.key, locate: spec.locate }], userIdOf(req));
+            // 实拍里找不到这个部位（附图对错了格），宁可从主图裁，也不放一张对不上的图
+            // 实拍本身就是特写：不限制框的大小，整个部位都放进来
+            if (details[0]?.source === 'vision') {
+              return await cropDetail(photo, details[0].box, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
+            }
+            console.warn(`[PosterTemplate] 附图${spec.photo} 里没找到「${spec.title}」，改从主图裁`);
+          } catch (err: any) {
+            console.warn(`[PosterTemplate] 附图${spec.photo} 做细节格失败，改从主图裁:`, err?.message || err);
+          }
+        }
+        return cropDetail(hero, d.box, TEMPLATE_A_DETAIL_ASPECT);
+      })
+    );
     const result = await composeTemplateA({
       hero,
       outputScale: Number(outputScale) === 2 ? 2 : 1,

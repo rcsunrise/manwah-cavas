@@ -148,7 +148,11 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
   const mentionCandidates = useMemo(() => {
     if (!mentionQuery) return [];
     const q = mentionQuery.query.toLowerCase();
-    return mentionableNodes.filter(n => n.title.toLowerCase().includes(q)).slice(0, 8);
+    // 产品图排最前、新上传的在上面；其余按新到旧。之前只取画布顺序的前 8 个，新上传的产品图排在后面就找不到
+    const matched = mentionableNodes.filter(n => n.title.toLowerCase().includes(q));
+    const products = matched.filter(n => /^产品(主)?图/.test(n.title)).reverse();
+    const others = matched.filter(n => !/^产品(主)?图/.test(n.title)).reverse();
+    return [...products, ...others].slice(0, 30);
   }, [mentionQuery, mentionableNodes]);
 
   const updateMentionQuery = (value: string, caret: number) => {
@@ -197,7 +201,7 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     setAttachments([]);
   };
 
-  // 点“4/3 产品海报”时，输入框里已上传的图当作参考图、@ 的产品图当作要做海报的产品、剩下的文字当补充要求
+  // 点“4/3 产品海报”时：@ 的产品图是要做海报的产品；输入框里上传的图作为附图（产品细节实拍或参考图，由构思逐张判断）；剩下的文字是补充要求
   const runQuickAction = (action: AgentActionOption) => {
     if (action.actionId === 'template_poster' && readyImageUrls.length > 0 && !attachmentsUploading) {
       const trimmed = text.trim();
@@ -210,9 +214,9 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
         ...action,
         params: {
           ...(action.params || {}),
-          referenceImageUrl: readyImageUrls[0],
+          attachmentUrls: readyImageUrls.slice(0, 4),
           ...(product ? { nodeId: product.id } : {}),
-          ...(hint ? { hint: hint.slice(0, 300) } : {})
+          ...(hint ? { hint: hint.slice(0, 1500) } : {})
         }
       });
       setText('');

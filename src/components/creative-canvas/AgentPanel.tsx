@@ -44,7 +44,7 @@ import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, AgentStitchClip, AgentStitchPicker, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
-import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
+import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterPromptTags, posterRegenOptions } from '../../utils/posterRegen';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentMessageActions } from './agent-chat/AgentMessageActions';
 import { ConversationSwitcher } from './agent-chat/ConversationSwitcher';
@@ -3270,6 +3270,29 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             下载
                           </button>
                         </div>
+                        {(() => {
+                          // 提示词标签：点一下把写好的修改要求填进输入框（可接着改再发送）
+                          const posterNode: any = msg.imageCard!.nodeId ? nodes.find((n: any) => n.id === msg.imageCard!.nodeId) : null;
+                          const tags = posterPromptTags(posterNode?.data?.templatePoster);
+                          if (!tags.length || !msg.imageCard!.nodeId) return null;
+                          return (
+                            <div className="px-2.5 pb-2 flex flex-wrap items-center gap-1">
+                              <span className="text-[9px] text-stone-400 mr-0.5">试试这样调整：</span>
+                              {tags.map(tag => (
+                                <button
+                                  key={tag.label}
+                                  type="button"
+                                  disabled={isStreaming}
+                                  onClick={() => composeAboutNode(msg.imageCard!.nodeId!, tag.text)}
+                                  title={tag.text}
+                                  className="px-2 py-0.5 rounded-full border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] disabled:opacity-50 text-[10px] text-[#8C6F43] whitespace-nowrap cursor-pointer"
+                                >
+                                  {tag.label}
+                                </button>
+                              ))}
+                            </div>
+                          );
+                        })()}
                         {regenMenuFor === msg.id && (() => {
                           const posterNode: any = msg.imageCard!.nodeId ? nodes.find((n: any) => n.id === msg.imageCard!.nodeId) : null;
                           const tp = posterNode?.data?.templatePoster;

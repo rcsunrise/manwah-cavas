@@ -3108,11 +3108,17 @@ export function useCreativeCanvasWorkspace(
     const taskTitle = productNodes.length > 1 ? `4/3 产品海报 · ${productLabel}` : '4/3 产品海报';
     const taskStartedAt = Date.now();
     const referenceImage = params?.referenceImageUrl || undefined;
+    // 用户随消息附的图（细节实拍 / 参考图），构思时逐张判断用途，出图和细节格都会用到
+    const attachments = (params?.attachmentUrls || []).slice(0, 4);
     const taskId = addAgentMessage('', {
       taskCard: {
-        title: referenceImage ? `${taskTitle}（按参考图）` : taskTitle,
+        title: referenceImage ? `${taskTitle}（按参考图）` : attachments.length ? `${taskTitle}（含 ${attachments.length} 张附图）` : taskTitle,
         status: 'running',
-        detail: referenceImage ? '1/3 读参考图的场景与氛围，构思命名和细节文案…' : '1/3 构思命名、场景与细节文案…'
+        detail: referenceImage
+          ? '1/3 读参考图的场景与氛围，构思命名和细节文案…'
+          : attachments.length
+            ? '1/3 读产品图和附图（细节实拍 / 参考图），构思命名、场景与细节文案…'
+            : '1/3 构思命名、场景与细节文案…'
       }
     });
     const { canvasId } = normalizeCanvasIds(activeProjectRef.current?.id || workspaceIdParam);
@@ -3134,6 +3140,7 @@ export function useCreativeCanvasWorkspace(
       const { concept } = await postJson('/api/poster-templates/concept', {
         productImage,
         referenceImage,
+        attachments,
         dna,
         hint: params?.hint,
         planContext,
@@ -3145,6 +3152,7 @@ export function useCreativeCanvasWorkspace(
         concept,
         productImage,
         referenceImage,
+        attachments,
         dna,
         model: selectedModel || undefined,
         resolution: templateA4K ? '4K' : (selectedResolution || '2K')
@@ -3152,7 +3160,7 @@ export function useCreativeCanvasWorkspace(
       const heroUrl = await storeImage(hero.imageDataUrl);
       finishTaskCard(taskId, 'running', `3/3 「${concept.name}」：定位细节部位并排版…`);
 
-      const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept, outputScale: templateA4K ? 2 : 1 });
+      const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept, attachments, outputScale: templateA4K ? 2 : 1 });
       const posterUrl = await storeImage(composed.imageDataUrl);
 
       const resultNodeId = `template-poster-a-${Date.now()}`;
@@ -3180,7 +3188,15 @@ export function useCreativeCanvasWorkspace(
             version: 1,
             reviewStatus: 'pendingReview',
             prompt: hero.prompt,
-            templatePoster: { template: 'A', productNodeId: productKey, concept, details: composed.details, layout: composed.layout, ...(referenceImage ? { referenceImageUrl: referenceImage } : {}) }
+            templatePoster: {
+              template: 'A',
+              productNodeId: productKey,
+              concept,
+              details: composed.details,
+              layout: composed.layout,
+              ...(referenceImage ? { referenceImageUrl: referenceImage } : {}),
+              ...(attachments.length ? { attachmentUrls: attachments } : {})
+            }
           }
         };
         return [...prev, posterNode];

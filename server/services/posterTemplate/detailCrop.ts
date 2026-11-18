@@ -93,8 +93,8 @@ export function cropRectForBox(
 
   const cx = (box.left + box.width / 2) * imageWidth;
   const cy = (box.top + box.height / 2) * imageHeight;
-  const area = bw * imageWidth * (1 + margin * 2) * bh * imageHeight * (1 + margin * 2);
-  let w = Math.sqrt(area * aspect);
+  // 裁切框要把部位整个装进去（之前按面积等比换算，竖长的扶手会被切掉顶部或底部，看起来不完整）
+  let w = Math.max(bw * imageWidth * (1 + margin * 2), bh * imageHeight * (1 + margin * 2) * aspect);
   let h = w / aspect;
   if (w < minW) {
     w = minW;
@@ -343,10 +343,15 @@ export async function refineDetails(
   );
 }
 
-export async function cropDetail(image: Buffer, box: NormBox, aspect: number): Promise<Buffer> {
+export async function cropDetail(
+  image: Buffer,
+  box: NormBox,
+  aspect: number,
+  options?: Parameters<typeof cropRectForBox>[4]
+): Promise<Buffer> {
   const meta = await sharp(image, { failOn: 'none' }).rotate().metadata();
   const width = meta.autoOrient?.width || meta.width || 0;
   const height = meta.autoOrient?.height || meta.height || 0;
-  const rect = cropRectForBox(box, width, height, aspect);
+  const rect = cropRectForBox(box, width, height, aspect, options);
   return sharp(image, { failOn: 'none' }).rotate().extract(rect).png().toBuffer();
 }

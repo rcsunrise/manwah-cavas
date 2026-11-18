@@ -219,6 +219,8 @@ export interface AgentActionParams {
   videoRatio?: string;
   /** 参考图（对话里用户发的图片地址）：视频参考图（不填时用画布产品主图）；4/3 产品海报的场景参考（主场景按它出图，版式仍按 4/3） */
   referenceImageUrl?: string;
+  /** 4/3 产品海报：用户随消息附的图（产品局部实拍、其他角度或参考图，由构思逐张判断用途），最多 4 张 */
+  attachmentUrls?: string[];
 }
 
 export interface AgentActionOption {

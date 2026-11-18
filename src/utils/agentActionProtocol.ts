@@ -172,7 +172,8 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.aspectRatio === 'string' && /^\d+:\d+$/.test(raw.aspectRatio)) params.aspectRatio = raw.aspectRatio;
   const screenIndex = Number(raw.screenIndex);
   if (Number.isInteger(screenIndex) && screenIndex >= 1) params.screenIndex = screenIndex;
-  if (typeof raw.hint === 'string' && raw.hint.trim()) params.hint = raw.hint.trim().slice(0, 300);
+  // 用户的个性化要求可能很长（命名规则、场景、抱枕、细节部位、文案要求），原样带给构思，不截短
+  if (typeof raw.hint === 'string' && raw.hint.trim()) params.hint = raw.hint.trim().slice(0, 1500);
   if (typeof raw.keywords === 'string' && raw.keywords.trim()) params.keywords = raw.keywords.trim().slice(0, 100);
   if (typeof raw.newText === 'string' && raw.newText.trim()) params.newText = raw.newText.trim().slice(0, 60);
   if (typeof raw.oldText === 'string' && raw.oldText.trim()) params.oldText = raw.oldText.trim().slice(0, 60);
@@ -218,6 +219,13 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
   if (typeof raw.referenceImageUrl === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(raw.referenceImageUrl.trim())) {
     params.referenceImageUrl = raw.referenceImageUrl.trim().slice(0, 2000);
   }
+  if (Array.isArray(raw.attachmentUrls)) {
+    const urls = raw.attachmentUrls
+      .filter((u: any) => typeof u === 'string' && /^(https:\/\/|\/api\/canvases\/assets\/)/.test(u.trim()))
+      .map((u: string) => u.trim().slice(0, 2000))
+      .slice(0, 4);
+    if (urls.length > 0) params.attachmentUrls = urls;
+  }
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -248,7 +256,8 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
   params?.textEdits?.forEach((e, i) =>
     items.push({ label: `第 ${i + 1} 处`, value: `${e.oldText ? `「${e.oldText}」→` : ''}「${e.newText}」` })
   );
-  if (params?.hint) items.push({ label: '要求', value: params.hint });
+  if (params?.hint) items.push({ label: '要求', value: params.hint.length > 140 ? `${params.hint.slice(0, 140)}…` : params.hint });
+  if (params?.attachmentUrls?.length) items.push({ label: '附图', value: `${params.attachmentUrls.length} 张（产品细节实拍会用来还原造型和做细节格，参考图用来定场景）` });
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
   if (params?.videoShots?.length) {

@@ -14,9 +14,14 @@ import { CreativeAngle, findCreativeAngle, pickCreativeAngle } from './creativeA
 export interface PosterDetailConcept extends DetailTarget {
   /** 4–6 字，如“弧面扶手” */
   title: string;
-  /** “A · B”，如“圆润包覆 · 分割缝线” */
+  /** “A · B”，如“圆润包覆 · 分割缝线”；用户给了设计要求时可以是一两句更详细的工艺解读 */
   desc: string;
+  /** 用户附图里拍的就是这个部位时，填附图序号（从 1 起）：细节格直接用这张实拍，不从生成图里裁 */
+  photo?: number;
 }
+
+/** 用户随消息附的图各自是什么：detail=产品局部实拍，product=同款整图其他角度，scene=参考海报/场景图 */
+export type AttachmentRole = 'detail' | 'product' | 'scene' | 'ignore';
 
 export interface PosterConcept {
   name: string;
@@ -51,6 +56,12 @@ export interface PosterConcept {
   sellingPoint?: string;
   /** 画面的主要视觉元素（3–5 个名词），给下一张避免重复 */
   keyElements?: string[];
+  /** 产品图里功能位是打开的（脚踏伸出 / 靠背后仰 / 头枕升起） */
+  functionOpen?: boolean;
+  /** 画面里的人物（功能位打开时安排一位在使用）；没有人物为空串 */
+  person?: string;
+  /** 用户附图的角色，顺序与附图一致 */
+  attachmentRoles?: AttachmentRole[];
 }
 
 /** 同一产品已经出过的海报概念：新概念要避开这些命名、角度、卖点与视觉元素 */
@@ -69,6 +80,8 @@ export interface PosterConceptInput {
   productImage?: { data: string; mimeType: string };
   /** 用户给的参考海报 / 参考图：场景、光线、配色、氛围按它来，版式仍按 4/3 固定版式 */
   referenceImage?: { data: string; mimeType: string };
+  /** 用户随消息附的图（产品局部实拍、其他角度、参考图都可能），由模型逐张判断用途 */
+  attachments?: Array<{ data: string; mimeType: string }>;
   /** 用户补充要求，如“偏未来感”“用湖景” */
   hint?: string;
   /** 已有企划的主题或卖点，作为参考 */
@@ -87,7 +100,7 @@ export interface PosterConceptInput {
 const CONCEPT_MODELS = ['gemini-3.6-flash'];
 
 const DEFAULT_DETAILS: PosterDetailConcept[] = [
-  { key: 'armrest', locate: '沙发离镜头最近一侧的扶手（正面与顶部）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },
+  { key: 'armrest', locate: '沙发离镜头最近一侧的完整扶手（从扶手顶面到落地处、从前端到与靠背相接处，整只扶手都在框内）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },
   { key: 'backrest', locate: '离镜头最近的一个座位的靠背，含缝线与分段结构', title: '分段式靠背', desc: '分区承托 · 柔和贴合' },
   { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' }
 ];
@@ -105,13 +118,55 @@ function describeDna(dna: any): string {
   ].join('\n');
 }
 
+/** 发给模型的图片顺序：产品图 → 参考图 → 用户附图 */
+function imageOrderBlock(input: PosterConceptInput): string {
+  const lines: string[] = [];
+  let n = 0;
+  if (input.productImage) lines.push(`第${++n}张：产品图（要做海报的这款沙发，造型、颜色、面料以它为准）`);
+  if (input.referenceImage) lines.push(`第${++n}张：用户指定的参考图（只学场景与氛围）`);
+  (input.attachments || []).forEach((_, i) => lines.push(`第${++n}张：用户附图${i + 1}`));
+  if (lines.length < 2) return '';
+  return `\n[图片顺序]\n${lines.join('\n')}\n`;
+}
+
+function attachmentBlock(input: PosterConceptInput): string {
+  const k = (input.attachments || []).length;
+  if (k === 0) return '';
+  return [
+    '',
+    `[用户附图（共 ${k} 张，逐张看清楚再用）]`,
+    '逐张判断用途，写进 attachmentRoles（顺序与附图一致）：',
+    '- "detail"：这款产品某个部位的实拍特写（扶手、靠背、拉点、沙发脚、侧面、面料纹理等）。用户常因为整图生成后造型会变形才补拍细节：用它读懂真实造型、结构和工艺，文案按它写；底部细节格如果正好是这个部位，details[].photo 填这张附图的序号（从 1 起），细节格会直接用这张实拍。',
+    '- "product"：同一款产品的其他角度整图，只用来理解造型。',
+    '- "scene"：参考海报、场景或氛围图（里面的沙发不是这款产品），主场景的空间、光线、配色按它来。',
+    '- "ignore"：和这次海报无关的图。',
+    '先逐张写清每张附图实际拍到的是哪个部位，写进 attachmentParts（如 ["整只扶手","拉点分段靠背","扶手与沙发脚"]），再据此填 details[].photo：只按图片内容对应，用户文字里的“图二 / 图四”可能写错，不能按图号硬套；同一张附图最多给一格，没有哪张附图拍到这个部位就填 0。',
+    ''
+  ].join('\n');
+}
+
+function hintBlock(hint: string | undefined): string {
+  if (!hint) return '';
+  return [
+    '',
+    '[用户要求（逐条满足，优先级最高，和下面的通用规则冲突时以用户为准）]',
+    hint,
+    '落实方式：',
+    '- 命名：用户规定了字数或命名方式（如“四字以内”“参考顾家、乐至宝的产品命名，如赫兹、云舒”）就照做，名字要贴合沙发和场景；用户举的例子只是风格参考，不要直接用。',
+    '- 用户点名要展示的部位（如“完整扶手”“拉点分段式靠背”“沙发角”），底部三格就是这几个部位，顺序按用户说的；要求“完整”的部位，locate 里写明整个部位都要框进去。',
+    '- 用户给了设计 / 工艺解读要求时，desc 不再限于两个短语：写 20–36 字（硬性上限 36 字，写完整的句子，不要写到一半），具体解读这个部位的造型和工艺（如包覆方式、缝线、拉点、分段、弧度、脚的材质与形状），只写图里看得见的，不编参数。',
+    '- 用户对场景、色调、道具、抱枕的要求（如“两个相同的带图案抱枕”）都要写进 scene / props。',
+    ''
+  ].join('\n');
+}
+
 export function buildConceptPrompt(input: PosterConceptInput): string {
   return `你是家具品牌的电商海报创意总监。请为下面这款产品构思一张 4:3 单屏产品主视觉海报的概念。
-
+${imageOrderBlock(input)}
 [产品 DNA]
 ${describeDna(input.dna)}
 ${input.productImage ? '（DNA 可能是旧的或不准：颜色、材质、结构凡与产品图不一致的，一律以产品图为准，文案里的颜色词也要按图里真实看到的颜色写。）' : ''}
-${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${input.hint ? `\n[用户要求，优先满足]\n${input.hint}\n` : ''}${
+${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hintBlock(input.hint)}${attachmentBlock(input)}${
     input.angle
       ? `\n[本次创意切入角度（必须采用）]\n${input.angle.label}：${input.angle.brief}\n`
       : ''
@@ -122,18 +177,20 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
 [怎么构思：先挖卖点，再选大场景，再让整张图呼应名字]
 0. 挖卖点：看产品图和 DNA，找出这款产品最打动人的 1 个卖点（功能、坐感、材质、颜色、造型、情绪里选最突出、最具体的一个，如“电动头等舱躺姿”“米白头层真皮”“分段饱满靠背”）。
 1. 选场景：按“创意切入角度”，从上面的候选场景里挑一个和这个卖点最有关系的，并想清楚卖点和场景的联系（一句话能说出来）。
-2. 命名：两个汉字，有画面感和情绪，从卖点和场景出发。避开“云栖、栖云、云舒、暖阳”这类用滥了的词。
+2. 命名：两个汉字（用户另有要求时按用户的，最多四个字），有画面感和情绪，从卖点和场景出发。避开“云栖、栖云、云舒、暖阳”这类用滥了的词。
 3. 意象：名字对应的画面意象，一句话。
 4. 场景：这是一张大场景海报，背景是灵魂，必须开阔、壮观、有纵深，不能是封闭的室内房间或“一间好看的客厅”。从意象推出下面五样，缺一不可：
    - 标志性主体：一个大尺度、一眼能记住的主体，占据画面上半部——可以是建筑结构（巨型弧形天井、连续拱廊、悬挑露台），也可以是壮阔的自然地貌（沙丘风纹、峡谷岩壁、冰川断面、层叠梯田、云海山尖、银河极光）。
    - 远景：一直延伸到地平线或天空的风景，提供纵深。
    - 配色：场景 2–3 个主色，说明和产品色是“呼应”还是“对比”。
-   - 时间与光线：明确时刻和主光方向（清晨逆光、正午天光、黄昏侧逆光、夜晚星光与暖灯），要有光斑、倒影、轮廓光这类光效。
-   - 道具呼应：边几或茶几（形状、材质随场景变化，不要每张都是圆形石材茶几）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言。
+   - 时间与光线：整体明亮通透，选白天的明亮时段（清晨柔光、上午或正午天光、午后斜光、日落前的暖光），主光要照亮沙发，要有光斑、倒影、轮廓光这类光效。不要夜景、星空、暗黑或低调光的画面，沙发必须是画面里最清楚的主体。
+   - 道具呼应：茶几（形状、材质随场景变化，不要每张都是圆形石材茶几）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言。
+   - 茶几：用家具展厅里常见的正常款式（简洁的矩形、圆形或椭圆茶几，石材、木、金属或玻璃台面），不要雕塑、怪石、艺术装置式的造型；摆在沙发正前方、离沙发约一臂距离（像客厅里正常摆放），不要离沙发很远。
+   - 人物：看产品图，如果沙发的功能位是打开的（脚踏伸出、靠背后仰、头枕升起），画面里安排一位人物正在使用它（半躺放松，穿着简洁，姿态自然），写进 person；功能位没打开就不要人物，person 输出空字符串。
 5. 标杆案例（学方法，不要照抄）：
    - 银弧（造型呼应）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
-   - 月弧（情绪意境）：取自弧形扶手与黑色皮面 → 月球基地全景窗、远处地球、石材圆几
-   - 星眠（功能演绎）：取自电动躺与头枕 → 沙漠营地夜晚，头顶银河拱桥，沙发半躺，脚边暖色地灯
+   - 晴岚（情绪意境）：取自柔和的浅灰绿色 → 清晨山谷的玻璃平台，薄雾散开，阳光照亮草坡
+   - 悠眠（功能演绎）：取自电动躺与头枕 → 午后阳光下的海边露台，一位模特在打开的功能位上半躺放松
    - 沙纹（造型呼应）：取自分段靠背的起伏 → 白色沙丘的风纹延伸到地平线，正午硬光
    - 赤岩（材质呼应）：取自焦糖色真皮的光泽 → 红岩峡谷流线岩壁，顶部光柱洒下
    - 镜湖（色彩呼应）：取自米白色 → 天空之镜盐湖，倒映云朵，沙发如悬浮于天地之间
@@ -142,6 +199,7 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
 
 [细节三格]
 只能选产品上真实存在、图里看得见的部位（通常是扶手、靠背、沙发脚，也可以是侧面分割、金属饰条等），不要编造功能、参数、检测或材质承诺。
+扶手一定要完整展示：locate 写成“整只扶手（从扶手顶面到落地处、从前端到与靠背相接处）”，不要只框扶手的一部分。
 
 [输出]
 只输出一个 JSON 对象，不要 Markdown、不要解释：
@@ -159,12 +217,16 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${in
   "lighting": "时间与光线，20–50 字：时刻、主光方向、光效",
   "props": "道具呼应，30–70 字：边几或茶几（形状与材质）、摆件、地毯或地面、一对同款抱枕的图案",
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
+  "functionOpen": "产品图里功能位是否打开（脚踏伸出 / 靠背后仰 / 头枕升起），true 或 false",
+  "person": "功能位打开时画面里的人物，20–40 字，如“一位穿浅色针织衫的年轻女性半躺在打开的功能位上看书”；否则空字符串",
+  "attachmentParts": ["每张用户附图实际拍到的部位或内容，按附图顺序；没有附图就输出空数组"],
+  "attachmentRoles": ["每张用户附图的用途：detail / product / scene / ignore；没有附图就输出空数组"],
   "packaging": "只看产品图：沙发上如果真实带有包装膜或品牌标识（例如底部透明包装膜上印着红蓝色品牌字样），用一句话写明位置、颜色和图案，如“沙发底部座位正面有透明包装膜，印红色飞机图标和蓝色 CHEERS 字样”；图里没有就输出空字符串 \\"\\"，不要猜、不要编",
-  "stripColor": "#RRGGBB，海报底部细节栏的底色：夜景、星际等深色场景用与场景同色系的深色（如藏蓝 #14213A、炭黑 #1C1A19）；其余用暖白 #F7F3EE",
+  "stripColor": "#RRGGBB，海报底部细节栏的底色：一般用暖白 #F7F3EE；只有用户明确要深色场景时才用与场景同色系的深色",
   "accentColor": "#RRGGBB，与产品主色和场景协调的点缀色，用于标题下的短横线",
   "titleSide": "left 或 right，标题放哪一侧（这一侧上方是天空、远景或结构的大曲面，明暗均匀）",
   "details": [
-    {"key": "armrest", "locate": "给视觉定位用的部位描述，只指一个局部（靠背只指一个座位的靠背），如：沙发离镜头最近一侧的扶手（正面与顶部）", "title": "4–6 字，如“弧面扶手”", "desc": "两个 4 字短语用“ · ”连接，如“圆润包覆 · 分割缝线”"},
+    {"key": "armrest", "locate": "给视觉定位用的部位描述，只指一个局部（靠背只指一个座位的靠背），扶手要整只框进，如：沙发离镜头最近一侧的整只扶手（从顶面到落地处）", "title": "4–6 字，如“弧面扶手”", "desc": "默认两个 4 字短语用“ · ”连接，如“圆润包覆 · 分割缝线”；用户要求详细解读时写 20–36 字", "photo": 0},
     {"key": "backrest", "locate": "...", "title": "...", "desc": "..."},
     {"key": "foot", "locate": "...", "title": "...", "desc": "..."}
   ]
@@ -245,11 +307,13 @@ export function sanitizeConcept(raw: any): PosterConcept {
         .map((d: any, i: number) => {
           const fallback = DEFAULT_DETAILS[i] || DEFAULT_DETAILS[0];
           const key = cut(d.key, 24, fallback.key).replace(/[^a-zA-Z0-9_-]/g, '') || `detail_${i + 1}`;
+          const photo = Number(d.photo);
           return {
             key,
-            locate: cut(d.locate, 60, fallback.locate),
+            locate: cut(d.locate, 80, fallback.locate),
             title: cut(d.title, 7, fallback.title),
-            desc: cut(d.desc, 24, fallback.desc)
+            desc: cutAtPunctuation(d.desc, 40, fallback.desc),
+            ...(Number.isInteger(photo) && photo > 0 && photo <= 8 ? { photo } : {})
           };
         })
     : [];
@@ -282,6 +346,11 @@ export function sanitizeConcept(raw: any): PosterConcept {
     sellingPoint: cut(raw?.sellingPoint, 40, ''),
     keyElements: Array.isArray(raw?.keyElements)
       ? raw.keyElements.filter((x: any) => typeof x === 'string' && x.trim()).slice(0, 5).map((x: string) => cut(x, 12))
+      : [],
+    functionOpen: raw?.functionOpen === true || raw?.functionOpen === 'true',
+    person: cut(raw?.person, 80, ''),
+    attachmentRoles: Array.isArray(raw?.attachmentRoles)
+      ? raw.attachmentRoles.slice(0, 8).map((r: any): AttachmentRole => (r === 'detail' || r === 'product' || r === 'scene' ? r : 'ignore'))
       : []
   };
 }
@@ -293,15 +362,17 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
   // 用户自己提了场景要求时不强加方向；否则按这款产品用过的方向轮换
   const used = (input.used || []).filter(u => u && typeof u.name === 'string' && u.name.trim());
   // 按这款产品用过的角度与场景轮换：角度决定从哪个卖点出发，候选场景来自最近没用过的类别，由模型按卖点挑一个
-  const angle = input.angle || (input.hint || input.referenceImage ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
+  const hasSceneSource = Boolean(input.hint || input.referenceImage);
+  const angle = input.angle || (hasSceneSource ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
   const direction = input.sceneDirection;
   const candidates =
     input.sceneCandidates ||
-    (direction || input.hint || input.referenceImage ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
+    (direction || hasSceneSource ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
 
-  const imageParts: any[] = [input.productImage, input.referenceImage]
-    .filter((img): img is { data: string; mimeType: string } => Boolean(img?.data))
-    .map(img => ({ inlineData: { mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') } }));
+  const orderedImages = [input.productImage, input.referenceImage, ...(input.attachments || [])].filter(
+    (img): img is { data: string; mimeType: string } => Boolean(img?.data)
+  );
+  const imageParts: any[] = orderedImages.map(img => ({ inlineData: { mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') } }));
 
   let lastErr: any = null;
   let collided: PosterConcept | null = null;
@@ -336,9 +407,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       try {
         const fb = await chatCompletionText({
           prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }),
-          images: [input.productImage, input.referenceImage]
-            .filter((img): img is { data: string; mimeType: string } => Boolean(img?.data))
-            .map(img => ({ mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') })),
+          images: orderedImages.map(img => ({ mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') })),
           temperature: 1,
           userId
         });
@@ -366,7 +435,11 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
 }
 
 /** 模板 A 主场景的出图提示词：只画主场景，给标题留白，不画文字和细节小窗 */
-export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any, opts: { hasReference?: boolean } = {}): string {
+export function buildTemplateAHeroPrompt(
+  concept: PosterConcept,
+  dna?: any,
+  opts: { hasReference?: boolean; detailPhotos?: number } = {}
+): string {
   const side = concept.titleSide === 'right' ? '右' : '左';
   const other = concept.titleSide === 'right' ? '左' : '右';
   const dnaLines: string[] = [];
@@ -393,8 +466,15 @@ export function buildTemplateAHeroPrompt(concept: PosterConcept, dna?: any, opts
 ${
     opts.hasReference
       ? `[参考图]
-第二张图是用户给的参考图：场景按它来——空间与地貌、远景、构图与机位、时间与光线、配色、氛围、道具风格都尽量贴近它。
+标为“场景参考”的图是用户给的参考图：场景按它来——空间与地貌、远景、构图与机位、时间与光线、配色、氛围、道具风格都尽量贴近它。
 只学场景：参考图里的沙发 / 家具、人物、文字、Logo、排版和边框一律不要画进来；画面里唯一的沙发是第一张图的产品。
+
+`
+      : ''
+  }${
+    opts.detailPhotos
+      ? `[产品细节实拍]
+标为“材质参考”的 ${opts.detailPhotos} 张图是这款沙发的局部实拍（用户补拍的扶手、靠背、拉点、脚等）：造型、结构、缝线、面料纹理和颜色都按这些实拍还原，和主产品图冲突时以实拍为准。实拍里的背景、地面不要画进来。
 
 `
       : ''
@@ -404,16 +484,19 @@ ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 [背景是这张图的重点]
 这是一张开阔的大场景海报：背景不能是一面平墙、封闭的室内房间或普通客厅。标志性主体（建筑结构或自然地貌）要大、要占据画面上半部，并向远处延伸出纵深；一直能看到地平线或天空。
 画面分三层：前景（地面、地毯边缘或道具，可有少量虚化的植物、水面、沙砾）、中景（沙发）、远景（标志性主体与风景）。
-色彩饱满、有主次和冷暖或明暗对比，不要整张图一个灰调；光线有方向、有层次，带光斑、倒影或轮廓光。
+整体明亮通透：白天的明亮光线，主光照亮沙发，沙发是画面里最清楚、最亮眼的主体，细节一眼看得清；不要夜景、星空、暗黑或低调光，不要让沙发陷在阴影里。
+色彩饱满、有主次和冷暖对比，不要整张图一个灰调；光线有方向、有层次，带光斑、倒影或轮廓光。
 
 [构图]
 横幅 16:9，广角镜头（约 24–28mm）、机位略低，空间显得开阔高大。
-参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。前方有边几或茶几（按[场景]里的形状与材质），沙发下有地毯或与场景相配的地面，沙发上摆一对同款抱枕。
+参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。沙发正前方约一臂距离摆一张茶几：家具展厅常见的正常款式（简洁的矩形、圆形或椭圆，材质按[场景]），像客厅里正常摆放那样贴近沙发，不要离沙发很远，不要雕塑、怪石或艺术装置式的造型。沙发下有地毯或与场景相配的地面，沙发上摆一对同款抱枕。
+${concept.person ? `[人物] ${concept.person}。人物比例真实、姿态自然放松，正在使用沙发打开的功能位；不要挡住扶手和沙发的整体轮廓。` : '画面里不要出现人物。'}
 画面${side}上方（约画面宽度 40%、高度 40% 的区域）后期要排版标题：这里是天空、远景或结构的大曲面，明暗均匀，不放植物、树枝、灯具、密集的小物件和强高光点（植物只能放在画面另一侧或前景角落）；但不要画成一面空墙。
 商业中画幅相机质感，材质和光影像真实摄影。
 
 [产品一致性，最重要]
 沙发必须与参考图完全一致：造型、扶手、靠背分段与拉点、缝线走向、脚型、面料质感和颜色都不能改。
+面料要和产品图一样真实：纱线颗粒、色点、编织起伏都清楚可见，不要画成平滑的纯色布面或塑料感；颜色不偏色、不发灰、不变深。${concept.functionOpen ? '\n功能位保持和产品图一样的打开状态（脚踏伸出 / 靠背后仰）。' : ''}
 ${dnaLines.length ? dnaLines.join('\n') + '\n' : ''}${
     concept.packaging
       ? `参考图里的产品自带包装膜与品牌标识（${concept.packaging}）：这是产品的一部分，必须原样保留——位置、大小、颜色、图案都和参考图一致，标识按原样画出，不要改字、不要重排字母、不要虚化掉。除此之外的保护膜、贴纸、吊牌仍然去掉。`

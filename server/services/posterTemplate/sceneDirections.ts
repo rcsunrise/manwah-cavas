@@ -214,6 +214,13 @@ export const SCENE_DIRECTIONS: SceneDirection[] = [
 /** 默认轮换时尽量少用的方向（太常见、模型自己就会往这里跑） */
 const COMMON_DIRECTIONS = new Set(['valley_window']);
 
+/**
+ * 夜景 / 星空这类暗调方向：画面偏暗，沙发看不清，用户反馈要整体明亮。
+ * 保留在库里（旧海报的记录还能查到名称），但不再参与自动轮换；用户自己要夜景时按用户要求来。
+ */
+export const DARK_DIRECTIONS = new Set(['night_city', 'cosmic', 'aurora_tundra', 'desert_stargaze']);
+const ROTATION = SCENE_DIRECTIONS.filter(d => !DARK_DIRECTIONS.has(d.id));
+
 export function findSceneDirection(id: unknown): SceneDirection | undefined {
   return typeof id === 'string' ? SCENE_DIRECTIONS.find(d => d.id === id) : undefined;
 }
@@ -224,13 +231,13 @@ export function findSceneDirection(id: unknown): SceneDirection | undefined {
  */
 export function pickSceneDirection(usedIds: string[], random: () => number = Math.random): SceneDirection {
   const used = new Set(usedIds);
-  let pool = SCENE_DIRECTIONS.filter(d => !used.has(d.id) && !COMMON_DIRECTIONS.has(d.id));
+  let pool = ROTATION.filter(d => !used.has(d.id) && !COMMON_DIRECTIONS.has(d.id));
   if (pool.length === 0) {
     // 全用过了：排除最近用过的一半，从更早用过的里面挑
     const recent = new Set(usedIds.slice(-Math.ceil(SCENE_DIRECTIONS.length / 2)));
-    pool = SCENE_DIRECTIONS.filter(d => !recent.has(d.id));
+    pool = ROTATION.filter(d => !recent.has(d.id));
   }
-  if (pool.length === 0) pool = SCENE_DIRECTIONS;
+  if (pool.length === 0) pool = ROTATION;
   return pool[Math.floor(random() * pool.length) % pool.length];
 }
 
@@ -246,7 +253,7 @@ export function pickSceneCandidates(usedIds: string[], n = 3, random: () => numb
       .map(id => findSceneDirection(id)?.family)
       .filter(Boolean)
   );
-  const shuffled = [...SCENE_DIRECTIONS]
+  const shuffled = [...ROTATION]
     .map(d => ({ d, k: random() }))
     .sort((a, b) => a.k - b.k)
     .map(x => x.d);
