@@ -76,6 +76,11 @@ export function boxFrom2d(box2d: unknown): NormBox | null {
  * 而不是把旁边的窗景、地毯一起带进来，参考海报的特写都是部位撑满画格），保证最小取景尺寸
  * （沙发脚这类小部件单独裁会糊，参考海报里脚的特写也带着一截底座），最后整体平移进画面内。返回像素坐标。
  */
+/** 扶手类部位：key 含 arm，或描述里提到扶手 */
+export function isArmTarget(t: DetailTarget): boolean {
+  return /arm/i.test(t.key) || /扶手/.test(t.locate);
+}
+
 export function cropRectForBox(
   box: NormBox,
   imageWidth: number,
@@ -145,6 +150,8 @@ export async function locateDetails(
     if (!ai || !isValidKey) throw new Error('未配置可用的模型凭据');
     const small = await sharp(image, { failOn: 'none' }).resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
     const list = targets.map(t => `- key="${t.key}": ${t.locate}`).join('\n');
+    // 扶手：左右各给一个候选，后面逐个检查有没有被花瓶、绿植挡住
+    const armKeys = targets.filter(t => isArmTarget(t)).map(t => t.key);
     const prompt = `这是一张家具产品的场景图。请在图中找到下列产品部位，各给出一个能完整展示该部位细节的矩形框。
 ${list}
 
@@ -153,7 +160,7 @@ ${list}
 2. 同类部位有多个时（如左右两个扶手、多个沙发脚、多个座位的靠背），选完整露出、前面没有茶几/花瓶/摆件/抱枕遮挡的那一个；都没被挡时选离镜头最近、最清晰的。框里尽量不要带进茶几、摆件等其他物体。
 3. 这是给细节特写取景用的：框只包住这一个部位本身，带少量相邻结构即可；靠背、座垫这类横向连成一排的，只框其中一个座位，不要框整排。
 4. 沙发脚（key="foot"）请给出 3 个候选框（同一个 key 重复 3 项，最好的放最前）：每个框里要能看到这只脚从沙发底座到地面的完整形状，框内不能出现茶几、地毯边、摆件、抱枕、人物或沙发其他部分挡住脚的情况；离镜头最近的脚常被前面的茶几挡住，宁可选两端或侧面完整露出的脚。
-5. 只输出 JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
+${armKeys.length ? `5. 扶手（${armKeys.map(k => `key="${k}"`).join('、')}）请给出 2 个候选框（同一个 key 重复 2 项）：左右两只扶手各框一个，前面没有花瓶、绿植、茶几、抱枕遮挡的那只放最前。\n6. 只输出` : '5. 只输出'} JSON 数组，不要任何说明文字：[{"key": "...", "box_2d": [ymin, xmin, ymax, xmax]}]，坐标为 0–1000 的归一化整数。`;
 
     let lastErr: any = null;
     const parseArray = (text: string) => {
@@ -228,20 +235,34 @@ ${list}
     warnings.push(`细节部位自动定位失败，已改用默认取景：${err?.message || err}`);
   }
 
-  // 沙发脚：逐个候选裁出来让模型看有没有被挡，选第一个干净的
-  try {
-    const foot = candidates.get('foot');
-    if (foot && foot.length > 0) {
-      // 3 个候选同时检查（每次视觉调用约 10 秒，串行会多等半分钟）；只有 1 个候选时不用检查
+  // 沙发脚、扶手：逐个候选裁出来让模型看有没有被挡，选第一个干净的
+  const occlusionChecks: Array<{ key: string; name: string; question: string; max: number }> = [
+    {
+      key: 'foot',
+      name: '沙发脚',
+      max: 3,
+      question: '这是从沙发图里裁出的“沙发脚”特写。请判断：画面里能不能清楚看到一只完整的沙发脚（从底座到地面），且脚前面没有茶几、摆件、地毯边、人物、抱枕等东西遮挡？只回答 “是” 或 “否”。'
+    },
+    ...targets.filter(t => isArmTarget(t)).map(t => ({
+      key: t.key,
+      name: '扶手',
+      max: 2,
+      question: '这是从沙发图里裁出的“沙发扶手”特写。请判断：这只扶手是否完整露出，前面没有花瓶、绿植、枝叶、茶几、摆件、抱枕或人物挡住？只回答 “是” 或 “否”。'
+    }))
+  ];
+  for (const check of occlusionChecks) {
+    try {
+      const list = candidates.get(check.key);
+      if (!list || list.length === 0) continue;
+      // 候选同时检查（每次视觉调用约 10 秒，串行会多等）；只有 1 个候选时不用检查
       let picked: NormBox | null = null;
-      if (foot.length > 1) {
+      if (list.length > 1) {
         const verdicts = await Promise.all(
-          foot.slice(0, 3).map(async box => {
+          list.slice(0, check.max).map(async box => {
             try {
               const crop = await sharp(await cropDetail(image, box, 1.4)).resize(640, 640, { fit: 'inside' }).jpeg({ quality: 82 }).toBuffer();
               const r = await chatCompletionText({
-                prompt:
-                  '这是从沙发图里裁出的“沙发脚”特写。请判断：画面里能不能清楚看到一只完整的沙发脚（从底座到地面），且脚前面没有茶几、摆件、地毯边、人物、抱枕等东西遮挡？只回答 “是” 或 “否”。',
+                prompt: check.question,
                 images: [{ mimeType: 'image/jpeg', data: crop.toString('base64') }],
                 temperature: 0,
                 userId
@@ -253,15 +274,15 @@ ${list}
           })
         );
         const idx = verdicts.findIndex(Boolean);
-        if (idx >= 0) picked = foot[idx];
+        if (idx >= 0) picked = list[idx];
       } else {
-        picked = foot[0];
+        picked = list[0];
       }
-      if (picked) found.set('foot', picked);
-      else if (foot.length > 0) warnings.push('沙发脚几个候选都有遮挡，已选第一个，可在再次生成里换取景');
+      if (picked) found.set(check.key, picked);
+      else warnings.push(`${check.name}几个候选都有遮挡，已选第一个，可在再次生成里换取景`);
+    } catch (err: any) {
+      console.warn(`[PosterDetailCrop] ${check.name}遮挡检查失败（沿用第一个候选）:`, err?.message || err);
     }
-  } catch (err: any) {
-    console.warn('[PosterDetailCrop] 沙发脚遮挡检查失败（沿用第一个候选）:', err?.message || err);
   }
 
   const details = targets.map((t, i): LocatedDetail => {

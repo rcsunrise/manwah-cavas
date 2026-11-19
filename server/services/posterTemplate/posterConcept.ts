@@ -4,7 +4,12 @@ import type { TitleSide } from './templateA';
 import { chatCompletionText } from './chatFallback';
 import { findSceneDirection, namesCollide, pickSceneCandidates, SceneDirection } from './sceneDirections';
 import { CreativeAngle, findCreativeAngle, pickCreativeAngle } from './creativeAngles';
+import { coffeeTableCandidatesRule, coffeeTableRule, CoffeeTableStyle, findCoffeeTableStyle, pickCoffeeTableCandidates } from './coffeeTables';
 
+
+/** 抱枕颜色要和沙发区分开：同色同明度的抱枕会和沙发糊成一片，看不出层次 */
+export const PILLOW_RULE =
+  '一对同款带图案的抱枕，颜色必须和沙发面料明显区分开（不要和沙发同色系、同明度），用和场景配色呼应的点缀色或对比色，如米白、燕麦、驼色、焦糖、陶土、雾蓝、墨绿与金色等，图案清晰（几何、线条、植物纹等）；和沙发放在一起要协调、有层次。';
 /**
  * 海报概念：命名 → 意象 → 场景 / 道具 / 配色 → 细节部位 → 文案。
  * 参考海报好看的关键是整张图都在呼应名字（银弧 → 银色弧形建筑与不锈钢茶几，月弧 → 月球基地窗景），
@@ -49,6 +54,8 @@ export interface PosterConcept {
   titleSide: TitleSide;
   details: PosterDetailConcept[];
   /** 本次采用的场景方向（见 sceneDirections.ts），由模型从候选里按卖点挑选 */
+  /** 本次茶几款式（见 coffeeTables.ts），按产品轮换 */
+  tableStyle?: string;
   sceneDirection?: string;
   /** 本次创意切入角度（见 creativeAngles.ts） */
   angle?: string;
@@ -68,6 +75,7 @@ export interface PosterConcept {
 export interface UsedPosterConcept {
   name: string;
   idea?: string;
+  tableStyle?: string;
   sceneDirection?: string;
   angle?: string;
   sellingPoint?: string;
@@ -90,6 +98,10 @@ export interface PosterConceptInput {
   used?: UsedPosterConcept[];
   /** 本次指定的场景方向（指定了就只用它） */
   sceneDirection?: SceneDirection;
+  /** 本次茶几款式；不传时按这款产品用过的款式轮换（用户要求里提到茶几时不强加） */
+  tableStyle?: CoffeeTableStyle;
+  /** 给模型挑的茶几候选（按场景配色挑一款）；指定了 tableStyle 时不用 */
+  tableCandidates?: CoffeeTableStyle[];
   /** 给模型挑选的候选场景方向（不同类别）；不传时按轮换自动选 */
   sceneCandidates?: SceneDirection[];
   /** 本次创意切入角度；不传时按轮换自动选 */
@@ -184,8 +196,9 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
    - 远景：一直延伸到地平线或天空的风景，提供纵深。
    - 配色：场景 2–3 个主色，说明和产品色是“呼应”还是“对比”。
    - 时间与光线：整体明亮通透，选白天的明亮时段（清晨柔光、上午或正午天光、午后斜光、日落前的暖光），主光要照亮沙发，要有光斑、倒影、轮廓光这类光效。不要夜景、星空、暗黑或低调光的画面，沙发必须是画面里最清楚的主体。
-   - 道具呼应：茶几（形状、材质随场景变化，不要每张都是圆形石材茶几）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言。
-   - 茶几：用家具展厅里常见的正常款式（简洁的矩形、圆形或椭圆茶几，石材、木、金属或玻璃台面），不要雕塑、怪石、艺术装置式的造型；摆在沙发正前方、离沙发约一臂距离（像客厅里正常摆放），不要离沙发很远。
+   - 道具呼应：茶几（按下面的茶几要求）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言；props 里写清茶几的材质和造型，以及抱枕的颜色和图案。
+   - 抱枕：${PILLOW_RULE}
+   - 茶几：${(input.tableStyle || !input.tableCandidates?.length ? coffeeTableRule(input.tableStyle) : coffeeTableCandidatesRule(input.tableCandidates)).split('\n').join('\n     ')}
    - 人物：看产品图，如果沙发的功能位是打开的（脚踏伸出、靠背后仰、头枕升起），画面里安排一位人物正在使用它（半躺放松，穿着简洁，姿态自然），写进 person；功能位没打开就不要人物，person 输出空字符串。
 5. 标杆案例（学方法，不要照抄）：
    - 银弧（造型呼应）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
@@ -215,8 +228,9 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
   "vista": "远景，15–40 字",
   "palette": "场景配色，20–50 字：2–3 个主色 + 与产品色的关系（呼应或对比）",
   "lighting": "时间与光线，20–50 字：时刻、主光方向、光效",
-  "props": "道具呼应，30–70 字：边几或茶几（形状与材质）、摆件、地毯或地面、一对同款抱枕的图案",
+  "props": "道具呼应，30–70 字：边几或茶几（形状与材质）、摆件、地毯或地面、一对同款抱枕的颜色与图案（颜色要和沙发明显区分）",
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
+  "tableStyle": "从茶几候选里挑中的 id（没有候选时输出空字符串）",
   "functionOpen": "产品图里功能位是否打开（脚踏伸出 / 靠背后仰 / 头枕升起），true 或 false",
   "person": "功能位打开时画面里的人物，20–40 字，如“一位穿浅色针织衫的年轻女性半躺在打开的功能位上看书”；否则空字符串",
   "attachmentParts": ["每张用户附图实际拍到的部位或内容，按附图顺序；没有附图就输出空数组"],
@@ -307,7 +321,6 @@ function usedBlock(used: UsedPosterConcept[] | undefined): string {
     ...lines,
     '命名不能重复，也不能是同样的字换个顺序或只换一个字（做过“云栖”就不能叫“栖云”“云憩”）；卖点尽量换一个（同一卖点也要换完全不同的表现）；意象、空间、光线、配色都要换。',
     elements.length ? `这些视觉元素已经用过，这次不要再作为画面主体：${elements.join('、')}。` : '',
-    '圆形石材茶几已经用得太多，这次换别的形状和材质。',
     ''
   ]
     .filter((line, i, arr) => line || i === 0 || i === arr.length - 1)
@@ -365,6 +378,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
     details,
     sceneDirection: findSceneDirection(raw?.sceneDirection)?.id,
     angle: findCreativeAngle(raw?.angle)?.id,
+    tableStyle: findCoffeeTableStyle(raw?.tableStyle)?.id,
     sellingPoint: cut(raw?.sellingPoint, 40, ''),
     keyElements: Array.isArray(raw?.keyElements)
       ? raw.keyElements.filter((x: any) => typeof x === 'string' && x.trim()).slice(0, 5).map((x: string) => cut(x, 12))
@@ -387,6 +401,11 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
   const hasSceneSource = Boolean(input.hint || input.referenceImage);
   const angle = input.angle || (hasSceneSource ? undefined : pickCreativeAngle(used.map(u => u.angle).filter((x): x is string => Boolean(x))));
   const direction = input.sceneDirection;
+  // 茶几款式按这款产品用过的轮换；用户要求里自己说了茶几就按用户的
+  const tableStyle = input.tableStyle;
+  const tableCandidates = tableStyle || /茶几/.test(input.hint || '')
+    ? undefined
+    : input.tableCandidates || pickCoffeeTableCandidates(used.map(u => u.tableStyle).filter((x): x is string => Boolean(x)));
   const candidates =
     input.sceneCandidates ||
     (direction || hasSceneSource ? undefined : pickSceneCandidates(used.map(u => u.sceneDirection).filter((x): x is string => Boolean(x))));
@@ -403,7 +422,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
     const avoid = collided
       ? [...used, { name: collided.name, idea: collided.idea, sceneDirection: collided.sceneDirection, angle: collided.angle, sellingPoint: collided.sellingPoint, keyElements: collided.keyElements }]
       : used;
-    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }) }];
+    const parts = [...imageParts, { text: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle, tableStyle, tableCandidates }) }];
     let concept: PosterConcept | null = null;
     for (const model of CONCEPT_MODELS) {
       try {
@@ -428,7 +447,7 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       // gemini 原生通道全部不可用时，改走 chat/completions 的对话模型
       try {
         const fb = await chatCompletionText({
-          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle }),
+          prompt: buildConceptPrompt({ ...input, used: avoid, sceneDirection: direction, sceneCandidates: candidates, angle, tableStyle, tableCandidates }),
           images: orderedImages.map(img => ({ mimeType: img.mimeType || 'image/jpeg', data: img.data.replace(/^data:[^;]+;base64,/, '') })),
           temperature: 1,
           userId
@@ -447,6 +466,9 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       direction?.id ||
       (candidates?.some(c => c.id === concept!.sceneDirection) ? concept.sceneDirection : candidates?.[0]?.id);
     concept.angle = angle?.id;
+    // 模型挑的款式必须在候选里；没挑或挑了别的，按第一个候选
+    concept.tableStyle =
+      tableStyle?.id || (tableCandidates?.some(c => c.id === concept!.tableStyle) ? concept.tableStyle : tableCandidates?.[0]?.id);
     const clash = avoid.find(u => namesCollide(u.name, concept!.name));
     if (!clash) return concept;
     console.warn(`[PosterConcept] 命名「${concept.name}」与已做过的「${clash.name}」重复，重新构思`);
@@ -511,7 +533,12 @@ ${sceneLines.length ? '\n' + sceneLines.join('\n') + '\n' : ''}
 
 [构图]
 横幅 16:9，广角镜头（约 24–28mm）、机位略低，空间显得开阔高大。
-参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。沙发正前方约一臂距离摆一张茶几：家具展厅常见的正常款式（简洁的矩形、圆形或椭圆，材质按[场景]），像客厅里正常摆放那样贴近沙发，不要离沙发很远，不要雕塑、怪石或艺术装置式的造型。沙发下有地毯或与场景相配的地面，沙发上摆一对同款抱枕。
+参考图中的沙发是画面唯一主角，三分之四侧前方视角，整体完整入画、不裁切，位于画面中部略偏${other}，宽度约占画面的 50%–58%；沙发顶部不高于画面高度的 42%，底边在 72%–80% 处，上方留出足够的空间展示结构与远景。沙发下有地毯或与场景相配的地面，沙发上摆一对同款抱枕。
+[抱枕]
+${PILLOW_RULE}
+[茶几]
+${coffeeTableRule(findCoffeeTableStyle(concept.tableStyle))}
+茶几上的花器、绿植要低矮，放在茶几远离扶手的一侧；画面里任何花瓶、绿植、枝叶都不能挡在沙发两侧扶手前面，两只扶手要完整露出。
 ${concept.person ? `[人物] ${concept.person}。人物比例真实、姿态自然放松，正在使用沙发打开的功能位；不要挡住扶手和沙发的整体轮廓。` : '画面里不要出现人物。'}
 画面${side}上方（约画面宽度 40%、高度 40% 的区域）后期要排版标题：这里是天空、远景或结构的大曲面，明暗均匀，不放植物、树枝、灯具、密集的小物件和强高光点（植物只能放在画面另一侧或前景角落）；但不要画成一面空墙。
 商业中画幅相机质感，材质和光影像真实摄影。

@@ -3092,7 +3092,7 @@ export function useCreativeCanvasWorkspace(
       })
       .map(n => {
         const c = (n.data as any).templatePoster.concept;
-        return { name: c.name, idea: c.idea, sceneDirection: c.sceneDirection, angle: c.angle, sellingPoint: c.sellingPoint, keyElements: c.keyElements };
+        return { name: c.name, idea: c.idea, sceneDirection: c.sceneDirection, angle: c.angle, tableStyle: c.tableStyle, sellingPoint: c.sellingPoint, keyElements: c.keyElements };
       });
     // 企划也只属于主产品图
     const isMainProduct = isMainProductNodeId(productKey);

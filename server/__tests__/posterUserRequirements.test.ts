@@ -32,7 +32,8 @@ describe('场景：整体明亮，不再自动轮换到夜景 / 星空', () => {
     expect(prompt).not.toContain('夜晚星光');
     const hero = buildTemplateAHeroPrompt(sanitizeConcept({ name: '苔痕' }));
     expect(hero).toContain('不要夜景');
-    expect(hero).toContain('展厅常见的正常款式');
+    expect(hero).toContain('离沙发约一臂距离');
+    expect(hero).not.toContain('简洁的矩形、圆形或椭圆');
     expect(hero).toContain('画面里不要出现人物');
   });
 });
@@ -103,5 +104,41 @@ describe('细节说明不出现半句话', () => {
     expect(d).toBe('采用精工锻造的柱状金属脚，表面呈现哑光银色光泽。');
     expect(cutDetailDesc('圆润包覆 · 分割缝线', 40)).toBe('圆润包覆 · 分割缝线');
     expect(cutDetailDesc('靠背以拉点工艺分为上下两区。精准贴合人体脊椎曲线，久坐不累，同时还带来更柔软的坐感体验和包裹感受', 40)).toBe('靠背以拉点工艺分为上下两区。');
+  });
+});
+
+import { COFFEE_TABLE_STYLES, coffeeTableRule, pickCoffeeTableCandidates } from '../services/posterTemplate/coffeeTables';
+describe('茶几款式：现代轻奢大理石，按产品轮换、按配色挑选', () => {
+  it('候选来自没用过的款式，构思列出候选，出图写进选中的那一款', () => {
+    const used = COFFEE_TABLE_STYLES.slice(0, 8).map(s => s.id);
+    const cands = pickCoffeeTableCandidates(used, 3, () => 0.5);
+    expect(cands).toHaveLength(3);
+    expect(cands.every(c => !used.includes(c.id))).toBe(true);
+    const prompt = buildConceptPrompt({ tableCandidates: cands });
+    for (const c of cands) expect(prompt).toContain(c.id);
+    const style = COFFEE_TABLE_STYLES[0];
+    expect(coffeeTableRule(style)).toContain(style.label);
+    expect(coffeeTableRule(style)).toContain('不要细金属框架');
+    const hero = buildTemplateAHeroPrompt(sanitizeConcept({ name: '苔镜', tableStyle: style.id }));
+    expect(hero).toContain(style.brief);
+    expect(sanitizeConcept({ tableStyle: 'nope' }).tableStyle).toBeUndefined();
+  });
+});
+
+import { PILLOW_RULE } from '../services/posterTemplate/posterConcept';
+describe('抱枕颜色和沙发区分开', () => {
+  it('构思和出图都要求抱枕和沙发明显区分', () => {
+    expect(buildConceptPrompt({})).toContain(PILLOW_RULE);
+    expect(buildTemplateAHeroPrompt(sanitizeConcept({ name: '托岚' }))).toContain('和沙发面料明显区分开');
+  });
+});
+
+import { isArmTarget } from '../services/posterTemplate/detailCrop';
+describe('扶手格避开遮挡', () => {
+  it('扶手类部位会做左右候选与遮挡检查；出图要求花瓶绿植不挡扶手', () => {
+    expect(isArmTarget({ key: 'armrest', locate: 'x' })).toBe(true);
+    expect(isArmTarget({ key: 'detail_1', locate: '整只扶手' })).toBe(true);
+    expect(isArmTarget({ key: 'foot', locate: '沙发脚' })).toBe(false);
+    expect(buildTemplateAHeroPrompt(sanitizeConcept({ name: '岩织' }))).toContain('不能挡在沙发两侧扶手前面');
   });
 });
