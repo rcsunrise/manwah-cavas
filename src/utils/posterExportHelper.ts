@@ -121,9 +121,15 @@ export async function renderPosterToCanvas(
     targetW = 2400;
     targetH = 1800;
   } else if (resolution === 'ultra_4k') {
+    // 长边 4096，横图竖图都按原比例（以前固定高 4096，横版 4:3 会变成 5461×4096）
     const aspect = natW / natH;
-    targetH = 4096;
-    targetW = Math.round(targetH * aspect);
+    if (aspect >= 1) {
+      targetW = 4096;
+      targetH = Math.round(targetW / aspect);
+    } else {
+      targetH = 4096;
+      targetW = Math.round(targetH * aspect);
+    }
   } else if (options.customWidth && options.customHeight) {
     targetW = options.customWidth;
     targetH = options.customHeight;

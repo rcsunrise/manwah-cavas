@@ -41,7 +41,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
-import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentVideoCard, AgentStitchClip, AgentStitchPicker, LocalAssetItem } from '../../types/creativeCanvas';
+import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentTaskCard, AgentVideoCard, AgentStitchClip, AgentStitchPicker, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
 import { describePlanParams } from '../../utils/agentActionProtocol';
 import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterPromptTags, posterRegenOptions } from '../../utils/posterRegen';
@@ -73,6 +73,8 @@ interface AgentPanelProps {
   onPostAgentMessage?: (text: string, extras?: Partial<AgentMessage>) => string;
   /** 原地更新消息（卡片状态：已回答 / 已确认 / 已取消） */
   onUpdateAgentMessage?: (id: string, patch: Partial<AgentMessage>) => void;
+  /** 接下来创建的任务卡记下这个动作，失败时可一键重试 */
+  onMarkTaskRetry?: (retry: { actionId: AgentActionId; params?: AgentActionParams }) => void;
   /** 拼接成片完成后把成片卡片发到对话 */
   onPostVideoResult?: (card: AgentVideoCard) => void;
   /** 打开视频创作面板；带 brief 时把对话中的视频创意填入面板 */
@@ -532,6 +534,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onChangeConversationModel,
   onPostAgentMessage,
   onUpdateAgentMessage,
+  onMarkTaskRetry,
   onPostVideoResult,
   onOpenVideoPanel,
   onEditImageText,
@@ -1222,6 +1225,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         onOpenPosterStudio?.(params?.screenIndex || selectedSceneIndex || 1);
         return;
       case 'template_poster':
+        onMarkTaskRetry?.({ actionId: 'template_poster', params });
         onGenerateTemplatePoster?.(params);
         return;
       case 'fabric_edit':
@@ -1282,6 +1286,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   };
 
   // 计划卡确认后才真正调用画布能力（含智能体在对话中提出的计划）
+  // 失败任务卡的“重试”：同样的动作、同样的参数直接再跑一次（已确认过，不再出确认卡）
+  const handleRetryTask = (retry: NonNullable<AgentTaskCard['retry']>) => {
+    if (retry.actionId === 'template_poster') {
+      runAgentAction('template_poster', retry.params);
+      return;
+    }
+    handleConfirmPlan('', { title: '', actionId: retry.actionId, params: retry.params, status: 'pending', items: [] } as AgentPlanCard);
+  };
+
   const handleConfirmPlan = (messageId: string, card: AgentPlanCard) => {
     const params = card.params;
     if (card.actionId === 'generate_plan' && (!chatHasDna || isPlanGenerating)) {
@@ -1292,7 +1305,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       runAgentAction(card.actionId, params);
       return;
     }
-    onUpdateAgentMessage?.(messageId, { planCard: { ...card, status: 'confirmed' } });
+    if (messageId) onUpdateAgentMessage?.(messageId, { planCard: { ...card, status: 'confirmed' } });
+    onMarkTaskRetry?.({ actionId: card.actionId, params });
     switch (card.actionId) {
       case 'generate_plan':
         onGenerateNineGridPlan(params?.hint, { screenCount: params?.screenCount, aspectRatio: params?.aspectRatio });
@@ -3449,6 +3463,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         onConfirmPlan={handleConfirmPlan}
                         onCancelPlan={handleCancelPlan}
                         onAdjustPlan={handleAdjustPlan}
+                        onRetryTask={handleRetryTask}
                       />
                     )}
 

@@ -149,6 +149,7 @@ export default function CreativeCanvasPage() {
     postVideoResultToChat,
     uploadChatImage,
     updateAgentMessage,
+    markNextTaskRetry,
     isOpenInOtherTab,
     handleStopGenerating,
     handleRetryMessage,
@@ -861,6 +862,7 @@ export default function CreativeCanvasPage() {
             onSendMessage={handleSendMessageStream}
             onPostAgentMessage={addAgentMessage}
             onUpdateAgentMessage={updateAgentMessage}
+            onMarkTaskRetry={markNextTaskRetry}
             onOpenVideoPanel={brief => {
               if (brief) setVideoBriefRequest({ ...brief, nonce: Date.now() });
               handleOpenVideoPanel(undefined, Boolean(brief?.chat));

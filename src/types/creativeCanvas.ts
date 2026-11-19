@@ -259,6 +259,8 @@ export interface AgentTaskCard {
   finishedAt?: number;
   /** 各步骤耗时 */
   steps?: { label: string; ms: number }[];
+  /** 失败后“重试”要重新执行的动作（同样的参数） */
+  retry?: { actionId: AgentActionId; params?: AgentActionParams };
 }
 
 /** 画布定位目标：优先按节点 id，其次按节点类型 + 屏号查找 */

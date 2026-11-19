@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight, Crosshair, Timer } from 'lucide-react';
+import { HelpCircle, ClipboardList, CheckCircle2, XCircle, Loader2, Ban, ArrowRight, Crosshair, Timer, RotateCcw } from 'lucide-react';
 import {
   AgentActionOption,
   AgentClarifyCard,
@@ -18,6 +18,13 @@ interface AgentMessageCardsProps {
   onCancelPlan: (messageId: string) => void;
   /** 计划卡的“调整参数”入口 */
   onAdjustPlan: (card: AgentPlanCard) => void;
+  /** 失败任务卡的“重试” */
+  onRetryTask?: (retry: NonNullable<AgentTaskCard['retry']>) => void;
+}
+
+/** 网络抖动、网关超时这类错误，通常再试一次就好 */
+export function isTransientTaskError(detail?: string): boolean {
+  return /UND_ERR|ECONNRESET|ETIMEDOUT|socket|fetch failed|超时|timeout|HTTP 5\d\d|502|503|504|网络|network/i.test(detail || '');
 }
 
 const ClarifyCardView: React.FC<{
@@ -164,7 +171,7 @@ const TaskTimingView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
   );
 };
 
-const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
+const TaskCardView: React.FC<{ card: AgentTaskCard; onRetry?: (retry: NonNullable<AgentTaskCard['retry']>) => void }> = ({ card, onRetry }) => {
   const meta = {
     running: { icon: <Loader2 className="w-3.5 h-3.5 animate-spin text-[#B28C5A]" />, label: '执行中', tone: 'bg-amber-50 text-amber-700' },
     done: { icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />, label: '已完成', tone: 'bg-emerald-50 text-emerald-700' },
@@ -191,6 +198,24 @@ const TaskCardView: React.FC<{ card: AgentTaskCard }> = ({ card }) => {
         >
           <img src={card.resultImageUrl} alt="结果图" className="w-full max-h-56 object-contain" />
         </button>
+      )}
+      {card.status === 'failed' && (
+        <div className="mt-1.5 pt-1.5 border-t border-dashed border-rose-200/70 flex items-center justify-between gap-2">
+          <span className="text-[10px] text-stone-500 leading-relaxed">
+            {isTransientTaskError(card.detail) ? '网络或通道临时中断，一般再试一次即可；失败没有扣点。' : '失败没有扣点，可以调整要求后再试。'}
+            {!(card.retry && onRetry) && ' 也可以在对话里发送“继续尝试”。'}
+          </span>
+          {card.retry && onRetry && (
+            <button
+              type="button"
+              onClick={() => onRetry(card.retry!)}
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#B28C5A] hover:bg-[#9E7A4A] text-white text-[10px] font-bold transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              重试
+            </button>
+          )}
+        </div>
       )}
       {card.status === 'done' && card.locate && (
         <button
@@ -235,7 +260,8 @@ export const AgentMessageCards: React.FC<AgentMessageCardsProps> = ({
   onChooseOption,
   onConfirmPlan,
   onCancelPlan,
-  onAdjustPlan
+  onAdjustPlan,
+  onRetryTask
 }) => (
   <>
     {message.clarifyCard && (
@@ -249,7 +275,7 @@ export const AgentMessageCards: React.FC<AgentMessageCardsProps> = ({
         onAdjust={() => onAdjustPlan(message.planCard!)}
       />
     )}
-    {message.taskCard && <TaskCardView card={message.taskCard} />}
+    {message.taskCard && <TaskCardView card={message.taskCard} onRetry={onRetryTask} />}
     {message.suggestions && message.suggestions.length > 0 && (
       <SuggestionChips options={message.suggestions} onChoose={option => onChooseOption(option, message.id)} />
     )}

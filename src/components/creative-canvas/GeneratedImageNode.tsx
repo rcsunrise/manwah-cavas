@@ -32,7 +32,6 @@ import { ScreenComposition } from '../../types/detailCompositionSchema';
 import { assembleComposition } from '../../services/detailCompositionService';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { NodeTextEditor } from './NodeTextEditor';
-import { PosterDownloadModal } from './PosterDownloadModal';
 import { ImageInpaintModal } from './ImageInpaintModal';
 import { downloadHighResImage } from '../../utils/downloadUtils';
 import { fetchOriginalSize, isThumbnailable, toThumbnailUrl } from '../../utils/thumbnailUrl';
@@ -91,7 +90,6 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
   const [ocrRepairSuccess, setOcrRepairSuccess] = useState(true);
   const [ocrRepairMessage, setOcrRepairMessage] = useState<string | undefined>();
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
   // 下载菜单渲染到 body 上：节点根容器 overflow-hidden 会把菜单裁掉
   const downloadToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -895,9 +893,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                       >
                         <span className="flex items-center gap-1.5">
                           <FileDown className="w-3 h-3 text-[#B28C5A]" />
-                          <span>原画质直接下载</span>
+                          <span>下载原图</span>
                         </span>
-                        <span className="text-[9px] text-stone-400 font-mono">原图</span>
+                        <span className="text-[9px] text-stone-400">原画质</span>
                       </button>
                       <button
                         onClick={handleDirectDownloadPosterPng}
@@ -905,9 +903,9 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                       >
                         <span className="flex items-center gap-1.5">
                           <SparklesIcon className="w-3 h-3 text-amber-600" />
-                          <span>海报直接导出 (PNG)</span>
+                          <span>导出 PNG</span>
                         </span>
-                        <span className="text-[9px] text-amber-600 font-bold font-mono">300DPI</span>
+                        <span className="text-[9px] text-stone-400">{data.textLayers && data.textLayers.length > 0 ? '含文字图层' : '无损格式'}</span>
                       </button>
                       {data.cleanBackgroundUrl && (
                         <button
@@ -916,23 +914,10 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                         >
                           <span className="flex items-center gap-1.5">
                             <Layers className="w-3 h-3 text-indigo-600" />
-                            <span>消除文字纯净底图</span>
+                            <span>下载无字底图</span>
                           </span>
-                          <span className="text-[9px] text-stone-400 font-mono">Clean</span>
                         </button>
                       )}
-                      <div className="border-t border-stone-100 my-0.5"></div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDownloadDropdown(false);
-                          setShowDownloadModal(true);
-                        }}
-                        className="w-full px-2.5 py-1.5 text-[11px] text-left hover:bg-[#FAF8F5] text-[#8C6F43] font-bold flex items-center justify-between"
-                      >
-                        <span>更多参数定制...</span>
-                        <ChevronRight className="w-3 h-3" />
-                      </button>
                     </div>
                     </>,
                     document.body
@@ -1066,22 +1051,6 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
         </div>
       )}
 
-      {/* Poster High-Res Download & Commercial Export Modal */}
-      {showDownloadModal && (
-        <PosterDownloadModal
-          isOpen={showDownloadModal}
-          onClose={() => setShowDownloadModal(false)}
-          imageUrl={imageUrl}
-          cleanBackgroundUrl={data.cleanBackgroundUrl}
-          withText={data.withText}
-          textLayers={data.textLayers}
-          screenTitle={screenTitle}
-          coreSellingPoint={(data as any).coreSellingPoint || (data as any).subTitle || ''}
-          themeTitle={(data as any).themeTitle || 'MANWAH DESIGN STUDIO'}
-          sceneIndex={sceneIndex}
-          sourceAspectRatio={sourceAspectRatio || aspectRatio}
-        />
-      )}
 
       {/* Local Inpaint & Partial Redraw Modal */}
       {showInpaintModal && imageUrl && (

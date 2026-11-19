@@ -465,8 +465,19 @@ export function useCreativeCanvasWorkspace(
   ]);
 
   // extras 可附带结构化卡片（追问 / 计划 / 任务 / 下一步建议），返回消息 id 便于后续更新卡片状态
+  // 对话里确认执行的动作：紧接着创建的任务卡记下它，失败时卡片上可以一键重试
+  const pendingTaskRetryRef = useRef<{ retry: NonNullable<AgentTaskCard['retry']>; at: number } | null>(null);
+  const markNextTaskRetry = useCallback((retry: NonNullable<AgentTaskCard['retry']>) => {
+    pendingTaskRetryRef.current = { retry, at: Date.now() };
+  }, []);
   const addAgentMessage = useCallback((text: string, extras?: Partial<AgentMessage>) => {
     const id = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    let taskCard = extras?.taskCard;
+    const pendingRetry = pendingTaskRetryRef.current;
+    if (taskCard && pendingRetry) {
+      pendingTaskRetryRef.current = null;
+      if (!taskCard.retry && Date.now() - pendingRetry.at < 15000) taskCard = { ...taskCard, retry: pendingRetry.retry };
+    }
     setMessages(prev => [
       ...prev,
       {
@@ -475,7 +486,7 @@ export function useCreativeCanvasWorkspace(
         text,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         ...extras,
-        ...(extras?.taskCard ? { taskCard: startTaskTiming(extras.taskCard) } : {})
+        ...(taskCard ? { taskCard: startTaskTiming(taskCard) } : {})
       }
     ]);
     return id;
@@ -6476,6 +6487,7 @@ export function useCreativeCanvasWorkspace(
     addUserMessage,
     addAgentMessage,
     updateAgentMessage,
+    markNextTaskRetry,
     isOpenInOtherTab,
     clearCanvasWorkspace,
 
