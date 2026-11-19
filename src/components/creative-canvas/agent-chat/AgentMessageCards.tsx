@@ -52,9 +52,10 @@ const ClarifyCardView: React.FC<{
               key={option.label}
               type="button"
               onClick={() => onChoose(option)}
-              className="px-2.5 py-1 rounded-lg bg-white border border-[#E5E0D8] hover:border-[#B28C5A] hover:text-[#8C6F43] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer"
+              className={`${option.imageUrl ? 'flex items-center gap-2 pl-1 pr-2.5 py-1 max-w-[220px]' : 'px-2.5 py-1'} rounded-lg bg-white border border-[#E5E0D8] hover:border-[#B28C5A] hover:text-[#8C6F43] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer`}
             >
-              {option.label}
+              {option.imageUrl && <img src={option.imageUrl} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 bg-stone-100" />}
+              <span className={option.imageUrl ? 'truncate' : undefined}>{option.label}</span>
             </button>
           ))}
         </div>

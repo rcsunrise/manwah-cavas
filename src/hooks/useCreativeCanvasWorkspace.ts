@@ -3100,6 +3100,25 @@ export function useCreativeCanvasWorkspace(
       (productNodes.length === 1 ? productNodes[0] : undefined)
     );
   };
+  /** 画布上有多张产品图又认不出要哪张时：列出每张产品图（带缩略图），点哪张就用哪张，沿用原来的参数直接生成 */
+  const askWhichProductNode = (actionId: 'template_poster' | 'fabric_poster', params: AgentActionParams | undefined, productNodes: Node[]) => {
+    const kind = actionId === 'fabric_poster' ? '氛围海报' : '4/3 产品海报';
+    addAgentMessage(`画布上有 ${productNodes.length} 张产品图，这张${kind}要用哪一张？`, {
+      clarifyCard: {
+        question: '点选要用的产品图：',
+        options: productNodes.map((n, i) => {
+          const name = String((n.data as any)?.fileName || '').replace(/\.[a-z0-9]+$/i, '');
+          return {
+            label: `${isMainProductNodeId(n.id) ? '主产品图' : `产品图 ${i + 1}`}${name ? ` · ${name.length > 14 ? `${name.slice(0, 14)}…` : name}` : ''}`,
+            imageUrl: String((n.data as any)?.imageUrl || ''),
+            actionId,
+            params: { ...(params || {}), nodeId: n.id },
+            confirmed: true
+          };
+        })
+      }
+    });
+  };
   const templatePosterRunningRef = useRef<Set<string>>(new Set());
   const [templatePosterRunningIds, setTemplatePosterRunningIds] = useState<string[]>([]);
   const handleGenerateTemplatePoster = async (params?: AgentActionParams): Promise<boolean> => {
@@ -3108,7 +3127,7 @@ export function useCreativeCanvasWorkspace(
     const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
     const productNode = resolvePosterProductNode(params?.nodeId);
     if (!productNode && productNodes.length > 1) {
-      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做海报的那一张，或直接点产品图上的「4/3 产品海报」按钮。`);
+      askWhichProductNode('template_poster', params, productNodes);
       return false;
     }
     let productImage = (productNode?.data?.imageUrl as string) || '';
@@ -3294,7 +3313,7 @@ export function useCreativeCanvasWorkspace(
     const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
     const productNode = resolvePosterProductNode(params?.nodeId);
     if (!productNode && productNodes.length > 1) {
-      addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做氛围海报的那一张，或直接点沙发图上的「氛围海报」按钮。`);
+      askWhichProductNode('fabric_poster', params, productNodes);
       return false;
     }
     let productImage = (productNode?.data?.imageUrl as string) || '';

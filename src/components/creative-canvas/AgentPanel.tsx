@@ -1281,7 +1281,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     if (msg?.clarifyCard && !msg.clarifyCard.answered) {
       onUpdateAgentMessage?.(messageId, { clarifyCard: { ...msg.clarifyCard, answered: option.label } });
     }
-    if (option.actionId) runAgentAction(option.actionId, option.params);
+    if (option.actionId && option.confirmed) {
+      // 已确认过的执行（例如确认后才选产品图）：直接执行，不再出确认卡
+      if (option.actionId === 'template_poster') runAgentAction('template_poster', option.params);
+      else handleConfirmPlan('', { title: '', actionId: option.actionId, params: option.params, status: 'pending', items: [] } as AgentPlanCard);
+    } else if (option.actionId) runAgentAction(option.actionId, option.params);
     else if (option.prompt) onSendMessage(option.prompt);
   };
 

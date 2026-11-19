@@ -43,3 +43,33 @@ describe('失败任务卡：提示并允许重试', () => {
     expect(isTransientTaskError('提示词不合规')).toBe(false);
   });
 });
+
+describe('选哪张产品图：带缩略图的选项', () => {
+  it('每张产品图显示缩略图和名称', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AgentMessageCards as any, {
+        message: {
+          id: 'm2',
+          sender: 'agent',
+          text: '',
+          timestamp: '',
+          clarifyCard: {
+            question: '点选要用的产品图：',
+            options: [
+              { label: '主产品图 · 极境', imageUrl: 'https://x/a.jpg', actionId: 'template_poster', params: { nodeId: 'img-node-1' }, confirmed: true },
+              { label: '产品图 2', imageUrl: 'https://x/b.jpg', actionId: 'template_poster', params: { nodeId: 'n2' }, confirmed: true }
+            ]
+          }
+        },
+        onChooseOption: () => {},
+        onConfirmPlan: () => {},
+        onCancelPlan: () => {},
+        onAdjustPlan: () => {}
+      })
+    );
+    expect(html).toContain('https://x/a.jpg');
+    expect(html).toContain('https://x/b.jpg');
+    expect(html).toContain('主产品图 · 极境');
+    expect(html).toContain('产品图 2');
+  });
+});

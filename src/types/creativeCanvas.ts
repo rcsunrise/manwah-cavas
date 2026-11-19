@@ -229,6 +229,10 @@ export interface AgentActionOption {
   params?: AgentActionParams;
   /** 不对应动作时，点击后作为一条用户消息发出 */
   prompt?: string;
+  /** 选项缩略图（如“选哪张产品图”） */
+  imageUrl?: string;
+  /** 用户已确认过这次执行（如确认后才发现要选产品图），点选后直接执行，不再出确认卡 */
+  confirmed?: boolean;
 }
 
 export interface AgentClarifyCard {
