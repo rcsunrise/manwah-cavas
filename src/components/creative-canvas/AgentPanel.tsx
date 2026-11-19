@@ -43,7 +43,7 @@ import {
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { AgentMessage, GenerationBatch, SceneQueueItem, AgentConversationRecord, AgentActionId, AgentActionOption, AgentActionParams, AgentPlanCard, AgentTaskCard, AgentVideoCard, AgentStitchClip, AgentStitchPicker, LocalAssetItem } from '../../types/creativeCanvas';
 import { VideoGenerationService } from '../../services/videoGenerationService';
-import { describePlanParams } from '../../utils/agentActionProtocol';
+import { describePlanParams, canvasNodeTitle } from '../../utils/agentActionProtocol';
 import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterPromptTags, posterRegenOptions } from '../../utils/posterRegen';
 import { AgentMessageCards } from './agent-chat/AgentMessageCards';
 import { AgentMessageActions } from './agent-chat/AgentMessageActions';
@@ -1414,13 +1414,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       nodes.flatMap((n: any) => {
         if (n?.type === 'welcomeNode') return [];
         const d = n?.data || {};
-        // 产品图节点没有标题，只有文件名：用“产品主图 / 产品图 · 文件名”，否则 @ 里找不到上传的产品
-        const isProduct = n?.type === 'productImageNode' || n?.type === 'productImage';
-        const productTitle =
-          isProduct && d.imageUrl
-            ? `${n.id === 'img-node-1' || n.id === 'product-image-node-1' ? '产品主图' : '产品图'}${d.fileName ? ` · ${String(d.fileName).replace(/\.[a-z0-9]+$/i, '')}` : ''}`
-            : '';
-        const title = d.title || d.label || d.screenTitle || productTitle;
+        // 产品图只有文件名、模板海报原版只有构思里的名字：统一用 canvasNodeTitle，否则 @ 里找不到
+        const title = canvasNodeTitle(n);
         if (!title || typeof title !== 'string') return [];
         const image = d.imageUrl || d.originalImageUrl || d.previewUrl || d.rendered_image_url;
         return [{ id: n.id, title, imageUrl: typeof image === 'string' ? image : undefined }];

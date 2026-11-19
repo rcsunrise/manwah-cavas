@@ -2,6 +2,22 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Pause, Plus, AtSign, X, ImageIcon, Loader2 } from 'lucide-react';
 import { AgentActionOption } from '../../../types/creativeCanvas';
 
+/**
+ * 手打的“@名字”（没从列表里点选）：按名字找画布节点。名字可以是完整标题，也可以是“4/3 产品海报 · 极境”里的“极境”；
+ * 同名的取最新一张。@ 后可以带一个空格。
+ */
+export function resolveTypedMentions(text: string, nodes: MentionableNode[]): string[] {
+  const ids: string[] = [];
+  const re = /@\s?([^\s@，。,、；;：:！!？?]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const name = m[1];
+    const hit = [...nodes].reverse().find(n => n.title === name || n.title.endsWith(` · ${name}`));
+    if (hit && !ids.includes(hit.id)) ids.push(hit.id);
+  }
+  return ids;
+}
+
 export interface MentionableNode {
   id: string;
   title: string;
@@ -193,6 +209,10 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     if ((!trimmed && readyImageUrls.length === 0) || isStreaming || attachmentsUploading) return;
     // 只带上正文里仍然保留的引用（用户可能手动删掉了 @标签）
     const activeMentionIds = mentions.filter(m => trimmed.includes(`@${m.title}`)).map(m => m.id);
+    // 点选的标签先从正文去掉，再按名字认手打的 @（否则“@极境 · 修改”里的“极境”会被再认成原版海报）
+    let typed = trimmed;
+    for (const m of mentions) typed = typed.split(`@${m.title}`).join(' ');
+    for (const id of resolveTypedMentions(typed, mentionableNodes)) if (!activeMentionIds.includes(id)) activeMentionIds.push(id);
     onSend(trimmed, activeMentionIds, readyImageUrls);
     setText('');
     setMentions([]);

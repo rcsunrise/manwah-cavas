@@ -357,6 +357,25 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
  * 画布状态摘要：让智能体知道 DNA 是否就绪、企划有哪些屏、用户引用了什么，
  * 从而判断能提出哪些动作、屏号是否存在。只给事实，不含任何 ID 以外的内部数据。
  */
+/**
+ * 画布节点在对话里显示的名字（@ 列表、画布摘要共用）。
+ * 模板海报原版节点没有 title，名字只在 templatePoster 里：用“4/3 产品海报 · 极境”这样和画布卡片一致的叫法，否则 @ 不到、模型也认不出。
+ */
+export function canvasNodeTitle(n: any): string {
+  const d = n?.data || {};
+  const own = d.title || d.label || d.screenTitle;
+  if (typeof own === 'string' && own) return own;
+  const tp = d.templatePoster;
+  if (tp?.template === 'A' && tp.concept?.name) return `4/3 产品海报 · ${tp.concept.name}`;
+  if (tp?.template === 'B' && tp.concept?.name) return `氛围海报 · ${tp.concept.name}`;
+  if (tp?.template === 'C' && tp.name) return `面料色卡海报 · ${tp.name}`;
+  if ((n?.type === 'productImageNode' || n?.type === 'productImage') && d.imageUrl) {
+    const main = n.id === 'img-node-1' || n.id === 'product-image-node-1';
+    return `${main ? '产品主图' : '产品图'}${d.fileName ? ` · ${String(d.fileName).replace(/\.[a-z0-9]+$/i, '')}` : ''}`;
+  }
+  return '';
+}
+
 export function buildCanvasSummary(input: {
   dna?: { category?: string; primaryColor?: string; materials?: string[] } | null;
   /** DNA 已就绪（可能只有画布 DNA 节点而没有加载完整 DNA 数据） */
@@ -397,7 +416,10 @@ export function buildCanvasSummary(input: {
   }
 
   // 4/3 产品海报（模板 A）：列出图上的文字，改字时 oldText 才有据可查
-  const productPosters = nodes.filter(n => n?.data?.templatePoster?.template === 'A').slice(-4);
+  const pointed = new Set(mentionedNodeIds || []);
+  const allProductPosters = nodes.filter(n => n?.data?.templatePoster?.template === 'A');
+  // 最近 4 张 + 用户本条引用的（引用的哪怕是早先的海报也要列出来，不然模型认不出）
+  const productPosters = allProductPosters.filter((n, i) => i >= allProductPosters.length - 4 || pointed.has(n.id));
   if (productPosters.length > 0) {
     const desc = productPosters.map(n => {
       const c = n.data.templatePoster.concept || {};
@@ -406,7 +428,7 @@ export function buildCanvasSummary(input: {
         .map((d: any, k: number) => `第${k + 1}格标题「${d?.title || ''}」描述「${d?.desc || ''}」`)
         .join('、');
       const edited = n.data.textEditedFrom ? '；此图改过字，文字以图上为准' : '';
-      return `${n.id}（主标题「${c.name || ''}」；副标题「${c.subtitle || ''}」${details ? `；底部从左到右：${details}` : ''}${edited}）`;
+      return `${n.id}${pointed.has(n.id) ? '【用户引用】' : ''}（主标题「${c.name || ''}」；副标题「${c.subtitle || ''}」${details ? `；底部从左到右：${details}` : ''}${edited}）`;
     });
     lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文）：${desc.join('；')}`);
   }
@@ -448,13 +470,14 @@ export function buildCanvasSummary(input: {
   );
   if (selectedSceneIndex) lines.push(`- 当前选中分镜：第 ${selectedSceneIndex} 屏`);
 
-  const imageNodes = nodes
-    .filter(n => typeof n?.data?.imageUrl === 'string' && n.data.imageUrl && ['generatedImageNode', 'productImageNode', 'imageGenerationNode'].includes(n?.type))
-    .slice(-8);
+  const allImageNodes = nodes.filter(
+    n => typeof n?.data?.imageUrl === 'string' && n.data.imageUrl && ['generatedImageNode', 'productImageNode', 'imageGenerationNode'].includes(n?.type)
+  );
+  const imageNodes = allImageNodes.filter((n, i) => i >= allImageNodes.length - 8 || pointed.has(n.id) || n?.type === 'productImageNode');
   if (imageNodes.length > 0) {
     const desc = imageNodes.map(n => {
       const d = n.data || {};
-      const title = d.title || d.screenTitle || d.label || (n?.type === 'productImageNode' ? `产品图${d.fileName ? ` · ${d.fileName}` : ''}` : '图片');
+      const title = canvasNodeTitle(n) || '图片';
       const flags = [d.withText ? '含文字' : '', Number.isInteger(d.sceneIndex) ? `第${d.sceneIndex}屏` : ''].filter(Boolean).join('/');
       return `${n.id}「${title}」${flags ? `(${flags})` : ''}`;
     });
@@ -476,8 +499,8 @@ export function buildCanvasSummary(input: {
       .filter(Boolean)
       .map(n => {
         const d = n.data || {};
-        const title = d.title || d.label || d.screenTitle || (n?.type === 'productImageNode' && d.fileName ? `产品图 · ${d.fileName}` : n.id);
-        return Number.isInteger(d.screenIndex) ? `${title}（第${d.screenIndex}屏）` : title;
+        const title = canvasNodeTitle(n) || n.id;
+        return `${title}（nodeId ${n.id}${Number.isInteger(d.screenIndex) ? `，第${d.screenIndex}屏` : ''}）`;
       });
     if (titles.length > 0) lines.push(`- 用户本条消息引用的画布素材：${titles.join('、')}`);
   }
