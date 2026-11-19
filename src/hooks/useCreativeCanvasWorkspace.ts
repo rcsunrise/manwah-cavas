@@ -5715,8 +5715,10 @@ export function useCreativeCanvasWorkspace(
           prevSerializedRef.current = serialized;
           hasExplicitUserClearRef.current = false;
           firstDirtyAtRef.current = null;
-          clearPendingDraft(canvasId);
-          setSaveStatus(res.storageMedium === 'cloud' ? 'cloud_saved' : 'local_saved');
+          // 只有真正写进数据库才清掉待同步草稿：服务端回退到内存/本地文件时，重启就会丢，草稿要留着下次打开时恢复
+          if (res.storageMedium === 'cloud') clearPendingDraft(canvasId);
+          else writePendingDraft({ canvasId, projectId, at: new Date().toISOString(), nodes: cleanNodes, edges: cleanEdges, viewport: latest.viewport });
+          setSaveStatus(res.storageMedium === 'cloud' ? 'cloud_saved' : res.storageMedium === 'memory' ? 'memory_only' : 'local_saved');
           setLastSavedAt(res.lastSavedAt || new Date().toISOString());
         })
         .catch(err => {
@@ -5945,7 +5947,9 @@ export function useCreativeCanvasWorkspace(
           prevSerializedRef.current = serializedPayload;
           hasExplicitUserClearRef.current = false;
           firstDirtyAtRef.current = null;
-          clearPendingDraft(targetCanvasId);
+          // 只有真正写进数据库才清掉待同步草稿（见上）
+          if (res.storageMedium === 'cloud') clearPendingDraft(targetCanvasId);
+          else writePendingDraft({ canvasId: targetCanvasId, projectId: targetProjectId, at: new Date().toISOString(), nodes: cleanNodes, edges: cleanEdges, viewport });
 
           try {
             const localSnapshot = {
@@ -5974,7 +5978,8 @@ export function useCreativeCanvasWorkspace(
           if (res.storageMedium === 'cloud') {
             setSaveStatus('cloud_saved');
           } else {
-            setSaveStatus('local_saved');
+            setSaveStatus(res.storageMedium === 'memory' ? 'memory_only' : 'local_saved');
+            logCanvasDiagnostic({ projectId: targetProjectId, canvasId: targetCanvasId, source: 'auto_save_not_in_cloud', storageMode: res.storageMedium });
           }
 
           setLastSavedAt(res.lastSavedAt || new Date().toISOString());

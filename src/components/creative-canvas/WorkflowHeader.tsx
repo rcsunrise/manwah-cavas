@@ -84,9 +84,9 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
       case 'saving':
         return { tone: 'text-amber-700 bg-amber-50 border-amber-200', icon: <Loader2 className="w-3 h-3 animate-spin text-amber-600" />, label: '正在保存...', title: '正在保存草稿到服务器与本地' };
       case 'local_saved':
-        return { tone: 'text-sky-800 bg-sky-50 border-sky-200', icon: <Check className="w-3.5 h-3.5 text-sky-600" />, label: `已存本地 ${time}`, title: '服务器暂未保存成功，已存到本地，点击立即重试' };
+        return { tone: 'text-amber-800 bg-amber-50 border-amber-300 hover:bg-amber-100', icon: <AlertCircle className="w-3.5 h-3.5 text-amber-600" />, label: `未同步到云端 ${time}`, title: '数据库暂时连不上，改动先存在本机（浏览器里留有草稿，下次打开会自动恢复）；点击立即重试同步' };
       case 'memory_only':
-        return { tone: 'text-amber-800 bg-amber-50 border-amber-300', icon: <AlertCircle className="w-3.5 h-3.5 text-amber-600" />, label: '临时保存', title: '仅临时存放在内存中，服务重启后可能丢失；点击立即保存' };
+        return { tone: 'text-amber-800 bg-amber-50 border-amber-300', icon: <AlertCircle className="w-3.5 h-3.5 text-amber-600" />, label: '未同步到云端', title: '数据库暂时连不上，改动先存在本机（浏览器里留有草稿，下次打开会自动恢复）；点击立即重试同步' };
       case 'save_failed':
       case 'error':
         return { tone: 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100', icon: <AlertCircle className="w-3.5 h-3.5 text-rose-600" />, label: '保存失败，点击重试', title: '点击立即重试保存当前工作流草稿' };

@@ -434,6 +434,24 @@ export async function ensureParentProjectExists(projectId: string, userId: strin
   }
 }
 
+/**
+ * 按“id 或 project_id”查画布可能查出多行（同一项目早先留下的旧行）：保存永远写在 id 那一行，
+ * 所以优先取 id 完全匹配的；没有才取同项目里最近更新的。以前 limit(1) 不排序，可能读到停在旧版的那一行。
+ */
+export function pickCanvasRow<T extends { id?: string; updated_at?: string }>(rows: T[] | null | undefined, canvasUuid: string): T | null {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const exact = rows.find(r => r?.id === canvasUuid);
+  if (exact) return exact;
+  return [...rows].sort((a, b) => (Date.parse(b?.updated_at || '') || 0) - (Date.parse(a?.updated_at || '') || 0))[0];
+}
+
+/** 本机副本（内存 / .data 文件）比数据库那份晚保存 2 秒以上：说明之后的保存没写进数据库 */
+export function isNewerLocalCopy(local: any, db: any): boolean {
+  const localAt = Date.parse(local?.last_saved_at || local?.updated_at || '') || 0;
+  const dbAt = Date.parse(db?.last_saved_at || db?.updated_at || '') || 0;
+  return localAt > 0 && localAt > dbAt + 2000;
+}
+
 export async function safeUpsertCanvas(payload: any) {
   const userId = sanitizeUserId(payload.user_id || payload.created_by);
   const canvasTitle = payload.canvas_name || payload.title || payload.name || '主视觉九屏画布';
@@ -692,10 +710,10 @@ async function findCanvasOwner(rawId: string): Promise<string | null> {
     const validProjUuid = isValidUuid(projectId) ? projectId : toValidUuid(projectId);
     const { data } = await supabaseAdmin
       .from('creative_canvases')
-      .select('user_id')
+      .select('id,user_id,updated_at')
       .or(`id.eq.${validCanvasUuid},project_id.eq.${validProjUuid}`)
-      .limit(1);
-    const owner = (data as any)?.[0]?.user_id;
+      .limit(10);
+    const owner = pickCanvasRow(data as any[], validCanvasUuid)?.user_id;
     if (owner) return owner;
   } catch {
     // 查询失败时按内存兜底
@@ -733,20 +751,37 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
         .from('creative_canvases')
         .select('*')
         .or(`id.eq.${validCanvasUuid},project_id.eq.${validProjUuid}`)
-        .limit(1);
+        .limit(10);
 
       if (error) {
         dbError = error;
       } else if (data && data.length > 0) {
-        canvas = data[0];
+        canvas = pickCanvasRow(data, validCanvasUuid);
         storageMedium = 'cloud';
       }
     } catch (e) {
       dbError = e;
     }
 
+    const localCopy = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
     if (!canvas) {
-      canvas = inMemoryCanvases.get(canvasId) || inMemoryCanvases.get(`canvas_${projectId}`);
+      canvas = localCopy;
+    } else if (localCopy && isNewerLocalCopy(localCopy, canvas)) {
+      // 数据库断线时保存只落在了本机内存 / .data 文件里：它比数据库里的新，就以它为准，并补写回数据库。
+      // 以前直接用数据库的旧版，服务一重启，断线期间的改动就被旧版盖掉
+      serverLogDiagnostic({
+        projectId,
+        canvasId,
+        source: 'get_canvas_prefer_newer_local_copy',
+        localSavedAt: localCopy.last_saved_at,
+        dbSavedAt: canvas.last_saved_at || canvas.updated_at
+      });
+      canvas = localCopy;
+      storageMedium = 'memory';
+      try {
+        const { error: syncErr } = await safeUpsertCanvas(localCopy);
+        if (!syncErr) storageMedium = 'cloud';
+      } catch {}
     }
 
     // 画布属于别的账号时拒绝读取（管理员除外）；无归属的旧画布、自己的照常

@@ -11,6 +11,25 @@ interface State {
   error: Error | null;
 }
 
+/** 动态模块（懒加载页面或组件）加载失败 */
+export function isChunkLoadError(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '');
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk \S+ failed|Unable to preload CSS/i.test(msg);
+}
+
+const AUTO_RELOAD_KEY = 'chunk_auto_reload_at';
+/** 1 分钟内只自动刷新一次 */
+export function autoReloadAllowed(now = Date.now()): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(AUTO_RELOAD_KEY) || 0);
+    if (now - last < 60000) return false;
+    sessionStorage.setItem(AUTO_RELOAD_KEY, String(now));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class RouteErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
@@ -23,6 +42,9 @@ export class RouteErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[RouteErrorBoundary] Caught error:', error, errorInfo);
+    // 服务更新 / 重新部署后，开着的旧页面再加载模块会失败：自动刷新一次换新版本（1 分钟内只刷一次，避免反复刷新）。
+    // 画布改动在刷新前已写入浏览器待同步草稿，打开后会自动恢复。
+    if (isChunkLoadError(error) && autoReloadAllowed()) window.location.reload();
   }
 
   private handleRetry = () => {

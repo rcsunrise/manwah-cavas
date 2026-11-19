@@ -147,6 +147,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
 import './index.css';
 import { installAuthFetch } from './utils/authFetch';
+import { autoReloadAllowed } from './components/RouteErrorBoundary';
 
 // 同源 /api 与 /v1* 请求自动带登录凭证（服务端要求会花钱的写请求必须登录）
 installAuthFetch();
@@ -249,6 +250,14 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, R
 }
 
 const queryClient = new QueryClient();
+
+// 新版本部署 / 服务重启后旧页面预加载模块失败：自动刷新一次换新版本（1 分钟内只刷一次）
+window.addEventListener('vite:preloadError', event => {
+  if (autoReloadAllowed()) {
+    event.preventDefault();
+    window.location.reload();
+  }
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
