@@ -85,8 +85,12 @@ export const MOOD_SHOT_ORDER: FabricMoodShot['key'][] = ['tall', 'closeup', 'amb
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
+/** 细节 1 固定是整只扶手（和 4/3 海报一样要看到完整造型），不让模型改成局部按钮、饰条 */
+export const ARM_DETAIL_LOCATE =
+  '离镜头较近、完整露出的那只扶手的整体造型：从扶手顶面到底部落地边整只框进来，扶手上的电动按钮、金属饰条一起带上；不要只框按钮、饰条或扶手的一小块局部';
+
 const DEFAULT_DETAILS: FabricDetailTarget[] = [
-  { key: 'detail1', locate: '沙发一侧的扶手及侧面结构（如有电动控制按钮或金属装饰条，要包含进来）' },
+  { key: 'detail1', locate: ARM_DETAIL_LOCATE },
   { key: 'detail2', locate: '沙发脚与底部边缘的缝线转角（要看到沙发脚和皮面缝线）' }
 ];
 const DEFAULT_SWATCH = '沙发座垫或靠背上一块平整、光线均匀、无缝线无褶皱的皮革表面（只框很小一块纯皮革）';
@@ -149,7 +153,7 @@ export function sanitizeFabricConcept(raw: any, fallbackColor = '#C9B8A3'): Fabr
   const rawDetails = Array.isArray(raw?.details) ? raw.details : [];
   const details = DEFAULT_DETAILS.map((d, i) => ({
     key: d.key,
-    locate: cleanText(rawDetails[i]?.locate, 120, d.locate)
+    locate: d.key === 'detail1' ? ARM_DETAIL_LOCATE : cleanText(rawDetails[i]?.locate, 120, d.locate)
   }));
   const tag = (v: any, fb: FabricDirection): FabricDirection =>
     v && typeof v.id === 'string' && typeof v.label === 'string'
@@ -190,7 +194,7 @@ export function buildFabricConceptPrompt(hint?: string, directions?: FabricConce
     {"key": "street", "prompt": "欧美女模特的生活方式街拍，服装与场景色调协调"}
   ],
   "details": [
-    {"key": "detail1", "locate": "沙发上最有特点的一处结构（如带按钮的扶手、金属饰条），描述要能让视觉模型在图上框出来"},
+    {"key": "detail1", "locate": "固定为整只扶手的完整造型（照抄即可）"},
     {"key": "detail2", "locate": "沙发脚与皮面缝线的转角"}
   ],
   "swatchLocate": "一块平整无缝线的皮革表面位置描述"

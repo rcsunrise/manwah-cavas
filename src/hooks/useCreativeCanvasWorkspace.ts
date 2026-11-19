@@ -3278,12 +3278,18 @@ export function useCreativeCanvasWorkspace(
     // 型号默认不显示（不再拿文件名充数），用户给了才写，之后可在对话里改
     const code = params?.fabricCode ?? '';
     const label = params?.fabricLabel ?? '';
+    // 输入框里一起发的细节实拍：服务端按内容对应到扶手、沙发脚，对上的直接做圆形细节
+    const attachments = (params?.attachmentUrls || []).slice(0, 4);
 
     templatePosterRunningRef.current.add(lockKey);
     setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
     const taskStartedAt = Date.now();
     const taskId = addAgentMessage('', {
-      taskCard: { title: productNodes.length > 1 ? `氛围海报 · ${productLabel}` : '氛围海报', status: 'running', detail: '1/3 构思皮革色、抱枕图案与氛围照…' }
+      taskCard: {
+        title: `${productNodes.length > 1 ? `氛围海报 · ${productLabel}` : '氛围海报'}${attachments.length ? `（含 ${attachments.length} 张细节图）` : ''}`,
+        status: 'running',
+        detail: '1/3 构思皮革色、抱枕图案与氛围照…'
+      }
     });
     const postJson = async (url: string, body: any) => {
       const headers = await getAuthHeaders();
@@ -3333,7 +3339,8 @@ export function useCreativeCanvasWorkspace(
         concept,
         layout,
         code,
-        label
+        label,
+        ...(attachments.length ? { attachments } : {})
       });
       const posterUrl = await storeImage(composed.imageDataUrl);
 
@@ -3359,7 +3366,17 @@ export function useCreativeCanvasWorkspace(
             generationDurationMs: Date.now() - taskStartedAt,
             version: 1,
             reviewStatus: 'pendingReview',
-            templatePoster: { template: 'B', productNodeId: productKey, concept, layout, code, label, details: composed.details, assets: { sofa: sofaR.value, pillow: pillowR.status === 'fulfilled' ? pillowR.value : null, moods: moodImages } }
+            templatePoster: {
+              template: 'B',
+              productNodeId: productKey,
+              concept,
+              layout,
+              code,
+              label,
+              details: composed.details,
+              ...(attachments.length ? { attachments } : {}),
+              assets: { sofa: sofaR.value, pillow: pillowR.status === 'fulfilled' ? pillowR.value : null, moods: moodImages }
+            }
           }
         };
         return [...prev, posterNode];
@@ -3493,7 +3510,8 @@ export function useCreativeCanvasWorkspace(
         layout,
         code,
         label,
-        pillowScale
+        pillowScale,
+        ...(Array.isArray(tp.attachments) && tp.attachments.length ? { attachments: tp.attachments } : {})
       });
       const posterUrl = await storeImage(composed.imageDataUrl);
 

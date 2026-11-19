@@ -376,3 +376,69 @@ export async function cropDetail(
   const rect = cropRectForBox(box, width, height, aspect, options);
   return sharp(image, { failOn: 'none' }).rotate().extract(rect).png().toBuffer();
 }
+
+/** 裁成圆形特写用的正方形框：圆是正方形的内切圆，部位框的对角线要装进圆里，四角才不会被切掉 */
+export function circleCropRect(
+  box: NormBox,
+  imageWidth: number,
+  imageHeight: number,
+  margin = 0.06
+): { left: number; top: number; width: number; height: number } {
+  const bw = box.width * imageWidth;
+  const bh = box.height * imageHeight;
+  let side = Math.hypot(bw, bh) * (1 + margin * 2);
+  side = Math.max(side, Math.min(imageWidth, imageHeight) * 0.12);
+  side = Math.min(side, imageWidth, imageHeight);
+  const cx = (box.left + box.width / 2) * imageWidth;
+  const cy = (box.top + box.height / 2) * imageHeight;
+  const left = Math.min(Math.max(0, cx - side / 2), imageWidth - side);
+  const top = Math.min(Math.max(0, cy - side / 2), imageHeight - side);
+  const s = Math.round(side);
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    width: Math.max(1, Math.min(imageWidth - Math.round(left), s)),
+    height: Math.max(1, Math.min(imageHeight - Math.round(top), s))
+  };
+}
+
+/**
+ * 用户上传的细节实拍按内容对应到细节部位（如“扶手”“沙发脚”），不按上传顺序。
+ * 返回 key → 照片下标；对不上的部位不出现在结果里。
+ */
+export async function matchDetailPhotos(
+  photos: Buffer[],
+  targets: Array<{ key: string; label: string }>,
+  userId = 'system'
+): Promise<Record<string, number>> {
+  if (!photos.length || !targets.length) return {};
+  const images = await Promise.all(
+    photos.map(async p => ({
+      mimeType: 'image/jpeg',
+      data: (await sharp(p, { failOn: 'none' }).rotate().resize(640, 640, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()).toString('base64')
+    }))
+  );
+  const prompt = `下面按顺序给出 ${photos.length} 张沙发细节实拍（第 1 张到第 ${photos.length} 张）。请判断每个部位用哪一张图最合适：
+${targets.map(t => `- "${t.key}"：${t.label}`).join('\n')}
+规则：按图片内容判断，不按顺序；一张图只能对应一个部位；拍的不是该部位（如整张沙发全景、面料平铺、场景参考图）就不要对应。
+只输出 JSON，不要说明文字，值为图片序号（从 1 开始），对不上的部位填 0：{${targets.map(t => `"${t.key}": 0`).join(', ')}}`;
+  try {
+    const r = await chatCompletionText({ prompt, images, temperature: 0, userId });
+    const m = String(r.text || '').replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+    if (!m) return {};
+    const raw = JSON.parse(m[0]);
+    const out: Record<string, number> = {};
+    const used = new Set<number>();
+    for (const t of targets) {
+      const n = Math.round(Number(raw?.[t.key]));
+      if (Number.isFinite(n) && n >= 1 && n <= photos.length && !used.has(n - 1)) {
+        out[t.key] = n - 1;
+        used.add(n - 1);
+      }
+    }
+    return out;
+  } catch (err: any) {
+    console.warn('[PosterDetailCrop] 细节实拍对应部位失败（改用沙发图裁切）:', err?.message || err);
+    return {};
+  }
+}

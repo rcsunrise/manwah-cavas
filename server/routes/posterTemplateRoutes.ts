@@ -5,7 +5,7 @@ import { optionalAuthenticateToken } from '../middleware/auth';
 import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept } from '../services/posterTemplate/posterConcept';
-import { cropDetail, locateDetails, refineDetails } from '../services/posterTemplate/detailCrop';
+import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT } from '../services/posterTemplate/templateA';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
 import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
@@ -15,7 +15,10 @@ import {
   composeFabricPoster,
   cutoutWhiteBackground,
   cutoutWhiteBackgroundWithBox,
+  DETAIL_CIRCLE_BG,
   FabricLayoutId,
+  farSideOfSofa,
+  onDetailBackground,
   flattenSwatch,
   flattestSquare,
   moodAspectFor,
@@ -353,7 +356,7 @@ router.post('/fabric/mood', async (req: AuthenticatedRequest, res: Response) => 
 
 router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { sofaImage, pillowImage, moodImages, concept: rawConcept, layout: rawLayout, code, label, outputScale, pillowScale } = req.body || {};
+    const { sofaImage, pillowImage, moodImages, concept: rawConcept, layout: rawLayout, code, label, outputScale, pillowScale, attachments } = req.body || {};
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeFabricConcept(rawConcept);
     const layout = layoutOf(rawLayout);
@@ -367,6 +370,10 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       moodIndexesFor(layout).map(async i => (isAllowedImageSource(moodList[i]) ? loadImage(moodList[i], `氛围照${i + 1}`) : undefined))
     );
 
+    // 抱枕放在离镜头远的那一端（沙发朝向反过来时放左边）
+    const pillowSide = await farSideOfSofa(sofa);
+    const sideWord = pillowSide === 'left' ? '最左侧' : '最右侧';
+
     // 细节与色卡都取自沙发本体（在沙发图上定位，不带抱枕）
     const SEAT_KEY = '__seat';
     const CREASE_KEY = '__crease';
@@ -375,23 +382,52 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       sofaRaw,
       [
         ...detailTargets,
-        { key: SEAT_KEY, locate: '沙发最右侧那个座位的座面（人坐的那块水平面，只框座垫上表面，不要框靠背、扶手和座垫前侧的竖直立面）' },
+        { key: SEAT_KEY, locate: `沙发${sideWord}那个座位的座面（人坐的那块水平面，只框座垫上表面，不要框靠背、扶手和座垫前侧的竖直立面）` },
         {
           key: CREASE_KEY,
-          locate: '沙发最右侧那个座位上，靠背底部与座垫后缘相接的那条折缝（抱枕靠着靠背放时底边落在这里）；只框这条交界线附近的一个扁长窄条，不要框整个靠背或座垫'
+          locate: `沙发${sideWord}那个座位上，靠背底部与座垫后缘相接的那条折缝（抱枕靠着靠背放时底边落在这里）；只框这条交界线附近的一个扁长窄条，不要框整个靠背或座垫`
         }
       ],
       userIdOf(req)
     );
-    // 细节格二次精定位：近景里再框一次，避免部位落在圆形特写边上
-    const refined = await refineDetails(
+    // 细节格二次精定位：近景里再框一次，避免部位落在圆形特写边上。
+    // 扶手不做：精定位要求“紧贴部位”，会收成按钮、饰条一小块；扶手要整只造型
+    const detailFirst = firstPass.filter(d => d.key !== SEAT_KEY && d.key !== CREASE_KEY);
+    const armKeys = new Set(detailTargets.filter(t => isArmTarget(t)).map(t => t.key));
+    const refinedOthers = await refineDetails(
       sofaRaw,
-      firstPass.filter(d => d.key !== SEAT_KEY && d.key !== CREASE_KEY),
+      detailFirst.filter(d => !armKeys.has(d.key)),
       detailTargets,
       userIdOf(req)
     );
+    const refined = detailFirst.map(d => refinedOthers.find(r => r.key === d.key) || d);
     const located = [...refined, ...firstPass.filter(d => d.key === SEAT_KEY || d.key === CREASE_KEY)];
-    const circles = await Promise.all(refined.map(d => cropDetail(sofaRaw, d.box, 1)));
+
+    // 圆形细节从“沙发抠图放在暖浅灰底上”的图里裁：白底留白变成浅灰，圆形不和海报白底连成一片
+    const sofaOnGrey = await sharp({ create: { width: sofaBox.srcWidth, height: sofaBox.srcHeight, channels: 3, background: DETAIL_CIRCLE_BG } })
+      .composite([{ input: sofa, left: sofaBox.left, top: sofaBox.top }])
+      .png()
+      .toBuffer();
+    // 用户发的细节实拍按内容对应到部位，对上的直接用实拍；没对上的从沙发图裁
+    const userPhotos = (await loadAttachments(attachments, 1600, 90)).filter((b): b is Buffer => Boolean(b));
+    const photoFor = userPhotos.length
+      ? await matchDetailPhotos(
+          userPhotos,
+          detailTargets.map(t => ({ key: t.key, label: isArmTarget(t) ? '扶手（整只扶手的造型、按钮或饰条）' : t.locate })),
+          userIdOf(req)
+        )
+      : {};
+    const circles = await Promise.all(
+      refined.map(async d => {
+        const idx = photoFor[d.key];
+        if (idx !== undefined) return onDetailBackground(userPhotos[idx]).catch(() => userPhotos[idx]);
+        if (armKeys.has(d.key)) {
+          const rect = circleCropRect(d.box, sofaBox.srcWidth, sofaBox.srcHeight);
+          return sharp(sofaOnGrey).extract(rect).png().toBuffer();
+        }
+        return cropDetail(sofaOnGrey, d.box, 1);
+      })
+    );
     // 皮革色卡：在沙发抠图上找最平的一块（避开缝线和接缝），去掉明暗后做纯平底色
     const leather = await flattenSwatch(await flattestSquare(sofa));
     const pillowSwatch = pillows ? await centerSquare(pillows, 0.4) : undefined;
@@ -419,7 +455,8 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
             const cx = (creaseLoc.box.left + creaseLoc.box.width / 2) * sofaBox.srcWidth - sofaBox.left;
             const cy = (creaseLoc.box.top + creaseLoc.box.height / 2) * sofaBox.srcHeight - sofaBox.top;
             const p = { x: cx / sofaBox.width, y: cy / sofaBox.height };
-            return p.x > 0.3 && p.x < 1 && p.y > 0.1 && p.y < 0.9 ? p : undefined;
+            const xOk = pillowSide === 'left' ? p.x > 0 && p.x < 0.7 : p.x > 0.3 && p.x < 1;
+            return xOk && p.y > 0.1 && p.y < 0.9 ? p : undefined;
           })()
         : undefined;
 
@@ -435,6 +472,7 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       code: typeof code === 'string' ? code.slice(0, 24) : '',
       label: typeof label === 'string' ? label.slice(0, 24) : '',
       pillowScale: Number.isFinite(Number(pillowScale)) ? Number(pillowScale) : undefined,
+      pillowSide,
       outputScale: Number(outputScale) === 2 ? 2 : 1
     });
     res.json({
@@ -445,6 +483,8 @@ router.post('/fabric/compose', async (req: AuthenticatedRequest, res: Response) 
       layout: result.layout,
       details: located.filter(d => d.key !== SEAT_KEY && d.key !== CREASE_KEY),
       seat: seat || null,
+      pillowSide,
+      detailPhotos: Object.keys(photoFor),
       warnings
     });
   } catch (err: any) {

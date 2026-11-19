@@ -142,3 +142,43 @@ describe('扶手格避开遮挡', () => {
     expect(buildTemplateAHeroPrompt(sanitizeConcept({ name: '岩织' }))).toContain('不能挡在沙发两侧扶手前面');
   });
 });
+
+import sharpLib from 'sharp';
+import { circleCropRect } from '../services/posterTemplate/detailCrop';
+import { ARM_DETAIL_LOCATE, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
+import { DETAIL_CIRCLE_BG, farSideOfSofa, onDetailBackground } from '../services/posterTemplate/fabricPoster';
+describe('氛围海报：圆形细节底色、整只扶手、抱枕朝向', () => {
+  it('细节 1 固定是整只扶手，按扶手做遮挡检查、不做紧贴精定位', () => {
+    const c = sanitizeFabricConcept({ details: [{ key: 'detail1', locate: '扶手上的按钮' }, { key: 'detail2', locate: '沙发脚' }] });
+    expect(c.details[0].locate).toBe(ARM_DETAIL_LOCATE);
+    expect(isArmTarget(c.details[0])).toBe(true);
+    expect(c.details[1].locate).toBe('沙发脚');
+  });
+  it('圆形取景把部位框的对角线装进圆里', () => {
+    const box = { left: 0.1, top: 0.3, width: 0.2, height: 0.4 };
+    const r = circleCropRect(box, 2000, 1000);
+    expect(r.width).toBe(r.height);
+    expect(r.width).toBeGreaterThanOrEqual(Math.round(Math.hypot(400, 400)));
+  });
+  it('近端更低的一侧离镜头近，抱枕放另一端；两端一样高按右侧', async () => {
+    const make = async (leftBottom: number, rightBottom: number) => {
+      const w = 400, h = 200;
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><polygon points="0,20 ${w},20 ${w},${rightBottom} 0,${leftBottom}" fill="#666"/></svg>`;
+      return sharpLib(Buffer.from(svg)).png().toBuffer();
+    };
+    expect(await farSideOfSofa(await make(195, 150))).toBe('right');
+    expect(await farSideOfSofa(await make(150, 195))).toBe('left');
+    expect(await farSideOfSofa(await make(190, 190))).toBe('right');
+  });
+  it('白底细节图的白色背景换成暖浅灰，尺寸不变', async () => {
+    const img = await sharpLib({ create: { width: 200, height: 200, channels: 3, background: '#ffffff' } })
+      .composite([{ input: await sharpLib({ create: { width: 80, height: 80, channels: 3, background: '#556655' } }).png().toBuffer(), left: 60, top: 60 }])
+      .png()
+      .toBuffer();
+    const out = await onDetailBackground(img);
+    const { data, info } = await sharpLib(out).raw().toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([200, 200]);
+    const hex = '#' + [0, 1, 2].map(i => data[i].toString(16).padStart(2, '0')).join('');
+    expect(hex.toUpperCase()).toBe(DETAIL_CIRCLE_BG.toUpperCase());
+  });
+});

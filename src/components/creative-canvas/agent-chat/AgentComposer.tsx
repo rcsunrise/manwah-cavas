@@ -201,9 +201,9 @@ export const AgentComposer: React.FC<AgentComposerProps> = ({
     setAttachments([]);
   };
 
-  // 点“4/3 产品海报”时：@ 的产品图是要做海报的产品；输入框里上传的图作为附图（产品细节实拍或参考图，由构思逐张判断）；剩下的文字是补充要求
+  // 点“4/3 产品海报”或“氛围海报”时：@ 的产品图是要做海报的产品；输入框里上传的图作为附图（产品细节实拍或参考图，由构思逐张判断）；剩下的文字是补充要求
   const runQuickAction = (action: AgentActionOption) => {
-    if (action.actionId === 'template_poster' && readyImageUrls.length > 0 && !attachmentsUploading) {
+    if ((action.actionId === 'template_poster' || action.actionId === 'fabric_poster') && readyImageUrls.length > 0 && !attachmentsUploading) {
       const trimmed = text.trim();
       const active = mentions.filter(m => trimmed.includes(`@${m.title}`));
       const product = active.find(m => /^产品(主)?图/.test(m.title));

@@ -349,8 +349,51 @@ async function coverTo(image: Buffer, w: number, h: number, position: any = shar
   return sharp(image, { failOn: 'none' }).rotate().resize(Math.round(w), Math.round(h), { fit: 'cover', position }).png().toBuffer();
 }
 
+/** 圆形细节的底色：暖浅灰。沙发白底裁出来的留白不再和海报白底连成一片，圆形保持完整 */
+export const DETAIL_CIRCLE_BG = '#ECE8E2';
+
+/**
+ * 沙发哪一端离镜头远：近的那端在画面里更低（脚落得更靠下）。抱枕放在远端，
+ * 不会压在离镜头近、显得更大的那只扶手前面。两端差不多（正面平拍）时按右侧。
+ */
+export async function farSideOfSofa(sofaPng: Buffer): Promise<'left' | 'right'> {
+  const { data, info } = await sharp(sofaPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width: w, height: h } = info;
+  const lowestIn = (x0: number, x1: number) => {
+    let low = 0;
+    for (let x = x0; x < x1; x++) {
+      for (let y = h - 1; y > low; y--) {
+        if (data[(y * w + x) * 4 + 3] > 128) {
+          low = y;
+          break;
+        }
+      }
+    }
+    return low;
+  };
+  const band = Math.max(2, Math.round(w * 0.15));
+  const left = lowestIn(0, band);
+  const right = lowestIn(w - band, w);
+  if (Math.abs(left - right) < h * 0.04) return 'right';
+  return left > right ? 'right' : 'left';
+}
+
+/** 白底图（沙发白底图、白底拍的细节实拍）的白色背景换成圆形细节底色，尺寸不变；不是白底的照片原样返回 */
+export async function onDetailBackground(image: Buffer): Promise<Buffer> {
+  const { buffer, box } = await cutoutWhiteBackgroundWithBox(image);
+  if (box.width >= box.srcWidth - 2 && box.height >= box.srcHeight - 2) return image;
+  return sharp({ create: { width: box.srcWidth, height: box.srcHeight, channels: 3, background: DETAIL_CIRCLE_BG } })
+    .composite([{ input: buffer, left: box.left, top: box.top }])
+    .png()
+    .toBuffer();
+}
+
 async function circleOf(image: Buffer, d: number): Promise<Buffer> {
-  const square = await coverTo(image, d, d, 'centre');
+  const cover = await coverTo(image, d, d, 'centre');
+  const square = await sharp({ create: { width: d, height: d, channels: 4, background: DETAIL_CIRCLE_BG } })
+    .composite([{ input: cover }])
+    .png()
+    .toBuffer();
   const mask = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${d}" height="${d}"><circle cx="${d / 2}" cy="${d / 2}" r="${d / 2}" fill="#fff"/></svg>`);
   return sharp(square).composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
 }
@@ -375,6 +418,8 @@ export interface FabricPosterInput {
   seatCrease?: { x: number; y: number };
   /** 抱枕大小倍数，1 为按沙发宽度 22% 的基准；默认 0.8（参考图里抱枕都比较小，且两个大幅重叠） */
   pillowScale?: number;
+  /** 抱枕放在沙发哪一端（离镜头远的那端），默认右侧；放左侧时抱枕图左右翻转 */
+  pillowSide?: 'left' | 'right';
   outputScale?: 1 | 2;
 }
 
@@ -423,14 +468,15 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
 
     const baseW = sofaW * 0.22;
     // 以沙发图左上角为原点的坐标：cx 水平中心，bottom 底边
-    let cx = sofaW * 0.79;
+    const onLeft = input.pillowSide === 'left';
+    let cx = sofaW * (onLeft ? 0.21 : 0.79);
     let bottom = sofaH * 0.13 + baseW * ratio;
     let pw = baseW * scale;
     if (input.seat) {
       const s = { x: input.seat.x * sofaW, y: input.seat.y * sofaH, w: input.seat.w * sofaW, h: input.seat.h * sofaH };
       // 抱枕靠着靠背立在座面后部：底边落在座面框上部（座垫与靠背交界附近），水平放在座位中间略偏内侧，
       // 不贴扶手。以前底边取 72%（座垫前沿）、中心取 55%（偏扶手），抱枕像立在座垫前角、悬空。
-      cx = s.x + s.w * 0.45;
+      cx = s.x + s.w * (onLeft ? 0.55 : 0.45);
       bottom = s.y + s.h * 0.42;
       pw = Math.min(pw, s.w * 0.75);
     }
@@ -478,7 +524,9 @@ export async function composeFabricPoster(input: FabricPosterInput): Promise<Fab
       left: Math.max(0, Math.round(pillowRect.x + (pillowRect.w - shW) / 2 - blur * 2)),
       top: Math.max(0, Math.round(pillowRect.y + pillowRect.h - shH * 0.8 - blur * 2))
     });
-    layers.push({ input: await sharp(input.pillows).resize(pillowRect.w, pillowRect.h, { fit: 'fill' }).png().toBuffer(), left: pillowRect.x, top: pillowRect.y });
+    let pillowImg = sharp(input.pillows).resize(pillowRect.w, pillowRect.h, { fit: 'fill' });
+    if (onLeft) pillowImg = pillowImg.flop();
+    layers.push({ input: await pillowImg.png().toBuffer(), left: pillowRect.x, top: pillowRect.y });
     result.pillows = pillowRect;
   }
 
