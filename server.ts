@@ -1366,9 +1366,14 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                  }
                }
                if (!imageData && item?.url) {
-                 // 上游已出图并计费，下载失败不能直接丢弃：放宽超时并重试，避免 2K 大图在慢网络下 15 秒超时后被判失败
+                 // 上游已出图并计费，下载失败不能直接丢弃：放宽超时并重试，避免 2K 大图在慢网络下 15 秒超时后被判失败；
+                 // 图床偶发 502 往往持续十几秒，间隔逐步拉长（共约 40 秒）
+                 const retryDelaysMs = [2000, 5000, 10000, 20000];
+                 const maxAttempts = retryDelaysMs.length + 1;
+                 let urlHost = '';
+                 try { urlHost = new URL(item.url).host; } catch {}
                  let lastDownloadError: any = null;
-                 for (let attempt = 0; attempt < 3 && !imageData; attempt++) {
+                 for (let attempt = 0; attempt < maxAttempts && !imageData; attempt++) {
                    try {
                      const downloaded = await resolveAndValidateImage(
                        { source: item.url, role: 'style_reference', order: 0 },
@@ -1378,12 +1383,16 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                      imageData = downloaded.cleanB64;
                    } catch (downloadError: any) {
                      lastDownloadError = downloadError;
-                     console.warn(`[Gateway] 上游图像下载失败 (第 ${attempt + 1}/3 次): ${downloadError?.message}`);
-                     if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
+                     console.warn(`[Gateway] 上游图像下载失败 (第 ${attempt + 1}/${maxAttempts} 次, host=${urlHost}, model=${finalModel}): ${downloadError?.message}`);
+                     if (attempt < maxAttempts - 1) {
+                       if (callerGone.signal.aborted) break;
+                       await new Promise((r) => setTimeout(r, retryDelaysMs[attempt]));
+                     }
                    }
                  }
                  if (!imageData) {
                    const downloadError = lastDownloadError || new Error('unknown');
+                   console.error(`[Gateway] 上游已出图但下载失败，放弃。url=${item.url}`);
                    throw new ProviderError(
                      `无法下载上游返回的图像：${downloadError.message}`,
                      'invalid_upstream_response',
