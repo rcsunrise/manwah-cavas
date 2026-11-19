@@ -3647,6 +3647,115 @@ export function useCreativeCanvasWorkspace(
     }
   };
 
+  // 4/3 产品海报只换底部三格细节：上方画面（含改过的人物、文字）原样保留，细节格换成用户实拍，文案可一起改。
+  // 不重新生图、不扣点；结果作为新版本节点，旧版保留。
+  const handleSwapTemplateDetails = async (params?: AgentActionParams): Promise<boolean> => {
+    const currentNodes = nodesRef.current || nodes;
+    const isA = (n?: Node) => Boolean(n && (n.data as any)?.templatePoster?.template === 'A' && (n.data as any)?.imageUrl);
+    const posters = currentNodes.filter(n => isA(n));
+    const pick = (id?: string | null) => (id ? posters.find(n => n.id === id) : undefined);
+    const target =
+      pick(params?.nodeId) ||
+      pick(selectedNodeId) ||
+      lastPointedNodeIdsRef.current.map(pick).find(Boolean) ||
+      posters.filter(n => (n.data as any)?.conversationId === currentConversationRef.current?.id).slice(-1)[0];
+    if (!target) {
+      addAgentMessage('没找到要换细节的 4/3 产品海报，请 @ 那张海报或在画布上选中它再试。');
+      return false;
+    }
+    const photos = (params?.attachmentUrls || []).slice(0, 4);
+    const texts = params?.detailTexts || [];
+    if (!photos.length && !texts.length) {
+      addAgentMessage('请把要换上去的细节实拍随消息一起发来（最多 4 张，可以注明从左到右对应第几格），或说明要改的细节文案。');
+      return false;
+    }
+    const lockKey = `template-details:${target.id}`;
+    if (templatePosterRunningRef.current.has(lockKey)) {
+      addAgentMessage('这张海报的细节格正在更换，请等它完成。');
+      return false;
+    }
+    templatePosterRunningRef.current.add(lockKey);
+    setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    const td = target.data as any;
+    const tp = td.templatePoster;
+    const targetTitle = td.title || td.screenTitle || tp.concept?.name || '4/3 产品海报';
+    const taskStartedAt = Date.now();
+    const taskId = addAgentMessage('', {
+      taskCard: { title: `更换底部细节格：${targetTitle}`, status: 'running', detail: `${photos.length ? `${photos.length} 张实拍` : '只改文案'} · 不重新生图，约半分钟` }
+    });
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/poster-templates/template-a/swap-details', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          posterImage: td.imageUrl,
+          heroImage: tp.heroImageUrl,
+          concept: tp.concept,
+          details: tp.details,
+          photos: photos.map((url, i) => ({ url, ...(params?.detailSlots?.[i] ? { slot: params.detailSlots[i] } : {}) })),
+          texts
+        })
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(json?.error?.message || `请求失败 (${res.status})`);
+      const posterUrl = await persistGeneratedImage(json.imageDataUrl, '4/3 产品海报');
+      const concept = { ...tp.concept, details: (tp.concept?.details || []).map((d: any, i: number) => ({ ...d, ...(json.details?.[i] || {}) })) };
+      const newId = `image-edit-${Date.now()}`;
+      const base = target.position || { x: 100, y: 100 };
+      setNodes(prev => [
+        ...prev.map(n => ({ ...n, selected: false })),
+        {
+          ...target,
+          id: newId,
+          selected: true,
+          position: findFreePosterSlot(prev, { x: base.x + 520, y: base.y }),
+          data: {
+            ...td,
+            imageUrl: posterUrl,
+            rawImageUrl: posterUrl,
+            title: `${targetTitle} · 换细节`,
+            editedFrom: target.id,
+            conversationId: currentConversationRef.current?.id || td.conversationId,
+            generatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            generationDurationMs: Date.now() - taskStartedAt,
+            templatePoster: { ...tp, concept, ...(photos.length ? { detailPhotoUrls: photos } : {}) }
+          }
+        }
+      ]);
+      setEdges(prev => [
+        ...prev,
+        {
+          id: `edge-template-details-${target.id}-${newId}`,
+          source: target.id,
+          target: newId,
+          label: '换细节格',
+          labelStyle: { fill: '#B28C5A', fontSize: 10, fontWeight: 700 },
+          animated: false,
+          style: { stroke: '#B28C5A', strokeWidth: 1.5, strokeDasharray: '4 3' }
+        }
+      ]);
+      hasUserMutationRef.current = true;
+      const replaced: number[] = json.replacedSlots || [];
+      finishTaskCard(taskId, 'done', replaced.length ? `已换第 ${replaced.join('、')} 格，上方画面不变` : '已更新细节文案，上方画面不变', { nodeId: newId });
+      postImageResultToChat({
+        imageUrl: posterUrl,
+        title: `${targetTitle} · 换细节`,
+        nodeId: newId,
+        withText: true,
+        source: 'poster',
+        detail: (json.details || []).map((d: any) => `${d.title}｜${d.desc || ''}`).join('　')
+      });
+      return true;
+    } catch (err: any) {
+      finishTaskCard(taskId, 'failed', err?.message || '更换细节格失败');
+      return false;
+    } finally {
+      templatePosterRunningRef.current.delete(lockKey);
+      setTemplatePosterRunningIds(Array.from(templatePosterRunningRef.current));
+    }
+  };
+
   // ───────── 面料色卡海报（模板 C）：本地面料素材 → 主色 + 自动配色 → 三种版式排版 ─────────
   // 不出图、不扣点（除非用户要 AI 氛围图）；所有图片/文字排版在服务端 compose 完成，
   // 版式、名称、说明、型号、底色都能在对话里改，改动只重新排版，几秒完成。
@@ -4910,6 +5019,7 @@ export function useCreativeCanvasWorkspace(
     handleGenerateTemplatePoster,
     handleGenerateFabricPoster,
     handleEditFabricPoster,
+    handleSwapTemplateDetails,
     handleGenerateTextilePoster,
     handleEditTextilePoster,
     renameGroupFrame,
@@ -6628,6 +6738,7 @@ export function useCreativeCanvasWorkspace(
     handleGenerateTemplatePoster,
     handleGenerateFabricPoster,
     handleEditFabricPoster,
+    handleSwapTemplateDetails,
     handleGenerateTextilePoster,
     handleEditTextilePoster,
     groupNodesIntoFrame,

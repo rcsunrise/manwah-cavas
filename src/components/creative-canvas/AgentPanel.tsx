@@ -137,6 +137,8 @@ interface AgentPanelProps {
   onGenerateFabricPoster?: (params?: AgentActionParams) => void;
   /** 修改已生成的面料海报 */
   onEditFabricPoster?: (params?: AgentActionParams) => void;
+  /** 4/3 产品海报只换底部细节格（不生图） */
+  onSwapTemplateDetails?: (params?: AgentActionParams) => void;
   /** 面料色卡海报（模板 C）：本地面料素材做主色 + 自动配色，三种版式；opts.mainAsset 是素材列表里点选的那一张 */
   onGenerateTextilePoster?: (params?: AgentActionParams, opts?: { mainAsset?: LocalAssetItem }) => void;
   /** 修改已生成的面料色卡海报（换版式、改名称/说明/型号/底色、换主面料、增减色卡） */
@@ -502,6 +504,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onGenerateTemplatePoster,
   onGenerateFabricPoster,
   onEditFabricPoster,
+  onSwapTemplateDetails,
   onGenerateTextilePoster,
   onEditTextilePoster,
   templateA4K,
@@ -1240,6 +1243,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           }
         });
         return;
+      case 'template_details':
+        postAgent('确认后开始更换底部细节格：', {
+          planCard: { title: '更换 4/3 海报底部细节格', actionId: 'template_details', params: params || {}, status: 'pending', items: describePlanParams('template_details', params) }
+        });
+        return;
       case 'fabric_poster':
         // 一次要出 5~6 张图、每张扣点，先出确认卡片再开始
         postAgent('确认后开始生成氛围海报：', {
@@ -1342,6 +1350,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'fabric_edit':
         onEditFabricPoster?.(params);
+        return;
+      case 'template_details':
+        onSwapTemplateDetails?.(params);
         return;
       case 'textile_poster':
         onGenerateTextilePoster?.(params);

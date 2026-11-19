@@ -144,6 +144,7 @@ export type AgentActionId =
   | 'fabric_poster'
   /** 修改已生成的面料海报：换抱枕/氛围图、改型号与编号、调抱枕大小、换版式（复用已有素材，只重出改动的那几张） */
   | 'fabric_edit'
+  | 'template_details'
   /** 面料色卡海报（模板 C）：从本地面料素材里选一款做主色，其余配色做色卡，三种版式 */
   | 'textile_poster'
   /** 修改已生成的面料色卡海报：换版式、改名称/说明/型号、换底色、换主面料、增减色卡（不出图不扣点；氛围图 AI 重出才扣点） */
@@ -221,6 +222,10 @@ export interface AgentActionParams {
   referenceImageUrl?: string;
   /** 4/3 产品海报：用户随消息附的图（产品局部实拍、其他角度或参考图，由构思逐张判断用途），最多 4 张 */
   attachmentUrls?: string[];
+  /** template_details：attachmentUrls 每张对应底部第几格（从 1 起，左到右）；不填自动按部位对应 */
+  detailSlots?: number[];
+  /** template_details：同时改的细节格文案 */
+  detailTexts?: Array<{ slot: number; title?: string; desc?: string }>;
 }
 
 export interface AgentActionOption {

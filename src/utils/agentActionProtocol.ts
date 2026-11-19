@@ -74,6 +74,7 @@ const ACTION_IDS: AgentActionId[] = [
   'stitch_video',
   'fabric_poster',
   'fabric_edit',
+  'template_details',
   'textile_poster',
   'textile_edit'
 ];
@@ -93,6 +94,7 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   stitch_video: '拼接成片',
   fabric_poster: '生成氛围海报',
   fabric_edit: '修改氛围海报',
+  template_details: '更换 4/3 海报底部细节格',
   textile_poster: '生成面料色卡海报',
   textile_edit: '修改面料色卡海报'
 };
@@ -226,6 +228,22 @@ function normalizeParams(raw: any): AgentActionParams | undefined {
       .slice(0, 4);
     if (urls.length > 0) params.attachmentUrls = urls;
   }
+  if (Array.isArray(raw.detailSlots)) {
+    const slots = raw.detailSlots.map((n: any) => Number(n)).filter((n: number) => Number.isInteger(n) && n >= 1 && n <= 3).slice(0, 4);
+    if (slots.length) params.detailSlots = slots;
+  }
+  if (Array.isArray(raw.detailTexts)) {
+    const texts = raw.detailTexts
+      .filter((t: any) => t && Number.isInteger(Number(t.slot)) && Number(t.slot) >= 1 && Number(t.slot) <= 3)
+      .map((t: any) => ({
+        slot: Number(t.slot),
+        ...(typeof t.title === 'string' && t.title.trim() ? { title: t.title.trim().slice(0, 8) } : {}),
+        ...(typeof t.desc === 'string' && t.desc.trim() ? { desc: t.desc.trim().slice(0, 24) } : {})
+      }))
+      .filter((t: any) => t.title || t.desc)
+      .slice(0, 3);
+    if (texts.length) params.detailTexts = texts;
+  }
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
@@ -257,7 +275,7 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     items.push({ label: `第 ${i + 1} 处`, value: `${e.oldText ? `「${e.oldText}」→` : ''}「${e.newText}」` })
   );
   if (params?.hint) items.push({ label: '要求', value: params.hint.length > 140 ? `${params.hint.slice(0, 140)}…` : params.hint });
-  if (params?.attachmentUrls?.length) items.push({ label: '附图', value: `${params.attachmentUrls.length} 张（产品细节实拍会用来还原造型和做细节格，参考图用来定场景）` });
+  if (params?.attachmentUrls?.length && actionId !== 'template_details') items.push({ label: '附图', value: `${params.attachmentUrls.length} 张（产品细节实拍会用来还原造型和做细节格，参考图用来定场景）` });
   if (params?.videoBrief) items.push({ label: '视频创意', value: params.videoBrief });
   if (params?.focusPoints?.length) items.push({ label: '展示重点', value: params.focusPoints.join('、') });
   if (params?.videoShots?.length) {
@@ -288,6 +306,17 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
       label: '出图',
       value: regen ? `重出 ${regen} 张（每张约 3000 点），其余沿用已有素材重新排版` : '不重新出图，沿用已有素材重新排版，不扣点'
     });
+    items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
+  }
+  if (actionId === 'template_details') {
+    const urls = params?.attachmentUrls || [];
+    if (urls.length) {
+      const slots = params?.detailSlots || [];
+      items.push({ label: '实拍', value: `${urls.length} 张，${slots.length ? urls.map((_, i) => `图${i + 1}→第${slots[i] || '?'}格`).join('，') : '按部位自动对应到格子'}` });
+    }
+    (params?.detailTexts || []).forEach(t => items.push({ label: `第 ${t.slot} 格文案`, value: [t.title, t.desc].filter(Boolean).join('｜') }));
+    items.push({ label: '画面', value: '上方主场景、人物、标题保持不变，只重做底部细节栏' });
+    items.push({ label: '出图', value: '不重新生图，不扣点，约半分钟' });
     items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
   }
   if (actionId === 'textile_poster' || actionId === 'textile_edit') {
@@ -434,7 +463,7 @@ export function buildCanvasSummary(input: {
       const edited = n.data.textEditedFrom ? '；此图改过字，文字以图上为准' : '';
       return `${n.id}${pointed.has(n.id) ? '【用户引用】' : ''}（主标题「${c.name || ''}」；副标题「${c.subtitle || ''}」${details ? `；底部从左到右：${details}` : ''}${edited}）`;
     });
-    lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文）：${desc.join('；')}`);
+    lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文；只换底部细节格 / 细节实拍用 template_details，不要整张重做）：${desc.join('；')}`);
   }
 
   if (localFolder && localFolder.imageCount > 0) {

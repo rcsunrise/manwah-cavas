@@ -6,7 +6,7 @@ import { VideoSourceImageResolver } from '../services/video/videoSourceImageReso
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept } from '../services/posterTemplate/posterConcept';
 import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
-import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT } from '../services/posterTemplate/templateA';
+import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
 import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
 import { composeTextilePoster, deriveBackground, TEXTILE_MAX_SWATCHES, textileLayoutOf, textileMoodAspectFor } from '../services/posterTemplate/textilePoster';
@@ -260,6 +260,115 @@ router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Respon
     });
   } catch (err: any) {
     sendError(res, err, '模板排版合成失败');
+  }
+});
+
+/**
+ * 只换底部三格细节（不重新生图、不扣点）：保留海报上方画面（含改过的人物、文字），
+ * 用用户上传的实拍重做指定格子，没换的格子照原样从主场景裁，再把新的细节栏贴回海报底部。
+ *   body: posterImage 现有海报；heroImage 原主场景（没有就用海报上半部分代替，只取细节栏所以不影响）；
+ *         concept 海报构思；details 原定位框；photos[{url, slot?}] 实拍（slot 从 1 起，不填自动对应）；
+ *         texts[{slot, title?, desc?}] 同时改的格子文案
+ */
+router.post('/template-a/swap-details', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { posterImage, heroImage, concept: rawConcept, details: storedDetails, photos: rawPhotos, texts } = req.body || {};
+    if (!rawConcept || !posterImage) return res.status(400).json({ success: false, error: { message: '缺少海报或构思' } });
+    const concept = sanitizeConcept(rawConcept);
+    const { width: W, height: H } = { width: 2048, height: 1536 };
+    // 现有海报统一到 2048×1536（改图模型出的图尺寸可能略有不同）
+    const poster = await sharp(await loadImage(posterImage, '海报'), { failOn: 'none' }).rotate().resize(W, H, { fit: 'fill' }).jpeg({ quality: 95 }).toBuffer();
+    const heroTop = Math.round(H * TEMPLATE_A_HERO_RATIO);
+    const hero = heroImage
+      ? await loadImage(heroImage, '主场景底图')
+      : await sharp(poster).extract({ left: 0, top: 0, width: W, height: heroTop }).toBuffer();
+
+    for (const t of Array.isArray(texts) ? texts : []) {
+      const d = concept.details[Number(t?.slot) - 1];
+      if (!d) continue;
+      if (typeof t.title === 'string' && t.title.trim()) d.title = t.title.trim().slice(0, 8);
+      if (typeof t.desc === 'string') d.desc = t.desc.trim().slice(0, 24);
+    }
+
+    const list: Array<{ url: string; slot?: number }> = (Array.isArray(rawPhotos) ? rawPhotos : [])
+      .filter((p: any) => p && typeof p.url === 'string' && p.url)
+      .slice(0, 4);
+    const bufs = await loadAttachments(list.map(p => p.url), 1600, 92);
+    // 格子 → 实拍：用户指定了第几格就按指定；否则让视觉模型按部位自动对应，对应不上的按上传顺序补
+    const photoForSlot: Array<Buffer | null> = concept.details.map(() => null);
+    const free: number[] = [];
+    list.forEach((p, i) => {
+      const slot = Number(p.slot);
+      if (bufs[i] && slot >= 1 && slot <= concept.details.length && !photoForSlot[slot - 1]) photoForSlot[slot - 1] = bufs[i]!;
+      else if (bufs[i]) free.push(i);
+    });
+    if (free.length) {
+      const targets = concept.details.map((d, k) => ({ key: String(k), label: `${d.title}（${d.locate}）` })).filter((_, k) => !photoForSlot[k]);
+      let matched: Record<string, number> = {};
+      try {
+        matched = await matchDetailPhotos(free.map(i => bufs[i]!), targets, userIdOf(req));
+      } catch (err: any) {
+        console.warn('[PosterTemplate] 细节实拍自动对应失败，按上传顺序:', err?.message || err);
+      }
+      const used = new Set<number>();
+      for (const t of targets) {
+        const idx = matched[t.key];
+        if (Number.isInteger(idx) && idx >= 0 && idx < free.length && !used.has(idx)) {
+          photoForSlot[Number(t.key)] = bufs[free[idx]]!;
+          used.add(idx);
+        }
+      }
+      const rest = free.filter((_, j) => !used.has(j));
+      for (let k = 0; k < photoForSlot.length && rest.length; k++) if (!photoForSlot[k]) photoForSlot[k] = bufs[rest.shift()!]!;
+    }
+
+    const boxes: any[] = Array.isArray(storedDetails) ? storedDetails : [];
+    const needHeroLocate = concept.details.some((_, k) => !photoForSlot[k] && !boxes[k]?.box);
+    const located = needHeroLocate
+      ? (await locateDetails(hero, concept.details.map(d => ({ key: d.key, locate: d.locate })), userIdOf(req))).details
+      : [];
+    const replaced: number[] = [];
+    const crops = await Promise.all(
+      concept.details.map(async (d, k) => {
+        const photo = photoForSlot[k];
+        if (photo) {
+          replaced.push(k + 1);
+          try {
+            const { details } = await locateDetails(photo, [{ key: d.key, locate: d.locate }], userIdOf(req));
+            if (details[0]?.source === 'vision') {
+              return await cropDetail(photo, details[0].box, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
+            }
+          } catch (err: any) {
+            console.warn(`[PosterTemplate] 第${k + 1}格实拍定位失败，整张居中裁:`, err?.message || err);
+          }
+          // 用户明确要用这张实拍：框不出部位也用它（整张居中裁），不退回主图
+          return cropDetail(photo, { left: 0, top: 0, width: 1, height: 1 }, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 1 });
+        }
+        const box = boxes[k]?.box || located[k]?.box;
+        return cropDetail(hero, box, TEMPLATE_A_DETAIL_ASPECT);
+      })
+    );
+    const composed = await composeTemplateA({
+      hero,
+      outputScale: 1,
+      title: { name: concept.name, subtitle: concept.subtitle, inspiration: concept.inspiration },
+      titleSide: concept.titleSide,
+      accentColor: concept.accentColor,
+      stripColor: concept.stripColor,
+      details: concept.details.map((d, i) => ({ image: crops[i], title: d.title, desc: d.desc }))
+    });
+    const strip = await sharp(composed.buffer).extract({ left: 0, top: heroTop, width: W, height: H - heroTop }).toBuffer();
+    const out = await sharp(poster).composite([{ input: strip, left: 0, top: heroTop }]).jpeg({ quality: 93, chromaSubsampling: '4:4:4' }).toBuffer();
+    res.json({
+      success: true,
+      imageDataUrl: `data:image/jpeg;base64,${out.toString('base64')}`,
+      width: W,
+      height: H,
+      replacedSlots: replaced.sort(),
+      details: concept.details.map(d => ({ title: d.title, desc: d.desc }))
+    });
+  } catch (err: any) {
+    sendError(res, err, '替换细节格失败');
   }
 });
 
