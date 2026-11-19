@@ -788,6 +788,8 @@ export function useCreativeCanvasWorkspace(
         planSettings: { screenCount: planScreenCount, aspectRatio: planAspectRatio, model: planAgentModel },
         nodes: sessionNodes,
         mentionedNodeIds: options?.mentionedNodeIds,
+        allNodes: nodes,
+        conversationId: conv!.id,
         selectedSceneIndex,
         localFolder: localAssetService.isConnected()
           ? (() => {

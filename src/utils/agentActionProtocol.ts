@@ -387,9 +387,13 @@ export function buildCanvasSummary(input: {
   selectedSceneIndex?: number | null;
   /** 已授权的本地素材文件夹（让智能体知道有哪些面料文件可以指定） */
   localFolder?: { dirName: string; imageCount: number; names: string[] } | null;
+  /** 整块画布的全部节点（含别的对话生成的）：只用来列“全画布简表”，让智能体知道画布上都有什么 */
+  allNodes?: any[];
+  /** 当前对话 id：简表里标出哪些是别的对话生成的 */
+  conversationId?: string;
 }): string {
   const lines: string[] = [];
-  const { dna, dnaReady, plan, planSettings, nodes, mentionedNodeIds, selectedSceneIndex, localFolder } = input;
+  const { dna, dnaReady, plan, planSettings, nodes, mentionedNodeIds, selectedSceneIndex, localFolder, allNodes, conversationId } = input;
 
   if (dna) {
     const materials = Array.isArray(dna.materials) && dna.materials.length > 0 ? `，材质 ${dna.materials.slice(0, 3).join('/')}` : '';
@@ -505,7 +509,48 @@ export function buildCanvasSummary(input: {
     if (titles.length > 0) lines.push(`- 用户本条消息引用的画布素材：${titles.join('、')}`);
   }
 
+  const index = buildCanvasIndex(allNodes, conversationId);
+  if (index) lines.push(index);
+
   return lines.join('\n');
+}
+
+/**
+ * 全画布简表：每张图一条（名字、nodeId、类型、出自哪张产品图、是否别的对话 / 已锁定分组），最新在前，最多 40 条。
+ * 只给名字不给细节：智能体知道“极境”在画布上、是哪个节点，需要细节时请用户 @ 或直接以 nodeId 发起动作。
+ */
+export function buildCanvasIndex(allNodes: any[] | undefined, conversationId?: string, limit = 40): string {
+  if (!Array.isArray(allNodes) || allNodes.length === 0) return '';
+  const isProduct = (n: any) => n?.type === 'productImageNode' || n?.type === 'productImage';
+  const images = allNodes.filter(n => typeof n?.data?.imageUrl === 'string' && n.data.imageUrl && n?.type !== 'welcomeNode');
+  if (images.length === 0) return '';
+  const products = images.filter(isProduct);
+  const productName = (id?: string) => {
+    if (!id) return '';
+    const k = products.findIndex(p => p.id === id);
+    if (k < 0) return '';
+    return id === 'img-node-1' || id === 'product-image-node-1' ? '主产品图' : `产品图${k + 1}`;
+  };
+  const kindOf = (n: any): string => {
+    if (isProduct(n)) return '产品图';
+    const d = n.data || {};
+    const t = d.templatePoster?.template;
+    const base = t === 'A' ? '4/3海报' : t === 'B' ? '氛围海报' : t === 'C' ? '色卡海报' : d.withText ? '带字海报' : '图片';
+    return d.editedFrom || d.textEditedFrom ? `${base}修改版` : base;
+  };
+  const shown = images.slice(-limit).reverse();
+  const items = shown.map(n => {
+    const d = n.data || {};
+    const from = productName(isProduct(n) ? n.id : d.templatePoster?.productNodeId);
+    const flags = [
+      isProduct(n) ? from || '产品图' : kindOf(n),
+      !isProduct(n) && from ? `出自${from}` : '',
+      d.groupLocked ? '已锁定分组' : conversationId && d.conversationId && d.conversationId !== conversationId ? '别的对话生成' : ''
+    ].filter(Boolean);
+    return `${n.id}「${canvasNodeTitle(n) || kindOf(n)}」(${flags.join('/')})`;
+  });
+  const more = images.length > shown.length ? `；更早还有 ${images.length - shown.length} 张未列出` : '';
+  return `- 全画布简表（共 ${images.length} 张图，最新在前；标“别的对话生成”的也真实在画布上，用户提到它的名字时就是指这张，可以直接用它的 nodeId，不要说找不到）：${items.join('；')}${more}`;
 }
 
 /**

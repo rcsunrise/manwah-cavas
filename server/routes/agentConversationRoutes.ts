@@ -671,7 +671,7 @@ function buildAgentSystemInstruction(context: AgentContextSnapshot | undefined):
 - 动作块之外不要出现 JSON 或 <agent_actions> 字样。`;
 
   if (context?.canvasSummary) {
-    prompt += `\n\n【当前画布状态】:\n${String(context.canvasSummary).slice(0, 4000)}`;
+    prompt += `\n\n【当前画布状态】:\n${String(context.canvasSummary).slice(0, 9000)}`;
   }
 
   if (context) {

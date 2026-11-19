@@ -32,3 +32,31 @@ describe('模板海报原版也能被 @ 和认出', () => {
     expect(buildCanvasSummary({ nodes, planSettings: {} })).not.toContain('主标题「极境」');
   });
 });
+
+describe('全画布简表', () => {
+  it('列出别的对话生成的海报，标出处与对话', async () => {
+    const { buildCanvasIndex } = await import('../../../../utils/agentActionProtocol');
+    const nodes = [
+      { id: 'img-node-1', type: 'productImageNode', data: { imageUrl: 'u0', fileName: 'main.jpg' } },
+      { id: 'p2', type: 'productImageNode', data: { imageUrl: 'u1', conversationId: 'c1' } },
+      { ...posterA('a1', '极境'), data: { ...posterA('a1', '极境').data, conversationId: 'c1' } },
+      { id: 'e1', type: 'generatedImageNode', data: { imageUrl: 'u3', title: '极境 · 修改', editedFrom: 'a1', templatePoster: { template: 'A', productNodeId: 'p2' }, conversationId: 'c2' } },
+      { id: 'note', type: 'noteNode', data: {} }
+    ];
+    const s = buildCanvasIndex(nodes, 'c2');
+    expect(s).toContain('共 4 张图');
+    expect(s).toContain('a1「4/3 产品海报 · 极境」(4/3海报/出自产品图2/别的对话生成)');
+    expect(s).toContain('e1「极境 · 修改」(4/3海报修改版/出自产品图2)');
+    expect(s.indexOf('e1')).toBeLessThan(s.indexOf('a1'));
+    expect(s).toContain('img-node-1「产品主图 · main」(主产品图)');
+    expect(buildCanvasIndex([], 'c2')).toBe('');
+  });
+  it('超过上限只列最新的并注明', async () => {
+    const { buildCanvasIndex } = await import('../../../../utils/agentActionProtocol');
+    const nodes = Array.from({ length: 45 }, (_, i) => posterA(`a${i}`, `名${i}`));
+    const s = buildCanvasIndex(nodes, 'c');
+    expect(s).toContain('a44「');
+    expect(s).not.toContain('a4「');
+    expect(s).toContain('更早还有 5 张未列出');
+  });
+});
