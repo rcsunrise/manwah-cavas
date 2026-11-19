@@ -33,10 +33,10 @@ import { assembleComposition } from '../../services/detailCompositionService';
 import { PosterTypographyOverlay } from './PosterTypographyOverlay';
 import { NodeTextEditor } from './NodeTextEditor';
 import { ImageInpaintModal } from './ImageInpaintModal';
-import { downloadHighResImage } from '../../utils/downloadUtils';
+import { canvasImageFileBase, downloadHighResImage } from '../../utils/downloadUtils';
 import { fetchOriginalSize, isThumbnailable, toThumbnailUrl } from '../../utils/thumbnailUrl';
 import { downloadPosterImage } from '../../utils/posterExportHelper';
-import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterRegenOptions } from '../../utils/posterRegen';
+import { AGENT_COMPOSE_EVENT, AGENT_RUN_ACTION_EVENT, POSTER_KIND_NAME, posterPromptTags, posterRegenOptions } from '../../utils/posterRegen';
 
 interface GeneratedImageNodeProps {
   data: GeneratedImageNodeData & {
@@ -104,9 +104,8 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
 
     try {
       setIsQuickDownloading(true);
-      const safeTitle = (screenTitle || '分镜').replace(/[\s/\\?%*:|"<>]/g, '_').slice(0, 30);
-      const ext = imageUrl.includes('.png') ? 'png' : 'jpg';
-      const fn = `MW_分镜${sceneIndex || 1}_${safeTitle}_原始画质.${ext}`;
+      const ext = /\.png(\?|$)/i.test(imageUrl) ? 'png' : /\.webp(\?|$)/i.test(imageUrl) ? 'webp' : 'jpg';
+      const fn = `${canvasImageFileBase(id, data)}_原图.${ext}`;
       await downloadHighResImage(imageUrl, fn);
     } catch (err: any) {
       console.error('Direct download failed:', err);
@@ -135,6 +134,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
         sceneIndex,
         format: 'png',
         resolution: 'native',
+        filename: `${canvasImageFileBase(id, data)}.png`,
         includeText: Boolean(!data.withText && (data.cleanBackgroundUrl || (data.textLayers && data.textLayers.length > 0)))
       });
     } catch (err: any) {
@@ -155,8 +155,7 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
 
     try {
       setIsQuickDownloading(true);
-      const safeTitle = (screenTitle || '分镜').replace(/[\s/\\?%*:|"<>]/g, '_').slice(0, 30);
-      await downloadHighResImage(targetUrl, `MW_纯净底图_第${sceneIndex || 1}屏_${safeTitle}.jpg`);
+      await downloadHighResImage(targetUrl, `${canvasImageFileBase(id, data)}_无字底图.jpg`);
     } catch (err: any) {
       alert('下载纯净底图失败: ' + (err?.message || '网络错误'));
     } finally {
@@ -745,6 +744,37 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
               </div>
             </div>
 
+            {/* 选中时：和对话返图卡片一样的引导标签，点一下选中这张并把修改要求填进对话输入框 */}
+            {selected && imageUrl && (() => {
+              const compose = (text: string) => window.dispatchEvent(new CustomEvent(AGENT_COMPOSE_EVENT, { detail: { nodeId: id, text } }));
+              const tags = posterPromptTags((data as any).templatePoster);
+              const chip = 'px-2 py-0.5 rounded-full border border-[#E5E0D8] bg-white hover:bg-[#F2EDE4] text-[10px] text-[#8C6F43] whitespace-nowrap cursor-pointer';
+              return (
+                <div className="nodrag rounded-lg border border-[#B28C5A]/25 bg-[#FAF8F5] px-2 py-1.5 space-y-1" onClick={e => e.stopPropagation()}>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[9px] text-stone-400 mr-0.5">在对话里修改：</span>
+                    <button type="button" onClick={() => compose('调整这张画面：')} className="px-2 py-0.5 rounded-full bg-[#B28C5A] hover:bg-[#9C7A4D] text-white text-[10px] font-bold whitespace-nowrap cursor-pointer">
+                      调整画面
+                    </button>
+                    {(data.withText || isTemplatePoster) && (
+                      <button type="button" onClick={() => compose('把这张海报的标题改成：')} className={`${chip} font-bold`}>
+                        改文字
+                      </button>
+                    )}
+                  </div>
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[9px] text-stone-400 mr-0.5">试试这样调整：</span>
+                      {tags.map(tag => (
+                        <button key={tag.label} type="button" title={tag.text} onClick={() => compose(tag.text)} className={chip}>
+                          {tag.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             {isTemplatePoster && showRegenMenu && (
               <div className="rounded-lg border border-[#B28C5A]/30 bg-white p-1.5 space-y-1 nodrag" onClick={e => e.stopPropagation()}>
                 {regenOptions.map(opt => (

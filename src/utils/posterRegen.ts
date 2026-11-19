@@ -108,5 +108,13 @@ export function posterPromptTags(tp: any): PosterPromptTag[] {
     { label: '换抱枕图案', text: '调整这张画面：沙发上两个相同的抱枕换成（写明图案和颜色）' },
     { label: '换个场景', text: '调整这张画面：背景换成（写明场景，如清晨湖边玻璃屋），保持明亮开阔' }
   );
+  // 只改底部三格细节文案：预填当前文案，用户改完发送即可（走 template_details，不重新生图、不扣点）
+  const details: any[] = Array.isArray(concept.details) ? concept.details.slice(0, 3) : [];
+  if (details.length) {
+    const pos = ['左格', '中格', '右格'];
+    const cur = details.map((d, i) => `${pos[i]}「${d?.title || ''}｜${d?.desc || ''}」`).join('，');
+    tags.push({ label: '改细节文案', text: `只改底部细节格文案（画面和细节图不变）：${cur}。改成：` });
+  }
+  tags.push({ label: '换细节实拍', text: '底部细节格换成我上传的实拍（画面不变）：图1 放左格、图2 放中格、图3 放右格' });
   return tags;
 }

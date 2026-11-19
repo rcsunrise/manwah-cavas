@@ -55,7 +55,7 @@ import { ProductVisualDNA, AgentRun } from '../../types';
 import { TypographyWorkspacePanel } from './TypographyWorkspacePanel';
 import { LocalAssetBridgePanel } from './LocalAssetBridgePanel';
 import { localAssetService } from '../../services/localAssetService';
-import { downloadHighResImage } from '../../utils/downloadUtils';
+import { canvasImageFileBase, downloadHighResImage } from '../../utils/downloadUtils';
 import { downloadPosterImage } from '../../utils/posterExportHelper';
 
 interface AgentPanelProps {
@@ -1380,6 +1380,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   // 选中画布上的某张图并把“关于这张图：”填进输入框，方便引用它在对话里提修改
   const composeAboutNode = (nodeId: string, text: string) => {
+    // 从画布节点上点的引导标签：面板可能停在别的页，先切回对话页，填进去的要求才看得到
+    if (activeTab !== 'chat') setActiveTab('chat');
     window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId } }));
     setComposerFill({ text, mode: 'replace', nonce: Date.now() });
   };
@@ -3283,9 +3285,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                             type="button"
                             onClick={() => {
                               const card = msg.imageCard!;
-                              const safe = (card.title || '海报').replace(/[\s/\\?%*:|"<>]/g, '_').slice(0, 40);
-                              const ext = /\.png(\?|$)/i.test(card.imageUrl) || card.imageUrl.startsWith('data:image/png') ? 'png' : 'jpg';
-                              downloadHighResImage(card.imageUrl, `MW_${safe}.${ext}`).catch(err => {
+                              const ext = /\.png(\?|$)/i.test(card.imageUrl) || card.imageUrl.startsWith('data:image/png') ? 'png' : /\.webp(\?|$)/i.test(card.imageUrl) ? 'webp' : 'jpg';
+                              // 和画布节点下载同一套命名（类型 + 名称含版本后缀 + 生成时间），同一海报的各版本不重名
+                              const node: any = card.nodeId ? nodes.find((n: any) => n.id === card.nodeId) : null;
+                              const base = canvasImageFileBase(card.nodeId, node?.data || { title: card.title, sceneIndex: card.sceneIndex });
+                              downloadHighResImage(card.imageUrl, `${base}.${ext}`).catch(err => {
                                 alert('下载失败：' + (err?.message || '网络连接异常') + '。可以点击图片查看大图后另存。');
                               });
                             }}
