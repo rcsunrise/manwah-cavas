@@ -730,6 +730,8 @@ export function useCreativeCanvasWorkspace(
     }
   }, []);
 
+  // 最近一条消息 @ 引用 / 选中的节点：确认执行动作时用来认出“这张海报”对应哪张产品图
+  const lastPointedNodeIdsRef = useRef<string[]>([]);
   // G0-1: Streamed message sending
   const handleSendMessageStream = useCallback(async (textText: string, options?: { mentionedNodeIds?: string[]; imageUrls?: string[] }) => {
     const imageUrls = (options?.imageUrls || []).slice(0, 4);
@@ -756,6 +758,7 @@ export function useCreativeCanvasWorkspace(
     const activeAssetVersionId = (selectedNode?.data?.assetVersionId as string) || null;
     // 本会话看不到：其它会话生成的结果、已锁定分组里的结果（产品图/DNA 等素材除外）；用户 @ 或选中的照常可见
     const pointedIds = new Set<string>([...(options?.mentionedNodeIds || []), ...(selectedNodeId ? [selectedNodeId] : [])]);
+    lastPointedNodeIdsRef.current = Array.from(pointedIds);
     const SHARED_TYPES = new Set(['productImageNode', 'productDnaNode', 'welcomeNode', 'noteNode', 'groupFrameNode']);
     const sessionNodes = nodes.filter(n => {
       if (pointedIds.has(n.id) || SHARED_TYPES.has(String(n.type))) return true;
@@ -3059,17 +3062,51 @@ export function useCreativeCanvasWorkspace(
     }
     return { x: start.x, y: start.y + all.length * 40 };
   };
+  /**
+   * 海报要用哪张产品图：指定的节点 → 当前选中的 → 最近一条消息 @ 的；指到的是海报（含修改版）时反查它出自的产品图，
+   * 查不到出处就用主产品图；都没有时画布上只有一张产品图就用它。
+   */
+  const resolvePosterProductNode = (nodeId?: string): Node | undefined => {
+    const currentNodes = nodesRef.current || nodes;
+    const isProductNode = (n: Node) => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage';
+    const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
+    // 指定/选中的是海报（含修改版）时，反查它出自哪张产品图：先看记录的 productNodeId，再沿连线往上找
+    const productOf = (id?: string | null): Node | undefined => {
+      if (!id) return undefined;
+      const allEdges = edgesRef.current || edges;
+      const seen = new Set<string>();
+      let cur: string | undefined = id;
+      for (let depth = 0; cur && depth < 8 && !seen.has(cur); depth++) {
+        seen.add(cur);
+        const direct = productNodes.find(n => n.id === cur);
+        if (direct) return direct;
+        const node = currentNodes.find(n => n.id === cur);
+        const owner = (node?.data as any)?.templatePoster?.productNodeId as string | undefined;
+        const owned = owner ? productNodes.find(n => n.id === owner) : undefined;
+        if (owned) return owned;
+        cur = allEdges.find(e => e.target === cur)?.source;
+      }
+      return undefined;
+    };
+    // 选哪张产品图：指定的节点（或它出自的产品图）→ 当前选中的（同上）→ 画布上唯一的产品图
+    return (
+      productOf(nodeId) ||
+      productOf(selectedNodeId) ||
+      lastPointedNodeIdsRef.current.map(productOf).find(Boolean) ||
+      // 指了一张海报但查不到出处（旧版渲染图）：按主产品图处理
+      ([nodeId, selectedNodeId, ...lastPointedNodeIdsRef.current].some(id => id && currentNodes.some(n => n.id === id && !isProductNode(n) && typeof (n.data as any)?.imageUrl === 'string' && (n.data as any).imageUrl))
+        ? productNodes.find(n => isMainProductNodeId(n.id))
+        : undefined) ||
+      (productNodes.length === 1 ? productNodes[0] : undefined)
+    );
+  };
   const templatePosterRunningRef = useRef<Set<string>>(new Set());
   const [templatePosterRunningIds, setTemplatePosterRunningIds] = useState<string[]>([]);
   const handleGenerateTemplatePoster = async (params?: AgentActionParams): Promise<boolean> => {
     const currentNodes = nodesRef.current || nodes;
     const isProductNode = (n: Node) => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage';
     const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
-    // 选哪张产品图：指定的节点 → 当前选中的产品图 → 画布上唯一的产品图
-    const productNode =
-      (params?.nodeId ? productNodes.find(n => n.id === params.nodeId) : undefined) ||
-      (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
-      (productNodes.length === 1 ? productNodes[0] : undefined);
+    const productNode = resolvePosterProductNode(params?.nodeId);
     if (!productNode && productNodes.length > 1) {
       addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做海报的那一张，或直接点产品图上的「4/3 产品海报」按钮。`);
       return false;
@@ -3255,10 +3292,7 @@ export function useCreativeCanvasWorkspace(
     const currentNodes = nodesRef.current || nodes;
     const isProductNode = (n: Node) => n.id === 'img-node-1' || n.type === 'productImageNode' || n.type === 'productImage';
     const productNodes = currentNodes.filter(n => isProductNode(n) && typeof n.data?.imageUrl === 'string' && n.data.imageUrl);
-    const productNode =
-      (params?.nodeId ? productNodes.find(n => n.id === params.nodeId) : undefined) ||
-      (selectedNodeId ? productNodes.find(n => n.id === selectedNodeId) : undefined) ||
-      (productNodes.length === 1 ? productNodes[0] : undefined);
+    const productNode = resolvePosterProductNode(params?.nodeId);
     if (!productNode && productNodes.length > 1) {
       addAgentMessage(`画布上有 ${productNodes.length} 张产品图，请先点选要做氛围海报的那一张，或直接点沙发图上的「氛围海报」按钮。`);
       return false;
