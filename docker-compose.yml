@@ -1,0 +1,38 @@
+# 本机常驻部署：固定端口、开机随 Docker 自动起、崩溃自动重启。
+# 用法：
+#   docker compose up -d --build     # 构建并后台启动（改了代码后重新执行这一条）
+#   docker compose logs -f           # 看日志
+#   docker compose down              # 停止
+# 访问：http://localhost:13100 （局域网用本机 IP:13100）。端口可在 .env 里设 MANWAH_PORT 修改。
+#
+# 和开发服务（npx tsx server.ts，3000/3100）的区别：这里跑的是生产构建，和云端同一套代码，
+# 不监听文件变化；“输入路径读取”本地文件夹功能在生产模式下关闭（与云端一致）。
+services:
+  manwah:
+    build:
+      context: .
+      args:
+        # 国内网络：npm / apt 走镜像源，否则容器里装依赖会超时
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+        APT_MIRROR: ${APT_MIRROR:-mirrors.aliyun.com}
+    image: manwah-cavas:local
+    container_name: manwah-cavas
+    restart: unless-stopped
+    ports:
+      - "${MANWAH_PORT:-13100}:3000"
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    volumes:
+      # 画布断线兜底副本、任务记录等落盘数据：放在宿主机，容器重建不丢
+      - ./.data:/app/.data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

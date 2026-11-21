@@ -5,6 +5,10 @@
 # --- 阶段 1: 依赖安装与全量构建 (Builder) ---
 FROM node:22-slim AS builder
 
+# 可选：国内网络构建时换 npm 源（本机 docker-compose 传 npmmirror；云端构建不传，保持官方源）
+ARG NPM_REGISTRY=
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
+
 WORKDIR /app
 
 # 安装构建所需依赖
@@ -19,6 +23,11 @@ RUN npm run build
 
 # --- 阶段 2: 极简生产运行镜像 (Runner) ---
 FROM node:22-slim AS runner
+
+ARG NPM_REGISTRY=
+# 可选：国内网络构建时换 apt 源（如 mirrors.aliyun.com）
+ARG APT_MIRROR=
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi   && if [ -n "$APT_MIRROR" ]; then sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; fi
 
 WORKDIR /app
 
