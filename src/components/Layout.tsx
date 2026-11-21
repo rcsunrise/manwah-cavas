@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { MonitorPlay, Settings, LayoutDashboard, Users, UserCircle, Menu, ChevronRight, LayoutGrid } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { extractDeptName, getDeptBranding } from '../utils/deptBranding';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,12 +14,14 @@ export default function Layout({ children }: LayoutProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSettingsSheet, setShowSettingsSheet] = useState(false);
+  const [deptName, setDeptName] = useState('');
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data, error }) => {
       if (!error && data?.user) {
-        supabase.from('profiles').select('role').eq('id', data.user.id).single()
+        supabase.from('profiles').select('role, department_configs ( dept_name )').eq('id', data.user.id).single()
           .then(({ data: profileData }) => {
+            setDeptName(extractDeptName((profileData as any)?.department_configs));
             if (profileData?.role === 'admin' || profileData?.role === 'dept_admin') {
               setIsAdmin(true);
             }
@@ -58,7 +61,7 @@ export default function Layout({ children }: LayoutProps) {
         <aside className="hidden md:flex flex-col w-64 bg-white/80 backdrop-blur-xl border-r border-[#E5E0D8]/40 p-4 sticky top-0 h-screen overflow-y-auto shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
           <div className="text-xl font-black text-brand-charcoal tracking-widest mb-8 px-2 mt-4 flex flex-col">
             MANWAH
-            <span className="text-[10px] text-stone-400 font-bold uppercase mt-1 tracking-widest">国内商品企划中心</span>
+            <span className="text-[10px] text-stone-400 font-bold uppercase mt-1 tracking-widest">{getDeptBranding(deptName).title.replace(/^AI\s*/, '')}</span>
           </div>
           
           <nav className="space-y-1 flex-1">

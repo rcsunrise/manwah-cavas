@@ -1,3 +1,4 @@
+import { extractDeptName, getDeptBranding } from '../utils/deptBranding';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -379,7 +380,7 @@ const App: React.FC = () => {
         if (user) {
           const { data } = await supabase
             .from('profiles')
-            .select('nickname, username, role')
+            .select('nickname, username, role, department_configs ( dept_name )')
             .eq('id', user.id)
             .maybeSingle();
 
@@ -388,7 +389,8 @@ const App: React.FC = () => {
             nickname: data?.nickname || data?.username || defaultEmpId,
             username: data?.username || defaultEmpId,
             role: data?.role || 'user',
-            ...data
+            ...data,
+            deptName: extractDeptName((data as any)?.department_configs),
           });
         }
 
@@ -1107,9 +1109,9 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
             </div>
             <div className="flex flex-col">
               <h1 className="font-serif font-bold text-base tracking-tight leading-none text-stone-900 flex items-center gap-2">
-                MANWAH <span className="text-stone-300 font-light">|</span> <span className="text-brand-gold">AI 国内商品企划中心</span>
+                MANWAH <span className="text-stone-300 font-light">|</span> <span className="text-brand-gold">{getDeptBranding(userProfile?.deptName).title}</span>
               </h1>
-              <p className="text-[9px] text-stone-400 tracking-[0.15em] font-semibold uppercase mt-0.5 whitespace-nowrap">DOMESTIC PRODUCT PLANNING CENTER</p>
+              <p className="text-[9px] text-stone-400 tracking-[0.15em] font-semibold uppercase mt-0.5 whitespace-nowrap">{getDeptBranding(userProfile?.deptName).subtitle}</p>
             </div>
           </div>
 
