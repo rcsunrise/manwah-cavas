@@ -16,6 +16,38 @@ export const TEMPLATE_A_HERO_RATIO = 0.765;
 /** 细节格图片的宽高比（裁切时按这个比例取景） */
 export const TEMPLATE_A_DETAIL_ASPECT = 1.05;
 
+/**
+ * 底部细节栏几何：3 格图左文右；4 格图缩小、文字仍在右侧；5–6 格改为上图下文。
+ * S 为输出倍率。细节裁切比例要和这里一致（见 templateADetailAspect）。
+ */
+export function detailStripGeometry(count: number, S = 1) {
+  const n = Math.min(6, Math.max(1, Math.round(count) || 3));
+  const W = TEMPLATE_A_SIZE.width * S;
+  const H = TEMPLATE_A_SIZE.height * S;
+  const stripH = H - Math.round(H * TEMPLATE_A_HERO_RATIO);
+  if (n <= 3) {
+    const padX = 64 * S, padY = 42 * S, innerPad = 28 * S;
+    const imgH = stripH - padY * 2;
+    return { n, padX, padY, innerPad, imgH, imgW: Math.round(imgH * TEMPLATE_A_DETAIL_ASPECT), stacked: false };
+  }
+  if (n === 4) {
+    const padX = 48 * S, padY = 56 * S, innerPad = 16 * S;
+    const imgH = stripH - padY * 2;
+    return { n, padX, padY, innerPad, imgH, imgW: Math.round(imgH * TEMPLATE_A_DETAIL_ASPECT), stacked: false };
+  }
+  const padX = 40 * S, padY = 24 * S, innerPad = 14 * S;
+  const cellW = (W - padX * 2) / n;
+  const imgW = Math.round(cellW - innerPad * 2);
+  const imgH = Math.round(stripH - padY - 16 * S - 86 * S);
+  return { n, padX, padY, innerPad, imgW, imgH, stacked: true };
+}
+
+/** 按细节格数取裁切宽高比 */
+export function templateADetailAspect(count: number): number {
+  const g = detailStripGeometry(count, 1);
+  return g.imgW / g.imgH;
+}
+
 export type TitleSide = 'left' | 'right';
 
 export interface TemplateATitle {
@@ -329,16 +361,13 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
   }
   overlays.push(...titleLayers);
 
-  // ---------- 底部三栏细节 ----------
+  // ---------- 底部细节栏（3–6 格） ----------
   const stripTop = HERO_H;
   const stripH = H - HERO_H;
-  const padX = 64 * S;
-  const padY = 42 * S;
-  const cells = input.details.slice(0, 3);
+  const cells = input.details.slice(0, 6);
+  const geo = detailStripGeometry(cells.length, S);
+  const { padX, padY, innerPad, imgW, imgH, stacked } = geo;
   const cellW = (W - padX * 2) / Math.max(1, cells.length);
-  const imgH = stripH - padY * 2;
-  const imgW = Math.round(imgH * TEMPLATE_A_DETAIL_ASPECT);
-  const innerPad = 28 * S;
   const textGap = 32 * S;
 
   const strip = stripPalette(input.stripColor);
@@ -347,7 +376,7 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
   for (let i = 0; i < cells.length; i++) {
     const cell = cells[i];
     const cellX = Math.round(padX + i * cellW);
-    const imgX = cellX + innerPad;
+    const imgX = stacked ? Math.round(cellX + (cellW - imgW) / 2) : cellX + innerPad;
     const imgY = stripTop + padY;
     const tile = await sharp(cell.image, { failOn: 'none' }).rotate().resize(imgW, imgH, { fit: 'cover', position: 'centre' }).png().toBuffer();
     overlays.push({ input: tile, left: imgX, top: imgY });
@@ -356,13 +385,30 @@ export async function composeTemplateA(input: TemplateAInput): Promise<TemplateA
       overlays.push({ input: solidRect(2 * S, stripH - padY * 2 - 48 * S, strip.divider), left: cellX - S, top: stripTop + padY + 24 * S });
     }
 
-    const textX = imgX + imgW + textGap;
+    if (stacked) {
+      // 上图下文：标题与说明居中放在图片下方
+      const textW = imgW;
+      const titleR = await renderText(cell.title, { role: 'serif', size: 30 * S, weight: 600, color: strip.title, letterSpacingEm: 0.05, maxWidth: textW });
+      const descR = cell.desc
+        ? await renderText(cell.desc, { role: 'sans', size: 18 * S, weight: 400, color: strip.desc, letterSpacingEm: 0.04, maxWidth: textW })
+        : null;
+      let ty = imgY + imgH + 14 * S;
+      overlays.push({ input: titleR.buffer, left: Math.round(cellX + (cellW - titleR.width) / 2), top: ty });
+      ty += titleR.height + 6 * S;
+      if (descR && ty + descR.height <= stripTop + stripH - 8 * S) {
+        overlays.push({ input: descR.buffer, left: Math.round(cellX + (cellW - descR.width) / 2), top: ty });
+      }
+      continue;
+    }
+
+    const textX = imgX + imgW + (cells.length > 3 ? 20 * S : textGap);
     const textW = Math.round(cellX + cellW - innerPad - textX);
-    const titleR = await renderText(cell.title, { role: 'serif', size: 40 * S, weight: 600, color: strip.title, letterSpacingEm: 0.06, maxWidth: textW });
+    const titleSize = cells.length > 3 ? 32 * S : 40 * S;
+    const titleR = await renderText(cell.title, { role: 'serif', size: titleSize, weight: 600, color: strip.title, letterSpacingEm: 0.06, maxWidth: textW });
     const lineW = 36 * S;
     const lineH = 2 * S;
     const descR = cell.desc
-      ? await renderText(cell.desc, { role: 'sans', size: 23 * S, weight: 400, color: strip.desc, letterSpacingEm: 0.08, maxWidth: textW, lineGap: 10 * S })
+      ? await renderText(cell.desc, { role: 'sans', size: (cells.length > 3 ? 20 : 23) * S, weight: 400, color: strip.desc, letterSpacingEm: 0.08, maxWidth: textW, lineGap: 10 * S })
       : null;
     const blockH = titleR.height + 18 * S + lineH + (descR ? 18 * S + descR.height : 0);
     let ty = Math.round(imgY + (imgH - blockH) / 2);

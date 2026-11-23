@@ -10,9 +10,11 @@ import {
   X,
   FileImage,
   Loader2,
-  Sparkles
+  Sparkles,
+  Plus,
+  Minus
 } from 'lucide-react';
-import { ProductImageNodeData } from '../../types/creativeCanvas';
+import { ProductImageNodeData, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX } from '../../types/creativeCanvas';
 import { toThumbnailUrl } from '../../utils/thumbnailUrl';
 
 export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
@@ -20,6 +22,18 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isDragging, setIsDragging] = useState(false);
+  // 细节图窗口：鼠标停在哪一格（粘贴进这一格）、拖到哪一格、点了哪一格选文件
+  const [hoverSlot, setHoverSlot] = useState<number | null>(null);
+  const [dragSlot, setDragSlot] = useState<number | null>(null);
+  const detailInputRef = useRef<HTMLInputElement>(null);
+  const pickSlotRef = useRef<number>(0);
+  const detailEnabled = Boolean(nodeData?.onDetailImageUpload);
+  const detailSlots: Array<string | null> = (() => {
+    const list = Array.isArray(nodeData?.detailImages) ? nodeData.detailImages.slice(0, DETAIL_SLOTS_MAX) : [];
+    while (list.length < DETAIL_SLOTS_MIN) list.push(null);
+    return list;
+  })();
+  const detailFilled = detailSlots.filter(Boolean).length;
   const [isHovered, setIsHovered] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -68,7 +82,9 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           if (file) {
             e.preventDefault();
             e.stopPropagation();
-            if (nodeData?.imageUrl) {
+            if (hoverSlot !== null && nodeData?.onDetailImageUpload) {
+              nodeData.onDetailImageUpload(hoverSlot, file);
+            } else if (nodeData?.imageUrl) {
               // 已有主图：粘贴的图放进对话框当附件，不覆盖
               window.dispatchEvent(new CustomEvent('canvas:chat-attach-image', { detail: file }));
             } else {
@@ -84,7 +100,7 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
     return () => {
       window.removeEventListener('paste', handlePaste);
     };
-  }, [isHovered, nodeData]);
+  }, [isHovered, nodeData, hoverSlot]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -258,6 +274,119 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
             <div className="mt-2 text-[9px] text-[#B28C5A] font-medium bg-[#B28C5A]/10 px-2 py-0.5 rounded-full flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               <span>上传后自动提取立体 DNA</span>
+            </div>
+          </div>
+        )}
+
+        {/* 细节图窗口：默认 3 格，可增减到 3–6 格；4/3 海报底部细节格按这里的格数和实拍排版 */}
+        {detailEnabled && (
+          <div className="mt-3">
+            <input
+              ref={detailInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                // 一次选多张：从点的那一格起依次填（不够就增加格数，最多 6 格）
+                const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+                let slot = pickSlotRef.current;
+                const total = Math.min(DETAIL_SLOTS_MAX, Math.max(detailSlots.length, slot + files.length));
+                if (total > detailSlots.length) nodeData.onDetailSlotsChange?.(total);
+                for (const f of files) {
+                  if (slot >= DETAIL_SLOTS_MAX) break;
+                  nodeData.onDetailImageUpload?.(slot, f);
+                  slot += 1;
+                }
+                e.target.value = '';
+              }}
+            />
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold text-[#2C2A29]">
+                细节图 <span className="font-normal text-stone-400">{detailFilled}/{detailSlots.length} · 海报底部 {detailSlots.length} 格</span>
+              </span>
+              <div className="nodrag flex items-center gap-1">
+                <button
+                  type="button"
+                  title="减少一格"
+                  disabled={detailSlots.length <= DETAIL_SLOTS_MIN}
+                  onClick={(e) => { e.stopPropagation(); nodeData.onDetailSlotsChange?.(detailSlots.length - 1); }}
+                  className="w-5 h-5 rounded-md border border-[#E5E0D8] text-stone-500 flex items-center justify-center hover:border-[#B28C5A] hover:text-[#B28C5A] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  title="增加一格（最多 6 格）"
+                  disabled={detailSlots.length >= DETAIL_SLOTS_MAX}
+                  onClick={(e) => { e.stopPropagation(); nodeData.onDetailSlotsChange?.(detailSlots.length + 1); }}
+                  className="w-5 h-5 rounded-md border border-[#E5E0D8] text-stone-500 flex items-center justify-center hover:border-[#B28C5A] hover:text-[#B28C5A] disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+            <div className="nodrag grid grid-cols-3 gap-1.5">
+              {detailSlots.map((url, i) => (
+                <div
+                  key={i}
+                  onMouseEnter={() => setHoverSlot(i)}
+                  onMouseLeave={() => setHoverSlot(cur => (cur === i ? null : cur))}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragSlot(i); }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragSlot(cur => (cur === i ? null : cur)); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragSlot(null);
+                    setIsDragging(false);
+                    const file = Array.from(e.dataTransfer.files || []).find(f => f.type.startsWith('image/'));
+                    if (file) nodeData.onDetailImageUpload?.(i, file);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    pickSlotRef.current = i;
+                    detailInputRef.current?.click();
+                  }}
+                  title={url ? '点击更换；悬停可粘贴替换' : '点击选择、拖入或悬停粘贴 (Ctrl+V) 细节图'}
+                  className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border transition-all group/slot ${
+                    dragSlot === i
+                      ? 'border-[#B28C5A] ring-2 ring-[#B28C5A]/40 bg-[#F9F5EF]'
+                      : url
+                        ? 'border-[#E5E0D8]'
+                        : `border-dashed ${hoverSlot === i ? 'border-[#B28C5A] bg-[#F9F5EF]' : 'border-[#E5E0D8] bg-[#FAF8F5]'}`
+                  }`}
+                >
+                  {url ? (
+                    <>
+                      <img
+                        src={url.startsWith('http') ? toThumbnailUrl(url) : url}
+                        onError={(e) => { if (e.currentTarget.src !== url) e.currentTarget.src = url; }}
+                        alt={`细节 ${i + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      {url.startsWith('blob:') && (
+                        <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-[#B28C5A] animate-spin" />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        title="移除这张细节图"
+                        onClick={(e) => { e.stopPropagation(); nodeData.onDetailImageRemove?.(i); }}
+                        className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                      <span className="absolute bottom-0.5 left-1 text-[8px] font-mono text-white drop-shadow">{i + 1}</span>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-stone-400">
+                      <Plus className="w-3.5 h-3.5 mb-0.5" />
+                      <span className="text-[9px]">细节 {i + 1}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}

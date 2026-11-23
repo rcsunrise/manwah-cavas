@@ -106,6 +106,17 @@ export interface PosterConceptInput {
   sceneCandidates?: SceneDirection[];
   /** 本次创意切入角度；不传时按轮换自动选 */
   angle?: CreativeAngle;
+  /** 底部细节格数（3–6），默认 3 */
+  detailCount?: number;
+  /** attachments 里前几张是用户在产品节点“细节图”窗口上传的细节实拍 */
+  detailPhotoCount?: number;
+}
+
+export const MIN_DETAIL_CELLS = 3;
+export const MAX_DETAIL_CELLS = 6;
+export function clampDetailCount(n: unknown): number {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) ? Math.min(MAX_DETAIL_CELLS, Math.max(MIN_DETAIL_CELLS, v)) : MIN_DETAIL_CELLS;
 }
 
 // 路由平台目前只开通 gemini-3.6-flash，放最前面省掉两次失败往返
@@ -114,7 +125,10 @@ const CONCEPT_MODELS = ['gemini-3.6-flash'];
 const DEFAULT_DETAILS: PosterDetailConcept[] = [
   { key: 'armrest', locate: '沙发离镜头最近一侧的完整扶手（从扶手顶面到落地处、从前端到与靠背相接处，整只扶手都在框内）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },
   { key: 'backrest', locate: '离镜头最近的一个座位的靠背，含缝线与分段结构', title: '分段式靠背', desc: '分区承托 · 柔和贴合' },
-  { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' }
+  { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' },
+  { key: 'seat', locate: '离镜头最近的一个座包，含座面与前沿的缝线', title: '饱满座包', desc: '厚实回弹 · 久坐舒适' },
+  { key: 'side', locate: '沙发离镜头最近一侧的侧面整体轮廓', title: '侧面线条', desc: '利落轮廓 · 比例协调' },
+  { key: 'stitch', locate: '靠背或座包上一段清晰的缝线与面料纹理特写', title: '面料缝线', desc: '细密走线 · 质感细腻' }
 ];
 
 function describeDna(dna: any): string {
@@ -152,6 +166,9 @@ function attachmentBlock(input: PosterConceptInput): string {
     '- "product"：同一款产品的其他角度整图，只用来理解造型。',
     '- "scene"：参考海报、场景或氛围图（里面的沙发不是这款产品），主场景的空间、光线、配色按它来。',
     '- "ignore"：和这次海报无关的图。',
+    ...(input.detailPhotoCount
+      ? [`- 其中附图1～附图${Math.min(input.detailPhotoCount, k)} 是用户在“细节图”窗口专门上传的产品细节实拍：attachmentRoles 一律填 "detail"，每张各对应底部一格（details[].photo 填它的序号），文案按实拍里的部位写。`]
+      : []),
     '先逐张写清每张附图实际拍到的是哪个部位，写进 attachmentParts（如 ["整只扶手","拉点分段靠背","扶手与沙发脚"]），再据此填 details[].photo：只按图片内容对应，用户文字里的“图二 / 图四”可能写错，不能按图号硬套；同一张附图最多给一格，没有哪张附图拍到这个部位就填 0。',
     ''
   ].join('\n');
@@ -165,7 +182,7 @@ function hintBlock(hint: string | undefined): string {
     hint,
     '落实方式：',
     '- 命名：用户规定了字数或命名方式（如“四字以内”“参考顾家、乐至宝的产品命名，如赫兹、云舒”）就照做，名字要贴合沙发和场景；用户举的例子只是风格参考，不要直接用。',
-    '- 用户点名要展示的部位（如“完整扶手”“拉点分段式靠背”“沙发角”），底部三格就是这几个部位，顺序按用户说的；要求“完整”的部位，locate 里写明整个部位都要框进去。',
+    '- 用户点名要展示的部位（如“完整扶手”“拉点分段式靠背”“沙发角”），底部细节格就是这几个部位，顺序按用户说的；要求“完整”的部位，locate 里写明整个部位都要框进去。',
     '- 用户给了设计 / 工艺解读要求时，desc 不再限于两个短语：写 20–32 字的一句话（硬性上限 32 字，含标点；一句写完，用句号结尾，不要“不仅…还…”“…的同时…”这种长句），具体解读这个部位的造型和工艺（如包覆方式、缝线、拉点、分段、弧度、脚的材质与形状），只写图里看得见的，不编参数。',
     '- 用户对场景、色调、道具、抱枕的要求（如“两个相同的带图案抱枕”）都要写进 scene / props。',
     ''
@@ -184,7 +201,7 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
       : ''
   }${sceneBlock(input)}${usedBlock(input.used)}
 [版式（固定，不用你设计）]
-上方是产品主场景大图，左上角（或右上角）放标题区：两字命名 + 一句副标题 + 一行灵感小字；底部一栏三格，每格是一个产品部位的真实特写 + 标题 + 一句短说明。
+上方是产品主场景大图，左上角（或右上角）放标题区：两字命名 + 一句副标题 + 一行灵感小字；底部一栏 ${clampDetailCount(input.detailCount)} 格，每格是一个产品部位的真实特写 + 标题 + 一句短说明。
 
 [怎么构思：先挖卖点，再选大场景，再让整张图呼应名字]
 0. 挖卖点：看产品图和 DNA，找出这款产品最打动人的 1 个卖点（功能、坐感、材质、颜色、造型、情绪里选最突出、最具体的一个，如“电动头等舱躺姿”“米白头层真皮”“分段饱满靠背”）。
@@ -199,18 +216,19 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
    - 道具呼应：茶几（按下面的茶几要求）、一件摆件、地毯或地面材质、一对同款抱枕的图案，都要和名字、场景同一套语言；props 里写清茶几的材质和造型，以及抱枕的颜色和图案。
    - 抱枕：${PILLOW_RULE}
    - 茶几：${(input.tableStyle || !input.tableCandidates?.length ? coffeeTableRule(input.tableStyle) : coffeeTableCandidatesRule(input.tableCandidates)).split('\n').join('\n     ')}
-   - 人物：看产品图，如果沙发的功能位是打开的（脚踏伸出、靠背后仰、头枕升起），画面里安排一位人物正在使用它（半躺放松，穿着简洁，姿态自然），写进 person；功能位没打开就不要人物，person 输出空字符串。
+   - 人物：默认画面里不要人物，person 输出空字符串（功能位打开也不加人）。只有用户要求里明确要人物 / 模特时，才安排一位人物正在使用沙发（半躺放松，穿着简洁，姿态自然），写进 person。
 5. 标杆案例（学方法，不要照抄）：
    - 银弧（造型呼应）：取自柔和弧面 → 弧形银色未来建筑天井、蓝天白云、不锈钢弧形茶几
    - 晴岚（情绪意境）：取自柔和的浅灰绿色 → 清晨山谷的玻璃平台，薄雾散开，阳光照亮草坡
-   - 悠眠（功能演绎）：取自电动躺与头枕 → 午后阳光下的海边露台，一位模特在打开的功能位上半躺放松
+   - 悠眠（功能演绎）：取自电动躺与头枕 → 午后阳光下的海边露台，打开的功能位迎着海风
    - 沙纹（造型呼应）：取自分段靠背的起伏 → 白色沙丘的风纹延伸到地平线，正午硬光
    - 赤岩（材质呼应）：取自焦糖色真皮的光泽 → 红岩峡谷流线岩壁，顶部光柱洒下
    - 镜湖（色彩呼应）：取自米白色 → 天空之镜盐湖，倒映云朵，沙发如悬浮于天地之间
 6. 画面分三层：前景（地面、地毯边缘或道具，可有少量虚化的植物、水面、沙砾）、中景（沙发）、远景（标志性主体与风景）。可以大胆、可以超现实，但光影和材质要像真实摄影。
 7. 标题压在画面一侧的上方：那里是天空、远景或主体的大曲面，明暗均匀、没有密集的小物件即可，不要画成一面空墙。
 
-[细节三格]
+[细节 ${clampDetailCount(input.detailCount)} 格]
+details 必须正好 ${clampDetailCount(input.detailCount)} 项，部位互不重复。
 只能选产品上真实存在、图里看得见的部位（通常是扶手、靠背、沙发脚，也可以是侧面分割、金属饰条等），不要编造功能、参数、检测或材质承诺。
 扶手一定要完整展示：locate 写成“整只扶手（从扶手顶面到落地处、从前端到与靠背相接处）”，不要只框扶手的一部分。
 
@@ -232,7 +250,7 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
   "scene": "把上面五项连成一段完整的画面描述，180–300 字，给摄影师看。不要描述沙发本身的造型（以产品图为准），不要出现任何文字或标牌。",
   "tableStyle": "从茶几候选里挑中的 id（没有候选时输出空字符串）",
   "functionOpen": "产品图里功能位是否打开（脚踏伸出 / 靠背后仰 / 头枕升起），true 或 false",
-  "person": "功能位打开时画面里的人物，20–40 字，如“一位穿浅色针织衫的年轻女性半躺在打开的功能位上看书”；否则空字符串",
+  "person": "只有用户明确要求人物时才写，20–40 字，如“一位穿浅色针织衫的年轻女性半躺在打开的功能位上看书”；默认空字符串",
   "attachmentParts": ["每张用户附图实际拍到的部位或内容，按附图顺序；没有附图就输出空数组"],
   "attachmentRoles": ["每张用户附图的用途：detail / product / scene / ignore；没有附图就输出空数组"],
   "packaging": "只看产品图：沙发上如果真实带有包装膜或品牌标识（例如底部透明包装膜上印着红蓝色品牌字样），用一句话写明位置、颜色和图案，如“沙发底部座位正面有透明包装膜，印红色飞机图标和蓝色 CHEERS 字样”；图里没有就输出空字符串 \\"\\"，不要猜、不要编",
@@ -334,11 +352,29 @@ function cut(text: unknown, max: number, fallback = ''): string {
 }
 
 /** 模型输出不一定守规矩：截断超长字段、补齐细节格、颜色与方向做兜底 */
+/** 细节格补足 / 截到指定格数，补的格子挑还没用过的部位 */
+export function fitDetailCount(concept: PosterConcept, count: number): void {
+  const n = clampDetailCount(count);
+  if (concept.details.length > n) concept.details = concept.details.slice(0, n);
+  const keys = new Set(concept.details.map(d => d.key));
+  for (const d of DEFAULT_DETAILS) {
+    if (concept.details.length >= n) break;
+    if (!keys.has(d.key)) { concept.details.push({ ...d }); keys.add(d.key); }
+  }
+}
+
+/** 用户要求里是否明确要人物（“不要人物 / 无人物”不算） */
+export function wantsPerson(hint: string | undefined): boolean {
+  if (!hint) return false;
+  const text = hint.replace(/(不要|不需要|不用|去掉|去除|删掉|无|没有|别)(出现)?(任何)?(人物|模特|真人|人像|人)/g, '');
+  return /人物|模特|真人|人像|有人|一位|一个人|男士|女士|女性|男性|小孩|孩子|一家/.test(text);
+}
+
 export function sanitizeConcept(raw: any): PosterConcept {
   const details: PosterDetailConcept[] = Array.isArray(raw?.details)
     ? raw.details
         .filter((d: any) => d && typeof d === 'object')
-        .slice(0, 3)
+        .slice(0, MAX_DETAIL_CELLS)
         .map((d: any, i: number) => {
           const fallback = DEFAULT_DETAILS[i] || DEFAULT_DETAILS[0];
           const key = cut(d.key, 24, fallback.key).replace(/[^a-zA-Z0-9_-]/g, '') || `detail_${i + 1}`;
@@ -348,7 +384,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
             locate: cut(d.locate, 80, fallback.locate),
             title: cut(d.title, 7, fallback.title),
             desc: cutDetailDesc(d.desc, 40, fallback.desc),
-            ...(Number.isInteger(photo) && photo > 0 && photo <= 8 ? { photo } : {})
+            ...(Number.isInteger(photo) && photo > 0 && photo <= 10 ? { photo } : {})
           };
         })
     : [];
@@ -358,7 +394,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
     if (seen.has(d.key)) d.key = `${d.key}_${seen.size + 1}`;
     seen.add(d.key);
   }
-  while (details.length < 3) details.push({ ...DEFAULT_DETAILS[details.length] });
+  while (details.length < MIN_DETAIL_CELLS) details.push({ ...DEFAULT_DETAILS[details.length] });
 
   return {
     name: cut(raw?.name, 4, '舒境'),
@@ -386,7 +422,7 @@ export function sanitizeConcept(raw: any): PosterConcept {
     functionOpen: raw?.functionOpen === true || raw?.functionOpen === 'true',
     person: cut(raw?.person, 80, ''),
     attachmentRoles: Array.isArray(raw?.attachmentRoles)
-      ? raw.attachmentRoles.slice(0, 8).map((r: any): AttachmentRole => (r === 'detail' || r === 'product' || r === 'scene' ? r : 'ignore'))
+      ? raw.attachmentRoles.slice(0, 10).map((r: any): AttachmentRole => (r === 'detail' || r === 'product' || r === 'scene' ? r : 'ignore'))
       : []
   };
 }
@@ -466,6 +502,9 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
       direction?.id ||
       (candidates?.some(c => c.id === concept!.sceneDirection) ? concept.sceneDirection : candidates?.[0]?.id);
     concept.angle = angle?.id;
+    // 默认不要人物：用户要求里没明确提人物 / 模特时，模型写了也清掉
+    if (!wantsPerson(input.hint)) concept.person = '';
+    fitDetailCount(concept, clampDetailCount(input.detailCount));
     // 模型挑的款式必须在候选里；没挑或挑了别的，按第一个候选
     concept.tableStyle =
       tableStyle?.id || (tableCandidates?.some(c => c.id === concept!.tableStyle) ? concept.tableStyle : tableCandidates?.[0]?.id);

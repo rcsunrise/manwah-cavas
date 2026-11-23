@@ -182,3 +182,15 @@ describe('氛围海报：圆形细节底色、整只扶手、抱枕朝向', () =
     expect(hex.toUpperCase()).toBe(DETAIL_CIRCLE_BG.toUpperCase());
   });
 });
+
+import { wantsPerson } from '../services/posterTemplate/posterConcept';
+describe('默认不要人物', () => {
+  it('只有明确要求才加人物', () => {
+    expect(wantsPerson(undefined)).toBe(false);
+    expect(wantsPerson('扶手要完整，画面明亮')).toBe(false);
+    expect(wantsPerson('不要人物')).toBe(false);
+    expect(wantsPerson('画面里不要出现模特')).toBe(false);
+    expect(wantsPerson('加一位模特半躺在上面')).toBe(true);
+    expect(wantsPerson('要有人物')).toBe(true);
+  });
+});

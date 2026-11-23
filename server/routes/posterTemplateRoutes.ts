@@ -4,9 +4,9 @@ import { AuthenticatedRequest } from '../types';
 import { optionalAuthenticateToken } from '../middleware/auth';
 import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
-import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept } from '../services/posterTemplate/posterConcept';
+import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept, clampDetailCount, MAX_DETAIL_CELLS } from '../services/posterTemplate/posterConcept';
 import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
-import { composeTemplateA, TEMPLATE_A_DETAIL_ASPECT, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
+import { composeTemplateA, templateADetailAspect, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
 import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
 import { composeTextilePoster, deriveBackground, TEXTILE_MAX_SWATCHES, textileLayoutOf, textileMoodAspectFor } from '../services/posterTemplate/textilePoster';
@@ -59,7 +59,7 @@ export function isAllowedImageSource(input: unknown): input is string {
 }
 
 /** 用户随消息附的图（最多 4 张）：按需缩放成 JPEG；读不了的跳过但保留位置，序号和概念里的 photo 对得上 */
-const MAX_ATTACHMENTS = 4;
+const MAX_ATTACHMENTS = 10; // 细节图窗口最多 6 张 + 对话附图最多 4 张
 async function loadAttachments(input: unknown, maxEdge: number, quality: number): Promise<Array<Buffer | null>> {
   const list = Array.isArray(input) ? input.filter(x => typeof x === 'string' && x).slice(0, MAX_ATTACHMENTS) : [];
   return Promise.all(
@@ -132,7 +132,9 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
         attachments: (await loadAttachments(req.body?.attachments, 1280, 85)).map(b => ({ data: b ? b.toString('base64') : '', mimeType: 'image/jpeg' })),
         hint: typeof hint === 'string' ? hint.slice(0, 1500) : undefined,
         planContext: typeof planContext === 'string' ? planContext.slice(0, 1500) : undefined,
-        used: usedConcepts
+        used: usedConcepts,
+        detailCount: clampDetailCount(req.body?.detailCount),
+        detailPhotoCount: Math.max(0, Math.min(MAX_DETAIL_CELLS, Math.round(Number(req.body?.detailPhotoCount) || 0)))
       },
       userIdOf(req)
     );
@@ -151,7 +153,9 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
     const attachmentBufs = await loadAttachments(attachments, 2048, 92);
     const roles = concept.attachmentRoles || [];
     const sceneAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && roles[i] === 'scene');
-    const detailAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && (roles[i] === 'detail' || roles[i] === 'product'));
+    const detailAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && (roles[i] === 'detail' || roles[i] === 'product'))
+      // 生图参考图太多会稀释产品图、也可能超网关上限：实拍最多给 4 张，其余只用于细节格
+      .slice(0, 4);
     const product = await loadImage(productImage, '产品图');
     const productJpeg = await sharp(product, { failOn: 'none' }).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
     // 参考图作为第二张图交给生图模型，只参考场景、光线、配色与氛围
@@ -228,14 +232,14 @@ router.post('/template-a/compose', async (req: AuthenticatedRequest, res: Respon
             // 实拍里找不到这个部位（附图对错了格），宁可从主图裁，也不放一张对不上的图
             // 实拍本身就是特写：不限制框的大小，整个部位都放进来
             if (details[0]?.source === 'vision') {
-              return await cropDetail(photo, details[0].box, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
+              return await cropDetail(photo, details[0].box, templateADetailAspect(concept.details.length), { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
             }
             console.warn(`[PosterTemplate] 附图${spec.photo} 里没找到「${spec.title}」，改从主图裁`);
           } catch (err: any) {
             console.warn(`[PosterTemplate] 附图${spec.photo} 做细节格失败，改从主图裁:`, err?.message || err);
           }
         }
-        return cropDetail(hero, d.box, TEMPLATE_A_DETAIL_ASPECT);
+        return cropDetail(hero, d.box, templateADetailAspect(concept.details.length));
       })
     );
     const result = await composeTemplateA({
@@ -292,7 +296,7 @@ router.post('/template-a/swap-details', async (req: AuthenticatedRequest, res: R
 
     const list: Array<{ url: string; slot?: number }> = (Array.isArray(rawPhotos) ? rawPhotos : [])
       .filter((p: any) => p && typeof p.url === 'string' && p.url)
-      .slice(0, 4);
+      .slice(0, 6);
     const bufs = await loadAttachments(list.map(p => p.url), 1600, 92);
     // 格子 → 实拍：用户指定了第几格就按指定；否则让视觉模型按部位自动对应，对应不上的按上传顺序补
     const photoForSlot: Array<Buffer | null> = concept.details.map(() => null);
@@ -336,16 +340,16 @@ router.post('/template-a/swap-details', async (req: AuthenticatedRequest, res: R
           try {
             const { details } = await locateDetails(photo, [{ key: d.key, locate: d.locate }], userIdOf(req));
             if (details[0]?.source === 'vision') {
-              return await cropDetail(photo, details[0].box, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
+              return await cropDetail(photo, details[0].box, templateADetailAspect(concept.details.length), { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 0.3 });
             }
           } catch (err: any) {
             console.warn(`[PosterTemplate] 第${k + 1}格实拍定位失败，整张居中裁:`, err?.message || err);
           }
           // 用户明确要用这张实拍：框不出部位也用它（整张居中裁），不退回主图
-          return cropDetail(photo, { left: 0, top: 0, width: 1, height: 1 }, TEMPLATE_A_DETAIL_ASPECT, { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 1 });
+          return cropDetail(photo, { left: 0, top: 0, width: 1, height: 1 }, templateADetailAspect(concept.details.length), { maxBoxWidthRatio: 1, maxBoxHeightRatio: 1, minWidthRatio: 1 });
         }
         const box = boxes[k]?.box || located[k]?.box;
-        return cropDetail(hero, box, TEMPLATE_A_DETAIL_ASPECT);
+        return cropDetail(hero, box, templateADetailAspect(concept.details.length));
       })
     );
     const composed = await composeTemplateA({

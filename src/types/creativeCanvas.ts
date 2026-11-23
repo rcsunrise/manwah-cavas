@@ -305,7 +305,15 @@ export interface ProductImageNodeData extends Record<string, unknown> {
   /** 用这张沙发图生成沙发面料海报（模板 B） */
   onFabricPoster?: () => void;
   fabricPosterRunning?: boolean;
+  /** 细节图窗口：每格一张产品局部实拍（null 为空格），长度即格数（3–6） */
+  detailImages?: Array<string | null>;
+  onDetailImageUpload?: (index: number, file: File) => void;
+  onDetailImageRemove?: (index: number) => void;
+  onDetailSlotsChange?: (count: number) => void;
 }
+
+export const DETAIL_SLOTS_MIN = 3;
+export const DETAIL_SLOTS_MAX = 6;
 
 export interface ProductDnaNodeData extends Record<string, unknown> {
   dna?: ProductVisualDNA | null;

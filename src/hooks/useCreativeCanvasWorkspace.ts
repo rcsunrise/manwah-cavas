@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '../types';
-import { LocalAssetItem } from '../types/creativeCanvas';
+import { LocalAssetItem, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX } from '../types/creativeCanvas';
 import { deltaE, findAssetByKeyword, pickBestSource, pickPaletteSwatches, textileColorTarget } from '../utils/textilePalette';
 import { compressImageForUpload } from '../utils/imageCompress';
 import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard, AgentActionParams } from '../types/creativeCanvas';
@@ -3023,6 +3023,61 @@ export function useCreativeCanvasWorkspace(
       patch({ status: 'error', errorMsg: err?.message || '上传失败' });
     }
   };
+  // 产品节点的“细节图”窗口：默认 3 格，可增减到 3–6 格；每格一张产品局部实拍，生成 4/3 海报时底部细节格按它排
+  // 正在上传的细节图本地预览（blob:）；不在这里的 blob: 是刷新前残留的失效地址，显示和生成时都当空格
+  const detailPreviewsRef = useRef<Set<string>>(new Set());
+  const patchDetailImages = (nodeId: string, fn: (list: Array<string | null>) => Array<string | null>) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev =>
+      prev.map(n => {
+        if (n.id !== nodeId) return n;
+        const cur = Array.isArray((n.data as any)?.detailImages) ? ([...(n.data as any).detailImages] as Array<string | null>) : [];
+        while (cur.length < DETAIL_SLOTS_MIN) cur.push(null);
+        const clean = cur.map(u => (typeof u === 'string' && u.startsWith('blob:') && !detailPreviewsRef.current.has(u) ? null : u));
+        return { ...n, data: { ...n.data, detailImages: fn(clean) } };
+      })
+    );
+  };
+  const handleSetDetailImage = async (nodeId: string, index: number, file: File) => {
+    if (!file.type.startsWith('image/') || index < 0 || index >= DETAIL_SLOTS_MAX) return;
+    const preview = URL.createObjectURL(file);
+    detailPreviewsRef.current.add(preview);
+    patchDetailImages(nodeId, list => {
+      while (list.length <= index) list.push(null);
+      list[index] = preview;
+      return list;
+    });
+    const compressed = await compressImageForUpload(file).catch(() => file);
+    let url = '';
+    try {
+      url = await uploadChatImage(compressed);
+    } catch (err: any) {
+      // 新画布还没存到云端时上传会被拒（无权访问该画布）、或网络抖动：先把压缩图内嵌在节点里，
+      // 画布保存时服务端会把内嵌图片转存云端，生成海报也能直接用
+      console.warn('[DetailImage] 上传失败，先内嵌保存:', err?.message || err);
+      url = await new Promise<string>(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(compressed);
+      });
+    }
+    // 上传期间这一格可能已被删掉或换图：只替换仍是这张预览的格子
+    patchDetailImages(nodeId, list => list.map(u => (u === preview ? url || null : u)));
+    URL.revokeObjectURL(preview);
+    detailPreviewsRef.current.delete(preview);
+    if (!url) addAgentMessage('❌ 细节图读取失败，请换一张图重试。');
+  };
+  const handleRemoveDetailImage = (nodeId: string, index: number) =>
+    patchDetailImages(nodeId, list => list.map((u, i) => (i === index ? null : u)));
+  const handleSetDetailSlots = (nodeId: string, count: number) =>
+    patchDetailImages(nodeId, list => {
+      const n = Math.min(DETAIL_SLOTS_MAX, Math.max(DETAIL_SLOTS_MIN, Math.round(count)));
+      const next = list.slice(0, n);
+      while (next.length < n) next.push(null);
+      return next;
+    });
+
   // 在画布上新增一个产品图节点并把图放进去（对话框里贴多张产品图时用），不动主产品图
   const handleAddProductNode = (file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -3178,7 +3233,11 @@ export function useCreativeCanvasWorkspace(
     const taskStartedAt = Date.now();
     const referenceImage = params?.referenceImageUrl || undefined;
     // 用户随消息附的图（细节实拍 / 参考图），构思时逐张判断用途，出图和细节格都会用到
-    const attachments = (params?.attachmentUrls || []).slice(0, 4);
+    // 产品节点“细节图”窗口里的实拍排在前面，构思时固定当细节格用；格数跟窗口格数走（3–6）
+    const detailSlots = Array.isArray((productNode?.data as any)?.detailImages) ? ((productNode!.data as any).detailImages as Array<string | null>) : [];
+    const detailPhotos = detailSlots.filter((u): u is string => typeof u === 'string' && /^(https?:|data:)/.test(u)).slice(0, DETAIL_SLOTS_MAX);
+    const detailCount = Math.min(DETAIL_SLOTS_MAX, Math.max(DETAIL_SLOTS_MIN, detailSlots.length, detailPhotos.length));
+    const attachments = [...detailPhotos, ...(params?.attachmentUrls || []).slice(0, 4)];
     const taskId = addAgentMessage('', {
       taskCard: {
         title: referenceImage ? `${taskTitle}（按参考图）` : attachments.length ? `${taskTitle}（含 ${attachments.length} 张附图）` : taskTitle,
@@ -3213,7 +3272,9 @@ export function useCreativeCanvasWorkspace(
         dna,
         hint: params?.hint,
         planContext,
-        used
+        used,
+        detailCount,
+        detailPhotoCount: detailPhotos.length
       });
       finishTaskCard(taskId, 'running', `2/3 「${concept.name}」：${concept.idea || concept.subtitle}\n正在生成主场景底图（约 1–3 分钟）…`);
 
@@ -5026,6 +5087,9 @@ export function useCreativeCanvasWorkspace(
     toggleGroupFrameLock,
     ungroupFrame,
     handleUploadToProductNode,
+    handleSetDetailImage,
+    handleRemoveDetailImage,
+    handleSetDetailSlots,
     handleClearProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
@@ -5149,6 +5213,14 @@ export function useCreativeCanvasWorkspace(
           data.templatePosterRunning = templatePosterRunningIds.includes(node.id);
           data.onFabricPoster = () => nodeActionsRef.current.handleGenerateFabricPoster({ nodeId: node.id });
           data.fabricPosterRunning = templatePosterRunningIds.includes(`fabric:${node.id}`);
+          if (Array.isArray((data as any).detailImages)) {
+            (data as any).detailImages = ((data as any).detailImages as Array<string | null>).map(u =>
+              typeof u === 'string' && u.startsWith('blob:') && !detailPreviewsRef.current.has(u) ? null : u
+            );
+          }
+          data.onDetailImageUpload = (index: number, f: File) => nodeActionsRef.current.handleSetDetailImage(node.id, index, f);
+          data.onDetailImageRemove = (index: number) => nodeActionsRef.current.handleRemoveDetailImage(node.id, index);
+          data.onDetailSlotsChange = (count: number) => nodeActionsRef.current.handleSetDetailSlots(node.id, count);
         }
 
         // 分组框：放在底层、尺寸由数据决定；锁定分组里的节点不可拖动不可删除

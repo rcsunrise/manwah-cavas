@@ -137,7 +137,7 @@ export const SCENE_DIRECTIONS: SceneDirection[] = [
     id: 'meadow_outdoor',
     label: '山野草地',
     family: 'mountain',
-    brief: '开阔草地或艺术露台：远处湖泊与连绵山峦，自然天光，可以有人物在沙发上放松（参考：云野舒境）。'
+    brief: '开阔草地或艺术露台：远处湖泊与连绵山峦，自然天光（参考：云野舒境）。'
   },
   {
     id: 'cloud_peak',
