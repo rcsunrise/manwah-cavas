@@ -150,14 +150,14 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
     if (!rawConcept) return res.status(400).json({ success: false, error: { message: '缺少海报概念 concept' } });
     const concept = sanitizeConcept(rawConcept);
     // 用户附图按概念里判断的用途分：场景参考 / 产品细节实拍（帮生图还原造型与面料）
-    const attachmentBufs = await loadAttachments(attachments, 2048, 92);
+    // 生图通道整次请求约 60 秒就被上游断开（含上传）：参考图只给小图（长边 1024），
+    // 实拍最多 2 张、场景参考最多 1 张；细节格排版时另用原图裁切，不受影响
+    const attachmentBufs = await loadAttachments(attachments, 1024, 85);
     const roles = concept.attachmentRoles || [];
-    const sceneAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && roles[i] === 'scene');
-    const detailAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && (roles[i] === 'detail' || roles[i] === 'product'))
-      // 生图参考图太多会稀释产品图、也可能超网关上限：实拍最多给 4 张，其余只用于细节格
-      .slice(0, 4);
+    const sceneAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && roles[i] === 'scene').slice(0, 1);
+    const detailAttachments = attachmentBufs.filter((b, i): b is Buffer => Boolean(b) && (roles[i] === 'detail' || roles[i] === 'product')).slice(0, 2);
     const product = await loadImage(productImage, '产品图');
-    const productJpeg = await sharp(product, { failOn: 'none' }).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toBuffer();
+    const productJpeg = await sharp(product, { failOn: 'none' }).rotate().resize(1536, 1536, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     // 参考图作为第二张图交给生图模型，只参考场景、光线、配色与氛围
     let referenceJpeg: Buffer | undefined;
     if (referenceImage) {

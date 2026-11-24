@@ -71,9 +71,7 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
     if (!isHovered) return;
 
     const handlePaste = (e: ClipboardEvent) => {
-      const ae = document.activeElement;
-      // 光标在输入框里（比如对话框）时，粘贴归输入框，不拿来换主图
-      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.getAttribute('contenteditable') === 'true')) return;
+      // 鼠标停在节点上就归节点：即使光标还留在对话框里（刚发完消息常见），也不让对话框抢走
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
@@ -81,7 +79,7 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           const file = items[i].getAsFile();
           if (file) {
             e.preventDefault();
-            e.stopPropagation();
+            e.stopImmediatePropagation();
             if (hoverSlot !== null && nodeData?.onDetailImageUpload) {
               nodeData.onDetailImageUpload(hoverSlot, file);
             } else if (nodeData?.imageUrl) {
@@ -96,9 +94,10 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
       }
     };
 
-    window.addEventListener('paste', handlePaste);
+    // 捕获阶段先拿到，对话框输入框自己的粘贴处理就不会再收到这张图
+    window.addEventListener('paste', handlePaste, true);
     return () => {
-      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('paste', handlePaste, true);
     };
   }, [isHovered, nodeData, hoverSlot]);
 
