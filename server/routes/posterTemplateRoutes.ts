@@ -41,7 +41,7 @@ const DEFAULT_HERO_MODEL = 'gpt-image-2.6-flare-c';
 /** 主场景生图断连时的备用模型：2.6 系列换 2.5（前者常超过上游约 60 秒上限，后者一般 30 秒内出图） */
 export function heroFallbackModel(model: string): string | undefined {
   const bare = model.replace(/^openai\//, '');
-  if (bare === 'gpt-image-2.6-flare-c' || bare === 'gpt-image-2.6-sunburst-c') return 'gpt-image-2.5-flare-c';
+  if (/^gpt-image-/.test(bare)) return 'gemini-nano-banana-2.1-preview';
   return undefined;
 }
 

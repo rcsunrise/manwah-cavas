@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { heroFallbackModel, isUpstreamDrop } from '../routes/posterTemplateRoutes';
 
 describe('主场景生图断连换模型', () => {
-  it('2.6 系列换 2.5，其余不换', () => {
-    expect(heroFallbackModel('gpt-image-2.6-flare-c')).toBe('gpt-image-2.5-flare-c');
-    expect(heroFallbackModel('openai/gpt-image-2.6-flare-c')).toBe('gpt-image-2.5-flare-c');
-    expect(heroFallbackModel('openai/gpt-image-2.5-flare-c')).toBeUndefined();
+  it('GPT 系列断连改用 Nano Banana，Nano Banana 本身不换', () => {
+    expect(heroFallbackModel('gpt-image-2.6-flare-c')).toBe('gemini-nano-banana-2.1-preview');
+    expect(heroFallbackModel('openai/gpt-image-2.6-flare-c')).toBe('gemini-nano-banana-2.1-preview');
+    expect(heroFallbackModel('openai/gpt-image-2.5-flare-c')).toBe('gemini-nano-banana-2.1-preview');
     expect(heroFallbackModel('gemini-nano-banana-2.1-preview')).toBeUndefined();
   });
   it('只有断连 / 超时才换，余额不足不换', () => {

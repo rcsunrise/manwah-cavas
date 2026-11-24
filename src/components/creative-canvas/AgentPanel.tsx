@@ -544,6 +544,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   onEditImage
 }) => {
   // 智能对话是最常用入口，默认打开；记住用户上次停留的分页
+  // 切回对话页 / 新消息到达时停在最底部（切页会重建内容，滚动位置回到顶部）
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const scrollChatToBottom = useCallback(() => {
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+  }, []);
   const [activeTab, setActiveTabState] = useState<AgentPanelTab>(() => {
     try {
       const saved = localStorage.getItem('creative-canvas:agent-panel-tab');
@@ -1483,6 +1490,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   );
   const genImgData = selectedGenImgNode?.data;
 
+  useEffect(() => {
+    if (activeTab === 'chat' && !isPanelCollapsed) scrollChatToBottom();
+  }, [activeTab, isPanelCollapsed, scrollChatToBottom]);
+  const chatCount = messages.length;
+  useEffect(() => {
+    const el = bodyScrollRef.current;
+    if (activeTab !== 'chat' || !el) return;
+    // 用户往上翻看时不打断；接近底部才跟随
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) scrollChatToBottom();
+  }, [chatCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isPanelCollapsed) {
     return (
       <aside className="relative w-14 h-full flex flex-col items-center py-4 bg-[#FDFBF7] border-l border-[#E5E0D8] shrink-0 z-10 shadow-sm select-none transition-all duration-300">
@@ -1669,7 +1687,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       </div>
 
       {/* Unified Scrollable Main Content Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 custom-scrollbar">
+      <div ref={bodyScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-4 custom-scrollbar">
         {/* Hidden File Input for Image Upload */}
         <input
           type="file"
