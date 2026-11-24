@@ -107,12 +107,13 @@ export function posterPromptTags(tp: any): PosterPromptTag[] {
     { label: '茶几靠近沙发', text: '调整这张画面：茶几移到沙发正前方约一臂距离，换成简洁的展厅常规款茶几' },
     { label: '换抱枕图案', text: '调整这张画面：沙发上两个相同的抱枕换成（写明图案和颜色）' },
     { label: '换个场景', text: '调整这张画面：背景换成（写明场景，如清晨湖边玻璃屋），保持明亮开阔' },
-    { label: '细节背景与主画面一致', text: '调整这张画面：海报细节图的背景要与主画面的背景一致' }
+    { label: '细节格背景与主画面一致', text: '调整这张画面：底部每个细节格画面里沙发局部背后的背景（地面、墙面、环境），要与上方主画面的场景背景一致，不要白底或其他场景' }
   );
-  // 只改底部三格细节文案：预填当前文案，用户改完发送即可（走 template_details，不重新生图、不扣点）
-  const details: any[] = Array.isArray(concept.details) ? concept.details.slice(0, 3) : [];
+  // 只改底部细节格文案（3–6 格）：预填当前文案，用户改完发送即可（走 template_details，不重新生图、不扣点）
+  const details: any[] = Array.isArray(concept.details) ? concept.details.slice(0, 6) : [];
   if (details.length) {
-    const pos = ['左格', '中格', '右格'];
+    // 3 格沿用左/中/右；4–6 格按从左到右第几格
+    const pos = details.length === 3 ? ['左格', '中格', '右格'] : details.map((_, i) => `第${i + 1}格`);
     const cur = details.map((d, i) => `${pos[i]}「${d?.title || ''}｜${d?.desc || ''}」`).join('，');
     tags.push({ label: '改细节文案', text: `只改底部细节格文案（画面和细节图不变）：${cur}。改成：` });
   }
