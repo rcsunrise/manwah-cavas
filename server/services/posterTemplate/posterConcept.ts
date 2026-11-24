@@ -370,6 +370,29 @@ export function wantsPerson(hint: string | undefined): boolean {
   return /人物|模特|真人|人像|有人|一位|一个人|男士|女士|女性|男性|小孩|孩子|一家/.test(text);
 }
 
+/** GB2312 收录的 6763 个规范汉字；海报文案里出现这之外的汉字（繁体、生僻字）基本是模型吐出的乱码 */
+let GB2312_HAN: Set<string> | null = null;
+function gb2312Han(): Set<string> {
+  if (GB2312_HAN) return GB2312_HAN;
+  const set = new Set<string>();
+  const dec = new TextDecoder('gb18030');
+  for (let hi = 0xb0; hi <= 0xf7; hi++) {
+    for (let lo = 0xa1; lo <= 0xfe; lo++) set.add(dec.decode(Uint8Array.from([hi, lo])));
+  }
+  GB2312_HAN = set;
+  return set;
+}
+
+/** 文案含非规范汉字时视为乱码，返回 undefined（交给各字段的兜底） */
+export function rejectGarbled(text: unknown): unknown {
+  if (typeof text !== 'string') return text;
+  const set = gb2312Han();
+  for (const ch of text) {
+    if (/\p{Script=Han}/u.test(ch) && !set.has(ch)) return undefined;
+  }
+  return text;
+}
+
 export function sanitizeConcept(raw: any): PosterConcept {
   const details: PosterDetailConcept[] = Array.isArray(raw?.details)
     ? raw.details
@@ -382,8 +405,8 @@ export function sanitizeConcept(raw: any): PosterConcept {
           return {
             key,
             locate: cut(d.locate, 80, fallback.locate),
-            title: cut(d.title, 7, fallback.title),
-            desc: cutDetailDesc(d.desc, 40, fallback.desc),
+            title: cut(rejectGarbled(d.title), 7, fallback.title),
+            desc: cutDetailDesc(rejectGarbled(d.desc), 40, fallback.desc),
             ...(Number.isInteger(photo) && photo > 0 && photo <= 10 ? { photo } : {})
           };
         })
@@ -397,9 +420,9 @@ export function sanitizeConcept(raw: any): PosterConcept {
   while (details.length < MIN_DETAIL_CELLS) details.push({ ...DEFAULT_DETAILS[details.length] });
 
   return {
-    name: cut(raw?.name, 4, '舒境'),
-    subtitle: cutAtPunctuation(raw?.subtitle, 13, ''),
-    inspiration: cutAtPunctuation(raw?.inspiration, 32, ''),
+    name: cut(rejectGarbled(raw?.name), 4, '舒境'),
+    subtitle: cutAtPunctuation(rejectGarbled(raw?.subtitle), 13, ''),
+    inspiration: cutAtPunctuation(rejectGarbled(raw?.inspiration), 32, ''),
     idea: cut(raw?.idea, 60, ''),
     scene: cut(raw?.scene, 520, '现代简约客厅，大面积落地窗引入柔和自然光，浅色石材圆几与羊毛地毯，一对同款抱枕，整体色调温润干净。'),
     signature: cut(raw?.signature, 90, ''),

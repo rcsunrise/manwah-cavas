@@ -49,3 +49,12 @@ describe('细节格 3–6 格', () => {
     }
   }, 60000);
 });
+
+describe('文案乱码过滤', () => {
+  it('含繁体/生僻乱码的灵感句被丢弃，正常文案保留', () => {
+    const c = sanitizeConcept({ name: '展澜', subtitle: '舒展双腿，静听海浪', inspiration: '灵感湔于坤蕆皺爱与潷滇的舒缓节奏' });
+    expect(c.inspiration).toBe('');
+    expect(c.subtitle).toBe('舒展双腿，静听海浪');
+    expect(c.name).toBe('展澜');
+  });
+});
