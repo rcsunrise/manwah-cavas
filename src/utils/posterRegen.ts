@@ -106,7 +106,8 @@ export function posterPromptTags(tp: any): PosterPromptTag[] {
     { label: '画面更明亮', text: '调整这张画面：整体提亮，用白天的明亮光线照亮沙发，让产品更清晰、更突出' },
     { label: '茶几靠近沙发', text: '调整这张画面：茶几移到沙发正前方约一臂距离，换成简洁的展厅常规款茶几' },
     { label: '换抱枕图案', text: '调整这张画面：沙发上两个相同的抱枕换成（写明图案和颜色）' },
-    { label: '换个场景', text: '调整这张画面：背景换成（写明场景，如清晨湖边玻璃屋），保持明亮开阔' }
+    { label: '换个场景', text: '调整这张画面：背景换成（写明场景，如清晨湖边玻璃屋），保持明亮开阔' },
+    { label: '细节背景与主画面一致', text: '调整这张画面：海报细节图的背景要与主画面的背景一致' }
   );
   // 只改底部三格细节文案：预填当前文案，用户改完发送即可（走 template_details，不重新生图、不扣点）
   const details: any[] = Array.isArray(concept.details) ? concept.details.slice(0, 3) : [];
