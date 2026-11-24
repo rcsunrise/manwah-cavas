@@ -3288,7 +3288,10 @@ export function useCreativeCanvasWorkspace(
         resolution: templateA4K ? '4K' : (selectedResolution || '2K')
       });
       const heroUrl = await storeImage(hero.imageDataUrl);
-      finishTaskCard(taskId, 'running', `3/3 「${concept.name}」：定位细节部位并排版…`);
+      const fallbackNote = hero.fallbackFrom
+        ? `\n（${String(hero.fallbackFrom).replace(/^openai\//, '')} 超时被上游断开，已自动改用 ${String(hero.model).replace(/^openai\//, '')} 出图）`
+        : '';
+      finishTaskCard(taskId, 'running', `3/3 「${concept.name}」：定位细节部位并排版…${fallbackNote}`);
 
       const composed = await postJson('/api/poster-templates/template-a/compose', { heroImage: heroUrl, concept, attachments, outputScale: templateA4K ? 2 : 1 });
       const posterUrl = await storeImage(composed.imageDataUrl);
@@ -3349,7 +3352,7 @@ export function useCreativeCanvasWorkspace(
       }
 
       const warnings: string[] = Array.isArray(composed.warnings) ? composed.warnings : [];
-      finishTaskCard(taskId, 'done', warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布', { nodeId: resultNodeId });
+      finishTaskCard(taskId, 'done', (warnings.length ? `已完成，${warnings.join('；')}` : '已完成，海报已加入画布') + fallbackNote, { nodeId: resultNodeId });
       postImageResultToChat({
         imageUrl: posterUrl,
         title: `4/3 产品海报 · ${concept.name}`,

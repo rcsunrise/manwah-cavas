@@ -38,6 +38,18 @@ router.use(optionalAuthenticateToken as any);
 
 const DEFAULT_HERO_MODEL = 'gpt-image-2.6-flare-c';
 
+/** 主场景生图断连时的备用模型：2.6 系列换 2.5（前者常超过上游约 60 秒上限，后者一般 30 秒内出图） */
+export function heroFallbackModel(model: string): string | undefined {
+  const bare = model.replace(/^openai\//, '');
+  if (bare === 'gpt-image-2.6-flare-c' || bare === 'gpt-image-2.6-sunburst-c') return 'gpt-image-2.5-flare-c';
+  return undefined;
+}
+
+/** 上游断连 / 超时（可换模型重试），区别于余额不足、内容审核这类换模型也没用的错误 */
+export function isUpstreamDrop(err: any): boolean {
+  return /UND_ERR_SOCKET|fetch failed|socket hang up|ECONNRESET|connection dropped|timed? ?out|aborted|upstream_unavailable|502|504/i.test(String(err?.message || err));
+}
+
 function userIdOf(req: AuthenticatedRequest): string {
   return req.user?.id || (req.headers['x-user-uuid'] as string) || 'system';
 }
@@ -168,10 +180,10 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       hasReference: Boolean(referenceJpeg) || sceneAttachments.length > 0,
       detailPhotos: detailAttachments.length
     });
-    const usedModel = typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_HERO_MODEL;
-    const image = await requestGatewayImage({
+    const requestedModel = typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_HERO_MODEL;
+    const heroRequest = (m: string) => requestGatewayImage({
       prompt,
-      model: usedModel,
+      
       images: [
         { data: `data:image/jpeg;base64,${productJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' },
         ...(referenceJpeg ? [{ data: `data:image/jpeg;base64,${referenceJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' }] : []),
@@ -182,8 +194,21 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       resolution: resolution === '1K' || resolution === '4K' ? resolution : '2K',
       userId: userIdOf(req),
       deptId: req.headers['x-dept-id'] as string | undefined,
-      timeoutMs: 300000
-    });
+      timeoutMs: 300000, model: m });
+    let usedModel = requestedModel;
+    let fallbackFrom: string | undefined;
+    let image: Buffer;
+    try {
+      image = await heroRequest(usedModel);
+    } catch (err: any) {
+      // 上游约 60 秒断连 / 超时：换备用模型重试一次（断开那次上游可能已计费，所以只重试一次）
+      const fallback = heroFallbackModel(requestedModel);
+      if (!fallback || !isUpstreamDrop(err)) throw err;
+      console.warn(`[PosterTemplate] ${requestedModel} 生成主场景断连（${err?.message || err}），改用 ${fallback} 重试一次`);
+      fallbackFrom = requestedModel;
+      usedModel = fallback;
+      image = await heroRequest(fallback);
+    }
     // 主场景底图用高质量 JPEG 传输（PNG 约 3.7MB → JPEG 约 0.5MB）：浏览器下载、上传存储、排版时再下载，三趟都省
     const jpg = await sharp(image, { failOn: 'none' }).rotate().jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toBuffer();
     const meta = await sharp(jpg).metadata();
@@ -193,6 +218,7 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       width: meta.width,
       height: meta.height,
       model: usedModel,
+      fallbackFrom,
       prompt
     });
   } catch (err: any) {

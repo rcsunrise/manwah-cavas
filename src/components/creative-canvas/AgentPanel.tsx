@@ -2408,6 +2408,20 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             </div>
 
             {!agentRun?.plan ? (
+              <>
+              {/* 没有企划也能选出图模型：4/3 产品海报、氛围海报都用这里选的模型 */}
+              <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] space-y-2">
+                <p className="text-[11px] text-stone-500">「4/3 产品海报」「氛围海报」用这里选的出图模型；GPT 2.6 超时会自动改用 GPT 2.5 重试一次。</p>
+                <EngineConfigSelector
+                  selectedModel={model}
+                  setSelectedModel={setModel}
+                  selectedResolution={resolution}
+                  setSelectedResolution={setResolution}
+                  onPreviewGptImage={onPreviewGptImage}
+                  templateA4K={templateA4K}
+                  setTemplateA4K={setTemplateA4K}
+                />
+              </div>
               <div className="p-6 bg-white rounded-2xl border border-[#E5E0D8] text-center space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-[#F9F5EF] text-[#B28C5A] flex items-center justify-center mx-auto border border-[#E5E0D8]">
                   <Sparkles className="w-6 h-6" />
@@ -2427,6 +2441,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                   <span>前往企划配置</span>
                 </button>
               </div>
+              </>
             ) : (
               <>
                 {/* Scene Selector Pills (分镜快速切换导航条) */}
