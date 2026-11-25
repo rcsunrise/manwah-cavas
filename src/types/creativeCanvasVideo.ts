@@ -100,6 +100,9 @@ export interface VideoDirectorPlan {
   productFacts?: VideoProductFacts;
 }
 
+/** 参考图用法：缺省为首帧图生视频；multi_reference 为多参考图（主体/场景/细节）一次生成 */
+export type VideoReferenceMode = 'multi_reference';
+
 export interface VideoCapability {
   key: string;                 // e.g. 'doubao-seedance-1-0-pro-fast'
   displayName: string;         // e.g. 'Seedance 1.0 Pro Fast'
@@ -143,6 +146,9 @@ export interface VideoJob {
   sourceImageUrl?: string | null;
   /** 首尾帧模式下的尾帧图 */
   lastFrameImageUrl?: string | null;
+  /** 多参考图模式（multi_reference）：按顺序即提示词里的图1、图2…… */
+  referenceImageUrls?: string[] | null;
+  referenceMode?: VideoReferenceMode | null;
   assetVersionId?: string | null;
   posterAssetVersionId?: string | null;
   videoSettings: VideoSettings;
@@ -177,6 +183,9 @@ export interface VideoSubmitPayload {
   sourceImageUrl?: string;
   /** 首尾帧模式下的尾帧图（仅支持 first_last_frame 的模型生效） */
   lastFrameImageUrl?: string;
+  /** 多参考图模式：多张图一起作为参考（如海报主场景 + 细节特写），不再当首帧 */
+  referenceImageUrls?: string[];
+  referenceMode?: VideoReferenceMode;
   planVersionId?: string;
   shotId?: string;
   mode: VideoCreationMode;

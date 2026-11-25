@@ -419,8 +419,58 @@ export default function CreativeCanvasPage() {
 
   const effectiveCanvasId = canvasId || workspaceId || 'canvas-default';
 
+
   const rawNodesRef = React.useRef<any[]>(rawNodes);
   rawNodesRef.current = rawNodes;
+
+  const handleJobSubmittedRef = React.useRef(handleJobSubmitted);
+  handleJobSubmittedRef.current = handleJobSubmitted;
+
+  // 模板 A 海报 → 15 秒成片：主场景原图 + 细节格裁切作为多参考图，一次生成（sd-2.5）。
+  // 进度与错误写在海报节点的 data.posterFilm 上；任务提交后在海报旁落视频任务节点，后续进度走视频任务同步。
+  const handleGeneratePosterFilm = React.useCallback(async (nodeId: string) => {
+    const node = rawNodesRef.current.find((n: any) => n.id === nodeId);
+    const tp = node?.data?.templatePoster;
+    const heroImageUrl = node?.data?.heroImageUrl as string | undefined;
+    const setFilm = (posterFilm: any) =>
+      setNodes(prev => prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, posterFilm } } : n)));
+    if (!tp || tp.template !== 'A' || !heroImageUrl) {
+      setFilm({ status: 'error', message: '这张海报没有保存主场景原图，无法生成成片，请重新生成海报后再试' });
+      return;
+    }
+    setFilm({ status: 'preparing', startedAt: Date.now() });
+    try {
+      const conceptDetails: any[] = Array.isArray(tp.concept?.details) ? tp.concept.details : [];
+      const details = (Array.isArray(tp.details) ? tp.details : [])
+        .map((d: any, i: number) => ({ box: d?.box, title: conceptDetails[i]?.title || '' }))
+        .filter((d: any) => d.box);
+      const prepRes = await fetch('/api/poster-templates/template-a/film-refs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // person 为空 = 海报没有模特，成片里不加人物镜头
+        body: JSON.stringify({ heroImageUrl, details, productName: tp.concept?.name || '', person: tp.concept?.person || '' })
+      });
+      const prep = await prepRes.json().catch(() => ({}));
+      if (!prepRes.ok || !prep?.success) throw new Error(prep?.error?.message || `参考图准备失败 (${prepRes.status})`);
+
+      const { job } = await VideoGenerationService.submitGeneration({
+        canvasId: effectiveCanvasId,
+        sourceNodeId: nodeId,
+        mode: 'product_showcase',
+        modelKey: prep.modelKey,
+        settings: prep.settings,
+        prompt: prep.prompt,
+        referenceImageUrls: prep.referenceImageUrls,
+        referenceMode: 'multi_reference'
+      });
+      handleJobSubmittedRef.current(job, nodeId);
+      setFilm({ status: 'submitted', jobId: job.id });
+    } catch (err: any) {
+      setFilm({ status: 'error', message: err?.message || '成片提交失败' });
+    }
+  }, [effectiveCanvasId, setNodes]);
+  const generatePosterFilmRef = React.useRef(handleGeneratePosterFilm);
+  generatePosterFilmRef.current = handleGeneratePosterFilm;
   const markCanvasDirtyRef = React.useRef(markCanvasDirty);
   markCanvasDirtyRef.current = markCanvasDirty;
   const postVideoResultToChatRef = React.useRef(postVideoResultToChat);
@@ -624,6 +674,9 @@ export default function CreativeCanvasPage() {
             setNodes(prev => prev.map(n => n.id === node.id ? { ...n, data: { ...n.data, ...updated } } : n));
           },
           // 模板海报（A/B/C）不是企划屏出图结果，不能挂“按屏出纯净底图/带字海报”的回调，否则点再次生成会变成出纯净底图
+          ...(node.data?.templatePoster?.template === 'A' && node.data?.heroImageUrl
+            ? { onGenerateFilm: () => generatePosterFilmRef.current(node.id) }
+            : {}),
           ...(node.data?.templatePoster
             ? {}
             : {

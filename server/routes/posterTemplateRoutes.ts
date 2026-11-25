@@ -7,6 +7,14 @@ import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept, clampDetailCount, MAX_DETAIL_CELLS } from '../services/posterTemplate/posterConcept';
 import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, templateADetailAspect, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
+import {
+  buildPosterFilmPrompt,
+  isNormBox,
+  POSTER_FILM_DURATION,
+  POSTER_FILM_MODEL_KEY,
+  POSTER_FILM_RESOLUTION,
+  preparePosterFilmReferences
+} from '../services/posterTemplate/posterFilm';
 import { buildFabricPillowPrompt, FABRIC_SOFA_PROMPT, generateFabricConcept, sanitizeFabricConcept } from '../services/posterTemplate/fabricConcept';
 import { generateTextileConcept, sanitizeTextileConcept } from '../services/posterTemplate/textileConcept';
 import { composeTextilePoster, deriveBackground, TEXTILE_MAX_SWATCHES, textileLayoutOf, textileMoodAspectFor } from '../services/posterTemplate/textilePoster';
@@ -434,6 +442,55 @@ async function fabricImage(
   const meta = await sharp(jpg).metadata();
   return { imageDataUrl: `data:image/jpeg;base64,${jpg.toString('base64')}`, width: meta.width, height: meta.height, model };
 }
+
+/**
+ * POST /api/poster-templates/template-a/film-refs
+ * 模板 A 海报 → 成片的参考图与提示词：主场景原图（不带字）+ 细节格高清裁切，上传成公网直链。
+ * 不出视频、不扣点；前端拿结果走 /api/gateway/video/generations（referenceMode=multi_reference）提交。
+ *   body: { heroImageUrl, details: [{ box, title }], productName?, person? }
+ *   person 取海报概念的 concept.person：空串表示海报没有人物，成片里也不安排人物镜头
+ */
+router.post('/template-a/film-refs', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { heroImageUrl, details, productName, person } = req.body || {};
+    const hero = await loadImage(heroImageUrl, '主场景原图');
+    const list = (Array.isArray(details) ? details : [])
+      .filter((d: any) => d && isNormBox(d.box))
+      .slice(0, MAX_DETAIL_CELLS)
+      .map((d: any) => ({ box: d.box, title: typeof d.title === 'string' ? d.title.trim().slice(0, 12) : '' }));
+    // 图1 里有没有人以实际画面为准：concept.person 只记录出图时的设定，局部重绘加了人它不知道。
+    // 视觉模型看不了时退回 concept.person（默认空 = 没有人物）
+    let heroPerson = typeof person === 'string' ? person.slice(0, 80) : '';
+    try {
+      const { details: found } = await locateDetails(
+        hero,
+        [{ key: 'person', locate: '画面里的人物，框住整个人（头部、身体和衣服都要框进来）；画面里没有人就框左上角很小的一点' }],
+        userIdOf(req)
+      );
+      const d = found[0];
+      if (d?.source === 'vision') {
+        const hasPerson = d.box.width * d.box.height >= 0.01;
+        heroPerson = hasPerson ? heroPerson || '图1里那位人物' : '';
+      }
+    } catch (err: any) {
+      console.warn('[PosterTemplate] 成片人物检测失败，按概念设定处理:', err?.message || err);
+    }
+    const referenceImageUrls = await preparePosterFilmReferences(hero, list);
+    res.json({
+      success: true,
+      referenceImageUrls,
+      prompt: buildPosterFilmPrompt(list.map(d => d.title), POSTER_FILM_DURATION, {
+        productName: typeof productName === 'string' ? productName.slice(0, 12) : '',
+        person: heroPerson
+      }),
+      hasPerson: Boolean(heroPerson),
+      modelKey: POSTER_FILM_MODEL_KEY,
+      settings: { durationSeconds: POSTER_FILM_DURATION, resolution: POSTER_FILM_RESOLUTION, ratio: '16:9', audioMode: 'native' }
+    });
+  } catch (err: any) {
+    sendError(res, err, '成片参考图准备失败');
+  }
+});
 
 router.post('/fabric/concept', async (req: AuthenticatedRequest, res: Response) => {
   try {

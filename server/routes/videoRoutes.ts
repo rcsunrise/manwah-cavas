@@ -320,7 +320,8 @@ router.post('/api/gateway/video/expand-prompt', async (req: Request, res: Respon
  * POST /api/gateway/video/generations
  * Submits a new generation task with strict idempotency
  */
-router.post('/api/gateway/video/generations', async (req: Request, res: Response) => {
+// 解析登录态：任务按用户所在部门的 API Key 提交与查询（未登录才回退全站 Key）
+router.post('/api/gateway/video/generations', optionalAuthenticateToken as any, async (req: Request, res: Response) => {
   try {
     const idempotencyKey = (req.headers['idempotency-key'] as string) || req.body.idempotencyKey;
     if (!idempotencyKey) {

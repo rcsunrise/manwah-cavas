@@ -62,7 +62,37 @@ export interface NormalizedVideoInput {
   referenceImageUrls?: string[];
   /** 首尾帧模式的尾帧图 */
   lastFrameImageUrl?: string;
+  /** multi_reference：referenceImageUrls 全部作为参考图（role=reference_image），不当首帧 */
+  referenceMode?: 'multi_reference';
   settings: VideoSettings;
+}
+
+/** 豆包多参考图上限（sd-2.0 最多 9 张，sd-2.5 最多 30 张；统一按 9 张收口） */
+export const MAX_MULTI_REFERENCE_IMAGES = 9;
+
+/**
+ * 豆包兼容格式的多参考图请求体：上游（火山）要求每张图标注 role，多参考图用 reference_image；
+ * 只放 metadata.ratio 时出过竖屏，顶层再放一份 ratio。
+ */
+export function buildMultiReferenceRequest(exactModelId: string, input: NormalizedVideoInput, imageUrls: string[]): SubmitRequest {
+  const ratio = input.settings.ratio || '16:9';
+  return {
+    path: '/v1/video/generations',
+    body: {
+      model: exactModelId,
+      prompt: input.prompt,
+      duration: input.settings.durationSeconds || 5,
+      ratio,
+      metadata: {
+        resolution: (input.settings.resolution || '720p').toLowerCase(),
+        ratio,
+        generate_audio: input.settings.audioMode === 'native',
+        watermark: false,
+        omni_reference_task_type: 'auto'
+      },
+      references: imageUrls.map(url => ({ type: 'image_url', url, role: 'reference_image' }))
+    }
+  };
 }
 
 export interface SubmitResult {
@@ -273,6 +303,15 @@ export class VectorEngineVideoAdapter {
    */
   public static validate(input: NormalizedVideoInput): { valid: boolean; error?: string } {
     const capability = resolveVideoCapability(input.modelKey);
+    if (input.referenceMode === 'multi_reference') {
+      if (!capability.modes.includes('multi_reference')) {
+        return { valid: false, error: `模型 ${capability.displayName} 不支持多参考图生成` };
+      }
+      const n = input.referenceImageUrls?.length || 0;
+      if (n === 0) return { valid: false, error: '多参考图生成至少需要一张参考图' };
+      if (n > MAX_MULTI_REFERENCE_IMAGES) return { valid: false, error: `多参考图最多 ${MAX_MULTI_REFERENCE_IMAGES} 张，当前 ${n} 张` };
+      return validateVideoSettings(capability, input.settings, 0);
+    }
     // 尾帧单独按 first_last_frame 能力校验，不占参考图名额
     const count = (input.referenceImageUrls?.length || 0) + (input.sourceImageUrl ? 1 : 0);
     return validateVideoSettings(capability, input.settings, count);
@@ -318,6 +357,31 @@ export class VectorEngineVideoAdapter {
       throw new Error('MISSING_API_KEY: 未能读取到 API 凭证（全站配置读取失败或未配置），若密钥已配置多为网络抖动，请稍后重试');
     }
 
+    let request: SubmitRequest;
+    const protocol = resolveVideoProtocol(capability.exactModelId);
+    if (input.referenceMode === 'multi_reference') {
+      // 参考图原样转公网直链（不按画幅补边：参考图不是首帧，补边会把细节特写变成带边的小图）
+      const urls: string[] = [];
+      for (const raw of input.referenceImageUrls || []) {
+        urls.push(await VideoSourceImageResolver.resolveToPublicUrl(raw));
+      }
+      request = buildMultiReferenceRequest(capability.exactModelId, input, urls);
+    } else {
+      request = await this.buildSingleFrameRequest(capability, protocol, input, idempotencyKey);
+    }
+    const primary: ApiTarget = { baseUrl: cleanBaseUrl(config.baseUrl), apiKey: config.apiKey };
+
+    console.log(`[VectorEngineVideoAdapter] Submit ${input.referenceMode || protocol} task: POST ${request.path} model=${capability.exactModelId}`);
+    return this.postAndParse(primary, request, idempotencyKey, capability, protocol);
+  }
+
+  /** 首帧 / 首尾帧图生视频的请求体 */
+  private static async buildSingleFrameRequest(
+    capability: ReturnType<typeof resolveVideoCapability>,
+    protocol: VideoProtocol,
+    input: NormalizedVideoInput,
+    idempotencyKey: string
+  ): Promise<SubmitRequest> {
     const rawImageUrl = input.sourceImageUrl || input.referenceImageUrls?.[0];
     if (!rawImageUrl) {
       throw new Error('IMAGE_REQUIRED: 图生视频必须提供一张参考底图');
@@ -335,17 +399,22 @@ export class VectorEngineVideoAdapter {
     const firstFrameUrl = await VideoSourceImageResolver.resolveFrameForRatio(rawImageUrl, frameRatio);
     const lastFrameUrl = rawLastFrame ? await VideoSourceImageResolver.resolveFrameForRatio(rawLastFrame, frameRatio) : undefined;
 
-    const protocol = resolveVideoProtocol(capability.exactModelId);
-    const request = buildSubmitRequest(protocol, capability.exactModelId, input, firstFrameUrl, lastFrameUrl, idempotencyKey);
-    const primary: ApiTarget = { baseUrl: cleanBaseUrl(config.baseUrl), apiKey: config.apiKey };
+    return buildSubmitRequest(protocol, capability.exactModelId, input, firstFrameUrl, lastFrameUrl, idempotencyKey);
+  }
 
-    console.log(`[VectorEngineVideoAdapter] Submit ${protocol} task: POST ${request.path} model=${capability.exactModelId}`);
+  private static async postAndParse(
+    primary: ApiTarget,
+    request: SubmitRequest,
+    idempotencyKey: string,
+    capability: ReturnType<typeof resolveVideoCapability>,
+    protocol: VideoProtocol
+  ): Promise<SubmitResult> {
     let response = await this.postJson(primary, request.path, request.body, idempotencyKey);
 
     // 部门专属令牌无渠道 (503) 或限流 (429)：请求确定未被受理，故障转移到全站令牌重试一次
     if (response.status === 503 || response.status === 429) {
       const fallbackConfig = await resolveApiConfig('system');
-      if (fallbackConfig.apiKey && fallbackConfig.apiKey !== config.apiKey) {
+      if (fallbackConfig.apiKey && fallbackConfig.apiKey !== primary.apiKey) {
         console.log(`[VectorEngineVideoAdapter] Primary token returned ${response.status}, failing over to system token`);
         response = await this.postJson(
           { baseUrl: cleanBaseUrl(fallbackConfig.baseUrl), apiKey: fallbackConfig.apiKey },

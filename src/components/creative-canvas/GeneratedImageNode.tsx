@@ -23,7 +23,8 @@ import {
   FileDown,
   ChevronRight,
   Sparkles as SparklesIcon,
-  Paintbrush
+  Paintbrush,
+  Clapperboard
 } from 'lucide-react';
 import { GeneratedImageNodeData, GeneratedImageNodeVersion } from '../../types/creativeCanvas';
 import { ConsistencyReportPanel } from './ConsistencyReportPanel';
@@ -251,6 +252,12 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
     onGeneratePoster,
     onRegenerate
   } = data;
+  // 模板 A 海报 → 15 秒成片（页面只给存了主场景原图的模板 A 节点挂这个回调）
+  const onGenerateFilm = (data as any).onGenerateFilm as (() => void) | undefined;
+  const posterFilm = (data as any).posterFilm as { status: 'preparing' | 'submitted' | 'error'; message?: string; startedAt?: number } | undefined;
+  // posterFilm 会随画布保存：刷新打断的“准备中”超过 3 分钟视为失效，不再锁住按钮
+  const filmPreparing = posterFilm?.status === 'preparing' && Date.now() - (posterFilm.startedAt || 0) < 3 * 60 * 1000;
+  const [showFilmConfirm, setShowFilmConfirm] = useState(false);
 
   const [resolvedCanvasId, setResolvedCanvasId] = useState<string>('canvas-default');
 
@@ -807,6 +814,35 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                 </button>
               </div>
             )}
+            {onGenerateFilm && showFilmConfirm && (
+              <div className="mb-1 p-2 rounded-lg border border-[#B28C5A]/40 bg-[#FAF8F5] text-[10px] text-stone-700 space-y-1.5" onClick={e => e.stopPropagation()}>
+                <div className="font-bold text-[#8C6F43]">生成 15 秒成片</div>
+                <div className="text-stone-500 leading-relaxed">
+                  以主场景原图 + 底部细节图为参考，一次生成横屏 1080p、带环境音的成片：全景 → 逐个细节特写 → 中景（主场景里有人物时人物体验，没有就不加人）→ 全景收尾，画面不出字。
+                  使用豆包 Seedance 2.5，按部门令牌计费，约 3 分钟出片。
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowFilmConfirm(false);
+                      onGenerateFilm();
+                    }}
+                    className="flex-1 py-1 rounded-md bg-[#2C2A29] hover:bg-[#1A1818] text-white font-bold"
+                  >
+                    确认生成
+                  </button>
+                  <button type="button" onClick={() => setShowFilmConfirm(false)} className="px-2 py-1 rounded-md border border-stone-300 text-stone-600 hover:bg-white">
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+            {onGenerateFilm && posterFilm && posterFilm.status !== 'preparing' && !showFilmConfirm && (
+              <div className={`mb-1 px-2 py-1 rounded-md text-[10px] ${posterFilm.status === 'error' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                {posterFilm.status === 'error' ? `成片失败：${posterFilm.message || '未知错误'}` : '成片任务已提交，进度见右侧视频节点'}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-[#E5E0D8]/40 [&_button]:whitespace-nowrap [&_button]:shrink-0">
               <button
                 onClick={(e) => {
@@ -860,6 +896,21 @@ export const GeneratedImageNode: React.FC<GeneratedImageNodeProps> = ({ id, data
                   <RefreshCw className="w-3 h-3 text-[#B28C5A]" />
                   <span>再次生成</span>
                   <ChevronDown className="w-2.5 h-2.5" />
+                </button>
+              )}
+
+              {onGenerateFilm && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFilmConfirm(v => !v);
+                  }}
+                  disabled={filmPreparing}
+                  className="py-1 px-1.5 rounded-lg text-[10px] font-bold bg-[#2C2A29] hover:bg-[#1A1818] disabled:opacity-60 text-white flex items-center justify-center gap-1 shadow-xs transition-all"
+                  title="用这张海报的主场景和细节图，一次生成 15 秒横屏成片（环境 + 产品细节，画面无字）"
+                >
+                  {filmPreparing ? <Loader2 className="w-3 h-3 animate-spin text-[#B28C5A]" /> : <Clapperboard className="w-3 h-3 text-[#B28C5A]" />}
+                  <span>{filmPreparing ? '准备中' : '生成成片'}</span>
                 </button>
               )}
 

@@ -5,7 +5,7 @@ import '../server/loadEnv';
 import { resolveApiConfig } from '../server/ai/providerConfig';
 import { getAvailableVideoCapabilities } from '../server/services/video/videoCapabilityRegistry';
 
-const VIDEO_MODEL_PATTERN = /video|seedance|sd-|wan|kling|grok-imagine|minimax|hailuo|vidu|veo/i;
+const VIDEO_MODEL_PATTERN = /video|seedance|sd-|wan|kling|grok-imagine|minimax|hailuo|vidu|veo|omni/i;
 
 async function main() {
   const config = await resolveApiConfig('system');

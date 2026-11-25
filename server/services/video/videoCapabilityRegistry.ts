@@ -142,7 +142,8 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
     exactModelId: 'sd-2.5',
     enabled: true,
     tested: true,
-    modes: ['image_to_video'],
+    // multi_reference 已实测（2026-11-25）：主场景 + 4 张细节一次出 15 秒 1080p 横屏
+    modes: ['image_to_video', 'multi_reference'],
     variants: [
       {
         mode: 'image_to_video',
@@ -175,6 +176,14 @@ export const VIDEO_CAPABILITY_REGISTRY: Record<string, VideoCapability> = {
         ratios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
         maxImages: 1,
         audioModes: ['none']
+      },
+      {
+        mode: 'multi_reference',
+        durationSeconds: 15,
+        resolution: '1080p',
+        ratios: ['16:9', '9:16'],
+        maxImages: 9,
+        audioModes: ['none', 'native']
       }
     ],
     supportsCancel: true,
@@ -464,7 +473,9 @@ export function validateVideoSettings(
     }
   }
 
-  const maxImages = Math.max(...capability.variants.map(v => v.maxImages));
+  // 多参考图的张数上限单独在适配器里校验，不放宽首帧 / 首尾帧模式的张数
+  const frameVariants = capability.variants.filter(v => v.mode !== 'multi_reference');
+  const maxImages = Math.max(...(frameVariants.length ? frameVariants : capability.variants).map(v => v.maxImages));
   if (imageCount > maxImages) {
     return {
       valid: false,

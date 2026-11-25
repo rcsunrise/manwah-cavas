@@ -193,6 +193,8 @@ export class VideoJobService {
           settings: payload.settings,
           shotId: payload.shotId,
           lastFrameImageUrl: payload.lastFrameImageUrl,
+          referenceImageUrls: payload.referenceImageUrls,
+          referenceMode: payload.referenceMode,
           sourceAssetVersionId: payload.sourceAssetVersionId
         })
       )
@@ -227,6 +229,8 @@ export class VideoJobService {
       sourceAssetVersionId: payload.sourceAssetVersionId,
       sourceImageUrl: payload.sourceImageUrl || null,
       lastFrameImageUrl: payload.lastFrameImageUrl || null,
+      referenceImageUrls: payload.referenceMode === 'multi_reference' ? (payload.referenceImageUrls || []).filter(Boolean) : null,
+      referenceMode: payload.referenceMode === 'multi_reference' ? 'multi_reference' : null,
       videoSettings: payload.settings,
       prompt: payload.prompt,
       progressPercent: 5,
@@ -261,6 +265,8 @@ export class VideoJobService {
           prompt: job.prompt,
           sourceImageUrl: job.sourceImageUrl || undefined,
           lastFrameImageUrl: job.lastFrameImageUrl || undefined,
+          referenceImageUrls: job.referenceImageUrls || undefined,
+          referenceMode: job.referenceMode || undefined,
           settings: job.videoSettings
         },
         idempKey,
