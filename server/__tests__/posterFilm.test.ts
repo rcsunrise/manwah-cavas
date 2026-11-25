@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
-import { buildPosterFilmPrompt, cropFilmDetails, isNormBox } from '../services/posterTemplate/posterFilm';
+import { buildPosterFilmPrompt, cropFilmDetails, heroFromEditedPoster, isNormBox } from '../services/posterTemplate/posterFilm';
 import { buildMultiReferenceRequest, VectorEngineVideoAdapter } from '../services/video/providers/vectorEngineAdapter';
 import { resolveVideoCapability, validateVideoSettings } from '../services/video/videoCapabilityRegistry';
 
@@ -47,6 +47,56 @@ describe('poster film · references', () => {
     expect(withGeneric).not.toContain('不要出现人物');
     const withDesc = buildPosterFilmPrompt([], 15, { person: '一位穿浅色针织衫的女性' });
     expect(withDesc).toContain('图1中的人物（一位穿浅色针织衫的女性）');
+  });
+});
+
+describe('poster film · edited poster → hero', () => {
+  // 原图 1600×900 纯蓝；改后海报 2048×1536：主场景区是原图 cover 上去，左上压了黑色标题，右侧加了一块红（改图加的人物）
+  const makePoster = async (sceneColor: string) => {
+    const regionH = Math.round(1536 * 0.765);
+    const scene = await sharp({ create: { width: 2048, height: regionH, channels: 3, background: sceneColor } })
+      .composite([
+        { input: { create: { width: 500, height: 160, channels: 3, background: '#000000' } }, left: 150, top: 110 },
+        { input: { create: { width: 200, height: 300, channels: 3, background: '#ff0000' } }, left: 1500, top: 500 }
+      ])
+      .png()
+      .toBuffer();
+    return sharp({ create: { width: 2048, height: 1536, channels: 3, background: '#f5f0e8' } }).composite([{ input: scene, left: 0, top: 0 }]).png().toBuffer();
+  };
+  const pixel = async (buf: Buffer, x: number, y: number) => {
+    const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+    const i = (y * info.width + x) * info.channels;
+    return [data[i], data[i + 1], data[i + 2]];
+  };
+
+  it('keeps edits outside the title zone and patches the title zone from the original hero', async () => {
+    const hero = await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#2050c0' } }).jpeg().toBuffer();
+    const out = await heroFromEditedPoster(hero, await makePoster('#2050c0'), { titleSide: 'left' });
+    expect(out).not.toBeNull();
+    const m = await sharp(out!).metadata();
+    expect([m.width, m.height]).toEqual([1600, 900]);
+    // 红块（改图加的人物）保留：海报 x≈1600,y≈650 → 原图坐标约 (1250, 510)
+    const [r, g] = await pixel(out!, 1250, 510);
+    expect(r).toBeGreaterThan(180);
+    expect(g).toBeLessThan(80);
+    // 标题黑块被原图蓝色补掉
+    const [tr, tg, tb] = await pixel(out!, 300, 150);
+    expect(tb).toBeGreaterThan(150);
+    expect(tr + tg).toBeLessThan(200);
+  });
+
+  it('fills the title zone by blurring when the whole scene changed', async () => {
+    const hero = await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#e0e0e0' } }).jpeg().toBuffer();
+    const out = await heroFromEditedPoster(hero, await makePoster('#202020'), { titleSide: 'left' });
+    // 换成暗场景后，标题区不能出现原图的浅灰补丁
+    const [v] = await pixel(out!, 300, 150);
+    expect(v).toBeLessThan(90);
+  });
+
+  it('returns null for an image that is not a 4:3 poster', async () => {
+    const hero = await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#2050c0' } }).jpeg().toBuffer();
+    const notPoster = await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#2050c0' } }).png().toBuffer();
+    expect(await heroFromEditedPoster(hero, notPoster)).toBeNull();
   });
 });
 

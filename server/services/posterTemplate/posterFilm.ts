@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { cropDetail, NormBox } from './detailCrop';
-import { templateADetailAspect } from './templateA';
+import { templateADetailAspect, TEMPLATE_A_HERO_RATIO } from './templateA';
 import { VideoSourceImageResolver } from '../video/videoSourceImageResolver';
 
 /**
@@ -26,6 +26,92 @@ export interface PosterFilmDetail {
 export function isNormBox(b: any): b is NormBox {
   return Boolean(b) && ['left', 'top', 'width', 'height'].every(k => typeof b[k] === 'number' && Number.isFinite(b[k]))
     && b.width > 0 && b.height > 0;
+}
+
+export interface EditedPosterInfo {
+  /** 标题在哪一侧（templatePoster.layout.titleSide） */
+  titleSide?: 'left' | 'right';
+  /** 标题区是否加了衬底（衬底更宽，要一起遮掉） */
+  scrim?: boolean;
+}
+
+/** 编辑后的场景和原图差多少（0–255 平均灰度差）算“整体换了场景”：超过就不拿原图补标题区，改用虚化 */
+const SCENE_CHANGED_DIFF = 28;
+
+/**
+ * 改过的海报（局部重绘、改画面、改字）→ 新的主场景原图。
+ * 节点里存的 heroImageUrl 还是改之前的，成片会丢掉改图加的人物、道具。这里把改后海报的主场景区按出图时的
+ * cover 映射放回原图坐标（细节框仍然对得上），标题区（含衬底）用原图像素补回去，参考图里不带字；
+ * 整体换了场景（夜景、换背景）时原图补丁会突兀，改用改后画面虚化填标题区。
+ * 改后图比例不是 4:3（不是这张模板海报）时返回 null，调用方继续用原图。
+ */
+export async function heroFromEditedPoster(originalHero: Buffer, editedPoster: Buffer, info: EditedPosterInfo = {}): Promise<Buffer | null> {
+  const pMeta = await sharp(editedPoster, { failOn: 'none' }).rotate().metadata();
+  const hMeta = await sharp(originalHero, { failOn: 'none' }).rotate().metadata();
+  const pw = pMeta.autoOrient?.width || pMeta.width || 0;
+  const ph = pMeta.autoOrient?.height || pMeta.height || 0;
+  const hw = hMeta.autoOrient?.width || hMeta.width || 0;
+  const hh = hMeta.autoOrient?.height || hMeta.height || 0;
+  if (!pw || !ph || !hw || !hh || Math.abs(pw / ph - 4 / 3) > 0.03) return null;
+
+  // 改后海报的主场景区（与 composeTemplateA 一致：顶部 76.5%，原图 cover 居中铺满）
+  const regionH = Math.round(ph * TEMPLATE_A_HERO_RATIO);
+  const s = Math.max(pw / hw, regionH / hh);
+  const cw = Math.min(hw, Math.round(pw / s));
+  const ch = Math.min(hh, Math.round(regionH / s));
+  const left = Math.max(0, Math.round((hw - cw) / 2));
+  const top = Math.max(0, Math.round((hh - ch) / 2));
+  const edited = await sharp(editedPoster, { failOn: 'none' })
+    .rotate()
+    .extract({ left: 0, top: 0, width: pw, height: regionH })
+    .resize(cw, ch, { fit: 'fill' })
+    .removeAlpha()
+    .png()
+    .toBuffer();
+
+  // 标题区（排版坐标里：靠一侧，宽 52%，有衬底时 60%；高 68%），换算到原图坐标
+  const side = info.titleSide === 'right' ? 'right' : 'left';
+  const zw = Math.round(cw * (info.scrim ? 0.6 : 0.52));
+  const zh = Math.round(ch * 0.68);
+  const zx = side === 'left' ? 0 : cw - zw;
+  const feather = Math.max(4, Math.round(cw * 0.03));
+
+  // 标题区以外的平均灰度差：小 = 只是局部改动（加人物、道具），大 = 整体换了场景
+  const SAMPLE_W = 96;
+  const SAMPLE_H = Math.max(1, Math.round((SAMPLE_W * ch) / cw));
+  const sample = (buf: Buffer) => sharp(buf).resize(SAMPLE_W, SAMPLE_H, { fit: 'fill' }).greyscale().raw().toBuffer();
+  const originalCrop = await sharp(originalHero, { failOn: 'none' }).rotate().extract({ left, top, width: cw, height: ch }).png().toBuffer();
+  const [a, b] = await Promise.all([sample(edited), sample(originalCrop)]);
+  const zxs = (zx / cw) * SAMPLE_W, zws = (zw / cw) * SAMPLE_W, zhs = (zh / ch) * SAMPLE_H;
+  let sum = 0, count = 0;
+  for (let y = 0; y < SAMPLE_H; y++) {
+    for (let x = 0; x < SAMPLE_W; x++) {
+      if (x >= zxs && x < zxs + zws && y < zhs) continue;
+      sum += Math.abs(a[y * SAMPLE_W + x] - b[y * SAMPLE_W + x]);
+      count++;
+    }
+  }
+  const sceneChanged = count > 0 && sum / count > SCENE_CHANGED_DIFF;
+
+  // 遮罩：标题区为黑（透明），其余为白（保留改后画面），边缘羽化
+  const mask = await sharp({ create: { width: cw, height: ch, channels: 3, background: '#ffffff' } })
+    .composite([{ input: { create: { width: zw, height: zh, channels: 3, background: '#000000' } }, left: zx, top: 0 }])
+    .blur(feather)
+    .toColourspace('b-w')
+    .png()
+    .toBuffer();
+  const editedWithHole = await sharp(edited).joinChannel(await sharp(mask).extractChannel(0).toBuffer()).png().toBuffer();
+
+  // 洞里填什么：局部改动 → 原图同位置；整体换场景 → 改后画面重度虚化（字被糊掉，色调跟新场景一致）
+  const filler = sceneChanged
+    ? await sharp(edited).blur(Math.max(20, Math.round(cw * 0.04))).png().toBuffer()
+    : originalCrop;
+  const patched = await sharp(filler).composite([{ input: editedWithHole }]).png().toBuffer();
+  return sharp(originalHero, { failOn: 'none' })
+    .rotate()
+    .composite([{ input: patched, left, top }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
 }
 
 /** 按细节框从主场景原图裁特写，过小的放大到短边 640（sd-2.5 拒收 9 万像素以下的参考图） */

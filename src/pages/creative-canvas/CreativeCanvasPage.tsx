@@ -448,7 +448,16 @@ export default function CreativeCanvasPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // person 为空 = 海报没有模特，成片里不加人物镜头
-        body: JSON.stringify({ heroImageUrl, details, productName: tp.concept?.name || '', person: tp.concept?.person || '' })
+        // 改过的海报（局部重绘 / 改画面 / 改字）：heroImageUrl 还是改之前的，带上当前图让服务端重建主场景
+        body: JSON.stringify({
+          heroImageUrl,
+          details,
+          productName: tp.concept?.name || '',
+          person: tp.concept?.person || '',
+          ...(node.data?.editedFrom || node.data?.textEditedFrom
+            ? { editedPosterUrl: node.data?.imageUrl, titleSide: tp.layout?.titleSide, scrim: tp.layout?.scrim === true }
+            : {})
+        })
       });
       const prep = await prepRes.json().catch(() => ({}));
       if (!prepRes.ok || !prep?.success) throw new Error(prep?.error?.message || `参考图准备失败 (${prepRes.status})`);

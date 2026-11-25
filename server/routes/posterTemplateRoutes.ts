@@ -9,6 +9,7 @@ import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhot
 import { composeTemplateA, templateADetailAspect, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
 import {
   buildPosterFilmPrompt,
+  heroFromEditedPoster,
   isNormBox,
   POSTER_FILM_DURATION,
   POSTER_FILM_MODEL_KEY,
@@ -447,13 +448,26 @@ async function fabricImage(
  * POST /api/poster-templates/template-a/film-refs
  * 模板 A 海报 → 成片的参考图与提示词：主场景原图（不带字）+ 细节格高清裁切，上传成公网直链。
  * 不出视频、不扣点；前端拿结果走 /api/gateway/video/generations（referenceMode=multi_reference）提交。
- *   body: { heroImageUrl, details: [{ box, title }], productName?, person? }
+ *   body: { heroImageUrl, details: [{ box, title }], productName?, person?, editedPosterUrl?, titleSide?, scrim? }
+ *   editedPosterUrl：改过的海报（局部重绘 / 改画面 / 改字）当前那张图；给了就用它重建主场景，改图加的人物、道具才进得了成片
  *   person 取海报概念的 concept.person：空串表示海报没有人物，成片里也不安排人物镜头
  */
 router.post('/template-a/film-refs', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { heroImageUrl, details, productName, person } = req.body || {};
-    const hero = await loadImage(heroImageUrl, '主场景原图');
+    const { heroImageUrl, details, productName, person, editedPosterUrl, titleSide, scrim } = req.body || {};
+    let hero = await loadImage(heroImageUrl, '主场景原图');
+    if (editedPosterUrl) {
+      try {
+        const rebuilt = await heroFromEditedPoster(hero, await loadImage(editedPosterUrl, '改后海报'), {
+          titleSide: titleSide === 'right' ? 'right' : 'left',
+          scrim: scrim === true
+        });
+        if (rebuilt) hero = rebuilt;
+      } catch (err: any) {
+        // 重建失败不挡成片：退回改之前的原图
+        console.warn('[PosterTemplate] 改后海报重建主场景失败，用原图:', err?.message || err);
+      }
+    }
     const list = (Array.isArray(details) ? details : [])
       .filter((d: any) => d && isNormBox(d.box))
       .slice(0, MAX_DETAIL_CELLS)
