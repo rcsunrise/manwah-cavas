@@ -88,7 +88,8 @@ export function buildMultiReferenceRequest(exactModelId: string, input: Normaliz
         ratio,
         generate_audio: input.settings.audioMode === 'native',
         watermark: false,
-        omni_reference_task_type: 'auto'
+        // 只有 sd-2.5 认这个字段，sd-2.0 会直接 400「当前不支持参数 omni_reference_task_type」
+        ...(/^sd-2\.5/.test(exactModelId) ? { omni_reference_task_type: 'auto' } : {})
       },
       references: imageUrls.map(url => ({ type: 'image_url', url, role: 'reference_image' }))
     }

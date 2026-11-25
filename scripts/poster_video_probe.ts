@@ -12,8 +12,10 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { supabaseAdmin } from '../src/lib/supabase';
-import { detailStripGeometry, TEMPLATE_A_SIZE, TEMPLATE_A_HERO_RATIO, templateADetailAspect } from '../server/services/posterTemplate/templateA';
-import { cropDetail, NormBox } from '../server/services/posterTemplate/detailCrop';
+import { detailStripGeometry, TEMPLATE_A_SIZE, TEMPLATE_A_HERO_RATIO } from '../server/services/posterTemplate/templateA';
+import { NormBox } from '../server/services/posterTemplate/detailCrop';
+import { buildPosterFilmPrompt, cropFilmDetails } from '../server/services/posterTemplate/posterFilm';
+import { buildMultiReferenceRequest } from '../server/services/video/providers/vectorEngineAdapter';
 
 const BUCKET = 'creative-canvas-assets';
 const POLL_MS = 10000;
@@ -76,27 +78,16 @@ async function cropDetailCells(poster: Buffer, count: number): Promise<Buffer[]>
 }
 
 /** 从画布里的模板 A 海报节点读取：不带字的主场景原图 + 细节框（与海报细节格同一套取景） */
-async function loadPosterNode(canvasId: string, nodeId: string): Promise<{ hero: Buffer; boxes: NormBox[] }> {
+async function loadPosterNode(canvasId: string, nodeId: string): Promise<{ hero: Buffer; boxes: NormBox[]; titles: string[]; name: string }> {
   const { data, error } = await supabaseAdmin.from('creative_canvases').select('nodes_draft').eq('id', canvasId).single();
   if (error) throw new Error(`读取画布失败: ${error.message}`);
   const node = ((data as any).nodes_draft || []).find((n: any) => n.id === nodeId);
   const heroUrl = node?.data?.heroImageUrl;
   if (!heroUrl) throw new Error(`节点 ${nodeId} 没有 heroImageUrl`);
-  const boxes = (node.data.templatePoster?.details || []).map((d: any) => d.box).filter(Boolean);
-  return { hero: await loadImage(heroUrl), boxes };
-}
-
-/** 从主场景原图按细节框裁高清特写；sd-2.5 参考图要求 ≥ 9 万像素，过小的放大到短边 640 */
-async function cropFromHero(hero: Buffer, boxes: NormBox[]): Promise<Buffer[]> {
-  const aspect = templateADetailAspect(boxes.length);
-  const out: Buffer[] = [];
-  for (const box of boxes) {
-    const png = await cropDetail(hero, box, aspect);
-    const m = await sharp(png).metadata();
-    const s = Math.max(1, 640 / Math.min(m.width!, m.height!));
-    out.push(await sharp(png).resize(Math.round(m.width! * s), Math.round(m.height! * s), { kernel: 'lanczos3' }).jpeg({ quality: 92 }).toBuffer());
-  }
-  return out;
+  const tp = node.data.templatePoster || {};
+  const boxes = (tp.details || []).map((d: any) => d.box).filter(Boolean);
+  const titles = (tp.concept?.details || []).map((d: any) => String(d?.title || ''));
+  return { hero: await loadImage(heroUrl), boxes, titles, name: String(tp.concept?.name || '') };
 }
 
 /** 上传到 Supabase 公共桶拿公网 URL（网关的 references 只收公网 URL）；网络常 ECONNRESET，重试 3 次 */
@@ -163,13 +154,17 @@ async function main() {
 
   // --node <画布ID>:<节点ID>：用节点里不带字的主场景原图 + 细节框裁高清特写；否则从成品海报抠细节格
   const nodeRef = arg('node');
+  let productName = '';
   let mainJpg: Buffer;
   let crops: Buffer[];
   if (nodeRef) {
     const [canvasId, nodeId] = nodeRef.split(':');
-    const { hero, boxes } = await loadPosterNode(canvasId, nodeId);
+    const { hero, boxes, titles, name } = await loadPosterNode(canvasId, nodeId);
+    if (!details.length) details.push(...titles.slice(0, boxes.length));
+    productName = productName || name;
     mainJpg = await sharp(hero).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
-    crops = await cropFromHero(hero, boxes.slice(0, details.length || boxes.length));
+    // 与画布“生成成片”同一套裁切
+    crops = await cropFilmDetails(hero, boxes.slice(0, details.length || boxes.length));
   } else {
     const poster = await loadImage(posterSrc!);
     mainJpg = await sharp(poster).rotate().resize(2048, 2048, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
@@ -178,7 +173,10 @@ async function main() {
   fs.writeFileSync(path.join(outDir, 'ref-1-main.jpg'), mainJpg);
   crops.forEach((c, i) => fs.writeFileSync(path.join(outDir, `ref-${i + 2}-detail.jpg`), c));
 
-  const prompt = buildPrompt(details, duration, Boolean(nodeRef));
+  // --node 时与画布“生成成片”同一套提示词；--person 填主场景里的人物描述，不填 = 没有人物
+  const prompt = nodeRef
+    ? buildPosterFilmPrompt(details, duration, { productName, person: arg('person', '') })
+    : buildPrompt(details, duration, false);
   log(`参考图 ${1 + crops.length} 张，${model}，${duration}s，${resolution}`);
   log(`提示词:\n${prompt}`);
   if (flag('dry-run')) {
@@ -193,16 +191,12 @@ async function main() {
     log(`已上传 ref-${i + 1}`);
   }
 
-  const body = {
+  // 与画布“生成成片”同一个请求体（不带 output_format：sd-2.0 不认，只有 sd-2.5 支持）
+  const body = buildMultiReferenceRequest(
     model,
-    prompt,
-    duration,
-    // 上次只放 metadata.ratio 出了竖屏，结果 metadata 为空，疑似网关没透传；顶层也放一份
-    ratio: '16:9',
-    metadata: { resolution, ratio: '16:9', generate_audio: true, watermark: false, seed: -1, output_format: 'mp4', omni_reference_task_type: 'auto' },
-    // 上游（火山）要求每张图标注角色；多参考图用 reference_image（首尾帧才用 first_frame / last_frame）
-    references: urls.map(url => ({ type: 'image_url', url, role: 'reference_image' }))
-  };
+    { modelKey: model, prompt, referenceMode: 'multi_reference', settings: { durationSeconds: duration, resolution, ratio: '16:9', audioMode: 'native' } as any },
+    urls
+  ).body;
   fs.writeFileSync(path.join(outDir, 'request.json'), JSON.stringify(body, null, 2));
 
   const started = Date.now();

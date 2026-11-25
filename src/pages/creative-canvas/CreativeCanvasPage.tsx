@@ -471,6 +471,15 @@ export default function CreativeCanvasPage() {
   }, [effectiveCanvasId, setNodes]);
   const generatePosterFilmRef = React.useRef(handleGeneratePosterFilm);
   generatePosterFilmRef.current = handleGeneratePosterFilm;
+  // 对话里确认“海报生成成片”（poster_film）后由 AgentPanel 派发，和海报节点上的按钮走同一套提交
+  React.useEffect(() => {
+    const onPosterFilm = (e: Event) => {
+      const nodeId = (e as CustomEvent).detail?.nodeId;
+      if (typeof nodeId === 'string' && nodeId) void generatePosterFilmRef.current(nodeId);
+    };
+    window.addEventListener('canvas:poster-film', onPosterFilm);
+    return () => window.removeEventListener('canvas:poster-film', onPosterFilm);
+  }, []);
   const markCanvasDirtyRef = React.useRef(markCanvasDirty);
   markCanvasDirtyRef.current = markCanvasDirty;
   const postVideoResultToChatRef = React.useRef(postVideoResultToChat);

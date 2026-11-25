@@ -76,7 +76,8 @@ const ACTION_IDS: AgentActionId[] = [
   'fabric_edit',
   'template_details',
   'textile_poster',
-  'textile_edit'
+  'textile_edit',
+  'poster_film'
 ];
 
 const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
@@ -96,7 +97,8 @@ const PLAN_TITLES: Partial<Record<AgentActionId, string>> = {
   fabric_edit: '修改氛围海报',
   template_details: '更换 4/3 海报底部细节格',
   textile_poster: '生成面料色卡海报',
-  textile_edit: '修改面料色卡海报'
+  textile_edit: '修改面料色卡海报',
+  poster_film: '海报生成 15 秒成片'
 };
 
 /** 面料色卡海报的三种版式：对话里用户说的是“斜切/六边形/圆形”，内部是 slant/hex/circle */
@@ -319,6 +321,12 @@ export function describePlanParams(actionId: AgentActionId, params?: AgentAction
     items.push({ label: '出图', value: '不重新生图，不扣点，约半分钟' });
     items.push({ label: '结果', value: '作为新版本节点加入画布，旧版保留' });
   }
+  if (actionId === 'poster_film') {
+    items.push({ label: '画面', value: '主场景原图 + 底部细节图作参考：全景 → 逐个细节特写 → 中景 → 全景收尾，画面不出字' });
+    items.push({ label: '人物', value: '主场景里有人物才安排人物镜头，没有就整片不出现人' });
+    items.push({ label: '规格', value: '15 秒 · 1080p 横屏 · 带环境音' });
+    items.push({ label: '出片', value: '豆包 Seedance 2.5，按部门令牌计费，约 3 分钟' });
+  }
   if (actionId === 'textile_poster' || actionId === 'textile_edit') {
     const edit = actionId === 'textile_edit';
     if (params?.textileLayout) items.push({ label: edit ? '换版式' : '版式', value: TEXTILE_LAYOUT_LABELS[params.textileLayout] });
@@ -463,7 +471,7 @@ export function buildCanvasSummary(input: {
       const edited = n.data.textEditedFrom ? '；此图改过字，文字以图上为准' : '';
       return `${n.id}${pointed.has(n.id) ? '【用户引用】' : ''}（主标题「${c.name || ''}」；副标题「${c.subtitle || ''}」${details ? `；底部从左到右：${details}` : ''}${edited}）`;
     });
-    lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文；只换底部细节格 / 细节实拍用 template_details，不要整张重做）：${desc.join('；')}`);
+    lines.push(`- 画布上的 4/3 产品海报（改图上文字用 edit_image_text，oldText 取这里的原文；只换底部细节格 / 细节实拍用 template_details，不要整张重做；要拿海报出视频 / 成片用 poster_film）：${desc.join('；')}`);
   }
 
   if (localFolder && localFolder.imageCount > 0) {

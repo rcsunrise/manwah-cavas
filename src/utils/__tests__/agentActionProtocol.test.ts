@@ -268,3 +268,25 @@ describe('extractAgentActions · 漏掉闭合标签', () => {
     expect(r.text).not.toContain('agent_actions');
   });
 });
+
+describe('海报生成成片（poster_film）', () => {
+  it('智能体提议的 poster_film 计划保留目标海报 nodeId，卡片写明规格和人物规则', () => {
+    const r = extractAgentActions(
+      '好的，用这张海报出成片<agent_actions>{"plan": {"actionId": "poster_film", "params": {"nodeId": "template-poster-a-1"}}}</agent_actions>'
+    );
+    expect(r.planCard?.actionId).toBe('poster_film');
+    expect(r.planCard?.params?.nodeId).toBe('template-poster-a-1');
+    const labels = (r.planCard?.items || []).map(i => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['画面', '人物', '规格', '出片']));
+  });
+
+  it('画布摘要提示可以用 poster_film 拿 4/3 海报出成片', () => {
+    const summary = buildCanvasSummary({
+      planSettings: {},
+      nodes: [{ id: 'template-poster-a-1', data: { templatePoster: { template: 'A', concept: { name: '云域', details: [] } } } }],
+      mentionedNodeIds: ['template-poster-a-1']
+    } as any);
+    expect(summary).toContain('poster_film');
+    expect(summary).toContain('template-poster-a-1【用户引用】');
+  });
+});

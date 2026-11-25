@@ -63,6 +63,13 @@ describe('video adapter · multi_reference', () => {
     ]);
   });
 
+  it('sends omni_reference_task_type only to sd-2.5 (sd-2.0 rejects it)', () => {
+    const input = { modelKey: 'x', prompt: 'p', settings, referenceMode: 'multi_reference' as const };
+    expect(buildMultiReferenceRequest('sd-2.5', input, ['u']).body.metadata.omni_reference_task_type).toBe('auto');
+    expect('omni_reference_task_type' in buildMultiReferenceRequest('sd-2.0', input, ['u']).body.metadata).toBe(false);
+    expect('output_format' in buildMultiReferenceRequest('sd-2.0', input, ['u']).body.metadata).toBe(false);
+  });
+
   it('validates multi_reference on sd-2.5 and rejects models without it', () => {
     const urls = ['a', 'b', 'c', 'd', 'e'];
     expect(VectorEngineVideoAdapter.validate({ modelKey: 'sd-2.5', prompt: 'p', settings, referenceMode: 'multi_reference', referenceImageUrls: urls }).valid).toBe(true);

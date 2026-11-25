@@ -148,7 +148,9 @@ export type AgentActionId =
   /** 面料色卡海报（模板 C）：从本地面料素材里选一款做主色，其余配色做色卡，三种版式 */
   | 'textile_poster'
   /** 修改已生成的面料色卡海报：换版式、改名称/说明/型号、换底色、换主面料、增减色卡（不出图不扣点；氛围图 AI 重出才扣点） */
-  | 'textile_edit';
+  | 'textile_edit'
+  /** 4/3 产品海报（模板 A）→ 15 秒成片：主场景 + 细节图多参考一次生成（sd-2.5），params.nodeId 指定海报 */
+  | 'poster_film';
 
 /** 动作参数：由智能体在对话中给出（如“扩到 8 屏”“重做第 3 屏”） */
 export interface AgentActionParams {

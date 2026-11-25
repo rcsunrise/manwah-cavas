@@ -907,6 +907,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   const postAgent = (text: string, extras?: Partial<AgentMessage>) => onPostAgentMessage?.(text, extras);
 
+  // 能生成成片的海报：4/3 产品海报（模板 A）且存了主场景原图（成片要用不带字的原图做参考）
+  const filmPosters = nodes.filter((n: any) => n?.data?.templatePoster?.template === 'A' && Boolean(n?.data?.heroImageUrl));
+
   const screenExists = (screenIndex?: number) =>
     Boolean(screenIndex && agentRun?.plan?.screens?.some((sc: any) => sc.screenIndex === screenIndex));
 
@@ -1267,6 +1270,39 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           }
         });
         return;
+      case 'poster_film': {
+        // 目标海报：智能体给的 nodeId > 当前选中的海报 > 画布上只有一张时用它；多张就让用户点选
+        const byId = (id?: string | null) => (id ? filmPosters.find((n: any) => n.id === id) : undefined);
+        const target = byId(params?.nodeId) || byId(selectedNodeId) || (filmPosters.length === 1 ? filmPosters[0] : undefined);
+        if (target) {
+          postAgent(`确认后用「${canvasNodeTitle(target)}」生成 15 秒成片：`, {
+            planCard: {
+              title: `海报生成成片 · ${canvasNodeTitle(target)}`,
+              actionId: 'poster_film',
+              params: { nodeId: target.id },
+              status: 'pending',
+              items: describePlanParams('poster_film', { nodeId: target.id })
+            }
+          });
+          return;
+        }
+        if (filmPosters.length === 0) {
+          postAgent('画布上还没有能生成成片的 4/3 产品海报。先用“4/3 产品海报”出一张，再 @ 它说“生成成片”。');
+          return;
+        }
+        postAgent('要用哪张海报生成成片？也可以在输入框里 @ 海报再说“生成成片”。', {
+          clarifyCard: {
+            question: '选择一张 4/3 产品海报',
+            options: filmPosters.slice(-6).reverse().map((n: any) => ({
+              label: canvasNodeTitle(n),
+              actionId: 'poster_film' as AgentActionId,
+              params: { nodeId: n.id },
+              imageUrl: typeof n.data?.imageUrl === 'string' ? n.data.imageUrl : undefined
+            }))
+          }
+        });
+        return;
+      }
       case 'textile_poster':
       case 'textile_edit': {
         // 不出图也不扣点（除非要 AI 氛围图），但会读本地文件夹、生成新节点，先出确认卡片让用户看清用哪块面料、什么版式
@@ -1320,6 +1356,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       runAgentAction('generate_plan', params);
       return;
     }
+    // 智能体提议的成片卡片可能没给 nodeId（或给错）：回到选海报流程，不能确认了却什么都不发生
+    if (card.actionId === 'poster_film' && !filmPosters.some((n: any) => n.id === params?.nodeId)) {
+      runAgentAction('poster_film', params);
+      return;
+    }
     if ((card.actionId === 'replan_screen' || card.actionId === 'render_screen') && !screenExists(params?.screenIndex)) {
       runAgentAction(card.actionId, params);
       return;
@@ -1366,6 +1407,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         return;
       case 'textile_edit':
         onEditTextilePoster?.(params);
+        return;
+      case 'poster_film':
+        // 画布页持有提交逻辑（准备参考图 → 提交视频任务 → 落视频节点），进度回到海报节点和视频节点上
+        if (params?.nodeId) {
+          window.dispatchEvent(new CustomEvent('canvas:poster-film', { detail: { nodeId: params.nodeId } }));
+          window.dispatchEvent(new CustomEvent('canvas:select-node', { detail: { nodeId: params.nodeId } }));
+          postAgent('成片任务提交中：参考图准备好后会在海报右侧出现视频节点，约 3 分钟出片，完成后结果会回到对话里。');
+        }
         return;
       default:
         runAgentAction(card.actionId, params);
@@ -1425,7 +1474,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     : [
         { label: '4/3 产品海报', actionId: 'template_poster' },
         { label: '氛围海报', actionId: 'fabric_poster' },
-        { label: '做视频分镜', actionId: 'open_video' }
+        { label: '做视频分镜', actionId: 'open_video' },
+        // 画布上有能出成片的 4/3 海报时才显示
+        ...(filmPosters.length > 0 ? [{ label: '海报生成成片', actionId: 'poster_film' as AgentActionId }] : [])
       ];
 
   // @ 可引用的画布素材：有标题的节点，带缩略图（欢迎引导节点不是素材）
