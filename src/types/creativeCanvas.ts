@@ -230,6 +230,13 @@ export interface AgentActionParams {
   detailTexts?: Array<{ slot: number; title?: string; desc?: string }>;
 }
 
+/** 产品节点录入的海报文案。body 第一行是副标题，第二行起是灵感小字 */
+export interface ProductPosterCopy {
+  title?: string;
+  body?: string;
+  details?: Array<{ title?: string; desc?: string } | null>;
+}
+
 export interface AgentActionOption {
   label: string;
   actionId?: AgentActionId;
@@ -309,6 +316,9 @@ export interface ProductImageNodeData extends Record<string, unknown> {
   fabricPosterRunning?: boolean;
   /** 细节图窗口：每格一张产品局部实拍（null 为空格），长度即格数（3–6） */
   detailImages?: Array<string | null>;
+  /** 上传素材时录入的海报文案：主图标题 / 正文，细节格标题 / 正文（下标与 detailImages 的格子一致）。空着的由 AI 写 */
+  posterCopy?: ProductPosterCopy;
+  onPosterCopyChange?: (patch: Partial<ProductPosterCopy>) => void;
   onDetailImageUpload?: (index: number, file: File) => void;
   onDetailImageRemove?: (index: number) => void;
   onDetailSlotsChange?: (count: number) => void;

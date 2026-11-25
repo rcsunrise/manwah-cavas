@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ProductImageNodeData, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX } from '../../types/creativeCanvas';
 import { toThumbnailUrl } from '../../utils/thumbnailUrl';
+import { POSTER_COPY_LIMITS } from '../../utils/posterCopy';
 
 export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
   const nodeData = data as unknown as ProductImageNodeData;
@@ -34,6 +35,24 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
     return list;
   })();
   const detailFilled = detailSlots.filter(Boolean).length;
+  // 上传素材时录入的海报文案：生成 4/3 海报时原样使用，空着的由 AI 写
+  const copyAvailable = Boolean(nodeData?.onPosterCopyChange);
+  const posterCopy = nodeData?.posterCopy || {};
+  const copyFilledCount =
+    (posterCopy.title?.trim() ? 1 : 0) +
+    (posterCopy.body?.trim() ? 1 : 0) +
+    (posterCopy.details || []).filter(d => d && (d.title?.trim() || d.desc?.trim())).length;
+  // 文案区默认收起（节点太高会压到下面的节点）；已录入过就展开
+  const [copyOpen, setCopyOpen] = useState(copyFilledCount > 0);
+  const copyEnabled = copyAvailable && copyOpen;
+  const setDetailCopy = (i: number, field: 'title' | 'desc', value: string) => {
+    const list = Array.isArray(posterCopy.details) ? [...posterCopy.details] : [];
+    while (list.length <= i) list.push(null);
+    list[i] = { ...(list[i] || {}), [field]: value };
+    nodeData.onPosterCopyChange?.({ details: list });
+  };
+  const copyInput =
+    'nodrag nowheel w-full rounded-md border border-[#E5E0D8] bg-white px-1.5 py-1 text-[10px] text-[#2C2A29] placeholder:text-stone-300 focus:outline-none focus:border-[#B28C5A] resize-none';
   const [isHovered, setIsHovered] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -277,6 +296,29 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
           </div>
         )}
 
+        {/* 主图海报文案：标题 + 正文（第一行副标题，第二行灵感小字），空着由 AI 写 */}
+        {copyEnabled && nodeData?.imageUrl && (
+          <div className="mt-3 space-y-1" onClick={e => e.stopPropagation()}>
+            <div className="text-[10px] font-bold text-[#2C2A29]">
+              海报文案 <span className="font-normal text-stone-400">选填，空着由 AI 写</span>
+            </div>
+            <input
+              className={copyInput}
+              value={posterCopy.title || ''}
+              maxLength={POSTER_COPY_LIMITS.title}
+              placeholder={`标题（≤${POSTER_COPY_LIMITS.title} 字，如“曜境”）`}
+              onChange={e => nodeData.onPosterCopyChange?.({ title: e.target.value })}
+            />
+            <textarea
+              className={copyInput}
+              rows={2}
+              value={posterCopy.body || ''}
+              placeholder={`正文：第一行副标题（≤${POSTER_COPY_LIMITS.subtitle} 字），第二行灵感小字（≤${POSTER_COPY_LIMITS.inspiration} 字）`}
+              onChange={e => nodeData.onPosterCopyChange?.({ body: e.target.value })}
+            />
+          </div>
+        )}
+
         {/* 细节图窗口：默认 3 格，可增减到 3–6 格；4/3 海报底部细节格按这里的格数和实拍排版 */}
         {detailEnabled && (
           <div className="mt-3">
@@ -305,6 +347,16 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
                 细节图 <span className="font-normal text-stone-400">{detailFilled}/{detailSlots.length} · 海报底部 {detailSlots.length} 格</span>
               </span>
               <div className="nodrag flex items-center gap-1">
+                {copyAvailable && (
+                  <button
+                    type="button"
+                    title="录入海报标题 / 正文，空着的由 AI 写"
+                    onClick={(e) => { e.stopPropagation(); setCopyOpen(v => !v); }}
+                    className={`h-5 px-1.5 rounded-md border text-[9px] font-bold whitespace-nowrap ${copyOpen ? 'border-[#B28C5A] text-[#8C6F43] bg-[#F9F5EF]' : 'border-[#E5E0D8] text-stone-500 hover:border-[#B28C5A] hover:text-[#B28C5A]'}`}
+                  >
+                    {copyOpen ? '收起文案' : copyFilledCount ? `文案 ${copyFilledCount}` : '填写文案'}
+                  </button>
+                )}
                 <button
                   type="button"
                   title="减少一格"
@@ -327,8 +379,8 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
             </div>
             <div className="nodrag grid grid-cols-3 gap-1.5">
               {detailSlots.map((url, i) => (
+                <div key={i} className="flex flex-col gap-1">
                 <div
-                  key={i}
                   onMouseEnter={() => setHoverSlot(i)}
                   onMouseLeave={() => setHoverSlot(cur => (cur === i ? null : cur))}
                   onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragSlot(i); }}
@@ -384,6 +436,30 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
                       <span className="text-[9px]">细节 {i + 1}</span>
                     </div>
                   )}
+                </div>
+                {copyEnabled && (
+                  <>
+                    <input
+                      className={copyInput}
+                      value={posterCopy.details?.[i]?.title || ''}
+                      maxLength={POSTER_COPY_LIMITS.detailTitle}
+                      placeholder="标题"
+                      title={`细节 ${i + 1} 标题（≤${POSTER_COPY_LIMITS.detailTitle} 字），空着由 AI 写`}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setDetailCopy(i, 'title', e.target.value)}
+                    />
+                    <textarea
+                      className={copyInput}
+                      rows={2}
+                      value={posterCopy.details?.[i]?.desc || ''}
+                      maxLength={POSTER_COPY_LIMITS.detailDesc}
+                      placeholder="正文"
+                      title={`细节 ${i + 1} 正文（≤${POSTER_COPY_LIMITS.detailDesc} 字，建议“功能 · 工艺 · 情绪”三个短语），空着由 AI 写`}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setDetailCopy(i, 'desc', e.target.value)}
+                    />
+                  </>
+                )}
                 </div>
               ))}
             </div>

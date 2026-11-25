@@ -110,6 +110,82 @@ export interface PosterConceptInput {
   detailCount?: number;
   /** attachments 里前几张是用户在产品节点“细节图”窗口上传的细节实拍 */
   detailPhotoCount?: number;
+  /** 用户在产品节点里录入的文案：原样使用，没录入的部分才由模型写 */
+  fixedCopy?: PosterFixedCopy;
+}
+
+/**
+ * 用户在产品节点录入的海报文案（上传素材时一起填）。原样上海报，不改写；空着的由模型按规则写。
+ * photoDetails 按细节实拍的序号（与 attachments 前 detailPhotoCount 张一一对应）；
+ * otherDetails 给没有实拍、由主场景裁切的格子，按顺序用。
+ */
+export interface PosterFixedCopy {
+  name?: string;
+  subtitle?: string;
+  inspiration?: string;
+  photoDetails?: Array<{ photo: number; title?: string; desc?: string }>;
+  otherDetails?: Array<{ title?: string; desc?: string }>;
+}
+
+const FIXED_LIMITS = { name: 4, subtitle: 16, inspiration: 32, title: 7, desc: 40 };
+
+/** 清洗前端传来的录入文案：去空白、截上限、丢掉空项 */
+export function sanitizeFixedCopy(raw: any): PosterFixedCopy | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const t = (v: unknown, max: number) => (typeof v === 'string' ? Array.from(v.replace(/\s+/g, ' ').trim()).slice(0, max).join('') : '');
+  const pair = (d: any) => ({ title: t(d?.title, FIXED_LIMITS.title), desc: t(d?.desc, FIXED_LIMITS.desc) });
+  const out: PosterFixedCopy = {};
+  const name = t(raw.name, FIXED_LIMITS.name);
+  const subtitle = t(raw.subtitle, FIXED_LIMITS.subtitle);
+  const inspiration = t(raw.inspiration, FIXED_LIMITS.inspiration);
+  if (name) out.name = name;
+  if (subtitle) out.subtitle = subtitle;
+  if (inspiration) out.inspiration = inspiration;
+  const photoDetails = (Array.isArray(raw.photoDetails) ? raw.photoDetails : [])
+    .map((d: any) => ({ photo: Math.round(Number(d?.photo)), ...pair(d) }))
+    .filter((d: any) => d.photo >= 1 && d.photo <= MAX_DETAIL_CELLS && (d.title || d.desc))
+    .slice(0, MAX_DETAIL_CELLS);
+  const otherDetails = (Array.isArray(raw.otherDetails) ? raw.otherDetails : []).map(pair).filter((d: any) => d.title || d.desc).slice(0, MAX_DETAIL_CELLS);
+  if (photoDetails.length) out.photoDetails = photoDetails;
+  if (otherDetails.length) out.otherDetails = otherDetails;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * 把录入文案盖到模型结果上（模型偶尔会改写，这里兜底保证原样）。
+ * 实拍格按 details[].photo 对应；模型没给 photo 时，前 detailPhotoCount 格按顺序当实拍格。
+ */
+export function applyFixedCopy(concept: PosterConcept, fixed: PosterFixedCopy | undefined, detailPhotoCount = 0): void {
+  if (!fixed) return;
+  if (fixed.name) concept.name = fixed.name;
+  if (fixed.subtitle) concept.subtitle = fixed.subtitle;
+  if (fixed.inspiration) concept.inspiration = fixed.inspiration;
+  const byPhoto = new Map((fixed.photoDetails || []).map(d => [d.photo, d]));
+  const others = [...(fixed.otherDetails || [])];
+  concept.details.forEach((d, i) => {
+    const photo = d.photo || (i < detailPhotoCount ? i + 1 : 0);
+    const copy = photo ? byPhoto.get(photo) : others.shift();
+    if (!copy) return;
+    if (copy.title) d.title = copy.title;
+    if (copy.desc) d.desc = copy.desc;
+  });
+}
+
+function fixedCopyBlock(input: PosterConceptInput): string {
+  const f = input.fixedCopy;
+  if (!f) return '';
+  const lines: string[] = [];
+  if (f.name) lines.push(`- 命名（name）：「${f.name}」——场景、意象、道具都围绕这个名字来构思`);
+  if (f.subtitle) lines.push(`- 副标题（subtitle）：「${f.subtitle}」`);
+  if (f.inspiration) lines.push(`- 灵感小字（inspiration）：「${f.inspiration}」`);
+  for (const d of f.photoDetails || []) {
+    lines.push(`- 附图${d.photo}那一格：${d.title ? `标题「${d.title}」` : '标题你来写'}；${d.desc ? `正文「${d.desc}」` : '正文你来写'}`);
+  }
+  (f.otherDetails || []).forEach((d, i) => {
+    lines.push(`- 没有实拍的第 ${i + 1} 个细节格：${d.title ? `标题「${d.title}」` : '标题你来写'}；${d.desc ? `正文「${d.desc}」` : '正文你来写'}（部位按这段文字选）`);
+  });
+  if (!lines.length) return '';
+  return ['', '[用户已录入的文案（一字不改，原样填进对应字段；其余没录入的按下面的规则写，风格和它们统一）]', ...lines, ''].join('\n');
 }
 
 export const MIN_DETAIL_CELLS = 3;
@@ -123,12 +199,12 @@ export function clampDetailCount(n: unknown): number {
 const CONCEPT_MODELS = ['gemini-3.6-flash'];
 
 const DEFAULT_DETAILS: PosterDetailConcept[] = [
-  { key: 'armrest', locate: '沙发离镜头最近一侧的完整扶手（从扶手顶面到落地处、从前端到与靠背相接处，整只扶手都在框内）', title: '扶手设计', desc: '饱满造型 · 圆润包覆' },
-  { key: 'backrest', locate: '离镜头最近的一个座位的靠背，含缝线与分段结构', title: '分段式靠背', desc: '分区承托 · 柔和贴合' },
-  { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '沙发脚', desc: '稳固支撑 · 简洁利落' },
-  { key: 'seat', locate: '离镜头最近的一个座包，含座面与前沿的缝线', title: '饱满座包', desc: '厚实回弹 · 久坐舒适' },
-  { key: 'side', locate: '沙发离镜头最近一侧的侧面整体轮廓', title: '侧面线条', desc: '利落轮廓 · 比例协调' },
-  { key: 'stitch', locate: '靠背或座包上一段清晰的缝线与面料纹理特写', title: '面料缝线', desc: '细密走线 · 质感细腻' }
+  { key: 'armrest', locate: '沙发离镜头最近一侧的完整扶手（从扶手顶面到落地处、从前端到与靠背相接处，整只扶手都在框内）', title: '臂弯有度', desc: '宽厚承托 · 圆润包覆 · 倚靠从容' },
+  { key: 'backrest', locate: '离镜头最近的一个座位的靠背，含缝线与分段结构', title: '层叠承托', desc: '分区支撑 · 分段车缝 · 贴合背脊' },
+  { key: 'foot', locate: '沙发底部一个完整露出的沙发脚（能看到从底座到地面的完整形状，前面没有茶几、摆件、地毯边遮挡），连带一小段沙发底座', title: '轻托离地', desc: '稳固支撑 · 利落收边 · 安定从容' },
+  { key: 'seat', locate: '离镜头最近的一个座包，含座面与前沿的缝线', title: '饱满坐享', desc: '厚实回弹 · 精细包覆 · 久坐舒展' },
+  { key: 'side', locate: '沙发离镜头最近一侧的侧面整体轮廓', title: '利落侧影', desc: '轮廓分明 · 比例协调 · 干净从容' },
+  { key: 'stitch', locate: '靠背或座包上一段清晰的缝线与面料纹理特写', title: '细密匠心', desc: '平整车缝 · 细密走线 · 触感温润' }
 ];
 
 function describeDna(dna: any): string {
@@ -195,7 +271,7 @@ ${imageOrderBlock(input)}
 [产品 DNA]
 ${describeDna(input.dna)}
 ${input.productImage ? '（DNA 可能是旧的或不准：颜色、材质、结构凡与产品图不一致的，一律以产品图为准，文案里的颜色词也要按图里真实看到的颜色写。）' : ''}
-${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hintBlock(input.hint)}${attachmentBlock(input)}${
+${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hintBlock(input.hint)}${fixedCopyBlock(input)}${attachmentBlock(input)}${
     input.angle
       ? `\n[本次创意切入角度（必须采用）]\n${input.angle.label}：${input.angle.brief}\n`
       : ''
@@ -231,6 +307,11 @@ ${input.planContext ? `\n[已有企划参考]\n${input.planContext}\n` : ''}${hi
 details 必须正好 ${clampDetailCount(input.detailCount)} 项，部位互不重复。
 只能选产品上真实存在、图里看得见的部位（通常是扶手、靠背、沙发脚，也可以是侧面分割、金属饰条等），不要编造功能、参数、检测或材质承诺。
 扶手一定要完整展示：locate 写成“整只扶手（从扶手顶面到落地处、从前端到与靠背相接处）”，不要只框扶手的一部分。
+细节文案（用户已录入的除外）：
+- title（4–6 字）：要有语言艺术，用意象或感受点出这个部位的功能，像产品文案的小标题，而不是部位名称。如 宽厚扶手→「臂弯有度」、分段靠背→「层叠承托」、低矮沙发脚→「轻托离地」、隐藏拉链→「隐线藏锋」、皮面纹理→「肌理温存」。读者仍要能看出说的是哪个部位；不要直白的“XX扶手 / XX靠背 / 沙发脚”，也不要空泛的“匠心之选 / 品质生活”。
+- desc：${clampDetailCount(input.detailCount) >= 6
+  ? '两个 4 字短语用“ · ”连接：先功能或工艺，再情绪感受，如“分段车缝 · 倚靠随心”（底部 6 格太窄，只写两个）。'
+  : '三个 4 字短语用“ · ”连接，依次写 功能 · 工艺 · 情绪，如“可调头枕 · 精密车缝 · 倚靠随心”“宽厚承托 · 圆润包覆 · 臂弯从容”。功能写这个部位能做什么、带来什么支撑；工艺写看得见的做法（车缝、包覆、分段、收边、材质）；情绪写坐上去的感受。'}只写图里看得见的，不编参数和材质承诺；功能只写图里能直接看出来的（如头枕翻起、分段、包覆、收边），看不出来的不要写：吊牌 / 标签 / 芯片不要写成“防伪、溯源、智能”，扶手翻起不要写成“储物”，除非用户录入或要求里明确说了。
 
 [输出]
 只输出一个 JSON 对象，不要 Markdown、不要解释：
@@ -258,7 +339,7 @@ details 必须正好 ${clampDetailCount(input.detailCount)} 项，部位互不�
   "accentColor": "#RRGGBB，与产品主色和场景协调的点缀色，用于标题下的短横线",
   "titleSide": "left 或 right，标题放哪一侧（这一侧上方是天空、远景或结构的大曲面，明暗均匀）",
   "details": [
-    {"key": "armrest", "locate": "给视觉定位用的部位描述，只指一个局部（靠背只指一个座位的靠背），扶手要整只框进，如：沙发离镜头最近一侧的整只扶手（从顶面到落地处）", "title": "4–6 字，如“弧面扶手”", "desc": "默认两个 4 字短语用“ · ”连接，如“圆润包覆 · 分割缝线”；用户要求详细解读时写 20–36 字", "photo": 0},
+    {"key": "armrest", "locate": "给视觉定位用的部位描述，只指一个局部（靠背只指一个座位的靠背），扶手要整只框进，如：沙发离镜头最近一侧的整只扶手（从顶面到落地处）", "title": "4–6 字，有文采的小标题，如“臂弯有度”", "desc": "按上面细节文案规则：功能 · 工艺 · 情绪，如“宽厚承托 · 圆润包覆 · 臂弯从容”；用户要求详细解读时写 20–36 字", "photo": 0},
     {"key": "backrest", "locate": "...", "title": "...", "desc": "..."},
     {"key": "foot", "locate": "...", "title": "...", "desc": "..."}
   ]
@@ -528,10 +609,12 @@ export async function generatePosterConcept(input: PosterConceptInput, userId = 
     // 默认不要人物：用户要求里没明确提人物 / 模特时，模型写了也清掉
     if (!wantsPerson(input.hint)) concept.person = '';
     fitDetailCount(concept, clampDetailCount(input.detailCount));
+    applyFixedCopy(concept, input.fixedCopy, input.detailPhotoCount || 0);
     // 模型挑的款式必须在候选里；没挑或挑了别的，按第一个候选
     concept.tableStyle =
       tableStyle?.id || (tableCandidates?.some(c => c.id === concept!.tableStyle) ? concept.tableStyle : tableCandidates?.[0]?.id);
-    const clash = avoid.find(u => namesCollide(u.name, concept!.name));
+    // 名字是用户录入的：撞名也照用，不重新构思
+    const clash = input.fixedCopy?.name ? undefined : avoid.find(u => namesCollide(u.name, concept!.name));
     if (!clash) return concept;
     console.warn(`[PosterConcept] 命名「${concept.name}」与已做过的「${clash.name}」重复，重新构思`);
     collided = concept;

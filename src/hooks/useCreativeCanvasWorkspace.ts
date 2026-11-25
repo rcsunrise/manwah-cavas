@@ -4,6 +4,7 @@ import { CreativeProject, ProductVisualDNA, AgentRun, ImageAttachment } from '..
 import { LocalAssetItem, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX } from '../types/creativeCanvas';
 import { deltaE, findAssetByKeyword, pickBestSource, pickPaletteSwatches, textileColorTarget } from '../utils/textilePalette';
 import { compressImageForUpload } from '../utils/imageCompress';
+import { buildFixedPosterCopy } from '../utils/posterCopy';
 import { AgentMessage, SceneQueueItem, GenerationBatch, SaveStatus, ViewportState, AgentConversationRecord, AgentChatMessageRecord, AgentContextSnapshot, AgentErrorCode, CanvasTextLayer, AgentSuggestion, AgentTaskCard, AgentPlanCard, AgentLocateTarget, AgentVideoCard, AgentImageCard, AgentActionParams } from '../types/creativeCanvas';
 import { assetQueueManager, QueueStats } from '../services/assetQueueService';
 import { confirmDialog } from '../utils/confirmDialog';
@@ -3068,6 +3069,13 @@ export function useCreativeCanvasWorkspace(
     detailPreviewsRef.current.delete(preview);
     if (!url) addAgentMessage('❌ 细节图读取失败，请换一张图重试。');
   };
+  // 产品节点录入的海报文案（主图标题 / 正文、各细节格标题 / 正文）：生成 4/3 海报时原样使用，空着的由 AI 写
+  const handleSetPosterCopy = (nodeId: string, patch: Record<string, any>) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev =>
+      prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, posterCopy: { ...((n.data as any)?.posterCopy || {}), ...patch } } } : n))
+    );
+  };
   const handleRemoveDetailImage = (nodeId: string, index: number) =>
     patchDetailImages(nodeId, list => list.map((u, i) => (i === index ? null : u)));
   const handleSetDetailSlots = (nodeId: string, count: number) =>
@@ -3238,6 +3246,7 @@ export function useCreativeCanvasWorkspace(
     const detailPhotos = detailSlots.filter((u): u is string => typeof u === 'string' && /^(https?:|data:)/.test(u)).slice(0, DETAIL_SLOTS_MAX);
     const detailCount = Math.min(DETAIL_SLOTS_MAX, Math.max(DETAIL_SLOTS_MIN, detailSlots.length, detailPhotos.length));
     const attachments = [...detailPhotos, ...(params?.attachmentUrls || []).slice(0, 4)];
+    const fixedCopy = buildFixedPosterCopy((productNode?.data as any)?.posterCopy, detailSlots);
     const taskId = addAgentMessage('', {
       taskCard: {
         title: referenceImage ? `${taskTitle}（按参考图）` : attachments.length ? `${taskTitle}（含 ${attachments.length} 张附图）` : taskTitle,
@@ -3274,7 +3283,8 @@ export function useCreativeCanvasWorkspace(
         planContext,
         used,
         detailCount,
-        detailPhotoCount: detailPhotos.length
+        detailPhotoCount: detailPhotos.length,
+        ...(fixedCopy ? { fixedCopy } : {})
       });
       finishTaskCard(taskId, 'running', `2/3 「${concept.name}」：${concept.idea || concept.subtitle}\n正在生成主场景底图（约 1–3 分钟）…`);
 
@@ -5093,6 +5103,7 @@ export function useCreativeCanvasWorkspace(
     handleSetDetailImage,
     handleRemoveDetailImage,
     handleSetDetailSlots,
+    handleSetPosterCopy,
     handleClearProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
@@ -5224,6 +5235,7 @@ export function useCreativeCanvasWorkspace(
           data.onDetailImageUpload = (index: number, f: File) => nodeActionsRef.current.handleSetDetailImage(node.id, index, f);
           data.onDetailImageRemove = (index: number) => nodeActionsRef.current.handleRemoveDetailImage(node.id, index);
           data.onDetailSlotsChange = (count: number) => nodeActionsRef.current.handleSetDetailSlots(node.id, count);
+          data.onPosterCopyChange = (patch: Record<string, any>) => nodeActionsRef.current.handleSetPosterCopy(node.id, patch);
         }
 
         // 分组框：放在底层、尺寸由数据决定；锁定分组里的节点不可拖动不可删除

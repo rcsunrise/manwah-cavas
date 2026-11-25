@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import { optionalAuthenticateToken } from '../middleware/auth';
 import { VideoSourceImageResolver } from '../services/video/videoSourceImageResolver';
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
-import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, UsedPosterConcept, clampDetailCount, MAX_DETAIL_CELLS } from '../services/posterTemplate/posterConcept';
+import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, sanitizeFixedCopy, UsedPosterConcept, clampDetailCount, MAX_DETAIL_CELLS } from '../services/posterTemplate/posterConcept';
 import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
 import { composeTemplateA, templateADetailAspect, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
 import {
@@ -155,7 +155,9 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
         planContext: typeof planContext === 'string' ? planContext.slice(0, 1500) : undefined,
         used: usedConcepts,
         detailCount: clampDetailCount(req.body?.detailCount),
-        detailPhotoCount: Math.max(0, Math.min(MAX_DETAIL_CELLS, Math.round(Number(req.body?.detailPhotoCount) || 0)))
+        detailPhotoCount: Math.max(0, Math.min(MAX_DETAIL_CELLS, Math.round(Number(req.body?.detailPhotoCount) || 0))),
+        // 产品节点里录入的标题 / 正文：原样上海报，没录入的才由模型写
+        fixedCopy: sanitizeFixedCopy(req.body?.fixedCopy)
       },
       userIdOf(req)
     );
