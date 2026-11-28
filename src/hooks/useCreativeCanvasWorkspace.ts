@@ -32,6 +32,8 @@ const DNA_NEXT_STEPS: AgentSuggestion[] = [
 
 const CARD_STATE_KEY = 'creative-canvas:agent-card-states';
 const CARD_STATE_LIMIT = 300;
+// 画布归属别的账号时，服务端不让当前账号在上面建会话
+const OTHER_ACCOUNT_CANVAS_HINT = '这个画布是另一个账号建的，当前账号不能在这里对话。请用当前账号新建画布，或切回建这个画布的账号。';
 type CardState = { plan?: AgentPlanCard['status']; answered?: string };
 
 function loadCardStates(): Record<string, CardState> {
@@ -1083,8 +1085,10 @@ export function useCreativeCanvasWorkspace(
 
     let accumulatedText = '';
 
+    // 会话不属于当前账号（换账号登录后页面没刷新）或已被删：给当前账号新建会话，把这条消息重发一次
+    const runStream = async (conversationId: string, allowRecover: boolean): Promise<void> => {
     await AgentChatService.sendMessageStream({
-      conversationId: conv.id,
+      conversationId,
       message: textText.trim(),
       contextSnapshot,
       model: currentConversation?.model || conv.model,
@@ -1116,7 +1120,19 @@ export function useCreativeCanvasWorkspace(
           return m;
         }));
       },
-      onError: (err) => {
+      onError: async (err) => {
+        if (allowRecover && !accumulatedText && (err.code === 'CONVERSATION_FORBIDDEN' || err.code === 'CONVERSATION_NOT_FOUND')) {
+          try {
+            const fresh = await AgentChatService.createConversation(targetProjectId, targetCanvasId);
+            setCurrentConversation(fresh);
+            setConversationsList(prev => [fresh, ...prev.filter(x => x.id !== fresh.id && x.user_id === fresh.user_id)]);
+            await runStream(fresh.id, false);
+            return;
+          } catch (recoverErr: any) {
+            console.warn('[AgentChat] 新建会话重发失败:', recoverErr);
+            if (recoverErr?.code === 'INVALID_AGENT_CONTEXT') err = { ...err, message: OTHER_ACCOUNT_CANVAS_HINT };
+          }
+        }
         setIsStreaming(false);
         abortControllerRef.current = null;
         setStreamError(err);
@@ -1133,6 +1149,8 @@ export function useCreativeCanvasWorkspace(
         }));
       }
     });
+    };
+    await runStream(conv.id, true);
   }, [currentConversation, workspaceIdParam, isStreaming, selectedSceneIndex, selectedNodeId, productDnaVersionId, nodes, activeDna, agentRun, planScreenCount, planAspectRatio, planAgentModel, uploadState]);
 
   const handleStopGenerating = useCallback(() => {
@@ -1192,23 +1210,40 @@ export function useCreativeCanvasWorkspace(
           return m;
         }));
       },
-      onError: (err) => {
+      onError: async (err) => {
         setIsStreaming(false);
-        setStreamError(err);
+        // 会话不属于当前账号（换账号后页面没刷新）：换成当前账号的新会话，请用户重发
+        const staleConv = err.code === 'CONVERSATION_FORBIDDEN' || err.code === 'CONVERSATION_NOT_FOUND';
+        let staleText = '原会话属于之前登录的账号，已为当前账号新开会话，请重新发送刚才的消息。';
+        if (staleConv) {
+          try {
+            const projId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
+            const fresh = await AgentChatService.createConversation(projId, `canvas_${projId}`);
+            setCurrentConversation(fresh);
+            setConversationsList(prev => [fresh, ...prev.filter(x => x.id !== fresh.id && x.user_id === fresh.user_id)]);
+          } catch (recoverErr: any) {
+            console.warn('[AgentChat] 新建会话失败:', recoverErr);
+            staleText = recoverErr?.code === 'INVALID_AGENT_CONTEXT' ? OTHER_ACCOUNT_CANVAS_HINT : `[重试失败: ${err.message}]`;
+          }
+        } else {
+          setStreamError(err);
+        }
         setMessages(prev => prev.map(m => {
           if (m.id === assistantMsgId) {
             return {
               ...m,
               status: 'failed' as any,
-              error_code: err.code as any,
-              text: accumulatedText ? `${stripAgentActions(accumulatedText)}\n\n[重试失败: ${err.message}]` : `[重试失败: ${err.message}]`
+              error_code: staleConv ? undefined : err.code as any,
+              text: staleConv
+                ? staleText
+                : accumulatedText ? `${stripAgentActions(accumulatedText)}\n\n[重试失败: ${err.message}]` : `[重试失败: ${err.message}]`
             };
           }
           return m;
         }));
       }
     });
-  }, [currentConversation, isStreaming]);
+  }, [currentConversation, isStreaming, workspaceIdParam]);
 
   const handleCreateNewConversation = useCallback(async () => {
     const targetProjectId = activeProjectRef.current?.id || workspaceIdParam || 'latest';
@@ -5595,6 +5630,8 @@ export function useCreativeCanvasWorkspace(
       };
 
       let serverSuccess = false;
+      // 服务端明确拒绝（画布属于别的账号）：不读任何本地缓存，免得把别人的画布显示出来
+      let accessDenied = false;
 
       try {
         const canvasResult = canvasPromise ? await canvasPromise : null;
@@ -5627,7 +5664,7 @@ export function useCreativeCanvasWorkspace(
             }
           }
           try {
-            const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('manwah_canvas_latest');
+            const rawLocal = localStorage.getItem(localKey);
             if (rawLocal) {
               const localSnapshot = JSON.parse(rawLocal);
               if (localSnapshot?.uploadedBase64 && !uploadedBase64Ref.current) {
@@ -5691,27 +5728,37 @@ export function useCreativeCanvasWorkspace(
           });
         }
       } catch (err: any) {
+        accessDenied = err?.httpStatus === 403;
         console.warn('Failed to load canvas draft from API, checking local storage:', err);
         logCanvasDiagnostic({
           projectId: targetProjectId,
           canvasId: targetCanvasId,
           error: err?.message,
-          source: 'hydrate_from_server_failed'
+          source: accessDenied ? 'hydrate_access_denied' : 'hydrate_from_server_failed'
         });
       }
 
-      // 新建画布不读本地缓存，避免 manwah_canvas_latest 把旧画布带进来
-      if (!serverSuccess && isMounted && !isFreshCanvas) {
+      if (accessDenied && isMounted) {
+        setNodes([]);
+        setEdges([]);
+        setMessages([{
+          id: `msg-${Date.now()}-forbidden`,
+          sender: 'agent',
+          text: '这个画布属于其他账号，当前账号无权查看。请回到画布列表打开自己的画布，或新建一个画布。',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+        hasUserMutationRef.current = false;
+      }
+
+      // 新建画布不读本地缓存；只读带当前账号 id 的缓存键，不带账号的旧键（manwah_canvas_latest 等）可能是别的账号留下的
+      if (!serverSuccess && !accessDenied && isMounted && !isFreshCanvas) {
         // Fallback to LocalStorage - check all candidate keys to ensure no data loss
         try {
           const fallbackKeys = [
             localKey,
             `creative-canvas:${userId}:${targetProjectId}:${targetCanvasId}:draft`,
             `creative-canvas:${userId}:${targetProjectId}:${targetProjectId}:draft`,
-            `creative-canvas:${userId}:canvas_${targetProjectId}:canvas_${targetProjectId}:draft`,
-            `manwah_canvas_draft_${targetProjectId}`,
-            `manwah_canvas_draft_${targetCanvasId}`,
-            'manwah_canvas_latest'
+            `creative-canvas:${userId}:canvas_${targetProjectId}:canvas_${targetProjectId}:draft`
           ];
           let raw: string | null = null;
           for (const k of fallbackKeys) {

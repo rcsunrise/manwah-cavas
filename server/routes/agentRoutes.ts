@@ -215,6 +215,9 @@ router.get('/', async (req: AuthenticatedRequest, res: Response, next: NextFunct
     if (projectId) {
       runs = runs.filter(r => r.projectId === String(projectId));
     }
+    // 只返回当前账号的运行记录（管理员和无归属的旧记录除外），不跨账号呈现
+    const user = req.user;
+    runs = runs.filter(r => !r.ownerId || (user && (r.ownerId === user.id || user.role === 'admin')));
     runs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return res.json({ success: true, agentRuns: runs, agentRun: runs[0] || null });
   } catch (err) {
