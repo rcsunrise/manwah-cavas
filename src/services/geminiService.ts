@@ -631,7 +631,7 @@ export const generateEditedImage = async (
               order: img.order ?? index
             };
           }
-          const isMaskedTarget = index === 0 && !modelName.includes('gpt-image-2-all') && Boolean(images[0]?.maskDataUrl);
+          const isMaskedTarget = index === 0 && !modelName.includes('gpt-image-2-all') && !modelName.includes('seedream') && Boolean(images[0]?.maskDataUrl);
           const resolved = await resolveClientImageDetailed(rawData);
           const cleanData = resolved.base64Data ? await compressImageForAnalysis(resolved.base64Data, 1536, 0.85, isMaskedTarget ? 'image/png' : 'image/jpeg') : '';
           const detectedFromBinary = detectMimeFromBase64(cleanData);
@@ -644,7 +644,8 @@ export const generateEditedImage = async (
             order: img.order ?? index
           };
         })),
-        mask: !modelName.includes('gpt-image-2-all') && images[0]?.maskDataUrl ? {
+        // gpt-image-2-all 与豆包 Seedream 不支持 Mask，带上会被网关拒绝
+        mask: !modelName.includes('gpt-image-2-all') && !modelName.includes('seedream') && images[0]?.maskDataUrl ? {
           data: images[0].maskDataUrl,
           mimeType: 'image/png',
           targetReferenceAssetId: images[0].referenceAssetId || images[0].id

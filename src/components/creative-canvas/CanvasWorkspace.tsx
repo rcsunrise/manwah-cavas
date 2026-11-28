@@ -626,6 +626,9 @@ export const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
                     <option value="openai/gpt-image-2-c">GPT image-2-c (高一致性母版)</option>
                     <option value="openai/gpt-image-2">GPT image-2 (经典写实)</option>
                     <option value="openai/gpt-image-2-all">GPT image-2-all (多图严格参考)</option>
+                  </optgroup>
+                  <optgroup label="豆包 Seedream">
+                    <option value="doubao-seedream-5-5">Seedream 5.5 (多参考图 · 2K/4K)</option>
 
 
 

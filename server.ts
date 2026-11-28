@@ -46,7 +46,8 @@ import {
   resolveImageModel,
   type ImageIntent
 } from './server/ai/modelRegistry';
-import { getImageProviderAdapter, normalizeGoogleGenAiBaseUrl } from './server/ai/imageProviderAdapter';
+import { buildSeedreamPayload, getImageProviderAdapter, normalizeGoogleGenAiBaseUrl } from './server/ai/imageProviderAdapter';
+import { computeSeedreamSize } from './server/ai/seedreamSize';
 import { fetchUpstreamText } from './server/ai/upstreamRequest';
 import {
   normalizeProviderError,
@@ -1198,6 +1199,25 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
                 ]
               };
               isMultipart = false;
+            } else if (registeredModel.transport === 'seedream_images') {
+              // 豆包 Seedream：文生图和图生图都走 JSON；参考图优先用公网 URL，没有就内联 data URL
+              const seedreamImages = intent === 'image_edit'
+                ? resolvedReferenceImages
+                    .slice(0, registeredModel.capabilities.maxInputImages)
+                    .map(img => img.publicUrl && /^https:\/\//i.test(img.publicUrl) ? img.publicUrl : `data:${img.mimeType};base64,${img.cleanB64}`)
+                : [];
+              if (intent === 'image_edit' && seedreamImages.length === 0) {
+                throw new ProviderError('图像编辑请求的参考图无效，已拒绝降级为文生图。', 'invalid_image_input', 400, false, currentProvider, finalModel);
+              }
+              reqPayload = buildSeedreamPayload({
+                model: finalModel,
+                prompt: intent === 'image_edit' ? promptWithRoles : prompt,
+                size: computeSeedreamSize(aspectRatio, resolution, typeof size === 'string' ? size : undefined),
+                images: seedreamImages,
+                // 默认 JPEG：带参考图时通用逻辑会选 PNG，2K PNG 的 base64 约 7MB，经网关传输要两三分钟
+                outputFormat: output_format || format || 'jpeg'
+              });
+              isMultipart = false;
             } else if (intent === 'image_edit' && registeredModel.transport === 'openai_images_json_multi') {
               const publicUrls = resolvedReferenceImages.map(image => image.publicUrl);
               if (publicUrls.some(url => !url)) {
@@ -1267,7 +1287,7 @@ Output ONLY the finalized premium English prompt for generating a photorealistic
               isMultipart = true;
             }
 
-            if (intent === 'text_to_image' && registeredModel.transport !== 'openai_chat_completions') {
+            if (intent === 'text_to_image' && registeredModel.transport !== 'openai_chat_completions' && registeredModel.transport !== 'seedream_images') {
               reqPayload = {
                 model: finalModel,
                 prompt: prompt,

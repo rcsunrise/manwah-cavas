@@ -107,6 +107,41 @@ const openAiImagesJsonMultiAdapter: ImageProviderAdapter = {
   }
 };
 
+export interface SeedreamPayloadInput {
+  model: string;
+  prompt: string;
+  size: string;
+  /** 参考图：公网 URL 或 data:image/...;base64,...，按顺序对应提示词里的参考图编号 */
+  images: string[];
+  outputFormat?: string;
+}
+
+/** 豆包 Seedream 请求体（网关 Doubao 生图文档）：只出一张、不加水印。
+ * 5.5 不认 sequential_image_generation（上游 400 "not supported by the current model"），不传即单图 */
+export function buildSeedreamPayload(input: SeedreamPayloadInput): Record<string, unknown> {
+  const fmt = input.outputFormat === 'png' ? 'png' : 'jpeg';
+  return {
+    model: input.model,
+    prompt: input.prompt,
+    ...(input.images.length === 1 ? { image: input.images[0] } : input.images.length > 1 ? { image: [...input.images] } : {}),
+    size: input.size,
+    output_format: fmt,
+    response_format: 'b64_json',
+    watermark: false,
+    stream: false
+  };
+}
+
+const seedreamImagesAdapter: ImageProviderAdapter = {
+  transport: 'seedream_images',
+  buildEndpoint(baseUrl) {
+    return `${cleanOpenAiBase(baseUrl)}/api/v3/images/generations`;
+  },
+  usesMultipart() {
+    return false;
+  }
+};
+
 const openAiChatCompletionsAdapter: ImageProviderAdapter = {
   transport: 'openai_chat_completions',
   buildEndpoint(baseUrl) {
@@ -121,7 +156,8 @@ const adapters: Record<ImageTransport, ImageProviderAdapter> = {
   gemini_native: geminiNativeAdapter,
   openai_images: openAiImagesAdapter,
   openai_images_json_multi: openAiImagesJsonMultiAdapter,
-  openai_chat_completions: openAiChatCompletionsAdapter
+  openai_chat_completions: openAiChatCompletionsAdapter,
+  seedream_images: seedreamImagesAdapter
 };
 
 export function getImageProviderAdapter(model: ImageModelDefinition): ImageProviderAdapter {

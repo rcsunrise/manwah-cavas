@@ -290,6 +290,15 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
       activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
     },
     {
+      id: 'doubao-seedream-5-5',
+      icon: '🫘',
+      title: 'Seedream 5.5',
+      subtitle: '豆包生图 · 多参考图 · 2K/4K',
+      badge: '豆包',
+      badgeColor: 'bg-teal-100 text-teal-800 border-teal-300',
+      activeColor: 'bg-[#2C2622] text-white border-[#2C2622] shadow-md ring-2 ring-stone-900/30'
+    },
+    {
       id: 'openai/gpt-image-2',
       icon: '🌌',
       title: 'GPT Image 2',
@@ -382,7 +391,8 @@ export const EngineConfigSelector: React.FC<EngineConfigSelectorProps> = ({
         <div className="flex gap-1.5">
           {(['1K', '2K', '4K'] as const).map(r => {
             const isOldGemini25 = selectedModel === 'gemini-2.5-flash-image' || selectedModel === 'google/gemini-2.5-flash-image';
-            const isDisabled = isOldGemini25 && (r === '2K' || r === '4K');
+            // Seedream 5.5 没有 1K 档（总像素下限 2560×1440）
+            const isDisabled = (isOldGemini25 && (r === '2K' || r === '4K')) || (selectedModel === 'doubao-seedream-5-5' && r === '1K');
             const isSelected = selectedResolution === r;
 
             return (
@@ -448,8 +458,9 @@ type AgentPanelTab = 'chat' | 'setup' | 'render' | 'typography';
 const AGENT_PANEL_TABS: { id: AgentPanelTab; label: string; hint: string; icon: typeof Bot; needsPlan?: boolean }[] = [
   { id: 'chat', label: '智能对话', hint: '和 Agent G 对话：提需求、出方案、点评画面与视频', icon: Bot },
   { id: 'setup', label: '企划配置', hint: '产品主图、详情页企划参数与企划生成', icon: Sliders },
-  { id: 'render', label: '渲染引擎', hint: '逐屏查看提示词、渲染、审核与批量生成', icon: Sparkles, needsPlan: true },
-  { id: 'typography', label: '文案排版', hint: '逐屏润色文案与海报文字排版', icon: Layers, needsPlan: true }
+  { id: 'render', label: '渲染引擎', hint: '逐屏查看提示词、渲染、审核与批量生成', icon: Sparkles, needsPlan: true }
+  // 文案排版暂时隐藏：依赖详情页企划的逐屏文案版本，当前的模板海报流程用不到（面板代码保留）
+  // { id: 'typography', label: '文案排版', hint: '逐屏润色文案与海报文字排版', icon: Layers, needsPlan: true }
 ];
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({
@@ -554,7 +565,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   const [activeTab, setActiveTabState] = useState<AgentPanelTab>(() => {
     try {
       const saved = localStorage.getItem('creative-canvas:agent-panel-tab');
-      if (saved === 'setup' || saved === 'render' || saved === 'chat' || saved === 'typography') return saved;
+      if (saved === 'setup' || saved === 'render' || saved === 'chat') return saved;
     } catch {}
     return 'chat';
   });

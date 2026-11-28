@@ -182,6 +182,22 @@ export const SPACE_IMAGE_MODELS: readonly ClientImageModelItem[] = [
     description: '旗舰级高光细节与皮革质感，全幅光影深度与精工缝线呈现'
   },
   {
+    id: 'doubao-seedream-5-5',
+    name: '豆包 Seedream 5.5 (多参考图生图)',
+    badge: '豆包生图',
+    provider: 'vectorengine',
+    tier: 'flagship',
+    capabilities: {
+      supportsImage: true,
+      supportsEdit: true,
+      supportsMultiReference: true,
+      supportsSeed: false,
+      supports4K: true,
+      maxReferences: 14
+    },
+    description: '字节豆包生图：文生图、单图/多参考图生图，2K/4K 出图（没有 1K 档，选 1K 按 2K 出），不支持局部 Mask'
+  },
+  {
     id: 'gemini-2.5-flash-image',
     name: '极速闪电 (Gemini 2.5 Flash)',
     badge: '超低延迟',
@@ -236,6 +252,7 @@ const GENERATION_MODEL_LABELS: Array<[RegExp, string]> = [
   [/gpt-image-2\.5-flare/, 'GPT 2.5 Flare'],
   [/gpt-image-2\.5-sunburst/, 'GPT 2.5 Sunburst'],
   [/gpt-image-2-all/, 'GPT Image 2 All'],
+  [/seedream-5-5/, 'Seedream 5.5'],
   [/gpt-image-2/, 'GPT Image 2']
 ];
 

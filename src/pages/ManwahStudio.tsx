@@ -2172,6 +2172,15 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                          <div className="text-[10px] font-bold">GPT 多图</div>
                          <div className="text-[8px] opacity-70">image-2-all</div>
                        </button>
+                       <button
+                         onClick={() => { setModel('doubao-seedream-5-5'); if (resolution === '1K') setResolution('2K'); }}
+                         className={`p-2 rounded-xl text-center border transition-all ${model === 'doubao-seedream-5-5' ? 'bg-brand-charcoal text-white border-brand-charcoal shadow-lg' : 'bg-white border-stone-200 hover:border-brand-taupe'}`}
+                         title="豆包 Seedream 5.5：文生图、单图/多参考图生图；2K/4K（没有 1K 档）"
+                       >
+                         <div className="text-lg mb-1 opacity-80">🫘</div>
+                         <div className="text-[10px] font-bold">Seedream</div>
+                         <div className="text-[8px] opacity-70">豆包 5.5</div>
+                       </button>
                      </div>
                    </div>
 
@@ -2180,7 +2189,8 @@ You MUST adjust the proportions. The side view width MUST be exactly ${Math.roun
                      <div className="flex gap-2">
                        {(['1K', '2K', '4K'] as const).map(r => {
                          const isV25 = model === 'gemini-2.5-flash' || model === 'gemini-2.5-flash-image';
-                         const isDisabled = isV25 && (r === '2K' || r === '4K');
+                         const isSeedream = model === 'doubao-seedream-5-5';
+                         const isDisabled = (isV25 && (r === '2K' || r === '4K')) || (isSeedream && r === '1K');
                          
                          return (
                           <button 

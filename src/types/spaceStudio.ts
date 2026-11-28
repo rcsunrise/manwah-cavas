@@ -478,7 +478,8 @@ export type ComputeModelTier =
   | 'gpt-image-2.6-flare-c'
   | 'gpt-image-2.6-sunburst-c'
   | 'gpt-image-2.5-flare-c'
-  | 'gpt-image-2.5-sunburst-c';
+  | 'gpt-image-2.5-sunburst-c'
+  | 'doubao-seedream-5-5';
 
 export type RenderResolution = '1K' | '2K' | '4K';
 

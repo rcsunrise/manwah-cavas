@@ -26,6 +26,9 @@ interface WorkflowHeaderProps {
   onImportJson?: (file: File) => void;
 }
 
+/** 顶栏“全案海报”入口开关：九屏排版工作台当前用不到，先隐藏 */
+const SHOW_LAYOUT_EDITOR_ENTRY = false;
+
 const formatTime = (iso?: string) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -167,7 +170,8 @@ export const WorkflowHeader: React.FC<WorkflowHeaderProps> = ({
 
       {/* 中：创作工具，画布上最常用的两个产出入口 */}
       <div className="flex items-center gap-1 p-1 rounded-xl bg-stone-100/80 border border-[#E5E0D8] shrink-0">
-        {onOpenLayoutEditor && (
+        {/* 全案海报暂时隐藏：当前用模板海报流程，九屏排版工作台用不到 */}
+        {SHOW_LAYOUT_EDITOR_ENTRY && onOpenLayoutEditor && (
           <button
             onClick={onOpenLayoutEditor}
             className="px-3 py-1.5 rounded-lg text-xs font-bold text-stone-700 hover:bg-white hover:text-amber-800 transition-all flex items-center gap-1.5"

@@ -2595,6 +2595,7 @@ export function useCreativeCanvasWorkspace(
 
     generatingScenesRef.current.add(screenIndex);
     const getModelFriendlyName = (m: string) => {
+      if (m.includes('seedream')) return '豆包 Seedream 5.5 (多参考图生图)';
       if (m.includes('2.6-flare') || m.includes('2.6_flare')) return 'GPT 2.6 Flare (精细视觉创作·图文编辑)';
       if (m.includes('2.6-sunburst') || m.includes('2.6_sunburst')) return 'GPT 2.6 Sunburst (旗舰构图·标注引导编辑)';
       if (m.includes('flare')) return 'GPT 2.5 Flare (高保真原画·局部Mask重绘)';

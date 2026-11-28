@@ -1,7 +1,8 @@
 # manwah-cavas
 
 ## 运行
-- 本地服务：`npx tsx server.ts`，端口 3000（launch.json 名称 `manwah-dev`）。**不监听文件变化，改了 server/ 必须重启。**
+- 本地开发服务：端口 3100（launch.json 名称 `manwah-lan`，`PORT=3100`）。**不监听文件变化，改了 server/ 必须重启。**本机 3000 被别的容器（admin-panel）占用，别用。
+- 本地部署：Docker 容器 `manwah-cavas`，端口 13100（容器内 3000）；`APT_MIRROR=mirrors.tuna.tsinghua.edu.cn docker compose build` 后 `docker compose up -d`。
 - Vite 会监听 server/ 文件，一改就整页刷新浏览器 → **生成进行中不要改 server/ 下文件**，否则请求中断且点数照扣。
 - 类型检查 `npx tsc --noEmit`；测试 `npx vitest run <文件>`，全量只在提交前跑。
 - Windows 下 Python 读写中文：脚本写成文件，用 `python -X utf8` 运行。

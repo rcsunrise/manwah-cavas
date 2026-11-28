@@ -740,6 +740,9 @@ export const SpaceStudioRightPanel: React.FC<SpaceStudioRightPanelProps> = ({
                   <option value="gpt-image-2-all">GPT Image 2-all (全能写实增强)</option>
                   <option value="openai/gpt-image-2.5-sunburst-c">GPT 2.5 Sunburst (旗舰级高光细节 · 质感重绘)</option>
                 </optgroup>
+                <optgroup label="豆包 Seedream" className={isLight ? 'bg-white text-stone-800' : 'bg-[#161822] text-neutral-200'}>
+                  <option value="doubao-seedream-5-5">Seedream 5.5 (多参考图生图 · 2K/4K，1K 按 2K 出)</option>
+                </optgroup>
               </select>
             </div>
 

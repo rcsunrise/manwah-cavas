@@ -1,7 +1,7 @@
 import type { GenerationIntent } from './imageRequest';
 
 export type ImageIntent = GenerationIntent;
-export type ImageTransport = 'gemini_native' | 'openai_images' | 'openai_images_json_multi' | 'openai_chat_completions';
+export type ImageTransport = 'gemini_native' | 'openai_images' | 'openai_images_json_multi' | 'openai_chat_completions' | 'seedream_images';
 
 export interface ImageModelCapabilities {
   textToImage: boolean;
@@ -128,6 +128,15 @@ export const IMAGE_MODEL_REGISTRY: readonly ImageModelDefinition[] = [
     transport: 'openai_images_json_multi',
     supportedProviders: ['tiantoken', 'vectorengine'],
     capabilities: { ...openAiCapabilities, textToImage: true, mask: false }
+  },
+  {
+    // 豆包 Seedream 5.5：JSON 协议（/api/v3/images/generations），参考图放 image 数组（URL 或 data URL），
+    // 文生图与图生图同一个端点；不支持 Mask；没有 1K 档（尺寸见 seedreamSize.ts）
+    id: 'doubao-seedream-5-5',
+    aliases: ['doubao/doubao-seedream-5-5', 'seedream-5-5', 'seedream-5.5'],
+    transport: 'seedream_images',
+    supportedProviders: ['tiantoken', 'vectorengine'],
+    capabilities: { textToImage: true, imageEdit: true, multiImage: true, mask: false, maxInputImages: 14 }
   },
   {
     id: 'gpt-image-1.5',
