@@ -10,7 +10,7 @@ describe('项目归属', () => {
 
   it('本人和管理员可以访问，别人不行', () => {
     expect(canAccessOwner(req({ id: 'u-1', role: 'user' }), 'u-1')).toBe(true);
-    expect(canAccessOwner(req({ id: 'admin', role: 'admin' }), 'u-1')).toBe(true);
+    expect(canAccessOwner(req({ id: 'admin', role: 'admin' }), 'u-1')).toBe(false);
     expect(canAccessOwner(req({ id: 'u-2', role: 'user' }), 'u-1')).toBe(false);
     expect(canAccessOwner(req(undefined), 'u-1')).toBe(false);
   });

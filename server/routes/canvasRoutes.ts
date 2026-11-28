@@ -726,7 +726,7 @@ async function assertCanvasAccess(req: AuthenticatedRequest, rawId: string): Pro
   const user = req.user;
   if (!user) throw new AppError('请先登录', 401, 'UNAUTHORIZED');
   const owner = await findCanvasOwner(rawId);
-  if (owner && owner !== user.id && user.role !== 'admin') {
+  if (owner && owner !== user.id) {
     throw new AppError('无权访问该画布', 403, 'FORBIDDEN');
   }
   return owner;
@@ -784,10 +784,10 @@ router.get('/:canvasId', async (req: AuthenticatedRequest, res: Response, next: 
       } catch {}
     }
 
-    // 画布属于别的账号时拒绝读取（管理员除外）；无归属的旧画布、自己的照常
+    // 画布属于别的账号时拒绝读取（管理员也不例外）；无归属的旧画布、自己的照常
     if (canvas) {
       const owner = canvas.user_id || canvas.created_by || null;
-      const open = !owner || owner === user.id || user.role === 'admin';
+      const open = !owner || owner === user.id;
       if (!open) throw new AppError('无权访问该画布', 403, 'FORBIDDEN');
     }
 

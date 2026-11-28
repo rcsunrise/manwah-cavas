@@ -38,13 +38,13 @@ export async function defaultProjectOwner(): Promise<string | null> {
   return owner;
 }
 
-/** 当前账号能不能使用默认示例项目：画布归属本人或管理员；没人认领时只有管理员能用 */
+/** 当前账号能不能使用默认示例项目：画布归属本人；没人认领时只有管理员能用（已被别人认领的，管理员也不看） */
 export async function canUseDefaultProject(req: AuthenticatedRequest): Promise<boolean> {
   const user = req.user;
   if (!user) return false;
-  if (user.role === 'admin') return true;
   const owner = await defaultProjectOwner();
-  return !!owner && owner === user.id;
+  if (owner) return owner === user.id;
+  return user.role === 'admin';
 }
 
 const DEFAULT_PROJECT_ID_FOR_GUARD = '00000000-0000-0000-0000-000000000001';
@@ -64,13 +64,13 @@ router.use(optionalAuthenticateToken as any);
 
 const PROJECTS_DIR = path.join(process.cwd(), '.data', 'projects');
 
-/** 记录没有归属 / 是默认示例 / 属于当前账号 / 当前是管理员 → 可访问 */
+/** 记录没有归属 / 属于当前账号 → 可访问；管理员也不跨账号查看 */
 export function canAccessOwner(req: AuthenticatedRequest, ownerId?: string | null): boolean {
   if (!ownerId) return true;
   // 以前归属于测试身份（0000…0001）的数据对所有人开放，上线后不再有“所有人共用”的数据
   const user = req.user;
   if (!user) return false;
-  return user.id === ownerId || user.role === 'admin';
+  return user.id === ownerId;
 }
 
 function ensureProjectsDir() {

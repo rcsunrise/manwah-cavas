@@ -9,8 +9,14 @@ describe('computeSeedreamSize', () => {
   it('uses the recommended sizes for common ratios', () => {
     expect(computeSeedreamSize('1:1', '2K')).toBe('2048x2048');
     expect(computeSeedreamSize('16:9', '2K')).toBe('2848x1600');
-    expect(computeSeedreamSize('3:4', '4K')).toBe('3520x4704');
-    expect(computeSeedreamSize('4:3', '4K')).toBe('4704x3520');
+    expect(computeSeedreamSize('3:4', '4K')).toBe('2448x3264');
+    expect(computeSeedreamSize('4:3', '4K')).toBe('3264x2448');
+    expect(computeSeedreamSize('16:9', '4K')).toBe('3840x2160');
+    // 上游上限 8294400 像素：4K 推荐尺寸和海报 4K（4096x3072）都不能超
+    for (const r of ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9']) {
+      expect(px(computeSeedreamSize(r, '4K'))).toBeLessThanOrEqual(8294400);
+    }
+    expect(px(computeSeedreamSize('4:3', '4K', '4096x3072'))).toBeLessThanOrEqual(8294400);
   });
 
   it('has no 1K tier: 1K falls back to 2K', () => {
