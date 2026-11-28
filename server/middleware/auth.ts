@@ -36,8 +36,21 @@ type TokenResolution =
 // 测试环境不缓存，保证每个用例按各自的模拟数据重新校验。
 const TOKEN_CACHE_TTL_MS = process.env.NODE_ENV === 'test' ? 0 : 60_000;
 const TOKEN_CACHE_MAX = 500;
-const tokenUserCache = new Map<string, { user: AuthenticatedUser; expiresAt: number }>();
+const tokenUserCache = new Map<string, { user: AuthenticatedUser; expiresAt: number; confirmedAt: number }>();
 const tokenUserInflight = new Map<string, Promise<TokenResolution>>();
+// Supabase 网络常 ECONNRESET：先重试；仍连不上时，同一凭证 10 分钟内确认过身份就沿用，免得生成请求白白失败
+const AUTH_RETRY_DELAYS_MS = process.env.NODE_ENV === 'test' ? [] : [300, 800];
+const STALE_IDENTITY_GRACE_MS = 10 * 60_000;
+
+async function fetchTokenUserWithRetry(token: string): Promise<TokenResolution> {
+  let resolution = await fetchTokenUser(token);
+  for (const delay of AUTH_RETRY_DELAYS_MS) {
+    if (resolution.status !== 'unavailable') break;
+    await new Promise(r => setTimeout(r, delay));
+    resolution = await fetchTokenUser(token);
+  }
+  return resolution;
+}
 
 async function fetchTokenUser(token: string): Promise<TokenResolution> {
   let authResult: Awaited<ReturnType<typeof supabaseAdmin.auth.getUser>>;
@@ -77,16 +90,23 @@ async function resolveTokenUser(token: string): Promise<TokenResolution> {
 
   let pending = tokenUserInflight.get(token);
   if (!pending) {
-    pending = fetchTokenUser(token).finally(() => tokenUserInflight.delete(token));
+    pending = fetchTokenUserWithRetry(token).finally(() => tokenUserInflight.delete(token));
     tokenUserInflight.set(token, pending);
   }
   const resolution = await pending;
+  if (resolution.status === 'unavailable' && cached && Date.now() - cached.confirmedAt < STALE_IDENTITY_GRACE_MS) {
+    return { status: 'ok', user: cached.user };
+  }
   if (resolution.status === 'ok' && TOKEN_CACHE_TTL_MS > 0) {
+    tokenUserCache.delete(token);
     if (tokenUserCache.size >= TOKEN_CACHE_MAX) {
       const oldestKey = tokenUserCache.keys().next().value;
       if (oldestKey !== undefined) tokenUserCache.delete(oldestKey);
     }
-    tokenUserCache.set(token, { user: resolution.user, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+    const now = Date.now();
+    tokenUserCache.set(token, { user: resolution.user, expiresAt: now + TOKEN_CACHE_TTL_MS, confirmedAt: now });
+  } else if (resolution.status === 'invalid_token' || resolution.status === 'profile_required') {
+    tokenUserCache.delete(token);
   }
   return resolution;
 }
