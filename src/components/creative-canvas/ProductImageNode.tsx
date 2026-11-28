@@ -14,7 +14,7 @@ import {
   Plus,
   Minus
 } from 'lucide-react';
-import { ProductImageNodeData, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX } from '../../types/creativeCanvas';
+import { ProductImageNodeData, DETAIL_SLOTS_MIN, DETAIL_SLOTS_MAX, COFFEE_TABLE_SERIES_OPTIONS } from '../../types/creativeCanvas';
 import { toThumbnailUrl } from '../../utils/thumbnailUrl';
 import { POSTER_COPY_LIMITS } from '../../utils/posterCopy';
 
@@ -292,6 +292,32 @@ export const ProductImageNode: React.FC<NodeProps> = ({ data, selected }) => {
             <div className="mt-2 text-[9px] text-[#B28C5A] font-medium bg-[#B28C5A]/10 px-2 py-0.5 rounded-full flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
               <span>上传后自动提取立体 DNA</span>
+            </div>
+          </div>
+        )}
+
+        {/* 4/3 产品海报的茶几配套系列：选了就从该系列真实茶几里按款式匹配，随机 = AI 自己画 */}
+        {nodeData?.onCoffeeTableSeriesChange && nodeData?.imageUrl && (
+          <div className="mt-3 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+            <span className="text-[10px] font-bold text-[#2C2A29] shrink-0" title="生成 4/3 产品海报时，从所选系列的茶几素材里按沙发款式匹配一款；随机则由 AI 画">
+              搭配茶几
+            </span>
+            <div className="nodrag flex flex-1 rounded-lg border border-[#E5E0D8] overflow-hidden">
+              {COFFEE_TABLE_SERIES_OPTIONS.map(opt => {
+                const active = (nodeData.coffeeTableSeries || '') === opt.id;
+                return (
+                  <button
+                    key={opt.id || 'random'}
+                    type="button"
+                    onClick={() => nodeData.onCoffeeTableSeriesChange?.(opt.id)}
+                    className={`flex-1 py-1 text-[10px] font-bold transition-colors ${
+                      active ? 'bg-[#B28C5A] text-white' : 'bg-white text-stone-500 hover:bg-[#F9F5EF]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

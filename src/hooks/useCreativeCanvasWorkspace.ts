@@ -3112,6 +3112,11 @@ export function useCreativeCanvasWorkspace(
       prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, posterCopy: { ...((n.data as any)?.posterCopy || {}), ...patch } } } : n))
     );
   };
+  // 产品节点选的茶几配套系列（贵族 / 绅士 / 美居，空 = AI 随机画）：生成 4/3 海报时按它从素材库匹配茶几
+  const handleSetCoffeeTableSeries = (nodeId: string, series: string) => {
+    hasUserMutationRef.current = true;
+    setNodes(prev => prev.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, coffeeTableSeries: series } } : n)));
+  };
   const handleRemoveDetailImage = (nodeId: string, index: number) =>
     patchDetailImages(nodeId, list => list.map((u, i) => (i === index ? null : u)));
   const handleSetDetailSlots = (nodeId: string, count: number) =>
@@ -3283,6 +3288,8 @@ export function useCreativeCanvasWorkspace(
     const detailCount = Math.min(DETAIL_SLOTS_MAX, Math.max(DETAIL_SLOTS_MIN, detailSlots.length, detailPhotos.length));
     const attachments = [...detailPhotos, ...(params?.attachmentUrls || []).slice(0, 4)];
     const fixedCopy = buildFixedPosterCopy((productNode?.data as any)?.posterCopy, detailSlots);
+    // 产品节点选了茶几配套系列：服务端从这个系列的真实茶几里按款式挑一款画进主场景
+    const tableSeries = String((productNode?.data as any)?.coffeeTableSeries || '');
     const taskId = addAgentMessage('', {
       taskCard: {
         title: referenceImage ? `${taskTitle}（按参考图）` : attachments.length ? `${taskTitle}（含 ${attachments.length} 张附图）` : taskTitle,
@@ -3310,7 +3317,7 @@ export function useCreativeCanvasWorkspace(
     const storeImage = (dataUrl: string) => persistGeneratedImage(dataUrl, '4/3 产品海报');
 
     try {
-      const { concept } = await postJson('/api/poster-templates/concept', {
+      const { concept, table } = await postJson('/api/poster-templates/concept', {
         productImage,
         referenceImage,
         attachments,
@@ -3320,9 +3327,11 @@ export function useCreativeCanvasWorkspace(
         used,
         detailCount,
         detailPhotoCount: detailPhotos.length,
-        ...(fixedCopy ? { fixedCopy } : {})
+        ...(fixedCopy ? { fixedCopy } : {}),
+        ...(tableSeries ? { tableSeries } : {})
       });
-      finishTaskCard(taskId, 'running', `2/3 「${concept.name}」：${concept.idea || concept.subtitle}\n正在生成主场景底图（约 1–3 分钟）…`);
+      const tableNote = table?.name ? `\n搭配茶几：${table.seriesLabel || ''}配套 · ${table.name}` : '';
+      finishTaskCard(taskId, 'running', `2/3 「${concept.name}」：${concept.idea || concept.subtitle}${tableNote}\n正在生成主场景底图（约 1–3 分钟）…`);
 
       const hero = await postJson('/api/poster-templates/template-a/hero', {
         concept,
@@ -5140,6 +5149,7 @@ export function useCreativeCanvasWorkspace(
     handleRemoveDetailImage,
     handleSetDetailSlots,
     handleSetPosterCopy,
+    handleSetCoffeeTableSeries,
     handleClearProductNode,
     handleApproveSceneImage,
     handleRejectSceneImage,
@@ -5272,6 +5282,7 @@ export function useCreativeCanvasWorkspace(
           data.onDetailImageRemove = (index: number) => nodeActionsRef.current.handleRemoveDetailImage(node.id, index);
           data.onDetailSlotsChange = (count: number) => nodeActionsRef.current.handleSetDetailSlots(node.id, count);
           data.onPosterCopyChange = (patch: Record<string, any>) => nodeActionsRef.current.handleSetPosterCopy(node.id, patch);
+          data.onCoffeeTableSeriesChange = (series: string) => nodeActionsRef.current.handleSetCoffeeTableSeries(node.id, series);
         }
 
         // 分组框：放在底层、尺寸由数据决定；锁定分组里的节点不可拖动不可删除

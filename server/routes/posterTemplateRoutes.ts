@@ -6,6 +6,7 @@ import { VideoSourceImageResolver } from '../services/video/videoSourceImageReso
 import { requestGatewayImage } from '../services/spaceImageGenerationService';
 import { buildTemplateAHeroPrompt, generatePosterConcept, sanitizeConcept, sanitizeFixedCopy, UsedPosterConcept, clampDetailCount, MAX_DETAIL_CELLS } from '../services/posterTemplate/posterConcept';
 import { circleCropRect, cropDetail, isArmTarget, locateDetails, matchDetailPhotos, refineDetails } from '../services/posterTemplate/detailCrop';
+import { buildCatalogSheet, catalogTablesOf, COFFEE_TABLE_SERIES_LABEL, findCatalogTable, isCoffeeTableSeries, loadCatalogTableImage } from '../services/posterTemplate/coffeeTableCatalog';
 import { composeTemplateA, templateADetailAspect, TEMPLATE_A_HERO_RATIO } from '../services/posterTemplate/templateA';
 import {
   buildPosterFilmPrompt,
@@ -145,9 +146,15 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
       const small = await sharp(buf, { failOn: 'none' }).rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
       reference = { data: small.toString('base64'), mimeType: 'image/jpeg' };
     }
+    // 产品节点选了茶几配套系列（贵族 / 绅士 / 美居）：把这个系列的真实茶几拼成目录图，让模型按沙发款式挑一款
+    const tableSeries = req.body?.tableSeries;
+    const tableCatalog = isCoffeeTableSeries(tableSeries) && catalogTablesOf(tableSeries).length
+      ? { series: tableSeries, items: catalogTablesOf(tableSeries), sheet: { data: (await buildCatalogSheet(tableSeries)).toString('base64'), mimeType: 'image/jpeg' } }
+      : undefined;
     const concept = await generatePosterConcept(
       {
         dna,
+        tableCatalog,
         productImage: product,
         referenceImage: reference,
         attachments: (await loadAttachments(req.body?.attachments, 1280, 85)).map(b => ({ data: b ? b.toString('base64') : '', mimeType: 'image/jpeg' })),
@@ -161,7 +168,12 @@ router.post('/concept', async (req: AuthenticatedRequest, res: Response) => {
       },
       userIdOf(req)
     );
-    res.json({ success: true, concept });
+    const table = findCatalogTable(concept.tableStyle);
+    res.json({
+      success: true,
+      concept,
+      ...(table ? { table: { id: table.id, name: table.name, series: table.series, seriesLabel: COFFEE_TABLE_SERIES_LABEL[table.series] } } : {})
+    });
   } catch (err: any) {
     sendError(res, err, '生成海报概念失败');
   }
@@ -187,6 +199,16 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       const ref = await loadImage(referenceImage, '参考图');
       referenceJpeg = await sharp(ref, { failOn: 'none' }).rotate().resize(1536, 1536, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
     }
+    // 构思时从配套系列里挑中的真实茶几：作为第二件产品交给生图模型还原（素材图本身很小，原样转 JPEG 即可）
+    const catalogTable = findCatalogTable(concept.tableStyle);
+    let tableJpeg: Buffer | undefined;
+    if (catalogTable) {
+      try {
+        tableJpeg = await sharp(await loadCatalogTableImage(catalogTable), { failOn: 'none' }).rotate().flatten({ background: '#ffffff' }).resize(1024, 1024, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+      } catch (err: any) {
+        console.warn(`[PosterTemplate] 茶几素材「${catalogTable.name}」读取失败，按文字描述出图:`, err?.message || err);
+      }
+    }
     const prompt = buildTemplateAHeroPrompt(concept, dna, {
       hasReference: Boolean(referenceJpeg) || sceneAttachments.length > 0,
       detailPhotos: detailAttachments.length
@@ -197,6 +219,7 @@ router.post('/template-a/hero', async (req: AuthenticatedRequest, res: Response)
       
       images: [
         { data: `data:image/jpeg;base64,${productJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'primary_product' },
+        ...(tableJpeg ? [{ data: `data:image/jpeg;base64,${tableJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'secondary_product' }] : []),
         ...(referenceJpeg ? [{ data: `data:image/jpeg;base64,${referenceJpeg.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' }] : []),
         ...sceneAttachments.map(b => ({ data: `data:image/jpeg;base64,${b.toString('base64')}`, mimeType: 'image/jpeg', role: 'scene_reference' })),
         ...detailAttachments.map(b => ({ data: `data:image/jpeg;base64,${b.toString('base64')}`, mimeType: 'image/jpeg', role: 'material_reference' }))

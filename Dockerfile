@@ -55,6 +55,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/public ./public
 # 海报排版字体随镜像带上（server/services/posterTemplate/posterFonts.ts 优先读 assets/fonts，不依赖系统字体包）
 COPY --from=builder /app/assets/fonts ./assets/fonts
+# 4/3 产品海报的配套茶几素材库（贵族 / 绅士 / 美居，server/services/posterTemplate/coffeeTableCatalog.ts）
+COPY --from=builder /app/assets/coffee-tables ./assets/coffee-tables
 
 # 暴露容器端口（Cloud Run 将注入 PORT 环境变量并在该端口进行健康探测）
 EXPOSE 3000

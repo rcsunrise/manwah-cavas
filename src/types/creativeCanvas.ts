@@ -319,10 +319,21 @@ export interface ProductImageNodeData extends Record<string, unknown> {
   /** 上传素材时录入的海报文案：主图标题 / 正文，细节格标题 / 正文（下标与 detailImages 的格子一致）。空着的由 AI 写 */
   posterCopy?: ProductPosterCopy;
   onPosterCopyChange?: (patch: Partial<ProductPosterCopy>) => void;
+  /** 4/3 产品海报的茶几配套系列：选了就从该系列的真实茶几素材里按款式匹配一款，不选（空）就由 AI 随机画 */
+  coffeeTableSeries?: CoffeeTableSeries | '';
+  onCoffeeTableSeriesChange?: (series: CoffeeTableSeries | '') => void;
   onDetailImageUpload?: (index: number, file: File) => void;
   onDetailImageRemove?: (index: number) => void;
   onDetailSlotsChange?: (count: number) => void;
 }
+
+export type CoffeeTableSeries = 'noble' | 'gentleman' | 'meiju';
+export const COFFEE_TABLE_SERIES_OPTIONS: Array<{ id: CoffeeTableSeries | ''; label: string }> = [
+  { id: '', label: '随机' },
+  { id: 'noble', label: '贵族' },
+  { id: 'gentleman', label: '绅士' },
+  { id: 'meiju', label: '美居' }
+];
 
 export const DETAIL_SLOTS_MIN = 3;
 export const DETAIL_SLOTS_MAX = 6;

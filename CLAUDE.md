@@ -10,6 +10,7 @@
 ## 模板 A 海报（server/services/posterTemplate/，路由 /api/poster-templates）
 流程：概念（posterConcept.ts，文本模型）→ 主场景（/template-a/hero，网关生图 gpt-image-2.6-flare-c，**每张 3000 点**）→ 细节定位与裁切（detailCrop.ts，视觉模型 box_2d）→ 真实字体排版（templateA.ts + posterFonts.ts，sharp/Pango，Noto Serif/Sans SC）。
 - 画布 2048×1536，主场景占 76.5%，底部三栏细节；标题按 productBox 避让，背景杂时加衬底。
+- 茶几：产品节点“搭配茶几”选贵族/绅士/美居时，构思把该系列茶几拼成编号目录图让模型按沙发款式挑（coffeeTableCatalog.ts，concept.tableStyle = `ct-商品编码`），出图把茶几图作为 secondary_product 传入；选“随机”走 coffeeTables.ts 文字款式库。素材在 assets/coffee-tables，从 08_纯茶几素材 用 `python -X utf8 scripts/import_coffee_tables.py` 重新导入。
 - 场景方向库 sceneDirections.ts：按产品轮换未用过的方向；namesCollide 防撞名（同字集合算撞）。
 - 前端：useCreativeCanvasWorkspace.ts 的 handleGenerateTemplatePoster / handleAddProductNode；按产品节点加锁，多产品可并发。只有主产品节点（img-node-1 / product-image-node-1）带 DNA 和企划，其他产品以图片为准。
 - 对话框附件“加为新产品”，一次最多 4 张。
